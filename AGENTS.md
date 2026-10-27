@@ -6,4 +6,6 @@ Alien and Command & Conquer should feel distinct through effects, animation, and
 
 The repository is public. Keep machine-specific values (hostnames, paths, certificates, credentials) out of the code; they belong in `.local/config.json`, written by `npm run setup`.
 
+Keep `README.md` short: features, screenshots, setup, commands and a few lines on security and how it works. Implementation details belong in code comments, not the README.
+
 Git: work only on `main`. Commit and push directly to `main`; never create branches, worktrees or pull requests.
