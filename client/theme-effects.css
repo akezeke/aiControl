@@ -212,9 +212,33 @@
   .login-symbol { width: 132px; height: 82px; background: var(--accent-2); border-radius: 0; -webkit-mask: url('/alien-emblem.svg') center / contain no-repeat; mask: url('/alien-emblem.svg') center / contain no-repeat; }
   .login-form label { text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: var(--text-2); }
 }
-.boot { position: fixed; inset: 0; z-index: 99; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 0 max(20px, 12vw); background: radial-gradient(ellipse, #031203, #000 75%); color: #bdf7a8; font: 600 clamp(12px, 2.4vw, 22px)/1.5 'Josefin Slab', ui-monospace, 'DejaVu Sans Mono', Menlo, monospace; letter-spacing: .2em; text-shadow: -1px 0 #ff3b3b47, 1px 0 #38e8ff47, 0 0 2px #d8ffc8, 0 0 10px #7dff6aa6; cursor: pointer; }
+.boot { position: fixed; inset: 0; z-index: 99; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 0 max(16px, calc((100vw - 28em) / 2)); background: radial-gradient(ellipse, #031203, #000 75%); color: #bdf7a8; font: 600 clamp(8px, calc((100vw - 32px) / 28), 22px)/1.5 'Josefin Slab', ui-monospace, 'DejaVu Sans Mono', Menlo, monospace; letter-spacing: .2em; text-shadow: -1px 0 #ff3b3b47, 1px 0 #38e8ff47, 0 0 2px #d8ffc8, 0 0 10px #7dff6aa6; cursor: pointer; }
+/* The longest line is ~27em wide; the font scales so it always fits. */
 .boot p { margin: 0; white-space: pre; clip-path: inset(0 100% 0 0); }
 .boot p:last-child { color: #ffb547; text-shadow: 0 0 10px #ffb54799; }
+
+/* EVA start: riveted blast doors (emblem split across the seam) jolt, flash and slide apart. JS skips it under reduced motion. */
+.eva-boot { position: fixed; inset: 0; z-index: 99; overflow: hidden; cursor: pointer; animation: eva-boot-done .01s 1.9s forwards; }
+.eva-door { position: absolute; top: 0; bottom: 0; width: 50%;
+  --stud: radial-gradient(circle, #e6e9cc 0 1.3px, #8a8f73 2px, #10150b 2.8px, transparent 3.4px);
+  background:
+    url('/command-emblem.svg') var(--emblem-x) center / 180px no-repeat,
+    repeating-linear-gradient(135deg, #f0c94a 0 14px, #17190f 14px 28px) var(--stripe-x) / 26px 100% no-repeat,
+    var(--stud) var(--stud-a) 12px / 7px 34px repeat-y,
+    var(--stud) var(--stud-b) 12px / 7px 34px repeat-y,
+    repeating-linear-gradient(0deg, transparent 0 calc(25vh - 3px), #1b2114 calc(25vh - 3px) calc(25vh - 1px), #a7ab8d44 calc(25vh - 1px) 25vh),
+    linear-gradient(90deg, #3f4537, #6b715e 35%, #5a604d 70%, #474d3e); }
+.eva-door.left { left: 0; --emblem-x: right -90px; --stripe-x: right 0 top 0; --stud-a: 14px; --stud-b: calc(100% - 40px); box-shadow: inset -3px 0 #a7ab8d, inset -6px 0 #1b2114, 12px 0 30px #000c; animation: eva-jolt-left .14s .8s ease-out, eva-open-left .75s 1.05s cubic-bezier(.55, 0, .85, .35) forwards; }
+.eva-door.right { right: 0; --emblem-x: left -90px; --stripe-x: left 0 top 0; --stud-a: calc(100% - 14px); --stud-b: 33px; box-shadow: inset 3px 0 #a7ab8d, inset 6px 0 #1b2114, -12px 0 30px #000c; animation: eva-jolt-right .14s .8s ease-out, eva-open-right .75s 1.05s cubic-bezier(.55, 0, .85, .35) forwards; }
+.eva-boot::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 4px; margin-left: -2px; background: #c8ff7a; box-shadow: 0 0 22px 8px #8dff5acc; opacity: 0; animation: eva-seam .55s .95s ease-out forwards; }
+.eva-boot p { position: absolute; z-index: 2; left: 50%; top: calc(50% + 112px); margin: 0; padding: 4px 14px; transform: translateX(-50%); white-space: nowrap; background: #0b1108ee; border: 2px inset #6c7556; color: #a8ea5c; font: 26px/1.1 'VT323', ui-monospace, monospace; letter-spacing: .06em; text-shadow: 0 0 8px #8dff5a99; clip-path: inset(0 100% 0 0); animation: type-in .5s steps(25) .15s forwards, eva-text-out .2s .95s forwards; }
+@keyframes eva-jolt-left { 50% { transform: translateX(-6px); } }
+@keyframes eva-jolt-right { 50% { transform: translateX(6px); } }
+@keyframes eva-open-left { to { transform: translateX(-102%); } }
+@keyframes eva-open-right { to { transform: translateX(102%); } }
+@keyframes eva-seam { 20% { opacity: 1; } to { opacity: 0; transform: scaleX(14); } }
+@keyframes eva-text-out { to { opacity: 0; } }
+@keyframes eva-boot-done { to { visibility: hidden; } }
 
 /* COMMAND & CONQUER (EVA): a riveted steel war-room console in front of the holo-globe.
    Black Ops One is the stencil display layer, VT323 the readouts; body text stays sans. */
@@ -638,7 +662,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   :root[data-theme=alien] body::after { display: none; }
-  .boot { display: none; }
+  .boot, .eva-boot { display: none; }
 }
 
 /* Portrait phones get art composed for portrait instead of a thin, blown-up slice of the wide image. */

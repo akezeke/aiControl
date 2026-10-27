@@ -30,12 +30,18 @@ const systemDark = globalThis.matchMedia?.('(prefers-color-scheme: dark)');
 
 // MU/TH/UR's start-up text, once per tab and on switching to Alien. Click skips; CSS removes it.
 const bootLines = ['INTERFACE 2037 ............ READY', 'MU/TH/UR 6000 MAINFRAME ..... ONLINE', 'TAILSCALE UPLINK ............ SECURE', 'SCANNING CREW SESSIONS ...... OK', 'PRIORITY ONE: KEEP THE CREW MOVING'];
+// EVA's start: riveted blast doors with the emblem split across the seam slide apart.
 export function bootSequence(force = false) {
-  if (document.documentElement.dataset.theme !== 'alien' || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const theme = document.documentElement.dataset.theme;
+  if (!['alien', 'command'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
-  document.querySelector('.boot')?.remove();
-  const overlay = document.createElement('div'); overlay.className = 'boot'; overlay.setAttribute('aria-hidden', 'true');
-  bootLines.forEach((line, i) => { const p = document.createElement('p'); p.textContent = line; p.style.setProperty('--i', i); overlay.append(p); });
+  document.querySelector('.boot, .eva-boot')?.remove();
+  const overlay = document.createElement('div'); overlay.className = theme === 'alien' ? 'boot' : 'eva-boot'; overlay.setAttribute('aria-hidden', 'true');
+  if (theme === 'alien') bootLines.forEach((line, i) => { const p = document.createElement('p'); p.textContent = line; p.style.setProperty('--i', i); overlay.append(p); });
+  else {
+    for (const side of ['left', 'right']) { const door = document.createElement('div'); door.className = `eva-door ${side}`; overlay.append(door); }
+    const status = document.createElement('p'); status.textContent = 'EVA ▸ COMMAND LINK ONLINE'; overlay.append(status);
+  }
   overlay.onclick = () => overlay.remove();
   overlay.addEventListener('animationend', event => { if (event.target === overlay) overlay.remove(); });
   document.body.append(overlay);
