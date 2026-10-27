@@ -1,7 +1,13 @@
+import { gzipSync } from 'node:zlib';
 import { fail } from './requests.mjs';
 
-function json(res, status, value) {
-  res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(value));
+function json(res, status, value, req) {
+  res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  const text = JSON.stringify(value);
+  // The 3-second snapshot carries every session's history and compresses about tenfold. It holds no
+  // tokens, so compression cannot leak one (BREACH); other responses stay uncompressed.
+  if (!req || !/\bgzip\b/.test(req.headers['accept-encoding'] || '')) { res.end(text); return; }
+  res.setHeader('Content-Encoding', 'gzip'); res.setHeader('Vary', 'Accept-Encoding'); res.end(gzipSync(text));
 }
 async function body(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw fail('Expected JSON.', 415);
@@ -51,7 +57,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages })
         try { await auth.change(data.current, data.next, req.socket.remoteAddress); } catch (error) { throw fail(error.message, error.status === 401 ? 400 : error.status || 400); }
         res.setHeader('Set-Cookie', auth.cookie('', 0)); json(res, 200, { ok: true }); return;
       }
-      if (path === '/api/snapshot' && req.method === 'GET') { json(res, 200, snapshot()); return; }
+      if (path === '/api/snapshot' && req.method === 'GET') { json(res, 200, snapshot(), req); return; }
       const messageRoute = /^\/api\/sessions\/([^/]+)\/messages$/.exec(path);
       const queueRoute = /^\/api\/sessions\/([^/]+)\/queue\/([^/]+)\/cancel$/.exec(path);
       if ((messageRoute || queueRoute) && req.method === 'POST') {

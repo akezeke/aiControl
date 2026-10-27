@@ -463,7 +463,7 @@
   .empty { background: var(--glass); border-color: var(--glass-line); }
   .detail-panel { background: color-mix(in srgb, var(--panel) 94%, transparent); }
   .chat-header { background: linear-gradient(color-mix(in srgb, var(--accent-soft) 55%, var(--panel)), var(--panel)); }
-  .recent-message:not(.user):not(.tool) { box-shadow: 0 1px 2px #1018280d; }
+  .recent-message:not(.user, .tool, .notice) { box-shadow: 0 1px 2px #1018280d; }
   .recent-message.user { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--panel)), var(--accent-soft)); }
   .request-box { box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--warn) 80%, transparent); }
   .answer-option { transition: border-color .15s, background-color .15s, box-shadow .15s, translate .15s; }

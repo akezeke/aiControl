@@ -594,7 +594,7 @@ function renderRecentMessages(session, savedPosition) {
     if (previous?.dataset.signature === messageSignature) { children.push(previous); continue; }
     const article = el('article', `recent-message ${message.tool ? 'tool' : message.role}`);
     article.dataset.messageId = message.id; article.dataset.signature = messageSignature;
-    if (message.tool) { const line = el('code', 'tool-call', message.text); line.title = [message.detail, message.timestamp && new Date(message.timestamp).toLocaleString()].filter(Boolean).join('\n'); article.append(line); children.push(article); continue; }
+    if (message.tool || message.role === 'notice') { const line = el(message.tool ? 'code' : 'span', message.tool ? 'tool-call' : '', message.text); line.title = [message.detail, message.timestamp && new Date(message.timestamp).toLocaleString()].filter(Boolean).join('\n'); article.append(line); children.push(article); continue; }
     // A subagent's "user" turn is the task its parent gave it.
     const meta = el('div', 'message-meta'); meta.append(el('strong', '', message.role === 'user' ? session.parentId ? 'Task' : 'You' : session.parentId ? session.model || 'Subagent' : providerName(session.provider)));
     if (message.timestamp) { const time = el('time', '', age(message.timestamp)); time.dateTime = new Date(message.timestamp).toISOString(); time.title = new Date(message.timestamp).toLocaleString(); meta.append(time); }

@@ -46,6 +46,14 @@ test('history opens on the latest message and follows new messages', () => {
   flow.destroy();
 });
 
+test('a late scroll event after content grows keeps following the end', () => {
+  const { viewport, flow } = pane([200, 200, 200]);
+  viewport.messages[2].height = 260; viewport.emit('scroll');
+  flow.resized();
+  assert.equal(viewport.scrollTop, 460);
+  flow.destroy();
+});
+
 test('scrolling up pauses following; Latest returns to the end and resumes it', () => {
   const { viewport, latest, flow } = pane([200, 200, 200]);
   viewport.scrollTop = 100; viewport.emit('scroll');

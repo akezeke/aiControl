@@ -5,7 +5,15 @@ export class HistoryScroll {
     this.viewport = viewport;
     this.latestButton = latestButton;
     this.following = true;
-    this.onScroll = () => { this.following = this.atBottom(); this.updateButton(); };
+    this.lastTop = 0;
+    // Only scrolling up leaves the end. The scroll event of a jump can arrive after late content
+    // (fonts, layout) has grown the history, which would otherwise stop following just short of the end.
+    this.onScroll = () => {
+      const top = viewport.scrollTop;
+      if (this.atBottom()) this.following = true; else if (top < this.lastTop) this.following = false;
+      this.lastTop = top;
+      this.updateButton();
+    };
     this.onLatest = () => { this.jumpToLatest(); viewport.focus({ preventScroll: true }); };
     this.onClick = event => {
       const summary = event.target.closest?.('summary');
@@ -36,6 +44,7 @@ export class HistoryScroll {
   jumpToLatest() {
     this.following = true;
     this.viewport.scrollTop = this.viewport.scrollHeight;
+    this.lastTop = this.viewport.scrollTop;
     this.updateButton();
   }
   resized() { if (this.following) this.jumpToLatest(); else this.updateButton(); }
@@ -56,6 +65,7 @@ export class HistoryScroll {
       const node = nodes.find(item => item.dataset.messageId === anchor.id);
       this.viewport.scrollTop += node.getBoundingClientRect().top - this.viewport.getBoundingClientRect().top - anchor.offset;
     } else this.viewport.scrollTop = saved.scrollTop;
+    this.lastTop = this.viewport.scrollTop;
     this.updateButton();
   }
   destroy() {

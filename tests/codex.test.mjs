@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CodexAdapter } from '../server/codex.mjs';
+import { messageLimit } from '../server/messages.mjs';
 import { RequestStore } from '../server/requests.mjs';
 import { mockCodexServer } from './fixtures/codex-proxy.mjs';
 import { randomUUID } from 'node:crypto';
@@ -78,14 +79,14 @@ test('large Codex tool results do not disconnect the dashboard or leak into its 
   assert.ok(JSON.stringify(adapter.list()).length < 2000);
 });
 
-test('smaller history pages still find the six most recent messages across tool results', async t => {
-  const items = Array.from({ length: 80 }, (_, index) => ({ item: index % 12 === 0
+test('smaller history pages still find the most recent messages across tool results', async t => {
+  const items = Array.from({ length: 100 }, (_, index) => ({ item: index % 4 === 0
     ? { type: 'agentMessage', id: `reply-${index}`, text: `Reply ${index}` }
     : { type: 'commandExecution', id: `tool-${index}`, aggregatedOutput: 'Tool output' } }));
   const { adapter, server } = await connected(t, { items });
-  assert.deepEqual(adapter.list()[0].messages.map(m => m.text), ['Reply 60', 'Reply 48', 'Reply 36', 'Reply 24', 'Reply 12', 'Reply 0']);
+  assert.deepEqual(adapter.list()[0].messages.map(m => m.text), Array.from({ length: messageLimit }, (_, i) => `Reply ${4 * (messageLimit - 1 - i)}`));
   const pages = server.messages.filter(m => m.method === 'thread/items/list');
-  assert.equal(pages.length, 7);
+  assert.equal(pages.length, Math.ceil((4 * (messageLimit - 1) + 1) / 10));
   assert.ok(pages.every(m => m.params.limit === 10));
 });
 

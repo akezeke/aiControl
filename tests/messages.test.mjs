@@ -3,23 +3,35 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, mkdir, symlink, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claudeMessages, codexMessage, TranscriptReader, claudeTitles, claudeSessionTitle } from '../server/messages.mjs';
+import { claudeMessages, codexMessage, messageLimit, TranscriptReader, claudeTitles, claudeSessionTitle } from '../server/messages.mjs';
 
 const sessionId = '11111111-2222-3333-4444-555555555555';
 const row = (id, type, content, extra = {}) => JSON.stringify({ uuid: id, sessionId, type, timestamp: '2026-10-25T12:00:00Z', message: { role: type, content }, ...extra });
 
-test('recent Claude messages include visible text only, bounded to the last six', () => {
-  const lines = Array.from({ length: 9 }, (_, i) => row(String(i), i % 2 ? 'assistant' : 'user', `Visible ${i}`));
+test('recent Claude messages include visible text only, bounded to the limit', () => {
+  const lines = Array.from({ length: messageLimit + 3 }, (_, i) => row(String(i), i % 2 ? 'assistant' : 'user', `Visible ${i}`));
   lines.push(row('tool', 'user', [{ type: 'tool_result', content: 'secret tool result' }]));
   lines.push(row('thought', 'assistant', [{ type: 'thinking', thinking: 'private thought' }]));
   lines.push(row('meta', 'user', 'internal context', { isMeta: true }));
   lines.push(row('subagent', 'assistant', 'another session', { isSidechain: true }));
   lines.push(row('foreign', 'assistant', 'another session', { sessionId: 'other' }));
   const messages = claudeMessages(lines, sessionId);
-  assert.deepEqual(messages.map(m => m.text), ['Visible 3', 'Visible 4', 'Visible 5', 'Visible 6', 'Visible 7', 'Visible 8']);
+  assert.deepEqual(messages.map(m => m.text), Array.from({ length: messageLimit }, (_, i) => `Visible ${i + 3}`));
   assert.equal(codexMessage({ item: { type: 'reasoning', content: ['private'] } }), null);
   assert.equal(codexMessage({ item: { type: 'commandExecution', aggregatedOutput: 'output' } }), null);
   assert.equal(codexMessage({ item: { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'Visible' }, { type: 'image', url: 'private' }] } }).text, 'Visible');
+});
+
+test('Claude harness rows are notices, not user prompts', () => {
+  const messages = claudeMessages([
+    row('typed', 'user', 'Fix it\n<pasted_content id="ab">log</pasted_content>', { origin: { kind: 'human' } }),
+    row('done', 'user', '<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n<summary>Agent "Fix shadows" finished</summary>\n<result>Long report</result>\n</task-notification>', { origin: { kind: 'task-notification' } }),
+    row('clear', 'user', '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>opus</command-args>'),
+    row('out', 'user', '<local-command-stdout>Set model</local-command-stdout>'),
+    row('summary', 'user', 'This session is being continued from a previous conversation…', { isCompactSummary: true }),
+    row('stop', 'user', [{ type: 'text', text: '[Request interrupted by user]' }]),
+  ], sessionId);
+  assert.deepEqual(messages.map(m => [m.role, m.text]), [['user', 'Fix it\nlog'], ['notice', 'Agent "Fix shadows" finished'], ['user', '/model opus'], ['notice', 'Context compacted'], ['notice', 'Interrupted']]);
 });
 
 test('Claude titles prefer user names, then the latest generated title over a derived name', () => {
@@ -96,14 +108,14 @@ test('workflow workers show their task without the harness preface, and tool cal
   await mkdir(dir, { recursive: true });
   const row = (uuid, type, content) => JSON.stringify({ uuid, type, sessionId, isSidechain: true, timestamp: '2026-10-27T09:00:00Z', message: { role: type, content } });
   const task = '[Workflow harness — computed task] Preface that is not the task:\n  Fix the roof.\n    - keep indents';
-  const lines = [row('task', 'user', task), ...Array.from({ length: 30 }, (_, i) => row(`t${i}`, 'assistant', [{ type: 'tool_use', id: `x${i}`, name: 'Bash', input: { command: `make step-${i}`, description: `Step ${i}` } }]))];
+  const lines = [row('task', 'user', task), ...Array.from({ length: 40 }, (_, i) => row(`t${i}`, 'assistant', [{ type: 'tool_use', id: `x${i}`, name: 'Bash', input: { command: `make step-${i}`, description: `Step ${i}` } }]))];
   lines.push(row('edit', 'assistant', [{ type: 'tool_use', id: 'e', name: 'Edit', input: { file_path: '/home/u/repo/src/roof.ts' } }]));
   await writeFile(join(dir, 'agent-abc123.jsonl'), lines.join('\n') + '\n');
   const { messages } = await new TranscriptReader(root).read(join(dir, 'agent-abc123.jsonl'), sessionId, 'abc123');
-  assert.equal(messages.length, 16);
+  assert.equal(messages.length, 30);
   assert.equal(messages[0].text, 'Fix the roof.\n  - keep indents');
-  assert.equal(messages.at(-2).text, 'Bash · Step 29');
-  assert.equal(messages.at(-2).detail, 'make step-29');
+  assert.equal(messages.at(-2).text, 'Bash · Step 39');
+  assert.equal(messages.at(-2).detail, 'make step-39');
   assert.equal(messages.at(-1).text, 'Edit · src/roof.ts');
   assert.equal(messages.at(-1).detail, '/home/u/repo/src/roof.ts');
 });

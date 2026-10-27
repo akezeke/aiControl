@@ -1,8 +1,8 @@
 import { open, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
-export const messageLimit = 6;
-const agentMessageLimit = 16;
+export const messageLimit = 20;
+const agentMessageLimit = 30;
 const textLimit = 12_000;
 export function textContent(content) {
   if (typeof content === 'string') return content;
@@ -36,6 +36,20 @@ export function taskText(text) {
   const body = text.slice(text.indexOf('\n') + 1);
   return body.split('\n').map(line => line.replace(/^ {2}/, '')).join('\n').trim();
 }
+const tag = (text, name) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1].trim() || '';
+// Claude also stores harness entries as user rows: agent notifications, slash commands, compaction
+// summaries. Only typed prompts are the user's; the rest become one-line notices, or are dropped.
+function claudeUserRow(row, text) {
+  if (row.isCompactSummary) return ['notice', 'Context compacted'];
+  const kind = row.origin?.kind;
+  if (kind === 'task-notification') return ['notice', tag(text, 'summary') || `Task ${tag(text, 'status') || 'update'}`];
+  if (kind && kind !== 'human') return ['notice', text.replace(/<[^>]+>/g, '').trim().split('\n')[0].slice(0, 200)];
+  const command = tag(text, 'command-name');
+  if (command) return ['user', `${command} ${tag(text, 'command-args')}`.trim()];
+  if (text.startsWith('<local-command-')) return ['user', ''];
+  if (text.startsWith('[Request interrupted')) return ['notice', 'Interrupted'];
+  return ['user', text.replace(/<\/?pasted_content[^>]*>/g, '').trim()];
+}
 // Subagent transcripts (agent = true) are sidechains, and their tool calls are included.
 export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent = false, all = false } = {}) {
   const messages = new Map();
@@ -44,7 +58,8 @@ export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent
       const row = JSON.parse(line);
       if ((row.sessionId && row.sessionId !== sessionId) || (row.isSidechain && !agent) || (row.isMeta && !visibleIds.has(row.uuid)) || !['user', 'assistant'].includes(row.type)) continue;
       const content = textContent(row.message?.content);
-      const value = message(agent ? row.uuid : row.message?.id || row.uuid, row.type, agent && row.type === 'user' ? taskText(content) : content, Date.parse(row.timestamp) || null);
+      const [role, text] = row.type === 'user' ? claudeUserRow(row, content) : ['assistant', content];
+      const value = message(agent ? row.uuid : row.message?.id || row.uuid, role, agent && role === 'user' ? taskText(text) : text, Date.parse(row.timestamp) || null);
       if (value) messages.set(value.id, value);
       if (agent && row.type === 'assistant' && Array.isArray(row.message?.content)) for (const block of row.message.content) if (block.type === 'tool_use') { const tool = toolMessage(row, block); messages.set(tool.id, tool); }
     } catch { /* partially flushed and truncated first lines are skipped */ }
