@@ -125,11 +125,10 @@ function showLogin(message = '') {
   const symbol = el('div', 'login-symbol'); symbol.append(icon('lock'));
   card.append(brand(), symbol);
   const form = el('form', 'login-form');
-  const label = el('label', '', 'PIN or password'); label.htmlFor = 'password';
-  const input = el('input'); input.id = 'password'; input.type = 'password'; input.autocomplete = 'current-password'; input.required = true; input.placeholder = 'Enter your password'; input.maxLength = 1024;
+  const input = el('input'); input.id = 'password'; input.type = 'password'; input.autocomplete = 'current-password'; input.required = true; input.placeholder = 'Enter your password'; input.maxLength = 1024; input.setAttribute('aria-label', 'PIN or password');
   const error = el('p', 'form-error', message); error.setAttribute('role', 'alert');
   const submit = el('button', 'primary', 'Unlock'); submit.type = 'submit';
-  form.append(label, input, error, submit);
+  form.append(input, error, submit);
   form.onsubmit = async event => {
     event.preventDefault(); submit.disabled = true; submit.textContent = 'Unlocking…'; error.textContent = '';
     try { const result = await api('login', { password: input.value }); input.value = ''; state.csrf = result.csrf; state.lastActivity = Date.now(); showWorkspace(); await refresh(); }
@@ -139,7 +138,7 @@ function showLogin(message = '') {
   app.append(screen);
   api('auth').then(data => {
     if (!input.isConnected) return;
-    const pin = data.kind === 'pin'; label.textContent = pin ? 'PIN' : 'Password';
+    const pin = data.kind === 'pin'; input.setAttribute('aria-label', pin ? 'PIN' : 'Password');
     input.inputMode = pin ? 'numeric' : 'text'; input.placeholder = pin ? 'Enter your PIN' : 'Enter your password';
     input.maxLength = pin ? 8 : 1024;
   }).catch(() => {});

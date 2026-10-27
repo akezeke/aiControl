@@ -407,7 +407,8 @@
   .sidebar::before { content: ''; position: fixed; inset: 0 auto 0 0; z-index: -1; width: var(--sidebar-w); background: color-mix(in srgb, var(--panel) 72%, transparent); backdrop-filter: blur(18px) saturate(1.3); -webkit-backdrop-filter: blur(18px) saturate(1.3); pointer-events: none; }
   .brand-variant.modern .brand-mark { position: relative; width: 30px; height: 30px; padding: 0; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #e0e7ff, #818cf8 30%, #4f46e5 58%, #1e1b4b 92%); box-shadow: inset -3px -4px 8px #1e1b4b99, 0 0 0 1px #ffffff33, 0 6px 16px -6px #4f46e5; }
   .brand-variant.modern .brand-mark i { display: none; }
-  .brand-variant.modern .brand-mark::before { content: ''; position: absolute; inset: 11px -7px; border: 1.5px solid #c7d2fe; border-radius: 50%; transform: rotate(-22deg); opacity: .9; box-shadow: 0 0 6px #a5b4fc88; }
+  /* Only the ring's near half is drawn, so its far half reads as passing behind the planet. */
+  .brand-variant.modern .brand-mark::before { content: ''; position: absolute; inset: 11px -7px; border: 1.5px solid #c7d2fe; border-top-color: transparent; border-radius: 50%; transform: rotate(-22deg); opacity: .9; box-shadow: 0 0 6px #a5b4fc88; }
   .brand-variant.modern .brand-mark::after { content: ''; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: #fff; box-shadow: 0 0 6px #fff, 0 0 10px #a5b4fc; transform: rotate(-22deg) scaleY(.32) rotate(40deg) translateX(21px) scaleY(3); }
   .brand-name { font-weight: 750; letter-spacing: -.03em; }
   .nav-item.active { background: color-mix(in srgb, var(--accent-soft) 85%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent), var(--glow-accent); }
@@ -490,8 +491,8 @@
 @keyframes scene-drift { to { transform: translate3d(-1.5%, -1%, 0); } } /* no scale: scaling blurs the photo */
 @keyframes cloud-pass { to { transform: translate3d(-100vw, 0, 0); } }
 @keyframes twinkle { 0%, 100% { opacity: .75; } 50% { opacity: .25; } }
-@keyframes satellite { from { transform: rotate(-22deg) scaleY(.32) rotate(0deg) translateX(21px) scaleY(3); } to { transform: rotate(-22deg) scaleY(.32) rotate(360deg) translateX(21px) scaleY(3); } }
-@keyframes satellite-big { from { transform: rotate(-22deg) scaleY(.32) rotate(0deg) translateX(44px) scaleY(3); } to { transform: rotate(-22deg) scaleY(.32) rotate(360deg) translateX(44px) scaleY(3); } }
+/* hidden while behind the planet (the orbit's far half) */ @keyframes satellite { 0% { transform: rotate(-22deg) scaleY(.32) rotate(0deg) translateX(21px) scaleY(3); opacity: 1; } 59.7% { transform: rotate(-22deg) scaleY(.32) rotate(215deg) translateX(21px) scaleY(3); opacity: 1; } 63.9% { transform: rotate(-22deg) scaleY(.32) rotate(230deg) translateX(21px) scaleY(3); opacity: 0; } 86.1% { transform: rotate(-22deg) scaleY(.32) rotate(310deg) translateX(21px) scaleY(3); opacity: 0; } 90.3% { transform: rotate(-22deg) scaleY(.32) rotate(325deg) translateX(21px) scaleY(3); opacity: 1; } 100% { transform: rotate(-22deg) scaleY(.32) rotate(360deg) translateX(21px) scaleY(3); opacity: 1; } }
+@keyframes satellite-big { 0% { transform: rotate(-22deg) scaleY(.32) rotate(0deg) translateX(44px) scaleY(3); opacity: 1; } 59.7% { transform: rotate(-22deg) scaleY(.32) rotate(215deg) translateX(44px) scaleY(3); opacity: 1; } 63.9% { transform: rotate(-22deg) scaleY(.32) rotate(230deg) translateX(44px) scaleY(3); opacity: 0; } 86.1% { transform: rotate(-22deg) scaleY(.32) rotate(310deg) translateX(44px) scaleY(3); opacity: 0; } 90.3% { transform: rotate(-22deg) scaleY(.32) rotate(325deg) translateX(44px) scaleY(3); opacity: 1; } 100% { transform: rotate(-22deg) scaleY(.32) rotate(360deg) translateX(44px) scaleY(3); opacity: 1; } }
 
 @media (prefers-reduced-motion: no-preference) {
   :root[data-theme=alien] {
