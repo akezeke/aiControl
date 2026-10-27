@@ -22,8 +22,8 @@ export class ClaudeMessaging {
   submissions = new Map();
   sockets = new Set();
   typing = Promise.resolve();
-  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), timeoutMs = 5000, tmux = runTmux, parent = parentPid, pasteDelayMs = 150 } = {}) {
-    Object.assign(this, { alive, openSocket, stat, canonical, uid, timeoutMs, tmux, parent, pasteDelayMs });
+  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000 } = {}) {
+    Object.assign(this, { alive, openSocket, stat, canonical, uid, timeoutMs, tmux, parent, pollMs, settleMs });
   }
   async available(record) {
     if (tmuxPaneId(record)) return 'tmux';
@@ -91,11 +91,23 @@ export class ClaudeMessaging {
         await this.tmux(['load-buffer', '-b', buffer, '-'], text);
         await this.tmux(['paste-buffer', '-d', '-p', '-r', '-b', buffer, '-t', pane]);
       } catch { throw fail('Could not type into Claude’s tmux pane. Refresh and try again.', 503); }
-      // ponytail: fixed pause so Claude finishes the paste before Enter; raise it if long pastes stay unsent.
-      await new Promise(resolve => setTimeout(resolve, this.pasteDelayMs));
-      try { await this.tmux(['send-keys', '-t', pane, 'Enter']); }
-      catch { throw fail('The text is in Claude’s prompt but Enter failed. Check the terminal before sending again.', 504); }
-      return { status: 'sent', via: 'tmux', clientMessageId: body.clientMessageId };
+      // A busy or long session can take a while to take in a paste, and an early Enter hits an empty
+      // prompt. So wait until the text shows in the input line, press Enter, and press again only
+      // while our own text is still visibly there (so a retry can never confirm a dialog).
+      const snippet = text.split('\n').find(line => line.trim())?.trim().replace(/\s+/g, ' ').slice(0, 20) || '';
+      const inInput = async () => {
+        const screen = await this.tmux(['capture-pane', '-p', '-J', '-t', pane]).catch(() => '');
+        const line = screen.split('\n').reverse().find(row => /^\s*[❯>]/.test(row))?.replace(/^\s*[❯>]\s?/, '').replace(/\s+/g, ' ') ?? '';
+        return line.includes(snippet) || line.includes('[Pasted text');
+      };
+      const until = async (check, ms) => { for (const end = Date.now() + ms; Date.now() < end; await new Promise(resolve => setTimeout(resolve, this.pollMs))) if (await check()) return true; return check(); };
+      await until(inInput, this.settleMs);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try { await this.tmux(['send-keys', '-t', pane, 'Enter']); }
+        catch { throw fail('The text is in Claude’s prompt but Enter failed. Check the terminal before sending again.', 504); }
+        if (await until(async () => !await inInput(), this.settleMs / 2)) return { status: 'sent', via: 'tmux', clientMessageId: body.clientMessageId };
+      }
+      throw fail('The text is in Claude’s prompt but was not submitted. Press Enter in the terminal.', 504);
     };
     // One paste and Enter at a time, so concurrent sends never interleave.
     const result = this.typing.then(run, run);

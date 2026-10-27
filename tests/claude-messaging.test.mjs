@@ -123,10 +123,19 @@ test('Claude adapter checks the live registration and leaves waiting permissions
 });
 
 const paneRecord = { ...record, status: 'idle', tmux: 'work:@2.%7' };
-function tmuxFixture(options = {}) {
+// A fake pane: the paste lands in Claude's input line, and each Enter submits it unless `lostEnters` swallow it.
+function tmuxFixture({ lostEnters = 0, ...options } = {}) {
   const calls = [];
-  const tmux = async (args, input) => { calls.push(input === undefined ? args : [...args, input]); return args[0] === 'display-message' ? '100\n' : ''; };
-  return { calls, ...fixture({ tmux, parent: async pid => pid === 123 ? 100 : 1, pasteDelayMs: 0, ...options }) };
+  let input = '';
+  const tmux = async (args, stdin) => {
+    if (args[0] !== 'capture-pane') calls.push(stdin === undefined ? args : [...args, stdin]);
+    if (args[0] === 'display-message') return '100\n';
+    if (args[0] === 'load-buffer') input = stdin;
+    if (args[0] === 'send-keys' && lostEnters-- <= 0) input = '';
+    if (args[0] === 'capture-pane') return `history\n────\n❯ ${input.replace(/\n/g, ' ')}\n────\n  ⏵⏵ auto mode on`;
+    return '';
+  };
+  return { calls, ...fixture({ tmux, parent: async pid => pid === 123 ? 100 : 1, pollMs: 1, settleMs: 40, ...options }) };
 }
 
 test('tmux sessions get the message typed as the user, as one bracketed paste and Enter', async () => {
@@ -145,6 +154,16 @@ test('tmux sessions get the message typed as the user, as one bracketed paste an
   assert.equal(frames.length, 0);
 });
 
+test('an Enter that a slow session misses is pressed again only while the text is still in the input', async () => {
+  const retried = tmuxFixture({ lostEnters: 1 });
+  assert.equal((await retried.adapter.send(paneRecord, body)).status, 'sent');
+  assert.equal(retried.calls.filter(args => args[0] === 'send-keys').length, 2);
+  const stuck = tmuxFixture({ lostEnters: 99 });
+  await assert.rejects(stuck.adapter.send(paneRecord, body), e => e.status === 504 && /not submitted/.test(e.message));
+  assert.equal(stuck.calls.filter(args => args[0] === 'send-keys').length, 3);
+  assert.equal(stuck.calls.filter(args => args[0] === 'paste-buffer').length, 1);
+});
+
 test('tmux typing refuses open dialogs and falls back to the inbox when the pane moved', async () => {
   const { adapter, calls } = tmuxFixture();
   for (const status of [{ status: 'waiting' }, { status: 'shell' }, { status: 'busy', waitingFor: 'permission' }]) await assert.rejects(adapter.send({ ...paneRecord, ...status }, body), e => e.status === 409);
@@ -156,7 +175,7 @@ test('tmux typing refuses open dialogs and falls back to the inbox when the pane
 });
 
 test('a failed Enter after pasting is unconfirmed and never retyped', async () => {
-  const { adapter, calls } = tmuxFixture({ tmux: async args => { calls.push(args); if (args[0] === 'send-keys') throw new Error('gone'); return args[0] === 'display-message' ? '100' : ''; } });
+  const { adapter, calls } = tmuxFixture({ tmux: async args => { if (args[0] !== 'capture-pane') calls.push(args); if (args[0] === 'send-keys') throw new Error('gone'); return args[0] === 'display-message' ? '100' : ''; } });
   await assert.rejects(adapter.send(paneRecord, body), e => e.status === 504);
   await assert.rejects(adapter.send(paneRecord, body), e => e.status === 504);
   assert.equal(calls.filter(args => args[0] === 'paste-buffer').length, 1);
