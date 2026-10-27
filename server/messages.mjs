@@ -2,7 +2,7 @@ import { open, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
 export const messageLimit = 6;
-const agentMessageLimit = 12;
+const agentMessageLimit = 16;
 const textLimit = 12_000;
 export function textContent(content) {
   if (typeof content === 'string') return content;
@@ -19,26 +19,38 @@ export function codexMessage(entry) {
   if (item.type === 'userMessage') return message(item.id, 'user', textContent(item.content), time);
   return null;
 }
-// One line per tool call, so a subagent's history shows what it is doing.
+// One line per tool call, so a subagent's history shows what it is doing. Prefer the call's own
+// description ("Type-check after the route change") and short paths; the raw value goes in `detail`.
+const shortPath = path => path.split('/').filter(Boolean).slice(-2).join('/');
 function toolMessage(row, block) {
-  const input = block.input ?? {};
-  const target = [input.command, input.file_path, input.path, input.pattern, input.url, input.query, input.description, input.prompt].find(value => typeof value === 'string') ?? '';
-  const text = `${block.name}${target ? ` · ${target.replace(/\s+/g, ' ').slice(0, 200)}` : ''}`;
-  return { ...message(`${row.uuid}:${block.id}`, 'assistant', text, Date.parse(row.timestamp) || null), tool: true };
+  const input = block.input ?? {}, string = value => typeof value === 'string' && value.trim() ? value : undefined;
+  const path = string(input.file_path) || string(input.path);
+  const raw = string(input.command) || path || string(input.pattern) || string(input.url) || string(input.query) || string(input.prompt) || '';
+  const label = string(input.description) || (path ? shortPath(path) : raw);
+  const text = `${block.name}${label ? ` · ${label.replace(/\s+/g, ' ').slice(0, 200)}` : ''}`;
+  return { ...message(`${row.uuid}:${block.id}`, 'assistant', text, Date.parse(row.timestamp) || null), tool: true, ...(raw && raw !== label ? { detail: raw.slice(0, 2000) } : {}) };
+}
+// A workflow worker's task opens with a fixed harness preface and indents the real text.
+export function taskText(text) {
+  if (!text.startsWith('[Workflow harness')) return text;
+  const body = text.slice(text.indexOf('\n') + 1);
+  return body.split('\n').map(line => line.replace(/^ {2}/, '')).join('\n').trim();
 }
 // Subagent transcripts (agent = true) are sidechains, and their tool calls are included.
-export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent = false } = {}) {
+export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent = false, all = false } = {}) {
   const messages = new Map();
   for (const line of lines) {
     try {
       const row = JSON.parse(line);
       if ((row.sessionId && row.sessionId !== sessionId) || (row.isSidechain && !agent) || (row.isMeta && !visibleIds.has(row.uuid)) || !['user', 'assistant'].includes(row.type)) continue;
-      const value = message(agent ? row.uuid : row.message?.id || row.uuid, row.type, textContent(row.message?.content), Date.parse(row.timestamp) || null);
+      const content = textContent(row.message?.content);
+      const value = message(agent ? row.uuid : row.message?.id || row.uuid, row.type, agent && row.type === 'user' ? taskText(content) : content, Date.parse(row.timestamp) || null);
       if (value) messages.set(value.id, value);
       if (agent && row.type === 'assistant' && Array.isArray(row.message?.content)) for (const block of row.message.content) if (block.type === 'tool_use') { const tool = toolMessage(row, block); messages.set(tool.id, tool); }
     } catch { /* partially flushed and truncated first lines are skipped */ }
   }
-  return [...messages.values()].slice(-(agent ? agentMessageLimit : messageLimit));
+  const list = [...messages.values()];
+  return all ? list : list.slice(-(agent ? agentMessageLimit : messageLimit));
 }
 
 // 'tool' while a tool call or its result is the latest step, 'reply' after text.
@@ -105,6 +117,16 @@ export class TranscriptReader {
         } while (true);
         let titles = cached && cached.size <= stat.size ? cached.titles : {};
         if (agent) {
+          // Pin the task (the first user message) even after it scrolls out of the recent window.
+          if (size < stat.size) {
+            const head = Buffer.alloc(Math.min(256 * 1024, stat.size - size));
+            await handle.read(head, 0, head.length, 0);
+            const task = claudeMessages(head.toString('utf8').split('\n'), sessionId, new Set(), { agent: true }).find(item => item.role === 'user');
+            if (task && !messages.some(item => item.id === task.id)) messages = [task, ...messages.slice(1 - limit)];
+          } else if (messages[0]?.role !== 'user') {
+            const task = claudeMessages(lines, sessionId, new Set(), { agent: true, all: true }).find(item => item.role === 'user');
+            if (task && !messages.some(item => item.id === task.id)) messages = [task, ...messages.slice(1 - limit)];
+          }
           const result = { messages, messagesState: messages.length ? 'ready' : 'empty', activity: agentActivity(lines), modifiedAt: stat.mtimeMs };
           this.cache.set(path, { key, result });
           if (this.cache.size > 100) this.cache.delete(this.cache.keys().next().value);

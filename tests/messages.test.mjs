@@ -85,3 +85,25 @@ test('subagent transcripts include sidechain text and one line per tool call, an
   assert.equal(agentActivity(lines), 'tool');
   assert.equal(agentActivity([...lines, row('d', 'user', [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]), row('e', 'assistant', [{ type: 'text', text: 'Done.' }])]), 'reply');
 });
+
+test('workflow workers show their task without the harness preface, and tool calls by description', async t => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const sessionId = '11111111-2222-3333-4444-555555555555';
+  const root = await mkdtemp(join(tmpdir(), 'aicontrol-agent-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const dir = join(root, 'project', sessionId, 'subagents', 'workflows', 'wf_1');
+  await mkdir(dir, { recursive: true });
+  const row = (uuid, type, content) => JSON.stringify({ uuid, type, sessionId, isSidechain: true, timestamp: '2026-10-27T09:00:00Z', message: { role: type, content } });
+  const task = '[Workflow harness — computed task] Preface that is not the task:\n  Fix the roof.\n    - keep indents';
+  const lines = [row('task', 'user', task), ...Array.from({ length: 30 }, (_, i) => row(`t${i}`, 'assistant', [{ type: 'tool_use', id: `x${i}`, name: 'Bash', input: { command: `make step-${i}`, description: `Step ${i}` } }]))];
+  lines.push(row('edit', 'assistant', [{ type: 'tool_use', id: 'e', name: 'Edit', input: { file_path: '/home/u/repo/src/roof.ts' } }]));
+  await writeFile(join(dir, 'agent-abc123.jsonl'), lines.join('\n') + '\n');
+  const { messages } = await new TranscriptReader(root).read(join(dir, 'agent-abc123.jsonl'), sessionId, 'abc123');
+  assert.equal(messages.length, 16);
+  assert.equal(messages[0].text, 'Fix the roof.\n  - keep indents');
+  assert.equal(messages.at(-2).text, 'Bash · Step 29');
+  assert.equal(messages.at(-2).detail, 'make step-29');
+  assert.equal(messages.at(-1).text, 'Edit · src/roof.ts');
+  assert.equal(messages.at(-1).detail, '/home/u/repo/src/roof.ts');
+});
