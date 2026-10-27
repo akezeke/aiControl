@@ -43,6 +43,7 @@ export function bootSequence(force = false) {
     const status = document.createElement('p'); status.textContent = 'EVA ▸ COMMAND LINK ONLINE'; overlay.append(status);
   }
   overlay.onclick = () => overlay.remove();
-  overlay.addEventListener('animationend', event => { if (event.target === overlay) overlay.remove(); });
+  // Pseudo-element animations (EVA's seam flash) also report the overlay as target; wait for its own exit.
+  overlay.addEventListener('animationend', event => { if (event.target === overlay && !event.pseudoElement) overlay.remove(); });
   document.body.append(overlay);
 }
