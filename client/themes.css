@@ -1,0 +1,56 @@
+/* Theme tokens. Layout lives in style.css; theme-effects.css adds each theme's hardware and motion. */
+
+/* Modern follows the system's dark mode. */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme=modern] {
+    color-scheme: dark;
+    --bg: #0b0d12; --panel: #13161d; --panel-2: #1b1f29; --sunken: #0f1218;
+    --text: #e8eaf0; --text-2: #b0b6c3; --text-3: #8d94a3;
+    --line: #242936; --line-2: #343a4a;
+    --accent: #8b8cf9; --accent-2: #a5a6ff; --accent-ink: #0b0d12; --accent-soft: #1f2146;
+    --ok: #4ade80; --ok-soft: #10291b; --warn: #fbbf24; --warn-soft: #2a2010; --warn-line: #6b4f12; --danger: #f87171; --danger-soft: #2f1416;
+    --codex: #e8eaf0; --claude: #ec8a5f; --claude-soft: #2c1a12;
+    --shadow: 0 1px 2px #0006;
+    --shadow-lg: 0 24px 60px -12px #000c, 0 0 0 1px #ffffff0a;
+    --focus: #a5a6ff;
+  }
+}
+
+/* ALIEN (1979): MU/TH/UR 6000 phosphor on black glass. */
+:root[data-theme=alien] {
+  color-scheme: dark;
+  --font: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Roboto Mono', 'Droid Sans Mono', Menlo, monospace;
+  --display: var(--font); --mono: var(--font);
+  --bg: #010501; --panel: #041004; --panel-2: #0a200b; --sunken: #010401;
+  --text: #bdf7a8; --text-2: #93d980; --text-3: #75b864;
+  --line: #17351a; --line-2: #2c5a2a;
+  --accent: #bdf7a8; --accent-2: #e2ffd6; --accent-ink: #021202; --accent-soft: #0c2a0e;
+  --ok: #bdf7a8; --ok-soft: #0c2a0e; --warn: #ffb547; --warn-soft: #1c1405; --warn-line: #6e4c12; --danger: #ff7d5e; --danger-soft: #2a0d07;
+  --codex: #bdf7a8; --claude: #ffb547; --claude-soft: transparent;
+  --radius: 0px; --radius-sm: 0px;
+  --shadow: none;
+  --shadow-lg: 0 0 0 1px #2c5a2a, 0 24px 70px #000e;
+  --focus: #e2ffd6;
+  --glow: 0 0 7px #7dff6a59;
+  --console: #2b2f26;
+}
+
+/* COMMAND & CONQUER (1995): GDI steel, Tiberium green and gold. */
+:root[data-theme=command] {
+  color-scheme: dark;
+  --font: 'Segoe UI', Roboto, 'Helvetica Neue', 'Liberation Sans', Arial, sans-serif;
+  --display: 'Arial Narrow', 'Liberation Sans Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Lucida Console', 'DejaVu Sans Mono', 'Liberation Mono', ui-monospace, monospace;
+  --bg: #0c1009; --panel: #262c1e; --panel-2: #343c28; --sunken: #0a0e07;
+  --text: #f2ecce; --text-2: #d6d0ad; --text-3: #b5b192;
+  --line: #4a5236; --line-2: #8a9070;
+  --accent: #f0c94a; --accent-2: #ffdb6e; --accent-ink: #1b1604; --accent-soft: #3a3213;
+  --ok: #a8ea5c; --ok-soft: #1e2e0f; --warn: #ffca4b; --warn-soft: #33280c; --warn-line: #8c6b22; --danger: #ff7a55; --danger-soft: #3a170c;
+  --codex: #ece6c4; --claude: #f3b860; --claude-soft: #2e2410;
+  --radius: 0px; --radius-sm: 0px;
+  --shadow: 0 2px 0 #0007;
+  --shadow-lg: 5px 7px 0 #0009, 0 20px 60px #000a;
+  --focus: #ffdb6e;
+  --steel: linear-gradient(115deg, #7b8070, #5d6354 42%, #6a7060 70%, #555b4c);
+  --bevel-hi: #a7ab8d; --bevel-lo: #1b2114;
+}

@@ -1,0 +1,30 @@
+{
+  "name": "ai-control",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "attach": "tmux attach-session -t aiControl",
+    "stop": "node scripts/stop.mjs",
+    "restart": "npm stop && npm start",
+    "dev": "node scripts/start.mjs",
+    "dev:local": "node scripts/start.mjs --local",
+    "build": "vite build",
+    "test": "node --test --test-isolation=none tests/*.test.mjs",
+    "password": "node scripts/password.mjs",
+    "setup": "node scripts/setup.mjs",
+    "connect:claude": "node scripts/install-hooks.mjs",
+    "disconnect:claude": "node scripts/install-hooks.mjs --remove"
+  },
+  "devDependencies": {
+    "vite": "7.3.6"
+  },
+  "dependencies": {
+    "ws": "8.21.3"
+  }
+}

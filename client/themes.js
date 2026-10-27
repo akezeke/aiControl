@@ -1,0 +1,33 @@
+export const themes = [
+  { id: 'modern', name: 'Orbit', color: '#f4f5f8', dark: '#0b0d12' },
+  { id: 'alien', name: 'Alien', color: '#030703' },
+  { id: 'command', name: 'Command & Conquer', color: '#62685a' },
+];
+const storageKey = 'ai-control-theme';
+export function savedTheme() {
+  try { return themes.find(theme => theme.id === localStorage.getItem(storageKey))?.id || 'alien'; }
+  catch { return 'alien'; }
+}
+export function applyTheme(id) {
+  const theme = themes.find(theme => theme.id === id) || themes[1];
+  const previous = document.documentElement.dataset.theme;
+  document.documentElement.dataset.theme = theme.id;
+  // ponytail: read once per switch; an OS light/dark change mid-session keeps the old bar color until the next switch.
+  const dark = theme.dark && globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? theme.dark : theme.color);
+  try { localStorage.setItem(storageKey, theme.id); } catch { /* Private browsing can disable storage. */ }
+  if (previous && previous !== theme.id) bootSequence(true);
+}
+
+// MU/TH/UR's start-up text, once per tab and on switching to Alien. Click skips; CSS removes it.
+const bootLines = ['INTERFACE 2037 ............ READY', 'MU/TH/UR 6000 MAINFRAME ..... ONLINE', 'TAILSCALE UPLINK ............ SECURE', 'SCANNING CREW SESSIONS ...... OK', 'PRIORITY ONE: KEEP THE CREW MOVING'];
+export function bootSequence(force = false) {
+  if (document.documentElement.dataset.theme !== 'alien' || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
+  document.querySelector('.boot')?.remove();
+  const overlay = document.createElement('div'); overlay.className = 'boot'; overlay.setAttribute('aria-hidden', 'true');
+  bootLines.forEach((line, i) => { const p = document.createElement('p'); p.textContent = line; p.style.setProperty('--i', i); overlay.append(p); });
+  overlay.onclick = () => overlay.remove();
+  overlay.addEventListener('animationend', event => { if (event.target === overlay) overlay.remove(); });
+  document.body.append(overlay);
+}
