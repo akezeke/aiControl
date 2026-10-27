@@ -18,6 +18,7 @@
     "test": "node --test --test-isolation=none tests/*.test.mjs",
     "password": "node scripts/password.mjs",
     "setup": "node scripts/setup.mjs",
+    "demo": "node scripts/demo.mjs",
     "connect:claude": "node scripts/install-hooks.mjs",
     "disconnect:claude": "node scripts/install-hooks.mjs --remove"
   },

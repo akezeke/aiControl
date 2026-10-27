@@ -1,19 +1,17 @@
 /* Theme tokens. Layout lives in style.css; theme-effects.css adds each theme's hardware and motion. */
 
-/* Modern follows the system's dark mode. */
-@media (prefers-color-scheme: dark) {
-  :root[data-theme=modern] {
-    color-scheme: dark;
-    --bg: #0b0d12; --panel: #13161d; --panel-2: #1b1f29; --sunken: #0f1218;
-    --text: #e8eaf0; --text-2: #b0b6c3; --text-3: #8d94a3;
-    --line: #242936; --line-2: #343a4a;
-    --accent: #8b8cf9; --accent-2: #a5a6ff; --accent-ink: #0b0d12; --accent-soft: #1f2146;
-    --ok: #4ade80; --ok-soft: #10291b; --warn: #fbbf24; --warn-soft: #2a2010; --warn-line: #6b4f12; --danger: #f87171; --danger-soft: #2f1416;
-    --codex: #e8eaf0; --claude: #ec8a5f; --claude-soft: #2c1a12;
-    --shadow: 0 1px 2px #0006;
-    --shadow-lg: 0 24px 60px -12px #000c, 0 0 0 1px #ffffff0a;
-    --focus: #a5a6ff;
-  }
+/* Orbit dark: data-scheme is set by themes.js (auto follows the system). */
+:root[data-theme=modern][data-scheme=dark] {
+  color-scheme: dark;
+  --bg: #0b0d12; --panel: #13161d; --panel-2: #1b1f29; --sunken: #0f1218;
+  --text: #e8eaf0; --text-2: #b0b6c3; --text-3: #8d94a3;
+  --line: #242936; --line-2: #343a4a;
+  --accent: #8b8cf9; --accent-2: #a5a6ff; --accent-ink: #0b0d12; --accent-soft: #1f2146;
+  --ok: #4ade80; --ok-soft: #10291b; --warn: #fbbf24; --warn-soft: #2a2010; --warn-line: #6b4f12; --danger: #f87171; --danger-soft: #2f1416;
+  --codex: #e8eaf0; --claude: #ec8a5f; --claude-soft: #2c1a12;
+  --shadow: 0 1px 2px #0006;
+  --shadow-lg: 0 24px 60px -12px #000c, 0 0 0 1px #ffffff0a;
+  --focus: #a5a6ff;
 }
 
 /* ALIEN (1979): MU/TH/UR 6000 phosphor on black glass. */

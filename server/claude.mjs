@@ -1,5 +1,5 @@
 import { createServer } from 'node:net';
-import { readFile, readdir, chmod, unlink, lstat, stat } from 'node:fs/promises';
+import { readFile, readdir, chmod, unlink, lstat, stat, open } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -45,6 +45,7 @@ export class ClaudeAdapter {
   hooks = new Map();
   sockets = new Set();
   registrations = new Map();
+  workflowNames = new Map();
   connected = false;
   detail = 'Discovering local Claude Code sessions…';
   constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.sessionsDir = sessionsDir; this.projectsDir = projectsDir; this.transcripts = new TranscriptReader(projectsDir); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
@@ -99,7 +100,7 @@ export class ClaudeAdapter {
     const runs = (await readdir(join(dir, 'workflows')).catch(() => [])).filter(name => /^wf_[\w-]{1,64}$/.test(name));
     const folders = [{ dir }, ...await Promise.all(runs.map(async run => {
       const state = JSON.parse(await readFile(join(base, 'workflows', `${run}.json`), 'utf8').catch(() => '{}'));
-      return { dir: join(dir, 'workflows', run), name: state.workflowName, ended: ['completed', 'failed', 'killed', 'stopped', 'error'].includes(state.status) };
+      return { dir: join(dir, 'workflows', run), name: state.workflowName || await this.workflowName(transcript, run), ended: ['completed', 'failed', 'killed', 'stopped', 'error'].includes(state.status) };
     }))];
     const files = (await Promise.all(folders.map(async folder => (await readdir(folder.dir).catch(() => []))
       .map(name => /^agent-([a-z0-9]{1,64})\.jsonl$/i.exec(name)?.[1]).filter(Boolean)
@@ -112,10 +113,27 @@ export class ClaudeAdapter {
       const working = !folder.ended && now - mtime < (history.activity === 'tool' ? 30 * 60_000 : 60_000);
       if (!working && now - mtime > 30 * 60_000) return null;
       const { activity, modifiedAt, ...messages } = history;
-      const kind = folder.name ? [folder.name, meta.workflowPhase].filter(Boolean).join(' · ') : meta.agentType || 'subagent';
-      return { id: `claude:${record.sessionId}:${agentId}`, nativeId: agentId, parentId: `claude:${record.sessionId}`, provider: 'claude', title: meta.description || meta.agentType || 'Subagent', cwd: record.cwd, project: basename(record.cwd || 'Unknown'), status: working ? 'working' : 'idle', updatedAt: mtime, model: kind, detail: '', control: false, messaging: { send: false, queue: false }, ...messages };
+      const workflow = folder.dir !== dir, kind = workflow ? [folder.name || 'Workflow', meta.workflowPhase].filter(Boolean).join(' · ') : meta.agentType || 'subagent';
+      return { id: `claude:${record.sessionId}:${agentId}`, nativeId: agentId, parentId: `claude:${record.sessionId}`, agentKind: workflow ? 'workflow' : 'subagent', provider: 'claude', title: meta.description || meta.agentType || 'Subagent', cwd: record.cwd, project: basename(record.cwd || 'Unknown'), status: working ? 'working' : 'idle', updatedAt: mtime, model: kind, detail: '', control: false, messaging: { send: false, queue: false }, ...messages };
     }));
     return agents.filter(Boolean);
+  }
+  // A running workflow's state file is written only when it ends; its launch result in the
+  // session transcript names it. Read the transcript tail once per run.
+  async workflowName(transcript, run) {
+    if (this.workflowNames.has(run)) return this.workflowNames.get(run);
+    let name;
+    try {
+      const handle = await open(transcript, 'r');
+      try {
+        const { size } = await handle.stat(), length = Math.min(size, 8 * 1024 * 1024), buffer = Buffer.alloc(length);
+        await handle.read(buffer, 0, length, size - length);
+        name = new RegExp(`"workflowName":"([^"\\\\]{1,100})","runId":"${run}"`).exec(buffer.toString())?.[1];
+      } finally { await handle.close(); }
+    } catch { /* unreadable transcript: show a generic label */ }
+    // ponytail: a miss is cached too; the state file supplies the name once the run ends.
+    this.workflowNames.set(run, name);
+    return name;
   }
   accept(socket) {
     this.sockets.add(socket);

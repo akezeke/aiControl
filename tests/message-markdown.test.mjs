@@ -51,6 +51,8 @@ test('links allow web and mail destinations with safe attributes', () => {
   assert.match(render('[Title](https://example.com "&quot; onmouseover=alert(1)")'), /title="&quot; onmouseover=alert\(1\)" target=/);
   for (const url of ['javascript:alert(1)', 'jav&#x61;script:alert(1)', 'data:text/html,test', 'vbscript:msgbox(1)', '/api/logout', 'file:///tmp/example', '//example.com']) assert.doesNotMatch(render(`[link](${url})`), /<a\b/, url);
   assert.doesNotMatch(render('![image](https://example.com/tracker.png)'), /<img\b/);
+  // Marked escapes alt text in the lexer; image() relies on that.
+  assert.equal(render('![<img src=x onerror=alert(1)>](x)'), '<p>&lt;img src=x onerror=alert(1)&gt;</p>\n');
   assert.doesNotMatch(render('![<img src=x onerror=alert(1)>](x)'), /<img\b/);
 });
 

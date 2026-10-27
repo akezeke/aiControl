@@ -1,7 +1,7 @@
 import './style.css';
 import './themes.css';
 import './theme-effects.css';
-import { applyTheme, savedTheme, themes, bootSequence } from './themes.js';
+import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
@@ -14,13 +14,16 @@ import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
 
 const app = document.querySelector('#app');
+const firstVisit = !hasSavedTheme();
 applyTheme(savedTheme());
 const idleMs = 10 * 60_000;
 const sessionActivity = new SessionActivity();
 const messageDrafts = new Map();
 const statValues = new Map();
 const liveRender = new LiveRender(() => renderData());
-const state = { csrf: '', snapshot: null, filter: 'all', project: '', provider: 'all', search: '', selected: null, error: '', lastActivity: Date.now() };
+const groupingKey = 'ai-control-grouping';
+const savedGrouping = () => { try { return localStorage.getItem(groupingKey) === 'flat' ? 'flat' : 'project'; } catch { return 'project'; } };
+const state = { csrf: '', snapshot: null, filter: 'all', project: '', provider: 'all', grouping: savedGrouping(), search: '', selected: null, error: '', lastActivity: Date.now() };
 const navigation = new PanelNavigation(window, id => {
   if (!state.csrf) return;
   if (!id) { hidePanel(); return; }
@@ -71,9 +74,16 @@ function themeMenu() {
       for (const option of document.querySelectorAll('[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === theme.id));
       menu.open = false; summary.focus();
     });
-    choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(document.documentElement.dataset.theme === theme.id));
+    choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(document.documentElement.dataset.themeChoice === theme.id));
     choice.prepend(el('i', `theme-swatch ${theme.id}`)); choices.append(choice);
   }
+  // The sidebar scrolls and would clip the list, so open it against the viewport there.
+  menu.ontoggle = () => {
+    choices.removeAttribute('style');
+    if (!menu.open || !menu.closest('.sidebar')) return;
+    const r = summary.getBoundingClientRect();
+    Object.assign(choices.style, { position: 'fixed', top: 'auto', right: 'auto', left: `${Math.max(8, Math.min(r.left, innerWidth - choices.offsetWidth - 8))}px`, bottom: `${innerHeight - r.top + 6}px` });
+  };
   menu.append(summary, choices); return menu;
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
@@ -145,10 +155,13 @@ function showWorkspace() {
   shell.append(aside);
   const content = el('div', 'workspace');
   const topbar = el('header', 'topbar');
-  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; topActions.append(live, themeMenu(), access, lockButton); topbar.append(brand(), topActions); content.append(topbar);
+  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; topActions.append(live, themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
+  // Desktop has no top bar: its controls sit at the bottom of the sidebar.
+  const wide = matchMedia('(min-width: 641px)'), placeActions = () => (wide.matches ? aside : topbar).append(topActions);
+  wide.onchange = placeActions; placeActions();
   const main = el('main', 'main-content');
   const heading = el('div', 'page-heading'); const headingText = el('div'); headingText.append(el('h1', '', 'Sessions')); heading.append(headingText);
-  const machineLabel = el('span', 'machine-label'); machineLabel.id = 'machine'; heading.append(machineLabel); main.append(heading);
+  const machineLabel = el('span', 'machine-label'); machineLabel.id = 'machine'; heading.append(machineLabel); const statusLine = el('div', 'status-line'); statusLine.id = 'status-line'; main.append(statusLine, heading);
   const notice = el('div', 'connection-error'); notice.id = 'error'; notice.setAttribute('role', 'status'); notice.hidden = true; main.append(notice);
   const stats = el('div', 'stats'); stats.id = 'stats'; main.append(stats);
   const usage = el('section', 'usage'); usage.id = 'usage'; usage.setAttribute('aria-label', 'Usage limits'); main.append(usage);
@@ -156,6 +169,8 @@ function showWorkspace() {
   const summary = el('summary', 'quiet-button', '…'); summary.setAttribute('aria-label', 'Filter sessions by agent'); summary.title = 'Agent filter'; menu.append(summary);
   const tabs = el('div', 'filter-options'); tabs.setAttribute('aria-label', 'Agent provider'); tabs.append(el('span', 'sidebar-label', 'SHOW AGENTS'));
   for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
+  tabs.append(el('span', 'sidebar-label', 'GROUP'));
+  for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
   const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu); main.append(toolbar);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
@@ -165,7 +180,7 @@ function showWorkspace() {
   app.append(backdrop, panel);
   poll = setInterval(refresh, 3000);
   navigation.sync();
-  bootSequence();
+  if (!document.querySelector('.theme-picker')) bootSequence();
 }
 
 async function refresh() {
@@ -195,68 +210,140 @@ function renderData() {
     if (state.selected !== 'access') renderPanel();
     return;
   }
-  const connection = document.querySelector('#connection'); connection.className = `live-label ${state.error ? 'disconnected' : ''}`; connection.textContent = state.error ? 'Connection lost' : 'Live updates';
+  const connection = document.querySelector('#connection'); connection.className = `live-label ${state.error ? 'disconnected' : ''}`; connection.textContent = state.error ? 'Connection lost' : 'Live updates'; connection.title = connection.textContent;
   const error = document.querySelector('#error'); error.hidden = !state.error; error.textContent = state.error ? `${state.error} Showing the last received status. Actions are disabled until reconnected.` : '';
   document.querySelector('#machine').textContent = state.snapshot.machine;
-  renderUsage(document.querySelector('#usage'), state.snapshot.usage, { disconnected: !!state.error });
+  const usage = document.querySelector('#usage'), usageSignature = JSON.stringify([state.snapshot.usage, !!state.error, Math.floor(Date.now() / 60_000)]);
+  if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error }); }
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
-  const nav = document.querySelector('#navigation'); nav.replaceChildren();
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
+  const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); };
   // Desktop filters live here; the stat row below replaces them on phones.
-  for (const [value, label, glyph, number] of [['all', 'All sessions', 'grid', sessions.length], ['attention', 'Needs you', 'bell', count], ['working', 'Working', 'activity', working], ['idle', 'Idle', 'moon', idle]]) {
-    const b = button(label, `nav-item ${state.filter === value && !state.project ? 'active' : ''}`, () => { state.filter = value; state.project = ''; renderData(); }, glyph); b.append(el('span', 'nav-count', number)); nav.append(b);
-  }
+  syncList(document.querySelector('#navigation'), [['all', 'All sessions', 'grid', sessions.length], ['attention', 'Needs you', 'bell', count], ['working', 'Working', 'activity', working], ['idle', 'Idle', 'moon', idle]]
+    .map(([value, label, glyph, number]) => [value, [value, label, glyph, number, state.filter === value && !state.project]]),
+    ([value, label, glyph, number, active]) => { const b = button(label, `nav-item ${active ? 'active' : ''}`, setFilter(value), glyph); b.append(el('span', 'nav-count', number)); return b; });
   const projects = new Map(); for (const session of sessions) { const key = session.cwd || session.project; if (!projects.has(key)) projects.set(key, { name: session.project, sessions: [] }); projects.get(key).sessions.push(session); }
-  const projectNav = document.querySelector('#projects'); projectNav.replaceChildren();
-  for (const [key, project] of [...projects].sort((a, b) => a[1].name.localeCompare(b[1].name))) {
-    const b = button(project.name, `nav-item ${state.project === key ? 'active' : ''}`, () => { state.project = state.project === key ? '' : key; state.filter = 'all'; renderData(); }, 'folder'); b.title = key; b.append(el('span', 'project-dot', project.sessions.filter(needsInput).length || '')); projectNav.append(b);
-  }
-  if (!projects.size) projectNav.append(el('span', 'no-projects', 'Projects appear with sessions'));
-  const stats = document.querySelector('#stats'); stats.replaceChildren();
-  for (const [value, title, number, detail, color] of [
+  syncList(document.querySelector('#projects'), projects.size ? [...projects].sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([key, project]) => [key, [key, project.name, state.project === key, project.sessions.filter(needsInput).length]]) : [['none', null]],
+    data => {
+      if (!data) return el('span', 'no-projects', 'Projects appear with sessions');
+      const [key, name, active, waiting] = data;
+      const b = button(name, `nav-item ${active ? 'active' : ''}`, () => { state.project = state.project === key ? '' : key; state.filter = 'all'; renderData(); }, 'folder'); b.title = key; b.append(el('span', 'project-dot', waiting || '')); return b;
+    });
+  syncList(document.querySelector('#stats'), [
     ['all', 'All', sessions.length, `${projects.size} projects on this computer`, ''],
     ['attention', 'Needs you', count, count ? 'A quick decision keeps things moving' : 'You’re all caught up', 'amber'],
     ['working', 'Working', working, 'Agents making progress', 'green'],
     ['idle', 'Idle', idle, 'Ready for the next task', 'gray'],
-  ]) { const b = button('', `stat ${color} ${state.filter === value ? 'selected' : ''}`, () => { state.filter = value; state.project = ''; renderData(); }); const digits = el('strong', `stat-number${statValues.has(value) && statValues.get(value) !== number ? ' tick' : ''}`, number); statValues.set(value, number); b.replaceChildren(el('span', 'stat-title', title), digits, el('span', 'stat-detail', detail)); stats.append(b); }
+  ].map(([value, ...rest]) => [value, [value, ...rest, state.filter === value]]), ([value, title, number, detail, color, selected]) => {
+    const b = button('', `stat ${color} ${selected ? 'selected' : ''}`, setFilter(value));
+    const digits = el('strong', `stat-number${statValues.has(value) && statValues.get(value) !== number ? ' tick' : ''}`, number); statValues.set(value, number);
+    b.replaceChildren(el('span', 'stat-title', title), digits, el('span', 'stat-detail', detail)); return b;
+  });
   for (const tab of document.querySelectorAll('[data-provider]')) { tab.classList.toggle('active', tab.dataset.provider === state.provider); tab.setAttribute('aria-pressed', String(tab.dataset.provider === state.provider)); }
+  for (const tab of document.querySelectorAll('[data-grouping]')) { tab.classList.toggle('active', tab.dataset.grouping === state.grouping); tab.setAttribute('aria-pressed', String(tab.dataset.grouping === state.grouping)); }
   const filterMenu = document.querySelector('#agent-filter-menu'); filterMenu.classList.toggle('filtered', state.provider !== 'all'); filterMenu.querySelector('summary').setAttribute('aria-label', `Agent filter: ${state.provider === 'all' ? 'All agents' : providerName(state.provider)}`);
   const focusedSession = document.activeElement?.classList.contains('session-card') ? document.activeElement.dataset.sessionId : null;
-  const groups = document.querySelector('#groups'); groups.replaceChildren();
+  const groups = document.querySelector('#groups');
   const visible = sessions.filter(s => (!state.project || (s.cwd || s.project) === state.project) && (state.provider === 'all' || s.provider === state.provider) && (state.filter === 'all' || (state.filter === 'attention' ? needsInput(s) : s.status === state.filter)) && `${s.title} ${s.project} ${s.cwd} ${s.model}`.toLowerCase().includes(state.search.toLowerCase()));
   const visibleGroups = new Map(); for (const session of visible) { const key = session.cwd || session.project; if (!visibleGroups.has(key)) visibleGroups.set(key, []); visibleGroups.get(key).push(session); }
-  const sorted = [...visibleGroups].sort(compareProjects);
+  // Flat: one list in status order, with a project label on each card.
+  const flat = state.grouping === 'flat';
+  const sorted = flat ? (visible.length ? [['', visible]] : []) : [...visibleGroups].sort(compareProjects);
+  const before = flipPositions(groups);
+  syncList(groups, visible.length ? sorted.map(([cwd]) => [cwd, null]) : [['empty', [state.filter === 'attention', sessions.length]]], data => {
+    if (!data) { const group = el('section', 'project-group'); group.append(el('div', 'group-heading'), el('div', 'session-list')); return group; }
+    const [attention, total] = data, empty = el('div', 'empty');
+    empty.append(icon(attention ? 'check' : 'terminal'), el('h2', '', attention ? 'Nothing needs your attention.' : total ? 'No sessions match.' : 'Your control room is ready.'), el('p', 'muted', total ? 'Sessions update automatically as your agents work.' : 'Open Codex or Claude Code on this computer. Live sessions will appear here, grouped by project.'));
+    return empty;
+  });
+  const ages = new Map();
   for (const [cwd, list] of sorted) {
-    const group = el('section', 'project-group');
-    const header = el('div', 'group-heading'); const title = el('div', 'group-title'); title.append(icon('folder'), el('h2', '', list[0].project), el('span', 'group-count', list.length)); header.append(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~'))); group.append(header);
-    const cards = el('div', 'session-list');
+    const group = [...groups.children].find(node => node.dataset.key === cwd), header = group.firstChild;
+    const headerSignature = JSON.stringify([list[0].project, list.length, cwd]);
+    header.hidden = flat;
+    if (!flat && header.dataset.sig !== headerSignature) {
+      header.dataset.sig = headerSignature;
+      const title = el('div', 'group-title'); title.append(icon('folder'), el('h2', '', list[0].project), el('span', 'group-count', list.length));
+      header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')));
+    }
     // Subagents sit directly under their parent; orphans keep their own place.
     const ordered = list.sort(compareSessions), ids = new Set(ordered.map(s => s.id));
     const withChildren = s => [s, ...ordered.filter(child => child.parentId === s.id).flatMap(withChildren)];
-    for (const session of ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren)) {
-      const card = el('button', `session-card ${needsInput(session) ? 'needs-input' : ''} ${session.parentId ? 'subagent' : ''}`); card.type = 'button'; card.onclick = () => openPanel(session.id); card.dataset.sessionId = session.id; card.dataset.status = session.status; card.setAttribute('aria-label', `${session.title}, ${providerName(session.provider)}, ${(statuses[session.status] || statuses.unknown)[0]}`);
-      const mark = el('span', `agent-mark ${session.provider}`, session.provider === 'codex' ? '⌘' : '✳'); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
-      const body = el('span', 'session-body'); const meta = el('span', 'session-meta'); if (session.branch) meta.append(el('span', 'branch', session.branch)); if (meta.children.length) body.append(meta);
-      const title = el('strong', 'session-title'); if (session.parentId) title.append(el('span', 'subagent-tag', 'Subagent')); title.append(session.title); body.append(title);
+    syncList(group.lastChild, ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren).map(session => {
+      ages.set(session.id, session.lastActivityAt);
+      const lastMessage = session.messages?.at(-1);
       let detail = session.requests[0]?.title || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
       if (session.provider === 'claude' && !session.control && needsInput(session)) detail = 'Open the original client · Hooks not connected';
-      const lastMessage = session.messages?.at(-1);
-      if (lastMessage) {
-        const preview = el('span', 'message-preview'); if (lastMessage.role === 'user') preview.append(el('strong', '', 'You: ')); preview.append(document.createTextNode(lastMessage.text.slice(0, 400)));
-        body.append(preview);
-      } else body.append(el('span', 'session-description', detail));
-      const right = el('span', 'session-right'); right.append(badge(session.status), el('span', 'session-age', age(session.lastActivityAt)));
-      card.append(mark, body, right); cards.append(card);
+      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail, last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)] }];
+    }), renderCard);
+  }
+  for (const card of groups.querySelectorAll('.session-card')) setProperty(card.querySelector('.session-age'), 'textContent', age(ages.get(card.dataset.key)));
+  flipFrom(groups, before);
+  if (focusedSession && document.activeElement?.dataset.sessionId !== focusedSession) [...groups.querySelectorAll('[data-session-id]')].find(card => card.dataset.sessionId === focusedSession)?.focus({ preventScroll: true });
+  const integrations = document.querySelector('#integrations'), integrationSignature = JSON.stringify(providers);
+  if (integrations.dataset.sig !== integrationSignature) {
+    integrations.dataset.sig = integrationSignature; integrations.replaceChildren(el('h2', '', 'Agent connections'));
+    for (const provider of providers) {
+      const row = el('div', 'integration'); const status = el('span', `connection-dot ${provider.connected ? 'online' : ''}`); row.title = provider.detail; row.append(status, el('strong', '', provider.name), el('span', 'muted', provider.detail)); integrations.append(row);
     }
-    group.append(cards); groups.append(group);
   }
-  if (!visible.length) {
-    const empty = el('div', 'empty'); empty.append(icon(state.filter === 'attention' ? 'check' : 'terminal'), el('h2', '', state.filter === 'attention' ? 'Nothing needs your attention.' : sessions.length ? 'No sessions match.' : 'Your control room is ready.'), el('p', 'muted', sessions.length ? 'Sessions update automatically as your agents work.' : 'Open Codex or Claude Code on this computer. Live sessions will appear here, grouped by project.')); groups.append(empty);
-  }
-  if (focusedSession) [...groups.querySelectorAll('[data-session-id]')].find(card => card.dataset.sessionId === focusedSession)?.focus({ preventScroll: true });
-  const integrations = document.querySelector('#integrations'); integrations.replaceChildren(el('h2', '', 'Agent connections'));
-  for (const provider of providers) {
-    const row = el('div', 'integration'); const status = el('span', `connection-dot ${provider.connected ? 'online' : ''}`); row.title = provider.detail; row.append(status, el('strong', '', provider.name), el('span', 'muted', provider.detail)); integrations.append(row);
+}
+
+// One-line previews: drop code blocks and Markdown markers (keep snake_case underscores).
+const plainText = text => text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, '').replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim();
+function renderCard(session, previous) {
+  const card = el('button', `session-card ${session.needs ? 'needs-input' : ''} ${session.parentId ? 'subagent' : ''}`); card.type = 'button'; card.onclick = () => openPanel(session.id); card.dataset.sessionId = session.id; card.dataset.status = session.status; card.setAttribute('aria-label', `${session.title}, ${providerName(session.provider)}, ${(statuses[session.status] || statuses.unknown)[0]}`);
+  const mark = el('span', `agent-mark ${session.provider}`, session.provider === 'codex' ? '⌘' : '✳'); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
+  const body = el('span', 'session-body'); if (session.branch) { const meta = el('span', 'session-meta'); meta.append(el('span', 'branch', session.branch)); body.append(meta); }
+  const title = el('strong', 'session-title'); if (session.project) title.append(el('span', 'project-tag', session.project)); if (session.parentId) { const workflow = session.agentKind === 'workflow', tag = el('span', `subagent-tag${workflow ? ' workflow-tag' : ''}`, workflow ? 'Workflow' : 'Subagent'); tag.title = session.kind || ''; title.append(tag); } title.append(session.title); body.append(title);
+  const text = document.createTextNode(session.last ? session.last[1] : session.detail);
+  const preview = session.last ? el('span', 'message-preview') : el('span', 'session-description');
+  if (session.last?.[0] === 'user') preview.append(el('strong', '', 'You: '));
+  preview.append(text); body.append(preview);
+  const before = previous?.querySelector('.message-preview, .session-description')?.textContent;
+  if (before !== undefined && before !== preview.textContent) typewrite(text);
+  const right = el('span', 'session-right'); right.append(badge(session.status), el('span', 'session-age'));
+  card.append(mark, body, right); return card;
+}
+
+// Keyed reuse: polling replaces only nodes whose data changed and moves the rest,
+// so animations, hover and focus survive updates.
+function syncList(container, items, render) {
+  const old = new Map([...container.children].map(node => [node.dataset.key, node]));
+  const nodes = items.map(([key, data]) => {
+    const signature = JSON.stringify(data); let node = old.get(key);
+    if (node?.dataset.sig !== signature) { const fresh = render(data, node); fresh.dataset.key = key; fresh.dataset.sig = signature; node?.replaceWith(fresh); node = fresh; }
+    return node;
+  });
+  for (const node of [...container.children]) if (!nodes.includes(node)) node.remove();
+  nodes.forEach((node, index) => { if (container.children[index] !== node) container.insertBefore(node, container.children[index] || null); });
+}
+
+// Typewriter for a card whose preview text changed: one text node per frame, at most ~0.75 s.
+function typewrite(node) {
+  const full = node.textContent, parent = node.parentElement;
+  if (reducedMotion.matches || !full) return;
+  const step = Math.max(1, Math.ceil(full.length / 45));
+  let shown = 0; node.textContent = ''; parent.classList.add('typing');
+  const tick = () => {
+    if (!node.isConnected) return;
+    shown = Math.min(full.length, shown + step); node.textContent = full.slice(0, shown);
+    if (shown < full.length) requestAnimationFrame(tick); else parent.classList.remove('typing');
+  };
+  requestAnimationFrame(tick);
+}
+
+// FLIP: moved cards and headers slide from their old spot; new ones fade in.
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const flipKey = node => node.classList.contains('group-heading') ? `#${node.parentElement.dataset.key}` : node.dataset.key;
+function flipPositions(root) { return new Map([...root.querySelectorAll('.session-card, .group-heading')].map(node => [flipKey(node), node.getBoundingClientRect().top])); }
+function flipFrom(root, before) {
+  if (reducedMotion.matches || !before.size) return;
+  for (const node of root.querySelectorAll('.session-card, .group-heading')) {
+    const from = before.get(flipKey(node));
+    if (from === undefined) { node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }); continue; }
+    const dy = from - node.getBoundingClientRect().top;
+    if (Math.abs(dy) > 1) node.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2, .8, .2, 1)' });
   }
 }
 
@@ -619,3 +706,17 @@ async function restoreLogin() {
   } catch { showLogin(); }
 }
 restoreLogin();
+
+// First visit: pick a theme. Closing keeps the default.
+function showThemePicker() {
+  const dialog = el('dialog', 'theme-picker'); dialog.setAttribute('aria-label', 'Pick a theme');
+  const grid = el('div', 'theme-picker-grid');
+  for (const theme of themes) {
+    const choice = button(theme.name, 'theme-picker-choice', () => { applyTheme(theme.id); dialog.close(); bootSequence(); });
+    choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
+  }
+  dialog.append(el('h2', '', 'Pick a theme'), grid);
+  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); };
+  document.body.append(dialog); dialog.showModal();
+}
+if (firstVisit) showThemePicker();

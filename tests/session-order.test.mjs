@@ -73,3 +73,13 @@ test('projects use the same priority and retain recent completion times among id
   const groups = sessions.map(session => [session.id, [session]]);
   assert.deepEqual(groups.toSorted(compareProjects).map(([name]) => name), ['ask', 'busy', 'finishing', 'idle']);
 });
+
+test('new activity inside a status never reorders; a status change does', () => {
+  let now = 1000;
+  const activity = new SessionActivity({ storage: storage(), now: () => now });
+  activity.observe([session('a', 'working', 100), session('b', 'working', 200)]);
+  now = 2000;
+  assert.deepEqual(ids(activity.observe([session('a', 'working', 1900), session('b', 'working', 200)])), ['b', 'a']);
+  now = 3000;
+  assert.deepEqual(ids(activity.observe([session('a', 'question', 1900), session('b', 'working', 2500)])), ['a', 'b']);
+});

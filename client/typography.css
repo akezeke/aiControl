@@ -1,1 +1,5 @@
-/* Use installed system fonts; the dashboard makes no third-party font requests. */
+/* System fonts, plus three OFL theme fonts served locally from /fonts (no third-party requests).
+   Browsers fetch each file only when a theme actually uses that family. */
+@font-face { font-family: 'Josefin Slab'; src: url('/fonts/josefin-slab.woff2') format('woff2'); font-weight: 100 700; font-display: swap; }
+@font-face { font-family: 'Black Ops One'; src: url('/fonts/black-ops-one.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'VT323'; src: url('/fonts/vt323.woff2') format('woff2'); font-weight: 400; font-display: swap; }

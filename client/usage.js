@@ -1,5 +1,6 @@
 import './usage.css';
 import { usageWindowView, usageUpdatedText } from './usage-presentation.js';
+import { renderPower } from './theme-console.js';
 
 const node = (tag, className, text) => {
   const element = document.createElement(tag); element.className = className;
@@ -48,4 +49,5 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
     rows.append(row);
   }
   container.replaceChildren(rows);
+  renderPower(accounts || []);
 }
