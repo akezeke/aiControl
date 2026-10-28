@@ -1,12 +1,13 @@
-// You, the boss: first-person movement with WASD/arrows (Shift runs, Space jumps), collision with walls and desks.
+// You, the boss: first-person movement with WASD (Shift runs, Space jumps), arrow keys to look, collision with walls and desks.
 // With a mouse, a click captures it (pointer lock): moving looks around, a click picks what's under the dot, right-click or Esc lets go.
 // Touch drags to look and taps to walk or pick someone.
 import * as THREE from 'three';
 import { isTypingTarget } from './status.js';
 
 export const EYE = 1.5;
-const SPEED = 3, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, GRAVITY = 13;
-const keys = { KeyW: [0, 1], ArrowUp: [0, 1], KeyS: [0, -1], ArrowDown: [0, -1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
+const SPEED = 3, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
+const keys = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] };
+const turns = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
 // Keys belong to the office only when nothing else wants them: no focused input, no open panel or dialog.
@@ -27,7 +28,7 @@ export class Player {
     listen(document, 'keydown', event => {
       this.shift = event.shiftKey;
       if (!officeHasKeys(event)) return;
-      if (keys[event.code]) { this.held.add(event.code); this.target = null; event.preventDefault(); }
+      if (keys[event.code] || turns[event.code]) { this.held.add(event.code); this.target = null; event.preventDefault(); }
       else if (event.code === 'Space' && sceneFocused(canvas)) { event.preventDefault(); this.jump(); }
     });
     listen(document, 'keyup', event => { this.shift = event.shiftKey; this.held.delete(event.code); });
@@ -80,7 +81,10 @@ export class Player {
     if (this.flight) { this.fly(dt); return; }
     if (this.rise || this.height) { this.rise -= GRAVITY * dt; this.height = Math.max(0, this.height + this.rise * dt); if (!this.height) this.rise = 0; this.position.y = EYE + this.height; }
     const speed = SPEED * (this.shift ? RUN : 1), move = new THREE.Vector3();
-    for (const code of this.held) { const [x, z] = keys[code]; move.x += x; move.z += z; }
+    for (const code of this.held) {
+      if (turns[code]) { const [yaw, pitch] = turns[code]; this.yaw += yaw * TURN * dt; this.pitch = THREE.MathUtils.clamp(this.pitch + pitch * TILT * dt, -1.1, 0.8); }
+      else { const [x, z] = keys[code]; move.x += x; move.z += z; }
+    }
     if (move.lengthSq()) {
       // Forward is where you look; strafe is to its right.
       const f = this.forward, right = new THREE.Vector3(-f.z, 0, f.x);

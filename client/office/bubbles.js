@@ -65,7 +65,7 @@ export function createOverlays(container, { onNext, onList, onOverview }) {
   const eye = button('office-eye', '👁', 'Overview', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
   const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
-  const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click to look around · WASD · Shift run · Space jump · Tab overview'; hint.hidden = seen; container.append(hint);
+  const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · Tab overview'; hint.hidden = seen; container.append(hint);
   return {
     setWaiting(n) { waiting.hidden = !n; waiting.textContent = `⚠ ${n}`; },
     setUsageLow(on) { usage.hidden = !on; },
