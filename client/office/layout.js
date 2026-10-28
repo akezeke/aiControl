@@ -4,7 +4,8 @@
 // so nobody already seated moves when projects come and go.
 // ponytail: cells fit CELL_PAIRS pairs; a pod bigger than that widens every cell and shifts later columns once.
 export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3, VACANT_MS = 30_000;
-const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8, CELL_PAIRS = 3;
+// The first column sits a little nearer the left wall (bookshelf and coffee corner) than AISLE, leaving more room by the lounge.
+const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8, CELL_PAIRS = 3, LEFT = 1.5;
 
 const podKey = session => session.cwd || session.project || 'Unknown';
 
@@ -73,7 +74,7 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
 
   const desks = new Map();
   pods.forEach(pod => {
-    pod.left = AISLE + pod.col * cellW;
+    pod.left = LEFT + pod.col * cellW;
     pod.x = pod.left + pod.width / 2;
     pod.z = AISLE + pod.row * cellD + pod.depth / 2;
     pod.slots.forEach((id, slot) => {
