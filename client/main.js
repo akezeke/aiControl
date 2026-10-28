@@ -264,9 +264,7 @@ function renderData() {
     if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
       const title = el('div', 'group-title'); title.append(icon('folder'), el('h2', '', list[0].project), el('span', 'group-count', list.length));
-      const actions = el('span', 'group-actions');
-      for (const provider of ['claude', 'codex']) { const b = button(provider === 'codex' ? 'Codex' : 'Claude', 'quiet-button spawn-button', () => spawnAgent(cwd, provider, b), 'plus'); b.title = `New ${providerName(provider)} in tmux`; actions.append(b); }
-      header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')), actions);
+      header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')), spawnButtons(cwd));
     }
     // Subagents sit directly under their parent; orphans keep their own place.
     const ordered = list.sort(compareSessions), ids = new Set(ordered.map(s => s.id));
@@ -389,7 +387,7 @@ function renderSessionHeader(header, session) {
   const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
   const metadata = el('details', 'chat-info'); metadata.open = expanded;
   metadata.append(el('summary', '', `${providerName(session.provider)} · ${session.project}`));
-  const info = el('dl', 'session-info'); for (const [key, value] of [['Folder', session.cwd], ['Model / version', session.model || 'Not reported'], ['Session', session.nativeId || session.id], ['Connection', session.control ? 'Connected' : 'Status only']]) info.append(el('dt', '', key), el('dd', '', value)); metadata.append(info); header.append(metadata);
+  const info = el('dl', 'session-info'); for (const [key, value] of [['Folder', session.cwd], ['Model / version', session.model || 'Not reported'], ['Session', session.nativeId || session.id], ['Connection', session.control ? 'Connected' : 'Status only']]) info.append(el('dt', '', key), el('dd', '', value)); metadata.append(info); if (session.cwd) metadata.append(spawnButtons(session.cwd)); header.append(metadata);
   if (state.error) header.append(el('p', 'connection-error', 'Reconnecting. Actions are temporarily disabled.'));
 }
 
@@ -656,6 +654,11 @@ async function respond(request, payload, container, error) {
 }
 
 function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
+function spawnButtons(cwd) {
+  const actions = el('span', 'group-actions');
+  for (const provider of ['claude', 'codex']) { const b = button(provider === 'codex' ? 'Codex' : 'Claude', 'quiet-button spawn-button', () => spawnAgent(cwd, provider, b), 'plus'); b.title = `New ${providerName(provider)} in tmux`; actions.append(b); }
+  return actions;
+}
 async function spawnAgent(cwd, provider, control) {
   if (state.error) return;
   control.disabled = true;
