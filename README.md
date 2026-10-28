@@ -68,7 +68,7 @@ npm test
 
 ## Network and security
 
-- Listens only on the Tailscale IP or `127.0.0.1`, never the LAN.
+- Listens only on the Tailscale IP and `127.0.0.1` (plain HTTP, for this machine), or just `127.0.0.1` in local mode; never the LAN.
 - HTTPS needs a Tailscale certificate: enable HTTPS in the Tailscale admin console, then run `tailscale cert --cert-file .local/<host>.crt --key-file .local/<host>.key <host>`. Rerun it every 90 days. Without a certificate it uses HTTP; Tailscale still encrypts traffic between devices.
 - Salted scrypt password hash, HttpOnly SameSite cookies, origin and CSRF checks; five failed logins block an address for 15 minutes.
 - Settings, logins and logs stay in `.local/`. The browser loads no third-party scripts, fonts or services.

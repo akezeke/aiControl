@@ -16,7 +16,8 @@ import { root, authFile, dataDir, hookSocket, port, claudeAccounts } from './con
 
 export async function startServer({ host, hostname, tls = null }) {
   const origin = `${tls ? 'https' : 'http'}://${hostname}:${port}`;
-  const origins = host === '127.0.0.1' ? [origin, `http://localhost:${port}`] : [origin];
+  // On the tailnet it also listens on loopback (plain HTTP), so this machine's browser can use localhost; WSL forwards Windows' localhost there too.
+  const loopback = host !== '127.0.0.1', origins = [...new Set([origin, `http://127.0.0.1:${port}`, `http://localhost:${port}`])];
   const auth = new Auth(authFile, { secure: !!tls });
   const loginsFile = join(dataDir, 'logins.json');
   auth.restore(loginsFile);
@@ -60,24 +61,27 @@ export async function startServer({ host, hostname, tls = null }) {
     return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' });
   };
   const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn });
-  const server = tls ? createHttpsServer(tls, handler) : createHttpServer(handler);
-  server.requestTimeout = 20_000;
-  server.headersTimeout = 10_000;
-  server.on('upgrade', (_req, socket) => socket.destroy());
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
-  try { await claude.start(); } catch (e) { server.close(); await vite.close(); throw e; }
+  const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
+  const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
+  for (const [server, address] of servers) {
+    server.requestTimeout = 20_000;
+    server.headersTimeout = 10_000;
+    server.on('upgrade', (_req, socket) => socket.destroy());
+    try { await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, address, resolve); }); } catch (e) { await closeServers(); await vite.close(); throw e; }
+  }
+  try { await claude.start(); } catch (e) { await closeServers(); await vite.close(); throw e; }
   codex.start();
   for (const { poller } of claudeUsage) poller.start();
   // npm start polls for this file; write then rename so it never reads a partial file.
   await writeFile(join(dataDir, 'server.json.tmp'), JSON.stringify({ pid: process.pid, url: origin, host, port, startedAt: new Date().toISOString() }), { mode: 0o600 });
   await rename(join(dataDir, 'server.json.tmp'), join(dataDir, 'server.json'));
-  console.log(`AI Control: ${origin}`);
+  console.log(`AI Control: ${origin}${loopback ? `, and http://localhost:${port} on this machine` : ''}`);
   let closing = false;
   async function close() {
     if (closing) return; closing = true;
     auth.persist(loginsFile);
     codex.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
-    server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+    await closeServers();
     await unlink(join(dataDir, 'server.json')).catch(() => {});
   }
   return { close, origin };
