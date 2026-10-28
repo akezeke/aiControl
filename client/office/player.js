@@ -1,70 +1,116 @@
-// You, the boss: first-person movement with WASD/arrows, drag to look, click or tap to walk or pick someone, collision with walls and desks.
+// You, the boss: first-person movement with WASD/arrows (Shift runs, Space jumps), collision with walls and desks.
+// With a mouse, a click captures it (pointer lock): moving looks around, a click picks what's under the dot, right-click or Esc lets go.
+// Touch drags to look and taps to walk or pick someone.
 import * as THREE from 'three';
 import { isTypingTarget } from './status.js';
 
 export const EYE = 1.5;
-const SPEED = 3, RADIUS = 0.3, LOOK = 0.0035, DRAG_SLOP = 6;
+const SPEED = 3, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, GRAVITY = 13;
 const keys = { KeyW: [0, 1], ArrowUp: [0, 1], KeyS: [0, -1], ArrowDown: [0, -1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
+const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
 // Keys belong to the office only when nothing else wants them: no focused input, no open panel or dialog.
 export function officeHasKeys(event) {
   return !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target) && !isTypingTarget(document.activeElement)
     && !document.body.classList.contains('panel-open') && !document.querySelector('dialog[open], details[open]');
 }
+// Nothing focused but the scene: on a button or link, Tab and Space keep their usual meaning.
+export const sceneFocused = canvas => [document.body, canvas, null].includes(document.activeElement);
 
 export class Player {
   constructor(canvas, { colliders, room, onPick }) {
-    this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08;
+    this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08;
     this.colliders = colliders; this.room = room; this.onPick = onPick; this.held = new Set(); this.target = null;
+    this.locked = false; this.onLock = null; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
     this.disposers = [];
-    listen(document, 'keydown', event => { if (keys[event.code] && officeHasKeys(event)) { this.held.add(event.code); this.target = null; event.preventDefault(); } });
-    listen(document, 'keyup', event => this.held.delete(event.code));
-    listen(window, 'blur', () => this.held.clear());
-    // Drag looks around; a press that barely moves is a click and picks what's under it.
+    listen(document, 'keydown', event => {
+      this.shift = event.shiftKey;
+      if (!officeHasKeys(event)) return;
+      if (keys[event.code]) { this.held.add(event.code); this.target = null; event.preventDefault(); }
+      else if (event.code === 'Space' && sceneFocused(canvas)) { event.preventDefault(); this.jump(); }
+    });
+    listen(document, 'keyup', event => { this.shift = event.shiftKey; this.held.delete(event.code); });
+    listen(window, 'blur', () => { this.held.clear(); this.shift = false; });
+    listen(document, 'pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; this.onLock?.(this.locked); });
+    const look = (x, y, speed) => { this.yaw -= x * speed; this.pitch = THREE.MathUtils.clamp(this.pitch - y * speed, -1.1, 0.8); };
+    // Captured: every move looks, a left click picks under the dot, a right click lets go.
+    // Otherwise a drag looks around and a press that barely moves is a click on what's under it.
     let drag = null;
-    listen(canvas, 'pointerdown', event => { drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }; canvas.setPointerCapture(event.pointerId); });
+    listen(canvas, 'contextmenu', event => event.preventDefault());
+    listen(canvas, 'pointerdown', event => {
+      if (this.locked) { if (event.button === 0) this.onPick(this.centre, true); else if (event.button === 2) this.unlock(); return; }
+      if (event.button !== 0) return;
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }; canvas.setPointerCapture(event.pointerId);
+    });
     listen(canvas, 'pointermove', event => {
+      if (this.locked) { look(event.movementX, event.movementY, LOCKED_LOOK); return; }
       if (!drag || drag.id !== event.pointerId) return;
       if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < DRAG_SLOP) return;
       drag.moved = true;
-      this.yaw -= event.movementX * LOOK; this.pitch = THREE.MathUtils.clamp(this.pitch - event.movementY * LOOK, -1.1, 0.8);
+      look(event.movementX, event.movementY, LOOK);
     });
-    listen(canvas, 'pointerup', event => { if (drag && !drag.moved) this.onPick(event); drag = null; });
+    listen(canvas, 'pointerup', event => { if (drag && !drag.moved) this.onPick(event, event.pointerType === 'mouse'); drag = null; });
     listen(canvas, 'pointercancel', () => { drag = null; });
   }
+
+  // Browsers without pointer lock, or that refuse it, keep drag-to-look.
+  lock() { if (!this.locked) try { this.canvas.requestPointerLock()?.catch?.(() => {}); } catch { /* not allowed here */ } }
+  unlock() { if (this.locked) document.exitPointerLock(); }
+  get centre() { const r = this.canvas.getBoundingClientRect(); return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
   place(x, z, yaw) { this.position.set(x, EYE, z); this.yaw = yaw; }
   face(point) { this.yaw = Math.atan2(point.x - this.position.x, point.z - this.position.z); }
   get forward() { return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
+  jump() { if (!this.height && !this.rise && !this.flight) this.rise = JUMP; }
 
   // Walks straight toward a floor point, sliding along whatever is in the way; `then` runs on arrival, or when stuck if `always`.
   walkTo(point, then, stopShort = 0, always = false) { this.target = { point: point.clone().setY(EYE), then, stopShort, always, stuck: 0 }; }
 
+  // Flies to a spot, turning to face `look` (clicking someone): quick and eased, with a small arc over the desks.
+  flyTo(point, look, then, instant = false) {
+    const to = point.clone().setY(EYE), distance = this.position.distanceTo(to);
+    this.target = null; this.height = this.rise = 0;
+    this.flight = { from: this.position.clone(), to, yaw: this.yaw, turn: turnTo(this.yaw, Math.atan2(look.x - to.x, look.z - to.z)), pitch: this.pitch, t: 0,
+      duration: instant ? 0 : THREE.MathUtils.clamp(0.2 + distance * 0.05, 0.3, 0.7), lift: Math.min(0.5, distance * 0.08), then };
+  }
+
   update(dt) {
-    const move = new THREE.Vector3();
+    this.running = false;
+    if (this.flight) { this.fly(dt); return; }
+    if (this.rise || this.height) { this.rise -= GRAVITY * dt; this.height = Math.max(0, this.height + this.rise * dt); if (!this.height) this.rise = 0; this.position.y = EYE + this.height; }
+    const speed = SPEED * (this.shift ? RUN : 1), move = new THREE.Vector3();
     for (const code of this.held) { const [x, z] = keys[code]; move.x += x; move.z += z; }
     if (move.lengthSq()) {
       // Forward is where you look; strafe is to its right.
       const f = this.forward, right = new THREE.Vector3(-f.z, 0, f.x);
-      this.step(f.multiplyScalar(move.z).add(right.multiplyScalar(move.x)).normalize().multiplyScalar(SPEED * dt));
+      this.step(f.multiplyScalar(move.z).add(right.multiplyScalar(move.x)).normalize().multiplyScalar(speed * dt));
+      this.running = this.shift;
       return;
     }
     const target = this.target; if (!target) return;
     const to = target.point.clone().sub(this.position).setY(0), distance = to.length();
     if (distance <= target.stopShort + 0.05) { this.target = null; target.then?.(); return; }
-    const wanted = Math.atan2(to.x, to.z), turn = Math.atan2(Math.sin(wanted - this.yaw), Math.cos(wanted - this.yaw));
-    this.yaw += turn * Math.min(1, dt * 8);
+    this.yaw += turnTo(this.yaw, Math.atan2(to.x, to.z)) * Math.min(1, dt * 8);
     const before = this.position.clone();
-    this.step(to.normalize().multiplyScalar(Math.min(SPEED * dt, distance - target.stopShort)));
-    target.stuck = this.position.distanceTo(before) < SPEED * dt * 0.2 ? target.stuck + dt : 0;
+    this.step(to.normalize().multiplyScalar(Math.min(speed * dt, distance - target.stopShort)));
+    this.running = this.shift;
+    target.stuck = this.position.distanceTo(before) < speed * dt * 0.2 ? target.stuck + dt : 0;
     // Blocked by a desk: stop here; a talk still goes ahead from as close as we got.
     if (target.stuck > 0.4) { this.target = null; if (target.always) target.then?.(); }
   }
 
+  fly(dt) {
+    const f = this.flight; f.t = f.duration ? Math.min(1, f.t + dt / f.duration) : 1;
+    const e = f.t < 0.5 ? 4 * f.t ** 3 : 1 - (2 - 2 * f.t) ** 3 / 2;
+    this.position.lerpVectors(f.from, f.to, e); this.position.y += Math.sin(Math.PI * e) * f.lift;
+    this.yaw = f.yaw + f.turn * e; this.pitch = f.pitch + (-0.08 - f.pitch) * e; this.running = f.t < 1;
+    if (f.t === 1) { this.flight = null; f.then?.(); }
+  }
+
   step(delta) { this.position.copy(resolveStep(this.position, delta, this.colliders(), this.room())); }
 
-  dispose() { for (const fn of this.disposers) fn(); }
+  dispose() { this.unlock(); for (const fn of this.disposers) fn(); }
 }
 
 // Moves on x, then z, undoing an axis that would push the body into a collider it wasn't already in, so you slide along
@@ -80,6 +126,17 @@ export function resolveStep(position, delta, colliders, room) {
   }
   if (room) { p.x = THREE.MathUtils.clamp(p.x, RADIUS, room.width - RADIUS); p.z = THREE.MathUtils.clamp(p.z, RADIUS, room.depth - RADIUS); }
   return p;
+}
+
+// Where to stand to talk to someone: `distance` from them, as near the side you come from as desks and walls allow; null if boxed in.
+export function standNear(target, from, colliders, room, distance = 1.1) {
+  const toward = Math.atan2(from.x - target.x, from.z - target.z);
+  for (let i = 0; i < 12; i++) {
+    const a = toward + Math.ceil(i / 2) * (i % 2 ? 1 : -1) * Math.PI / 6, p = new THREE.Vector3(target.x + Math.sin(a) * distance, EYE, target.z + Math.cos(a) * distance);
+    const inRoom = !room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS);
+    if (inRoom && !colliders.some(box => inside(p, box))) return p;
+  }
+  return null;
 }
 
 // What's under a screen point: a character (by session id) or a spot on the floor.

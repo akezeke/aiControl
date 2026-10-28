@@ -1,15 +1,16 @@
-// The camera: first person at the boss's eyes, or the overview (hold Tab) lifted over the room at about 45°.
+// The camera: first person at the boss's eyes, or the overview (Tab) lifted over the room at about 45°.
 // Walls between the camera and the room, and the ceiling, fade out as the overview rises.
 import * as THREE from 'three';
 import { createFruit, handGeometry } from './fruit.js';
 import { toonMaterial } from './toon.js';
+import { EYE } from './player.js';
 
-const EASE = 5, FADED = 0.12;
+const EASE = 5, FADED = 0.12, RUN_FOV = 6;
 
 export class OfficeCamera {
   constructor(camera, scene, player, room, { reducedMotion }) {
     this.camera = camera; this.player = player; this.room = room; this.reducedMotion = reducedMotion;
-    this.overview = false; this.amount = 0; this.focusPoint = null; this.focusAmount = 0;
+    this.overview = false; this.amount = 0; this.focusPoint = null; this.focusAmount = 0; this.fov = camera.fov;
     // First person: your hand holding a coffee mug, bottom right.
     this.hands = new THREE.Group(); camera.add(this.hands); scene.add(camera);
     const hand = new THREE.Mesh(handGeometry(), toonMaterial('#26252b')); hand.position.set(0.3, -0.3, -0.62); hand.rotation.set(-0.3, -0.5, 1.2); this.hands.add(hand);
@@ -37,6 +38,9 @@ export class OfficeCamera {
     const overFrom = new THREE.Vector3(w / 2, height, d + height * 0.45), overLook = new THREE.Vector3(w / 2, 0, d / 2 + 0.3);
     this.from.copy(eye).lerp(overFrom, this.amount); this.look.copy(look).lerp(overLook, this.amount);
     this.camera.position.copy(this.from); this.camera.lookAt(this.look);
+    // Running, or flying over to someone, widens the view a little.
+    const fov = this.fov + (p.running && !instant ? RUN_FOV : 0);
+    if (Math.abs(fov - this.camera.fov) > 0.01) { this.camera.fov += (fov - this.camera.fov) * k; this.camera.updateProjectionMatrix(); }
     // While talking, shift the picture left so the character is centred in the part the panel leaves open.
     const panel = document.querySelector('#panel'), canvas = this.camera.userData.canvas, shift = panel && !panel.hidden && innerWidth > 640 ? panel.offsetWidth / 2 * this.focusAmount : 0;
     if (canvas && Math.abs(shift - (this.shift || 0)) > 0.5) {
@@ -46,7 +50,7 @@ export class OfficeCamera {
 
     this.hands.visible = this.amount < 0.2 && !this.focusPoint;
     this.boss.group.visible = this.amount > 0.2;
-    this.boss.group.position.set(eye.x, 0, eye.z); this.boss.group.rotation.y = p.yaw;
+    this.boss.group.position.set(eye.x, eye.y - EYE, eye.z); this.boss.group.rotation.y = p.yaw;
     this.fade();
   }
 

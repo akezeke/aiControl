@@ -5,10 +5,11 @@ import { layoutOffice } from './layout.js';
 import { officeStatus, identity, monitorLines } from './status.js';
 import { createRoom } from './room.js';
 import { Cast } from './animation.js';
-import { Player, pick, officeHasKeys } from './player.js';
+import { Player, pick, officeHasKeys, sceneFocused, standNear } from './player.js';
 import { OfficeCamera } from './camera.js';
 import { Bubbles, createOverlays } from './bubbles.js';
 import { createBoards } from './boards.js';
+import { highlight } from './toon.js';
 
 export function webglAvailable() {
   // three.js needs WebGL 2; the probe's context is released straight away.
@@ -31,30 +32,57 @@ export function mountOffice(container, hooks) {
   const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });
   let layout;
 
-  const frames = new Set();
+  const frames = new Set(), listeners = [];
+  const listen = (target, type, fn) => { target.addEventListener(type, fn); listeners.push(() => target.removeEventListener(type, fn)); };
+  // What a click at a screen point gets: a speech bubble under the dot counts as its character.
+  const under = at => { const id = player.locked && bubbles.at(at.clientX, at.clientY); return id ? { kind: 'character', id } : pick(at, renderer.domElement, camera, scene); };
   const player = new Player(renderer.domElement, {
     colliders: () => room.colliders,
     room: () => layout?.room,
-    onPick: event => {
-      const hit = pick(event, renderer.domElement, camera, scene);
-      if (hit?.kind === 'floor') player.walkTo(hit.point);
-      else if (hit?.kind === 'character') office.talkTo(hit.id);
+    // In first person, a mouse click that isn't on someone captures the mouse; captured, a click on the floor walks there.
+    onPick: (at, mouse) => {
+      const hit = under(at);
+      if (hit?.kind === 'character') office.talkTo(hit.id);
+      else if (mouse && !player.locked && !view.overview) player.lock();
+      else if (hit?.kind === 'floor') player.walkTo(hit.point);
     },
   });
   const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches });
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
-  const overview = on => { view.setOverview(on); if (on) overlays.overviewUsed(); };
-  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverviewHold: overview });
-  // Hold Tab for the overview.
-  // Only from the scene itself: Tab on a button or link keeps moving focus as usual.
-  const sceneFocused = () => [document.body, renderer.domElement, null].includes(document.activeElement);
-  const tab = on => event => { if (event.key !== 'Tab' || (on && (!officeHasKeys(event) || !sceneFocused()))) return; event.preventDefault(); overview(on); };
-  const tabDown = tab(true), tabUp = tab(false);
-  const talkKey = event => { if (event.code === 'KeyE' && officeHasKeys(event)) { event.preventDefault(); office.talkTo(office.nearest()); } };
-  document.addEventListener('keydown', talkKey);
-  document.addEventListener('keydown', tabDown); document.addEventListener('keyup', tabUp);
-  frames.add(dt => { player.update(dt); view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); });
+  // The overview frees the mouse to click around; leaving it with Tab captures the mouse again if it was.
+  let relock = false;
+  const overview = on => {
+    if (on === view.overview) return;
+    if (on) { relock = player.locked; player.unlock(); overlays.overviewUsed(); } else if (relock) { relock = false; player.lock(); }
+    view.setOverview(on); overlays.setOverview(on);
+  };
+  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview) });
+  player.onLock = locked => overlays.setLocked(locked);
+  // Tab toggles the overview and Esc leaves it (Tab only from the scene itself: on a button or link it keeps moving focus). E talks to whoever is in front of you.
+  listen(document, 'keydown', event => {
+    if (!officeHasKeys(event)) return;
+    if (event.key === 'Tab' && sceneFocused(renderer.domElement)) { event.preventDefault(); if (!event.repeat) overview(!view.overview); }
+    else if (event.key === 'Escape' && view.overview) overview(false);
+    else if (event.code === 'KeyE') { event.preventDefault(); office.talkTo(office.nearest()); }
+  });
+  // Outline whatever a click would get: under the dot while the mouse is captured, else under the mouse. Ten times a second is plenty.
+  let mouse = null, hovered = null, hoverIn = 0;
+  listen(renderer.domElement, 'pointermove', event => { mouse = event.pointerType === 'mouse' ? event : null; });
+  listen(renderer.domElement, 'pointerleave', () => { mouse = null; });
+  const hover = dt => {
+    if ((hoverIn -= dt) > 0) return;
+    hoverIn = 0.1;
+    const at = office.talking ? null : player.locked ? player.centre : mouse, hit = at && under(at);
+    const node = hit?.kind === 'character' ? cast.characters.get(hit.id)?.root || null : null;
+    if (node === hovered) return;
+    highlight(hovered, false); highlight(node, true); hovered = node;
+    overlays.setAim(!!node); renderer.domElement.style.cursor = node ? 'pointer' : '';
+  };
+  frames.add(dt => {
+    if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
+    player.update(dt); view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); hover(dt);
+  });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;
@@ -101,16 +129,19 @@ export function mountOffice(container, hooks) {
       renderer.dispose(); renderer.domElement.remove();
     },
     room, cast, player, view,
-    // Walk up, they turn to you, the view settles on their face, then their session opens beside the scene.
+    // Fly over, they turn to you, the view settles on their face, then their session opens beside the scene.
     talkTo(id) {
       const parent = office.snapshot?.sessions.find(session => session.id === id)?.parentId;
       const head = id && (cast.positionOf(id) || cast.positionOf(parent)); if (!head) return;
       const token = office.talking = {};
-      player.walkTo(head.clone().setY(0), () => {
+      relock = false; overview(false); player.unlock();
+      const arrive = () => {
         if (office.talking !== token) return;
         cast.greet(id); view.focus(head.clone().setY(head.y - 0.25));
-        setTimeout(() => { if (office.talking === token) hooks.openPanel(id); }, reducedMotion?.matches ? 0 : 550);
-      }, 1.1, true);
+        setTimeout(() => { if (office.talking === token) hooks.openPanel(id); }, reducedMotion?.matches ? 0 : 400);
+      };
+      const spot = standNear(head, player.position, room.colliders, layout?.room);
+      if (spot) player.flyTo(spot, head, arrive, !!reducedMotion?.matches); else player.walkTo(head.clone().setY(0), arrive, 1.1, true);
     },
     // main.js calls this when the session panel closes.
     panelClosed() { office.talking = null; cast.greet(null); view.focus(null); },
@@ -124,7 +155,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { document.removeEventListener('keydown', tabDown); document.removeEventListener('keyup', tabUp); document.removeEventListener('keydown', talkKey); }],
+    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   if (import.meta.env?.DEV) globalThis.__office = office; // poke at it from devtools
   return office;

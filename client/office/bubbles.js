@@ -1,8 +1,8 @@
 // Speech bubbles are HTML over the canvas: sharp text, real buttons, and always visible, even through walls.
-// Plus the few controls that stay on screen: who's waiting, low usage, back to the list, the phone overview button and the Tab hint.
+// Plus the few controls that stay on screen: who's waiting, low usage, back to the list, the phone overview button, the aiming dot and the hint.
 import * as THREE from 'three';
 
-const hintKey = 'ai-control-office-hint';
+const hintKey = 'ai-control-office-hint-2';
 
 export class Bubbles {
   constructor(container, onClick) {
@@ -21,7 +21,7 @@ export class Bubbles {
         node = document.createElement('button'); node.type = 'button'; node.className = 'office-bubble';
         node.append(document.createElement('span'), document.createElement('span'), document.createElement('i'));
         node.children[0].className = 'icon'; node.children[1].className = 'text'; node.children[2].className = 'dot';
-        node.onclick = () => this.onClick(id);
+        node.dataset.id = id; node.onclick = () => this.onClick(id);
         this.layer.append(node); this.nodes.set(id, node);
       }
       const label = bubble.text ? `${bubble.icon} ${bubble.text}` : bubble.icon;
@@ -49,26 +49,31 @@ export class Bubbles {
     }
   }
 
+  // The session whose bubble is at a screen point (under the dot while the mouse is captured, when clicks go to the canvas).
+  at(x, y) { return document.elementFromPoint(x, y)?.closest('.office-bubble')?.dataset.id || null; }
+
   dispose() { this.layer.remove(); }
 }
 
-export function createOverlays(container, { onNext, onList, onOverviewHold }) {
+export function createOverlays(container, { onNext, onList, onOverview }) {
   const bar = document.createElement('div'); bar.className = 'office-overlay'; container.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); if (onclick) b.onclick = onclick; bar.append(b); return b; };
   const waiting = button('office-waiting', '', 'Walk to the next one waiting (n)', onNext); waiting.hidden = true;
   const usage = button('office-usage', '⚡', 'Usage is near its limit; see the whiteboard'); usage.hidden = true;
   button('office-list', '☰', 'Show the list', onList);
-  // Phones have no Tab: hold this for the overview.
-  const eye = button('office-eye', '👁', 'Hold for the overview');
-  const hold = on => event => { event.preventDefault(); onOverviewHold(on); };
-  eye.addEventListener('pointerdown', hold(true)); for (const type of ['pointerup', 'pointercancel', 'pointerleave']) eye.addEventListener(type, hold(false));
+  // Phones have no Tab.
+  const eye = button('office-eye', '👁', 'Overview', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
+  const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
-  const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'WASD to walk · drag to look · hold Tab for the overview'; hint.hidden = seen; container.append(hint);
+  const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click to look around · WASD · Shift run · Space jump · Tab overview'; hint.hidden = seen; container.append(hint);
   return {
     setWaiting(n) { waiting.hidden = !n; waiting.textContent = `⚠ ${n}`; },
     setUsageLow(on) { usage.hidden = !on; },
+    setOverview(on) { eye.setAttribute('aria-pressed', String(on)); },
+    setLocked(on) { dot.hidden = !on; },
+    setAim(on) { dot.classList.toggle('aim', on); },
     // The hint goes once you've used the overview.
     overviewUsed() { if (hint.hidden) return; hint.classList.add('gone'); setTimeout(() => { hint.hidden = true; }, 600); try { localStorage.setItem(hintKey, '1'); } catch { /* per tab only */ } },
-    dispose() { bar.remove(); hint.remove(); },
+    dispose() { bar.remove(); dot.remove(); hint.remove(); },
   };
 }

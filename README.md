@@ -21,7 +21,7 @@ A self-hosted dashboard for keeping track of your local Codex and Claude Code se
 
 MU/TH/UR and EVA go all in: boot sequences, CRT scanlines, typed-out text, radar contacts that blip on status changes and close in the longer they wait, emergency lighting, hazard stripes, build bars fed by plan progress and a power bar fed by your usage limits that drops the radar to static when spent. Orbit is the calm option. Effects never block a control and switch off with reduced motion.
 
-Office swaps the list for a toon-shaded 3D office: every session is a fruit at a desk, sleeping when idle and waving when it needs you, with speech bubbles, its latest lines on the monitor and usage on the whiteboard. Walk around in first person (WASD, drag to look, click to walk), hold Tab for the overview, and click someone to open their session.
+Office swaps the list for a toon-shaded 3D office: every session is a fruit at a desk, sleeping when idle and waving when it needs you, with speech bubbles, its latest lines on the monitor and usage on the whiteboard. Walk around in first person (click to capture the mouse, WASD, Shift to run, Space to jump), Tab for the overview, and click someone to fly over and open their session.
 
 ## Screenshots
 

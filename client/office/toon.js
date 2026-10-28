@@ -14,12 +14,14 @@ export function toonMaterial(color, options = {}) {
 
 // The hull is pushed out along normals in the shader, so it works on any smooth mesh, not just ones centred on their origin.
 const outlines = new Map();
-function outlineMaterial(thickness) {
-  if (outlines.has(thickness)) return outlines.get(thickness);
-  const material = new THREE.MeshBasicMaterial({ color: '#1b1a1f', side: THREE.BackSide });
+function outlineMaterial(thickness, color = '#1b1a1f') {
+  const key = `${thickness}:${color}`;
+  if (outlines.has(key)) return outlines.get(key);
+  const material = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
   material.onBeforeCompile = shader => { shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\ntransformed += normalize(normal) * ${thickness.toFixed(4)};`); };
   material.customProgramCacheKey = () => `outline-${thickness}`;
-  outlines.set(thickness, material);
+  material.userData.thickness = thickness;
+  outlines.set(key, material);
   return material;
 }
 export function withOutline(mesh, thickness = 0.012) {
@@ -27,6 +29,14 @@ export function withOutline(mesh, thickness = 0.012) {
   hull.userData.outline = true; hull.raycast = () => {};
   mesh.add(hull);
   return mesh;
+}
+// Hover: everything outlined under `root` gets a thicker blue outline; off puts the usual one back.
+export function highlight(root, on) {
+  root?.traverse(node => {
+    if (!node.userData.outline) return;
+    node.userData.plain ??= node.material;
+    node.material = on ? outlineMaterial(node.userData.plain.userData.thickness * 1.8, '#4f7cff') : node.userData.plain;
+  });
 }
 
 // Shared materials and geometries live for the whole page; the office's unmount disposes GPU copies, which three re-uploads if used again.
