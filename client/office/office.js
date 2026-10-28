@@ -11,7 +11,8 @@ import { Bubbles, createOverlays } from './bubbles.js';
 import { createBoards } from './boards.js';
 
 export function webglAvailable() {
-  try { const canvas = document.createElement('canvas'); return !!(canvas.getContext('webgl2') || canvas.getContext('webgl')); } catch { return false; }
+  // three.js needs WebGL 2; the probe's context is released straight away.
+  try { const gl = document.createElement('canvas').getContext('webgl2'); gl?.getExtension('WEBGL_lose_context')?.loseContext(); return !!gl; } catch { return false; }
 }
 
 export function mountOffice(container, hooks) {
@@ -33,6 +34,7 @@ export function mountOffice(container, hooks) {
   const frames = new Set();
   const player = new Player(renderer.domElement, {
     colliders: () => room.colliders,
+    room: () => layout?.room,
     onPick: event => {
       const hit = pick(event, renderer.domElement, camera, scene);
       if (hit?.kind === 'floor') player.walkTo(hit.point);
@@ -45,7 +47,9 @@ export function mountOffice(container, hooks) {
   const overview = on => { view.setOverview(on); if (on) overlays.overviewUsed(); };
   const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverviewHold: overview });
   // Hold Tab for the overview.
-  const tab = on => event => { if (event.key !== 'Tab' || (on && !officeHasKeys(event))) return; event.preventDefault(); overview(on); };
+  // Only from the scene itself: Tab on a button or link keeps moving focus as usual.
+  const sceneFocused = () => [document.body, renderer.domElement, null].includes(document.activeElement);
+  const tab = on => event => { if (event.key !== 'Tab' || (on && (!officeHasKeys(event) || !sceneFocused()))) return; event.preventDefault(); overview(on); };
   const tabDown = tab(true), tabUp = tab(false);
   const talkKey = event => { if (event.code === 'KeyE' && officeHasKeys(event)) { event.preventDefault(); office.talkTo(office.nearest()); } };
   document.addEventListener('keydown', talkKey);
@@ -99,7 +103,8 @@ export function mountOffice(container, hooks) {
     room, cast, player, view,
     // Walk up, they turn to you, the view settles on their face, then their session opens beside the scene.
     talkTo(id) {
-      const head = id && cast.positionOf(id); if (!head) return;
+      const parent = office.snapshot?.sessions.find(session => session.id === id)?.parentId;
+      const head = id && (cast.positionOf(id) || cast.positionOf(parent)); if (!head) return;
       const token = office.talking = {};
       player.walkTo(head.clone().setY(0), () => {
         if (office.talking !== token) return;

@@ -41,3 +41,22 @@ test('departed desks stay 30 s, then free up', () => {
   assert.ok(gone.desks.get('a').vacantSince === 1000);
   assert.equal(layoutOffice([s('b', 'x')], gone, 31_001).desks.has('a'), false);
 });
+test('a new project never moves pods already placed', () => {
+  const spot = (l, id) => [l.desks.get(id).x, l.desks.get(id).z];
+  const first = layoutOffice([s('b1', 'beta')], undefined, 0);
+  const next = layoutOffice([s('a1', 'alpha'), s('b1', 'beta')], first, 1);
+  assert.deepEqual(spot(next, 'b1'), spot(first, 'b1'));
+  const four = layoutOffice(['p0', 'p1', 'p2', 'p3'].map(p => s(`${p}x`, p)), next, 2);
+  const five = layoutOffice(['p0', 'p1', 'p2', 'p3', 'p4'].map(p => s(`${p}x`, p)), four, 3);
+  for (const p of ['p0', 'p1', 'p2', 'p3']) assert.deepEqual(spot(five, `${p}x`), spot(four, `${p}x`));
+});
+test('a pod gaining desks does not push its neighbours', () => {
+  const first = layoutOffice([s('a1', 'a'), s('b1', 'b')], undefined, 0);
+  const grown = layoutOffice([s('a1', 'a'), s('a2', 'a'), s('a3', 'a'), s('a4', 'a'), s('b1', 'b')], first, 1);
+  assert.equal(grown.desks.get('b1').x, first.desks.get('b1').x);
+});
+test('the room never shrinks under you', () => {
+  const big = layoutOffice(['p0', 'p1', 'p2'].map(p => s(`${p}x`, p)), undefined, 0);
+  const small = layoutOffice([s('p0x', 'p0')], layoutOffice([s('p0x', 'p0')], big, 1), 100_000);
+  assert.ok(small.room.width >= big.room.width && small.room.depth >= big.room.depth);
+});

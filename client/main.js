@@ -246,12 +246,17 @@ function syncOffice() {
     office?.unmount(); office = null; document.querySelector('#office')?.remove(); root.removeAttribute('data-office-fallback'); return;
   }
   if (office) { if (state.snapshot) office.update(state.snapshot, { error: state.error }); return; }
-  if (!officeModule) { officeModule = import('./office/office.js').then(module => { officeModule = module; syncOffice(); }, () => { officeModule = null; toast('Office failed to load'); }); return; }
-  if (officeModule instanceof Promise || root.hasAttribute('data-office-fallback')) return;
-  if (!officeModule.webglAvailable()) { root.setAttribute('data-office-fallback', ''); toast('Office needs WebGL; showing the list'); return; }
+  // Any failure (download, no WebGL2, renderer refused) shows the list once and stays that way for this theme choice.
+  const fallBack = message => { root.setAttribute('data-office-fallback', ''); document.querySelector('#office')?.remove(); toast(message); };
+  if (root.hasAttribute('data-office-fallback')) return;
+  if (!officeModule) { officeModule = import('./office/office.js').then(module => { officeModule = module; syncOffice(); }, () => { officeModule = null; fallBack('Office failed to load; showing the list'); }); return; }
+  if (officeModule instanceof Promise) return;
+  if (!officeModule.webglAvailable()) { fallBack('Office needs WebGL 2; showing the list'); return; }
   const box = el('div'); box.id = 'office'; main.append(box);
-  office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread });
-  if (state.snapshot) office.update(state.snapshot, { error: state.error });
+  try {
+    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread });
+    if (state.snapshot) office.update(state.snapshot, { error: state.error });
+  } catch (error) { console.error(error); office?.unmount(); office = null; fallBack('Office could not start; showing the list'); }
 }
 
 function renderData() {

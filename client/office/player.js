@@ -13,9 +13,9 @@ export function officeHasKeys(event) {
 }
 
 export class Player {
-  constructor(canvas, { colliders, onPick }) {
+  constructor(canvas, { colliders, room, onPick }) {
     this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08;
-    this.colliders = colliders; this.onPick = onPick; this.held = new Set(); this.target = null;
+    this.colliders = colliders; this.room = room; this.onPick = onPick; this.held = new Set(); this.target = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
     this.disposers = [];
     listen(document, 'keydown', event => { if (keys[event.code] && officeHasKeys(event)) { this.held.add(event.code); this.target = null; event.preventDefault(); } });
@@ -62,21 +62,24 @@ export class Player {
     if (target.stuck > 0.4) { this.target = null; if (target.always) target.then?.(); }
   }
 
-  // Moves on x, then z, undoing either axis that would put the body inside a collider, so you slide along walls and desks.
-  step(delta) {
-    for (const axis of ['x', 'z']) {
-      if (!delta[axis]) continue;
-      const before = this.position[axis];
-      this.position[axis] += delta[axis];
-      if (this.blocked()) this.position[axis] = before;
-    }
-  }
-  blocked() {
-    const { x, z } = this.position;
-    return this.colliders().some(box => x > box.min.x - RADIUS && x < box.max.x + RADIUS && z > box.min.z - RADIUS && z < box.max.z + RADIUS);
-  }
+  step(delta) { this.position.copy(resolveStep(this.position, delta, this.colliders(), this.room())); }
 
   dispose() { for (const fn of this.disposers) fn(); }
+}
+
+// Moves on x, then z, undoing an axis that would push the body into a collider it wasn't already in, so you slide along
+// walls and desks, and a desk that appears on top of you can't trap you. Then keeps you inside the room.
+const inside = (p, box) => p.x > box.min.x - RADIUS && p.x < box.max.x + RADIUS && p.z > box.min.z - RADIUS && p.z < box.max.z + RADIUS;
+export function resolveStep(position, delta, colliders, room) {
+  const p = position.clone(), already = new Set(colliders.filter(box => inside(p, box)));
+  for (const axis of ['x', 'z']) {
+    if (!delta[axis]) continue;
+    const before = p[axis];
+    p[axis] += delta[axis];
+    if (colliders.some(box => !already.has(box) && inside(p, box))) p[axis] = before;
+  }
+  if (room) { p.x = THREE.MathUtils.clamp(p.x, RADIUS, room.width - RADIUS); p.z = THREE.MathUtils.clamp(p.z, RADIUS, room.depth - RADIUS); }
+  return p;
 }
 
 // What's under a screen point: a character (by session id) or a spot on the floor.

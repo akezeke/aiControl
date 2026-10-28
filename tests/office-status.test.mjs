@@ -38,3 +38,6 @@ test('monitor shows the title and the last lines, one line each, marked by kind'
   assert.equal(m.lines[0].text, 'step 2');
   assert.deepEqual(monitorLines({ project: 'x' }), { title: 'x', lines: [] });
 });
+test('a subagent that needs you speaks up', () => {
+  assert.equal(officeStatus({ status: 'permission', parentId: 'p', requests: [{ title: 'Run it' }] }).bubble?.highlight, true);
+});

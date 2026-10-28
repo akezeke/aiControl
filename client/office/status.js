@@ -30,7 +30,8 @@ export function officeStatus(session) {
     idle: '',
     error: session.detail || 'Error',
   }[session.status];
-  const talks = !session.parentId || session.status === 'working';
+  // Helpers on a desk only chat while working, but always speak up when they need you.
+  const talks = !session.parentId || session.status === 'working' || screen === 'amber';
   return { pose, expression, screen, bubble: talks ? { icon, text: oneLine(text), highlight: screen === 'amber' } : null };
 }
 

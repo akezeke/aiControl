@@ -1,9 +1,10 @@
 // Where everyone sits: one pod of paired desks per project, pods on a grid, the door and an open start area at the front (+z).
 // Pure, so it runs under node --test. Units are metres; the room spans x 0..width, z 0..depth.
-// Everything is anchored at the back-left corner so a growing pod or grid only extends right and forward and nobody already seated moves.
-// ponytail: when the widest pod gains a pair, pods in later columns still shift right; fixed-width cells if that's distracting.
+// Everything is anchored at the back-left corner, pods keep their grid cell once placed, and the room only grows,
+// so nobody already seated moves when projects come and go.
+// ponytail: cells fit CELL_PAIRS pairs; a pod bigger than that widens every cell and shifts later columns once.
 export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3, VACANT_MS = 30_000;
-const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8;
+const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8, CELL_PAIRS = 3;
 
 const podKey = session => session.cwd || session.project || 'Unknown';
 
@@ -44,9 +45,19 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
     pod.depth = 2 * DESK_D + 2 * CHAIR;
   }
 
-  const cols = Math.max(1, Math.ceil(Math.sqrt(pods.length))), rows = Math.max(1, Math.ceil(pods.length / cols));
-  const cellW = Math.max(DESK_W, ...pods.map(p => p.width)) + AISLE, cellD = Math.max(...pods.map(p => p.depth), 2 * DESK_D + 2 * CHAIR) + AISLE;
-  const width = Math.max(MIN_ROOM, cols * cellW + AISLE), depth = Math.max(MIN_ROOM, rows * cellD + AISLE + START);
+  // Grid: columns and cell size only ever grow; each pod keeps the cell it was first given.
+  const grid = previous?.grid || { cols: 1, cellW: 0 };
+  const cols = Math.max(grid.cols, Math.ceil(Math.sqrt(pods.length)));
+  const cellW = Math.max(grid.cellW, CELL_PAIRS * DESK_W + AISLE, ...pods.map(p => p.width + AISLE)), cellD = 2 * DESK_D + 2 * CHAIR + AISLE;
+  const before = new Map((previous?.pods || []).map(pod => [pod.key, pod])), taken = new Set();
+  for (const pod of pods) { const old = before.get(pod.key); if (old && old.col < cols && !taken.has(`${old.col},${old.row}`)) { pod.col = old.col; pod.row = old.row; taken.add(`${pod.col},${pod.row}`); } }
+  for (const pod of pods) {
+    if (pod.col !== undefined) continue;
+    let cell = 0; while (taken.has(`${cell % cols},${Math.floor(cell / cols)}`)) cell++;
+    pod.col = cell % cols; pod.row = Math.floor(cell / cols); taken.add(`${pod.col},${pod.row}`);
+  }
+  const rows = Math.max(1, ...pods.map(pod => pod.row + 1));
+  const width = Math.max(MIN_ROOM, previous?.room.width || 0, cols * cellW + AISLE), depth = Math.max(MIN_ROOM, previous?.room.depth || 0, rows * cellD + AISLE + START);
 
   const vacant = new Map(top.filter(s => s.vacantSince !== undefined).map(s => [s.id, s.vacantSince]));
   const kids = new Map();
@@ -56,10 +67,10 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
   }
 
   const desks = new Map();
-  pods.forEach((pod, i) => {
-    pod.left = AISLE + (i % cols) * cellW;
+  pods.forEach(pod => {
+    pod.left = AISLE + pod.col * cellW;
     pod.x = pod.left + pod.width / 2;
-    pod.z = AISLE + Math.floor(i / cols) * cellD + pod.depth / 2;
+    pod.z = AISLE + pod.row * cellD + pod.depth / 2;
     pod.slots.forEach((id, slot) => {
       if (id === undefined) return;
       const side = slot % 2, pair = slot >> 1, children = kids.get(id) || [];
@@ -75,7 +86,7 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
   });
 
   return {
-    pods: pods.map(({ key, name, x, z, width, depth: d, slots }) => ({ key, name, x, z, width, depth: d, deskIds: slots.filter(id => id !== undefined) })),
-    desks, room: { width, depth }, door: { x: width / 2, z: depth },
+    pods: pods.map(({ key, name, x, z, width, depth: d, slots, col, row }) => ({ key, name, x, z, width, depth: d, col, row, deskIds: slots.filter(id => id !== undefined) })),
+    desks, room: { width, depth }, door: { x: width / 2, z: depth }, grid: { cols, cellW },
   };
 }
