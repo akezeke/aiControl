@@ -6,6 +6,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { toonMaterial } from './toon.js';
 import { createLights, dims } from './lights.js';
 import { createSlacking } from './slack.js';
+import { createWindows } from './windows.js';
 import { DESK_W, DESK_D } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
@@ -260,15 +261,10 @@ export function createRoom(scene) {
     };
     const shadowUnder = (x, z, w, d, rotation = 0) => { const s = floorShadow(w, d, 0.3); s.position.set(x, 0.016, z); s.rotation.y = rotation; shell.add(s); };
 
-    // Windows on the back wall: a frame around a sky gradient (no real cutout needed), with posters and plants between them.
-    const sky = canvasTexture(64, 128, g => { const grad = g.createLinearGradient(0, 0, 0, 128); grad.addColorStop(0, '#6ec3f4'); grad.addColorStop(1, '#d8f1ff'); g.fillStyle = grad; g.fillRect(0, 0, 64, 128); g.fillStyle = '#ffffffcc'; g.beginPath(); g.ellipse(22, 40, 14, 6, 0, 0, 7); g.ellipse(34, 37, 10, 7, 0, 0, 7); g.fill(); });
-    const count = Math.max(1, Math.floor(width / 4));
-    for (let i = 0; i < count; i++) {
-      const x = -width / 2 + (i + 0.5) * width / count;
-      const frame = mesh(rounded(1.5, 1.3, 0.06, 0.03), toonMaterial('#ffffff'), 0.008); frame.position.set(x, 0.25, WALL_T / 2 + 0.03); back.add(frame);
-      const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 1.16), new THREE.MeshBasicMaterial({ map: sky, transparent: true })); glass.position.set(x, 0.25, WALL_T / 2 + 0.065); back.add(glass);
-      const bar = mesh(new THREE.BoxGeometry(0.05, 1.16, 0.03), toonMaterial('#ffffff'), 0); bar.position.set(x, 0.25, WALL_T / 2 + 0.07); back.add(bar);
-      const sill = mesh(rounded(1.6, 0.05, 0.16, 0.02), toonMaterial('#ffffff'), 0.006); sill.position.set(x, -0.43, WALL_T / 2 + 0.08); back.add(sill);
+    // Windows on the back wall (windows.js), with posters and plants between them.
+    const count = Math.max(1, Math.floor(width / 4)), xs = Array.from({ length: count }, (_, i) => -width / 2 + (i + 0.5) * width / count);
+    back.add(createWindows(xs));
+    for (const [i, x] of xs.entries()) {
       if (i) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
     }
     place(plant('tree'), 0.5, 0.5); place(plant('snake'), width - 0.5, 0.5);
