@@ -1,5 +1,6 @@
 // You, the boss: first-person movement with WASD (Shift runs, Space jumps), arrow keys to look, collision with walls and desks.
 // With a mouse, a click captures it (pointer lock): moving looks around, a click picks what's under the dot, right-click or Esc lets go.
+// Looking with the arrow keys aims with the dot too, until the mouse moves.
 // Touch drags to look and taps to walk or pick someone.
 import * as THREE from 'three';
 import { isTypingTarget } from './status.js';
@@ -22,18 +23,18 @@ export class Player {
   constructor(canvas, { colliders, room, onPick }) {
     this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08;
     this.colliders = colliders; this.room = room; this.onPick = onPick; this.held = new Set(); this.target = null;
-    this.locked = false; this.onLock = null; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
+    this.locked = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
     this.disposers = [];
     listen(document, 'keydown', event => {
       this.shift = event.shiftKey;
       if (!officeHasKeys(event)) return;
-      if (keys[event.code] || turns[event.code]) { this.held.add(event.code); this.target = null; event.preventDefault(); }
+      if (keys[event.code] || turns[event.code]) { this.held.add(event.code); this.target = null; if (turns[event.code]) this.keyLook = true; event.preventDefault(); }
       else if (event.code === 'Space' && sceneFocused(canvas)) { event.preventDefault(); this.jump(); }
     });
     listen(document, 'keyup', event => { this.shift = event.shiftKey; this.held.delete(event.code); });
     listen(window, 'blur', () => { this.held.clear(); this.shift = false; });
-    listen(document, 'pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; this.onLock?.(this.locked); });
+    listen(document, 'pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; });
     const look = (x, y, speed) => { this.yaw -= x * speed; this.pitch = THREE.MathUtils.clamp(this.pitch - y * speed, -1.1, 0.8); };
     // Captured: every move looks, a left click picks under the dot, a right click lets go.
     // Otherwise a drag looks around and a press that barely moves is a click on what's under it.
@@ -41,11 +42,14 @@ export class Player {
     listen(canvas, 'contextmenu', event => event.preventDefault());
     listen(canvas, 'pointerdown', event => {
       if (this.locked) { if (event.button === 0) this.onPick(this.centre, true); else if (event.button === 2) this.unlock(); return; }
+      this.keyLook = false;
       if (event.button !== 0) return;
       drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }; canvas.setPointerCapture(event.pointerId);
     });
     listen(canvas, 'pointermove', event => {
       if (this.locked) { look(event.movementX, event.movementY, LOCKED_LOOK); return; }
+      // Browsers send still moves when the page shifts under the pointer (bubbles move); only a real one takes over from the keys.
+      if (event.pointerType === 'mouse' && (event.movementX || event.movementY)) this.keyLook = false;
       if (!drag || drag.id !== event.pointerId) return;
       if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < DRAG_SLOP) return;
       drag.moved = true;
@@ -58,6 +62,8 @@ export class Player {
   // Browsers without pointer lock, or that refuse it, keep drag-to-look.
   lock() { if (!this.locked) try { this.canvas.requestPointerLock()?.catch?.(() => {}); } catch { /* not allowed here */ } }
   unlock() { if (this.locked) document.exitPointerLock(); }
+  // Aiming with the dot in the middle rather than the pointer: captured, or looking with the arrow keys.
+  get aiming() { return this.locked || this.keyLook; }
   get centre() { const r = this.canvas.getBoundingClientRect(); return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
   place(x, z, yaw) { this.position.set(x, EYE, z); this.yaw = yaw; }

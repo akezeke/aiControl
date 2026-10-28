@@ -49,7 +49,7 @@ export class Bubbles {
     }
   }
 
-  // The session whose bubble is at a screen point (under the dot while the mouse is captured, when clicks go to the canvas).
+  // The session whose bubble is at a screen point (under the dot when aiming with it).
   at(x, y) { return document.elementFromPoint(x, y)?.closest('.office-bubble')?.dataset.id || null; }
 
   dispose() { this.layer.remove(); }
@@ -70,7 +70,7 @@ export function createOverlays(container, { onNext, onList, onOverview }) {
     setWaiting(n) { waiting.hidden = !n; waiting.textContent = `⚠ ${n}`; },
     setUsageLow(on) { usage.hidden = !on; },
     setOverview(on) { eye.setAttribute('aria-pressed', String(on)); },
-    setLocked(on) { dot.hidden = !on; },
+    showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
     // The hint goes once you've used the overview.
     overviewUsed() { if (hint.hidden) return; hint.classList.add('gone'); setTimeout(() => { hint.hidden = true; }, 600); try { localStorage.setItem(hintKey, '1'); } catch { /* per tab only */ } },

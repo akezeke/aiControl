@@ -33,7 +33,7 @@ export function mountOffice(container, hooks) {
   const frames = new Set(), listeners = [];
   const listen = (target, type, fn) => { target.addEventListener(type, fn); listeners.push(() => target.removeEventListener(type, fn)); };
   // What a click at a screen point gets: a speech bubble under the dot counts as its character.
-  const under = at => { const id = player.locked && bubbles.at(at.clientX, at.clientY); return id ? { kind: 'character', id } : pick(at, renderer.domElement, camera, scene); };
+  const under = at => { const id = player.aiming && bubbles.at(at.clientX, at.clientY); return id ? { kind: 'character', id } : pick(at, renderer.domElement, camera, scene); };
   const player = new Player(renderer.domElement, {
     colliders: () => room.colliders,
     room: () => layout?.room,
@@ -56,26 +56,29 @@ export function mountOffice(container, hooks) {
     view.setOverview(on); overlays.setOverview(on);
   };
   const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview) });
-  player.onLock = locked => overlays.setLocked(locked);
-  // Tab toggles the overview and Esc leaves it (Tab only from the scene itself: on a button or link it keeps moving focus). E talks to whoever is in front of you.
+  // Tab toggles the overview and Esc leaves it (Tab only from the scene itself: on a button or link it keeps moving focus).
+  // E talks to whoever is outlined, else to whoever is in front of you.
   listen(document, 'keydown', event => {
     if (!officeHasKeys(event)) return;
     if (event.key === 'Tab' && sceneFocused(renderer.domElement)) { event.preventDefault(); if (!event.repeat) overview(!view.overview); }
     else if (event.key === 'Escape' && view.overview) overview(false);
-    else if (event.code === 'KeyE') { event.preventDefault(); office.talkTo(office.nearest()); }
+    else if (event.code === 'KeyE') { event.preventDefault(); office.talkTo(aimed || office.nearest()); }
   });
-  // Outline whatever a click would get: under the dot while the mouse is captured, else under the mouse. Ten times a second is plenty.
-  let mouse = null, hovered = null, hoverIn = 0;
+  // Outline whatever a click (or E) would get: under the dot when aiming with it, else under the mouse. Ten times a second is plenty.
+  let mouse = null, hovered = null, aimed = null, dot = false, hoverIn = 0;
   listen(renderer.domElement, 'pointermove', event => { mouse = event.pointerType === 'mouse' ? event : null; });
   listen(renderer.domElement, 'pointerleave', () => { mouse = null; });
   const hover = dt => {
+    const aiming = player.aiming && !view.overview && !office.talking;
+    if (aiming !== dot) { dot = aiming; overlays.showDot(aiming); hoverIn = 0; }
     if ((hoverIn -= dt) > 0) return;
     hoverIn = 0.1;
-    const at = office.talking ? null : player.locked ? player.centre : mouse, hit = at && under(at);
-    const node = hit?.kind === 'character' ? cast.characters.get(hit.id)?.root || null : null;
+    const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
+    aimed = hit?.kind === 'character' ? hit.id : null;
+    const node = aimed && cast.characters.get(aimed)?.root || null;
+    renderer.domElement.style.cursor = node && !aiming ? 'pointer' : '';
     if (node === hovered) return;
-    highlight(hovered, false); highlight(node, true); hovered = node;
-    overlays.setAim(!!node); renderer.domElement.style.cursor = node ? 'pointer' : '';
+    highlight(hovered, false); highlight(node, true); hovered = node; overlays.setAim(!!node);
   };
   frames.add(dt => {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
