@@ -448,7 +448,7 @@ function renderComposer(session) {
   const region = document.querySelector('#message-composer'); if (!region) return;
   region.currentSession = session;
   let draft = messageDrafts.get(session.id);
-  if (!draft) { draft = { text: '', busy: false, error: '', notice: '' }; messageDrafts.set(session.id, draft); }
+  if (!draft) { draft = { text: '', busy: false, error: '' }; messageDrafts.set(session.id, draft); }
   if (!region.querySelector('form')) {
     const queue = el('div', 'message-queue');
     const form = el('form', 'message-form');
@@ -467,11 +467,11 @@ function renderComposer(session) {
       const mode = 'send';
       if (!current.messaging?.send || messagingUnavailableReason(current, state.snapshot)) return;
       if (!draft.submission || draft.submission.text !== draft.text || draft.submission.mode !== mode) draft.submission = { text: draft.text, mode, clientMessageId: uuid() };
-      draft.busy = true; draft.error = ''; draft.notice = ''; update();
+      draft.busy = true; draft.error = ''; update();
       try {
         const result = await api(`sessions/${encodeURIComponent(session.id)}/messages`, draft.submission);
         draft.text = ''; draft.revision = (draft.revision || 0) + 1; draft.submission = null;
-        draft.notice = result.status === 'submitted' ? 'Sent via inbox: Claude sees it as another session’s message (not in tmux).' : result.status === 'steered' ? 'Sent into the current work.' : 'Sent.';
+        toast(result.status === 'submitted' ? 'Sent via inbox (not tmux)' : result.status === 'steered' ? 'Sent into the current work' : 'Sent');
         if (state.selected === session.id) document.querySelector('#recent-messages')?.historyScroll?.jumpToLatest();
         await refresh();
       } catch (error) { draft.error = error.message; }
@@ -491,7 +491,7 @@ function renderComposer(session) {
       setProperty(submit, 'disabled', draft.busy || !draftInput.hasText || !available || !!state.error);
       setProperty(submit, 'textContent', draft.busy ? 'Sending…' : 'Send');
       setProperty(feedback, 'className', `composer-feedback ${draft.error ? 'form-error' : ''}`);
-      setProperty(feedback, 'textContent', draft.error || unavailable || draft.notice);
+      setProperty(feedback, 'textContent', draft.error || unavailable);
       for (const edit of queue.querySelectorAll('[data-edit-queued]')) setProperty(edit, 'disabled', draft.busy || draftInput.hasText || !available || !!state.error);
     }
     region.updateComposer = update;
@@ -520,7 +520,7 @@ function renderComposer(session) {
           // A message that already started must never become another draft.
           await api(`sessions/${encodeURIComponent(session.id)}/queue/${encodeURIComponent(message.id)}/cancel`, {});
           draft.text = message.text; draft.revision = (draft.revision || 0) + 1; draft.submission = null;
-          draft.notice = 'Removed from the queue. Press Send to join the current work.';
+          toast('Removed from the queue');
           await refresh();
         } catch (error) { draft.error = error.message; }
         finally { draft.busy = false; region.updateComposer(); region.querySelector('textarea')?.focus(); }

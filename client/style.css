@@ -328,7 +328,9 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .queued-message { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }
 .queued-message p { flex: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 12px; line-height: 1.4; color: var(--text-2); }
 .queued-message .quiet-button { flex: none; min-height: 36px; padding: 6px 10px; font-size: 12px; }
-.toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); z-index: 30; transform: translateX(-50%); padding: 10px 18px; border-radius: 99px; background: var(--text); color: var(--panel); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); white-space: nowrap; }
+.toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); z-index: 30; transform: translateX(-50%); max-width: calc(100% - 32px); pointer-events: none; padding: 10px 18px; border-radius: 99px; background: var(--text); color: var(--panel); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Over a session, the composer sits at the bottom. */
+.panel-open .toast { top: max(16px, env(safe-area-inset-top)); bottom: auto; }
 
 @media (prefers-reduced-motion: no-preference) {
   .panel-backdrop { animation: fade-in .18s ease-out; }
