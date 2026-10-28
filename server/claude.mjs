@@ -92,7 +92,8 @@ export class ClaudeAdapter {
           const via = await this.messaging.available(record), canSend = !!via;
           registrations.set(record.sessionId, { record, account }); owners.set(record.sessionId, account);
           paths.set(`claude:${record.sessionId}`, transcript);
-          const status = hook?.status || states[record.status] || 'unknown', tmux = via === 'tmux';
+          // A parked session (handed off to a background job) keeps its last status in the registration, so it can say busy for days.
+          const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux';
           sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
           for (const agent of await this.subagents(record, transcript, paths)) sessions.set(agent.id, agent);
         } catch { /* ignore partially written and stale registration files */ }

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { isTypingTarget } from './status.js';
 
 export const EYE = 1.5;
-const SPEED = 3, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
+const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
 const keys = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] };
 const turns = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));

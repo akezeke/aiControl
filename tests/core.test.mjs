@@ -219,6 +219,15 @@ test('Claude discovery excludes stale PIDs and uses full paths to distinguish pr
   assert.equal(adapter.list()[0].control, false);
 });
 
+test('a parked Claude session is idle, whatever its registration last said', async t => {
+  const { dir } = await fixture(t);
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(join(dir, '789.json'), JSON.stringify({ pid: 789, procStart: 'live', sessionId: 'parked', cwd: '/home/c/project', status: 'busy', parkedJobId: 'job' }));
+  const adapter = new ClaudeAdapter(new RequestStore(), join(dir, 'unused.sock'), { sessionsDir: dir, alive: async () => true });
+  await adapter.refresh();
+  assert.equal(adapter.list()[0].status, 'idle');
+});
+
 test('Tailscale address validation refuses public, LAN and wildcard interfaces', () => {
   for (const valid of ['100.64.0.1', '100.127.255.254']) assert.ok(isTailscaleIP(valid));
   for (const invalid of ['0.0.0.0', '127.0.0.1', '192.168.1.4', '100.63.0.1', '100.128.0.1', '100.80.0.999', '::', 'example.com']) assert.equal(isTailscaleIP(invalid), false);
