@@ -1,12 +1,12 @@
-// The camera: first person at the boss's eyes, or the overview (Tab) lifted over the room at about 45°.
+// The camera: first person at the boss's eyes, or the overview (Tab): the desks from the front and above, as close as fits them.
 // Walls between the camera and the room, and the ceiling, fade out as the overview rises.
 import * as THREE from 'three';
-import { createFruit } from './fruit.js';
 import { toonMaterial } from './toon.js';
 import { canvasTexture } from './furniture.js';
-import { EYE } from './player.js';
 
 const EASE = 5, FADED = 0.12, RUN_FOV = 6, STRIDE = 1.6; // radians of walk cycle per metre
+// Overview: looking down at 55°, with room for the heads and bubbles over the desks and a margin round the screen edge.
+const OVER_PITCH = 55 * Math.PI / 180, OVER_HEADS = 2.2, OVER_MARGIN = 0.07;
 
 export class OfficeCamera {
   constructor(camera, scene, player, room, { reducedMotion }) {
@@ -33,12 +33,15 @@ export class OfficeCamera {
     const arm = new THREE.QuadraticBezierCurve3(wrist, new THREE.Vector3(0.5, -0.32, -0.5), new THREE.Vector3(0.62, -0.7, -0.25));
     this.hands.add(new THREE.Mesh(new THREE.TubeGeometry(arm, 16, 0.02, 8), ink));
     this.was = { x: 0, z: 0, yaw: 0, pitch: 0 }; this.walk = this.stride = 0; this.sway = new THREE.Vector2();
-    // Overview: you're a pineapple in a tie.
-    this.boss = createFruit({ fruit: 'pineapple', color: '#f2b632', accessory: 'tie' }); this.boss.group.visible = false; scene.add(this.boss.group);
     this.from = new THREE.Vector3(); this.look = new THREE.Vector3();
   }
 
   setOverview(on) { this.overview = on; }
+  // The overview frames each pod with its chairs (not the box round them all, which takes in empty corners), or the
+  // whole room while it's empty. Boxes are [minX, maxX, minZ, maxZ].
+  setLayout({ pods, room: { width, depth } }) {
+    this.boxes = pods.length ? pods.map(pod => [pod.x - pod.width / 2 - 0.6, pod.x + pod.width / 2 + 0.6, pod.z - pod.depth / 2 - 0.9, pod.z + pod.depth / 2 + 0.9]) : [[0, width, 0, depth]];
+  }
   // Frames a point (a character) from where you stand; null hands the camera back.
   focus(point) { this.focusPoint = point?.clone() || null; }
 
@@ -51,9 +54,8 @@ export class OfficeCamera {
     const p = this.player, eye = p.position, look = new THREE.Vector3(Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch), Math.cos(p.yaw) * Math.cos(p.pitch)).add(eye);
     // Talking: ease the view onto the character's face, a little lower and closer than standing eye level.
     if (this.focusAmount > 0.001 && this.focusPoint) look.lerp(this.focusPoint, this.focusAmount);
-    const size = this.room.size?.split('x').map(Number) || [10, 10], [w, d] = size, height = (Math.max(w, d) * 0.62 + 1) / Math.min(1, this.camera.aspect * 1.2); // pull back further on tall (phone) screens
-    const overFrom = new THREE.Vector3(w / 2, height, d + height * 0.45), overLook = new THREE.Vector3(w / 2, 0, d / 2 + 0.3);
-    this.from.copy(eye).lerp(overFrom, this.amount); this.look.copy(look).lerp(overLook, this.amount);
+    this.from.copy(eye); this.look.copy(look);
+    if (this.amount) { const over = this.overviewPose(); this.from.lerp(over.from, this.amount); this.look.lerp(over.look, this.amount); }
     this.camera.position.copy(this.from); this.camera.lookAt(this.look);
     // Running, or flying over to someone, widens the view a little.
     const fov = this.fov + (p.running && !instant ? RUN_FOV : 0);
@@ -67,8 +69,6 @@ export class OfficeCamera {
 
     this.hands.visible = this.amount < 0.2 && !this.focusPoint;
     this.carry(dt, instant);
-    this.boss.group.visible = this.amount > 0.2;
-    this.boss.group.position.set(eye.x, eye.y - EYE, eye.z); this.boss.group.rotation.y = p.yaw;
     this.fade();
   }
 
@@ -85,6 +85,38 @@ export class OfficeCamera {
     this.coffee.rotation.set(Math.cos(this.stride * 2) * 0.05 * this.walk - this.sway.y * 3, 0, -side * 0.07 - this.sway.x * 4);
   }
 
+  // The closest spot on the overview's slope that keeps the boxes (floor up to head height) on screen, centred.
+  // Worked out again only when the boxes or the screen's shape change.
+  overviewPose() {
+    const boxes = this.boxes || [[0, 10, 0, 10]], key = `${boxes.join(';')},${this.camera.aspect.toFixed(3)},${this.fov}`;
+    if (this.pose?.key === key) return this.pose;
+    const cam = new THREE.PerspectiveCamera(this.fov, this.camera.aspect), slope = new THREE.Vector3(0, Math.sin(OVER_PITCH), Math.cos(OVER_PITCH));
+    const corners = boxes.flatMap(([minX, maxX, minZ, maxZ]) => [minX, maxX].flatMap(x => [0, OVER_HEADS].flatMap(y => [minZ, maxZ].map(z => new THREE.Vector3(x, y, z)))));
+    const span = i => [Math.min(...boxes.map(box => box[i])), Math.max(...boxes.map(box => box[i + 1]))];
+    const [minX, maxX] = span(0), [minZ, maxZ] = span(2), target = new THREE.Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2), p = new THREE.Vector3();
+    // How far the corners reach across the screen from `distance` along the slope; null while one is behind the camera.
+    const extent = distance => {
+      cam.position.copy(target).addScaledVector(slope, distance); cam.lookAt(target); cam.updateMatrixWorld();
+      const e = { left: Infinity, right: -Infinity, bottom: Infinity, top: -Infinity };
+      for (const corner of corners) {
+        p.copy(corner).project(cam); if (p.z < -1 || p.z > 1) return null;
+        e.left = Math.min(e.left, p.x); e.right = Math.max(e.right, p.x); e.bottom = Math.min(e.bottom, p.y); e.top = Math.max(e.top, p.y);
+      }
+      return e;
+    };
+    let distance = 0;
+    for (let pass = 0; pass < 3; pass++) {
+      let near = 0.5, far = 300;
+      for (let i = 0; i < 30; i++) { const mid = (near + far) / 2, e = extent(mid); if (e && Math.max(e.right, -e.left, e.top, -e.bottom) <= 1 - OVER_MARGIN) far = mid; else near = mid; }
+      distance = far;
+      // Nearer things spread wider, and the back row's heads reach further up the screen than the front row's chairs reach
+      // down: slide the target to even out the gaps.
+      const e = extent(distance), half = Math.tan(THREE.MathUtils.degToRad(this.fov / 2)) * distance, up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
+      target.x += (e.left + e.right) / 2 * half * this.camera.aspect; target.addScaledVector(up, (e.top + e.bottom) / 2 * half);
+    }
+    return this.pose = { key, from: target.clone().addScaledVector(slope, distance), look: target.clone() };
+  }
+
   // The ceiling goes with the overview; a wall fades when it faces away from the camera (it's between the camera and the room).
   fade() {
     const { ceiling, walls } = this.room.fadeables;
@@ -98,5 +130,5 @@ export class OfficeCamera {
     }
   }
 
-  dispose() { this.boss.dispose(); this.camera.removeFromParent(); }
+  dispose() { this.camera.removeFromParent(); }
 }

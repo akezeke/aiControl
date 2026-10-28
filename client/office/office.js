@@ -42,7 +42,7 @@ export function mountOffice(container, hooks) {
       const hit = under(at);
       if (hit?.kind === 'character') office.talkTo(hit.id);
       else if (mouse && !player.locked && !view.overview) player.lock();
-      else if (hit?.kind === 'floor') player.walkTo(hit.point);
+      else if (hit?.kind === 'floor' && !view.overview) player.walkTo(hit.point);
     },
   });
   const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches });
@@ -89,7 +89,9 @@ export function mountOffice(container, hooks) {
   };
   frames.add(dt => {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
-    player.update(dt); view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); hover(dt);
+    // The overview only picks people: you stay where you were.
+    if (!view.overview) player.update(dt);
+    view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); hover(dt);
   });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
@@ -113,7 +115,7 @@ export function mountOffice(container, hooks) {
     onFrame(fn) { frames.add(fn); return () => frames.delete(fn); },
     update(snapshot, { error = '' } = {}) {
       office.snapshot = snapshot; office.error = error;
-      layout = layoutOffice(snapshot.sessions, layout);
+      layout = layoutOffice(snapshot.sessions, layout); view.setLayout(layout);
       cast.frozen = !!error;
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id), monitor: monitorLines(session) }]));
       room.sync(layout, office.statuses);
