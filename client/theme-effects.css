@@ -1,5 +1,6 @@
 /* Theme hardware and motion. Decoration never blocks input; the map contacts are real sessions.
-   Cards and nav are rebuilt on every 3 s poll, so their looping animations use periods that divide 3 s.
+   Cards and nav are rebuilt on every 3 s poll, so their looping animations use periods that divide 3 s,
+   or a card's --since-load delay, which keeps them on a page-wide clock.
    Cards and group headings get FLIP transform animations from main.js, so card effects use translate or pseudo-elements.
    Never put transform, filter or backdrop-filter on .sidebar itself: it would trap the fixed theme dropdown. */
 @property --build { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
@@ -570,7 +571,7 @@
     .chat-header::before { animation: type-in .8s steps(26) .15s both; }
     .detail-panel { animation: steel-in .24s cubic-bezier(.3, .8, .3, 1); }
     .session-card[data-status=working] .agent-mark::after { animation: build 1.5s linear infinite; }
-    .session-card[data-status=working] .session-body::after { animation: build-bar 3s linear infinite; }
+    .session-card[data-status=working] .session-body::after { animation: build-bar 6s linear var(--since-load, 0s) infinite; }
     .session-card.needs-input .agent-mark::after, .console-contact:is([data-status=permission], [data-status=question])::before, .typing::after { animation: ready-flash 1s steps(1) infinite; }
     .live-label:not(.disconnected)::before { animation: signal-pulse 1.5s ease-in-out infinite; }
     .badge.green .dot::after { content: none; }
