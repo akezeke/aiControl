@@ -114,6 +114,12 @@ function signTexture(name) {
   });
 }
 
+// A sign that can hire wears a blue + badge on its corner, lit from inside like the sign's face, so both stay bright with the
+// lights off. Shared by every sign.
+let badgeLook;
+const badgeMaterials = () => badgeLook ??= [new THREE.MeshBasicMaterial({ color: '#2f7cf6', userData: { shared: true } }), ...Array(2).fill(new THREE.MeshBasicMaterial({ userData: { shared: true },
+  map: canvasTexture(64, 64, (g, w) => { g.fillStyle = '#2f7cf6'; g.fillRect(0, 0, w, w); g.fillStyle = '#ffffff'; g.fillRect(w * 0.44, w * 0.22, w * 0.12, w * 0.56); g.fillRect(w * 0.22, w * 0.44, w * 0.56, w * 0.12); }) }))];
+
 export function createRoom(scene) {
   const root = new THREE.Group(); scene.add(root);
   const shell = new THREE.Group(); root.add(shell);
@@ -164,6 +170,7 @@ export function createRoom(scene) {
         sign.group.position.set(pod.x, 0, pod.z);
         sign.rug.scale.set(pod.width + 0.6, 1, pod.depth + 0.4);
         sign.board.userData.hire = pod.cwd ? { cwd: pod.cwd, name: pod.name } : null; // clicking it starts another agent in the pod's folder
+        sign.badge.visible = !!pod.cwd;
         const waiting = pod.deskIds.some(id => statuses.get(id)?.bubble?.highlight);
         if (sign.waiting !== waiting) { sign.waiting = waiting; sign.texture.redraw(waiting); }
       }
@@ -193,11 +200,13 @@ export function createRoom(scene) {
 
   function createSign(pod) {
     const group = new THREE.Group(), texture = signTexture(pod.name), y = 2.35;
-    const board = new THREE.Mesh(once('sign', () => rounded(1.6, 0.4, 0.05, 0.03)), [null, null, null, null, null, null].map((_, i) => i === 4 || i === 5 ? dims(new THREE.MeshBasicMaterial({ map: texture })) : toonMaterial('#2f3542')));
+    const board = new THREE.Mesh(once('sign', () => rounded(1.6, 0.4, 0.05, 0.03)), [null, null, null, null, null, null].map((_, i) => i === 4 || i === 5 ? new THREE.MeshBasicMaterial({ map: texture }) : toonMaterial('#2f3542')));
     board.position.y = y; group.add(board);
+    // The badge is a child of the board, so it tilts with it in the overview; a coin, thick enough to show on both faces.
+    const badge = new THREE.Mesh(once('signBadge', () => new THREE.CylinderGeometry(0.12, 0.12, 0.07, 24).rotateX(Math.PI / 2)), badgeMaterials()); badge.position.set(0.8, 0.2, 0); board.add(badge);
     for (const x of [-0.6, 0.6]) { const cord = new THREE.Mesh(once('cord', () => new THREE.CylinderGeometry(0.008, 0.008, WALL_H - y - 0.2, 6)), toonMaterial('#2f3542')); cord.position.set(x, (WALL_H + y + 0.2) / 2, 0); group.add(cord); }
     const rug = new THREE.Mesh(once('rug', () => new RoundedBoxGeometry(1, 0.012, 1, 2, 0.005)), toonMaterial(teams[podColors.get(pod.key)][0])); rug.position.y = 0.006; group.add(rug);
-    return { group, board, texture, rug, waiting: null };
+    return { group, board, badge, texture, rug, waiting: null };
   }
 
   function removeDesk(desk) {

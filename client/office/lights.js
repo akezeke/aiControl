@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { mesh, rounded } from './furniture.js';
 import { toonMaterial } from './toon.js';
 
-const KEY = 'office-lights', DIM = 0.2; // the share of its brightness a dimmed board, sign or clock keeps
+const KEY = 'office-lights', DIM = 0.2; // the share of its brightness a dimmed board or clock keeps (pod signs stay lit)
 // The screens' light is a fixed pool of spot lights on the nearest lit desks: adding lights would recompile every material.
 const SCREENS = 8, SCREEN_POWER = 1.6, SCREEN_LIT = 0.3; // the share they keep while the room lights are on
 // Each screen tone's light, a whiter shade of its accent, and how bright.
@@ -41,7 +41,7 @@ export function createLights(root, beam) {
   const lights = {
     get on() { return on; },
     toggle() { on = !on; show(); try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch {} },
-    // Something new (a sign, a rebuilt shell) may need dimming.
+    // Something new (a rebuilt shell) may need dimming.
     refresh() { stale = true; },
     // A rocker switch with a locator light that glows while the lights are off; clicking it (userData.toggle) flips them.
     createSwitch() {
