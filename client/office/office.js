@@ -21,6 +21,7 @@ export function mountOffice(container, hooks) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#f6e7c8');
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
+  camera.userData.canvas = renderer.domElement;
   scene.add(new THREE.HemisphereLight('#fff6e0', '#b8a68a', 2.2));
   const sun = new THREE.DirectionalLight('#ffffff', 1.6); sun.position.set(4, 8, 3); scene.add(sun);
   const room = createRoom(scene);
@@ -44,6 +45,8 @@ export function mountOffice(container, hooks) {
   // Hold Tab for the overview.
   const tab = on => event => { if (event.key !== 'Tab' || (on && !officeHasKeys(event))) return; event.preventDefault(); overview(on); };
   const tabDown = tab(true), tabUp = tab(false);
+  const talkKey = event => { if (event.code === 'KeyE' && officeHasKeys(event)) { event.preventDefault(); office.talkTo(office.nearest()); } };
+  document.addEventListener('keydown', talkKey);
   document.addEventListener('keydown', tabDown); document.addEventListener('keyup', tabUp);
   frames.add(dt => { player.update(dt); view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id)); });
   const resize = () => {
@@ -88,9 +91,29 @@ export function mountOffice(container, hooks) {
       renderer.dispose(); renderer.domElement.remove();
     },
     room, cast, player, view,
-    // Task 9 replaces this with the walk-up-and-zoom; for now walk over and open the panel.
-    talkTo(id) { if (!id) return; const at = cast.positionOf(id); if (at) player.walkTo(at.setY(0), () => hooks.openPanel(id), 1.2); },
-    disposers: [() => bubbles.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { document.removeEventListener('keydown', tabDown); document.removeEventListener('keyup', tabUp); }],
+    // Walk up, they turn to you, the view settles on their face, then their session opens beside the scene.
+    talkTo(id) {
+      const head = id && cast.positionOf(id); if (!head) return;
+      const token = office.talking = {};
+      player.walkTo(head.clone().setY(0), () => {
+        if (office.talking !== token) return;
+        cast.greet(id); view.focus(head.clone().setY(head.y - 0.25));
+        setTimeout(() => { if (office.talking === token) hooks.openPanel(id); }, reducedMotion?.matches ? 0 : 550);
+      }, 1.1, true);
+    },
+    // main.js calls this when the session panel closes.
+    panelClosed() { office.talking = null; cast.greet(null); view.focus(null); },
+    // E: whoever is within 2 m and roughly in front of you.
+    nearest() {
+      let best = null, bestDistance = 2;
+      for (const id of cast.characters.keys()) {
+        const at = cast.positionOf(id); if (!at) continue;
+        const to = at.clone().sub(player.position).setY(0), distance = to.length();
+        if (distance < bestDistance && to.normalize().dot(player.forward) > Math.cos(Math.PI / 6)) { best = id; bestDistance = distance; }
+      }
+      return best;
+    },
+    disposers: [() => bubbles.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { document.removeEventListener('keydown', tabDown); document.removeEventListener('keyup', tabUp); document.removeEventListener('keydown', talkKey); }],
   };
   if (import.meta.env?.DEV) globalThis.__office = office; // poke at it from devtools
   return office;

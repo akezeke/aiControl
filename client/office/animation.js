@@ -60,6 +60,8 @@ export class Cast {
   }
 
   characterAt(id) { return this.characters.get(id)?.fruit; }
+  // Who's turned toward you right now (the one you're talking to), or null.
+  greet(id) { this.facingYou = id; }
   // Just above the character's head, in world space.
   positionOf(id) { const c = this.characters.get(id); if (!c?.fruit) return null; const p = c.fruit.body.getWorldPosition(new THREE.Vector3()); p.y += c.fruit.height * c.scale + 0.08; return p; }
 
@@ -121,8 +123,8 @@ export class Cast {
       if (c.plus || !c.anchor) continue;
       const { fruit } = c, pose = c.small ? (c.subPose === 'typing' ? 'standTyping' : 'standStill') : c.pose;
       const target = c.small ? smallPose(pose, t, c.seed) : poseTargets(pose, t, c.seed, fruit.height);
-      // Standing characters turn toward the boss when they want something.
-      if (!c.small && playerPos && (pose === 'waving' || pose === 'raising')) {
+      // Standing characters turn toward the boss when they want something, and anyone you're talking to turns in their chair.
+      if (!c.small && playerPos && (pose === 'waving' || pose === 'raising' || this.facingYou === c.id)) {
         const at = c.root.position, angle = Math.atan2(playerPos.x - at.x, playerPos.z - at.z) - c.anchor.facing;
         target.turn = Math.atan2(Math.sin(angle), Math.cos(angle));
       }

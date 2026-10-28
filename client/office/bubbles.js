@@ -42,7 +42,7 @@ export class Bubbles {
       p.copy(at).project(camera);
       if (p.z > 1 || Math.abs(p.x) > 1.2 || Math.abs(p.y) > 1.2) { node.hidden = true; continue; }
       node.hidden = false;
-      const scale = THREE.MathUtils.clamp(2.2 / distance, 0.55, 1);
+      const scale = THREE.MathUtils.clamp(4 / distance, 0.8, 1);
       node.style.transform = `translate(${((p.x + 1) / 2 * w).toFixed(1)}px, ${((1 - p.y) / 2 * h).toFixed(1)}px) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
       node.style.zIndex = String(1000 - Math.round(distance * 10));
     }

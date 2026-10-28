@@ -38,8 +38,8 @@ export class Player {
   face(point) { this.yaw = Math.atan2(point.x - this.position.x, point.z - this.position.z); }
   get forward() { return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
 
-  // Walks straight toward a floor point, sliding along whatever is in the way; `then` runs on arrival (not if interrupted or stuck).
-  walkTo(point, then, stopShort = 0) { this.target = { point: point.clone().setY(EYE), then, stopShort, stuck: 0 }; }
+  // Walks straight toward a floor point, sliding along whatever is in the way; `then` runs on arrival, or when stuck if `always`.
+  walkTo(point, then, stopShort = 0, always = false) { this.target = { point: point.clone().setY(EYE), then, stopShort, always, stuck: 0 }; }
 
   update(dt) {
     const move = new THREE.Vector3();
@@ -58,7 +58,8 @@ export class Player {
     const before = this.position.clone();
     this.step(to.normalize().multiplyScalar(Math.min(SPEED * dt, distance - target.stopShort)));
     target.stuck = this.position.distanceTo(before) < SPEED * dt * 0.2 ? target.stuck + dt : 0;
-    if (target.stuck > 0.4) this.target = null;
+    // Blocked by a desk: stop here; a talk still goes ahead from as close as we got.
+    if (target.stuck > 0.4) { this.target = null; if (target.always) target.then?.(); }
   }
 
   // Moves on x, then z, undoing either axis that would put the body inside a collider, so you slide along walls and desks.
