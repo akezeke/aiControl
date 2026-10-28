@@ -38,7 +38,7 @@ export class Bubbles {
         this.layer.append(node); this.nodes.set(id, node);
       }
       const label = bubble.text ? `${bubble.icon} ${bubble.text}` : bubble.icon;
-      if (node.dataset.label !== label) { node.dataset.label = label; drawIcon(node.children[0], bubble.icon); node.children[0].setAttribute('aria-label', bubble.icon); node.children[1].textContent = bubble.text; node.children[1].hidden = !bubble.text; }
+      if (node.dataset.label !== label) { node.dataset.label = label; drawIcon(node.children[0], bubble.icon); node.children[0].setAttribute('aria-label', bubble.icon); node.children[1].textContent = bubble.text; node.children[1].hidden = !bubble.text; node.width = 0; }
       node.classList.toggle('highlight', bubble.highlight);
       node.classList.toggle('unread', !!unread);
     }
@@ -46,9 +46,11 @@ export class Bubbles {
   }
 
   // Projects every bubble to the screen each frame; nearer ones are bigger and drawn on top.
-  // `zoomOut` (0..1) shrinks bubbles as the overview rises, so a whole room of them still fits.
+  // `zoomOut` (0..1) shrinks them a little as the overview rises, so a whole room of them still fits but stays readable.
+  // One by the side of the screen slides back in, its tail still pointing at whoever it belongs to.
   update(camera, positionOf, zoomOut = 0) {
     const { clientWidth: w, clientHeight: h } = this.layer, p = new THREE.Vector3();
+    if (this.width !== w) { this.width = w; for (const node of this.nodes.values()) node.width = 0; } // widths change with the media queries
     for (const [id, node] of this.nodes) {
       const at = positionOf(id);
       if (!at) { node.hidden = true; continue; }
@@ -56,8 +58,11 @@ export class Bubbles {
       p.copy(at).project(camera);
       if (p.z > 1 || Math.abs(p.x) > 1.2 || Math.abs(p.y) > 1.2) { node.hidden = true; continue; }
       node.hidden = false;
-      const scale = THREE.MathUtils.clamp(4 / distance, 0.8, 1) * (1 - 0.35 * zoomOut);
-      node.style.transform = `translate(${((p.x + 1) / 2 * w).toFixed(1)}px, ${((1 - p.y) / 2 * h).toFixed(1)}px) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
+      const scale = THREE.MathUtils.clamp(4 / distance, 0.8, 1) * (1 - 0.15 * zoomOut), x = (p.x + 1) / 2 * w;
+      const half = (node.width ||= node.offsetWidth) / 2, shift = THREE.MathUtils.clamp(x, half * scale + 4, Math.max(half * scale + 4, w - half * scale - 4)) - x;
+      node.style.transform = `translate(${(x + shift).toFixed(1)}px, ${((1 - p.y) / 2 * h).toFixed(1)}px) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
+      const tail = Math.round(THREE.MathUtils.clamp(-shift / scale, 22 - half, half - 22));
+      if (node.tail !== tail) { node.tail = tail; node.style.setProperty('--tail', `${tail}px`); }
       node.style.zIndex = String(1000 - Math.round(distance * 10));
     }
   }

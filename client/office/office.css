@@ -6,7 +6,7 @@
 
 .office-bubbles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .office-bubble { position: absolute; left: 0; top: 0; transform-origin: 50% 100%; pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 340px; padding: 9px 16px; border: 3px solid #1b1a1f; border-radius: 22px; background: #fffdf7; color: #1b1a1f; font: 700 18px/1.2 system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; cursor: pointer; white-space: nowrap; }
-.office-bubble::after { content: ''; position: absolute; left: 50%; bottom: -12px; width: 18px; height: 18px; margin-left: -9px; background: inherit; border: inherit; border-width: 0 3px 3px 0; transform: rotate(45deg); }
+.office-bubble::after { content: ''; position: absolute; left: calc(50% + var(--tail, 0px)); bottom: -12px; width: 18px; height: 18px; margin-left: -9px; background: inherit; border: inherit; border-width: 0 3px 3px 0; transform: rotate(45deg); }
 .office-bubble .text { overflow: hidden; text-overflow: ellipsis; }
 .office-bubble .icon { flex: none; width: 25px; height: 25px; }
 .office-bubble.highlight { background: #ffd166; animation: office-pulse 1.4s ease-in-out infinite; }
