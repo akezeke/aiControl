@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClaudeMessaging } from '../server/claude-messaging.mjs';
+import { ClaudeMessaging, spawnAgent } from '../server/claude-messaging.mjs';
 import { ClaudeAdapter } from '../server/claude.mjs';
 import { RequestStore } from '../server/requests.mjs';
 
@@ -179,4 +179,16 @@ test('a failed Enter after pasting is unconfirmed and never retyped', async () =
   await assert.rejects(adapter.send(paneRecord, body), e => e.status === 504);
   await assert.rejects(adapter.send(paneRecord, body), e => e.status === 504);
   assert.equal(calls.filter(args => args[0] === 'paste-buffer').length, 1);
+});
+
+test('new agents open in the tmux session working in the project, never the server’s own', async () => {
+  const run = panes => { const calls = []; return { calls, tmux: async args => { calls.push(args); return args[0] === 'list-panes' ? panes : '%42\n'; } }; };
+  const shared = run('aiControl\t/w/aiControl\nwork\t/w/app\nwork\t/w/aiControl\n');
+  assert.deepEqual(await spawnAgent('/w/aiControl', 'claude', shared.tmux), { session: 'work', pane: '%42' });
+  assert.deepEqual(shared.calls.slice(1), [['new-window', '-t', '=work:', '-d', '-c', '/w/aiControl', '-n', 'claude', '-P', '-F', '#{pane_id}'], ['send-keys', '-t', '%42', 'claude', 'Enter']]);
+  const fresh = run('aiControl\t/w/aiControl\n');
+  assert.equal((await spawnAgent('/w/aiControl', 'codex', fresh.tmux)).session, 'aiControl-agents');
+  assert.equal(fresh.calls[1][0], 'new-session');
+  assert.equal((await spawnAgent('/w/my.app', 'codex', run('').tmux)).session, 'my_app');
+  await assert.rejects(spawnAgent('/w/app', 'sh', run('').tmux), /Unknown agent/);
 });

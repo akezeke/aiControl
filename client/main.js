@@ -46,6 +46,7 @@ const icons = {
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>',
   terminal: '<path d="m5 7 5 5-5 5m8 0h6"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-4 4 3 3m-6 0 2 2"/>',
   theme: '<circle cx="12" cy="12" r="8"/><path d="M12 4v16"/><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/>',
 };
@@ -263,7 +264,9 @@ function renderData() {
     if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
       const title = el('div', 'group-title'); title.append(icon('folder'), el('h2', '', list[0].project), el('span', 'group-count', list.length));
-      header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')));
+      const actions = el('span', 'group-actions');
+      for (const provider of ['claude', 'codex']) { const b = button(provider === 'codex' ? 'Codex' : 'Claude', 'quiet-button spawn-button', () => spawnAgent(cwd, provider, b), 'plus'); b.title = `New ${providerName(provider)} in tmux`; actions.append(b); }
+      header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')), actions);
     }
     // Subagents sit directly under their parent; orphans keep their own place.
     const ordered = list.sort(compareSessions), ids = new Set(ordered.map(s => s.id));
@@ -648,8 +651,17 @@ async function respond(request, payload, container, error) {
   const controls = [...container.querySelectorAll('button, input')]; controls.forEach(b => b.disabled = true); error.textContent = '';
   try {
     await api(`requests/${request.id}/respond`, payload);
-    const toast = el('div', 'toast', 'Response delivered'); toast.setAttribute('role', 'status'); app.append(toast); setTimeout(() => toast.remove(), 3500); panelSignature = ''; await refresh();
+    toast('Response delivered'); panelSignature = ''; await refresh();
   } catch (e) { error.textContent = e.message; controls.forEach(b => b.disabled = false); }
+}
+
+function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
+async function spawnAgent(cwd, provider, control) {
+  if (state.error) return;
+  control.disabled = true;
+  try { toast(`${providerName(provider)} started in tmux ${(await api('spawn', { cwd, provider })).session}`); }
+  catch (e) { toast(e.message); }
+  finally { control.disabled = false; }
 }
 
 async function lock() {

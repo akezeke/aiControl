@@ -11,6 +11,7 @@ import { ClaudeAdapter } from './claude.mjs';
 import { UsagePoller, claudeUsageReader } from './usage.mjs';
 import { createHandler } from './http.mjs';
 import { fail } from './requests.mjs';
+import { spawnAgent } from './claude-messaging.mjs';
 import { root, authFile, dataDir, hookSocket, port } from './config.mjs';
 
 export async function startServer({ host, hostname, tls = null }) {
@@ -40,7 +41,9 @@ export async function startServer({ host, hostname, tls = null }) {
     return session.nativeId;
   };
   const messages = { send: (id, body) => id.startsWith('claude:') ? claude.sendMessage(id.slice(7), body) : codex.sendMessage(messageTarget(id), body), cancel: (id, queuedId) => codex.cancelQueuedMessage(messageTarget(id), queuedId) };
-  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages });
+  // Only directories a live session already runs in.
+  const spawn = ({ cwd, provider } = {}) => [...codex.list(), ...claude.list()].some(s => s.cwd && s.cwd === cwd) ? spawnAgent(cwd, provider) : Promise.reject(fail('Unknown project.', 404));
+  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn });
   const server = tls ? createHttpsServer(tls, handler) : createHttpServer(handler);
   server.requestTimeout = 20_000;
   server.headersTimeout = 10_000;

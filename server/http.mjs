@@ -16,7 +16,7 @@ async function body(req) {
   try { return JSON.parse(raw); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -58,6 +58,10 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages })
         res.setHeader('Set-Cookie', auth.cookie('', 0)); json(res, 200, { ok: true }); return;
       }
       if (path === '/api/snapshot' && req.method === 'GET') { json(res, 200, snapshot(), req); return; }
+      if (path === '/api/spawn' && req.method === 'POST') {
+        if (!spawn) throw fail('Starting agents is not available.', 503);
+        const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;
+      }
       const messageRoute = /^\/api\/sessions\/([^/]+)\/messages$/.exec(path);
       const queueRoute = /^\/api\/sessions\/([^/]+)\/queue\/([^/]+)\/cancel$/.exec(path);
       if ((messageRoute || queueRoute) && req.method === 'POST') {

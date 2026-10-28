@@ -13,6 +13,21 @@ async function parentPid(pid) {
   const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
   return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
 }
+// A new agent gets a window in the tmux session already working in this project, else in a session
+// named after it. The command is typed into a shell, so an error or exit stays readable there.
+export async function spawnAgent(cwd, provider, tmux = runTmux) {
+  if (!['claude', 'codex'].includes(provider)) throw fail('Unknown agent.');
+  const panes = (await tmux(['list-panes', '-a', '-F', '#{session_name}\t#{pane_current_path}']).catch(() => '')).split('\n').map(line => line.split('\t'));
+  // npm stop ends the server's own session, so agents never go there.
+  let name = panes.find(([session, path]) => path === cwd && session !== 'aiControl')?.[0] || basename(cwd).replace(/[^\w-]/g, '_');
+  if (name === 'aiControl') name += '-agents';
+  const target = panes.some(([session]) => session === name) ? ['new-window', '-t', `=${name}:`] : ['new-session', '-s', name];
+  try {
+    const pane = (await tmux([...target, '-d', '-c', cwd, '-n', provider, '-P', '-F', '#{pane_id}'])).trim();
+    await tmux(['send-keys', '-t', pane, provider, 'Enter']);
+    return { session: name, pane };
+  } catch { throw fail('Could not open a tmux window.', 503); }
+}
 const tmuxPaneId = record => /\.(%\d+)$/.exec(record.tmux || '')?.[1];
 
 // Sessions in tmux get the text typed into their pane: Claude sees the user's own

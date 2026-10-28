@@ -10,7 +10,7 @@ A self-hosted dashboard for keeping track of your local Codex and Claude Code se
 
 - Every running Codex and Claude Code session, by project or as a flat list, sorted needs input → working → idle.
 - Answer Claude and Codex permission requests and questions. The terminal stays usable; whichever answers first wins. Nothing is auto-approved.
-- Send messages: start or steer Codex turns, type into Claude sessions running in tmux.
+- Send messages: start or steer Codex turns, type into Claude sessions running in tmux. Start a new Claude or Codex in a project's tmux session.
 - Recent history as safe Markdown, with Claude subagents and workflow workers nested under their session.
 - Five-hour and weekly usage limits for both accounts.
 - This computer only, or your other devices over Tailscale. PIN or password, ten-minute idle lock.
