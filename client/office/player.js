@@ -79,11 +79,11 @@ export class Player {
   // Walks straight toward a floor point, sliding along whatever is in the way; `then` runs on arrival, or when stuck if `always`.
   walkTo(point, then, stopShort = 0, always = false) { this.target = { point: point.clone().setY(EYE), then, stopShort, always, stuck: 0 }; }
 
-  // Flies to a spot, turning to face `look` (clicking someone): quick and eased, with a small arc over the desks.
-  flyTo(point, look, then, instant = false) {
+  // Flies to a spot, turning to face `look` (clicking someone or a board) and tilting to `pitch`: quick and eased, with a small arc over the desks.
+  flyTo(point, look, then, instant = false, pitch = -0.08) {
     const to = point.clone().setY(EYE), distance = this.position.distanceTo(to);
     this.target = null; this.height = this.rise = 0;
-    this.flight = { from: this.position.clone(), to, yaw: this.yaw, turn: turnTo(this.yaw, Math.atan2(look.x - to.x, look.z - to.z)), pitch: this.pitch, t: 0,
+    this.flight = { from: this.position.clone(), to, yaw: this.yaw, turn: turnTo(this.yaw, Math.atan2(look.x - to.x, look.z - to.z)), pitch: this.pitch, tilt: pitch, t: 0,
       duration: instant ? 0 : THREE.MathUtils.clamp(0.2 + distance * 0.05, 0.3, 0.7), lift: Math.min(0.5, distance * 0.08), then };
   }
 
@@ -119,7 +119,7 @@ export class Player {
     const f = this.flight; f.t = f.duration ? Math.min(1, f.t + dt / f.duration) : 1;
     const e = f.t < 0.5 ? 4 * f.t ** 3 : 1 - (2 - 2 * f.t) ** 3 / 2;
     this.position.lerpVectors(f.from, f.to, e); this.position.y += Math.sin(Math.PI * e) * f.lift;
-    this.yaw = f.yaw + f.turn * e; this.pitch = f.pitch + (-0.08 - f.pitch) * e; this.running = f.t < 1;
+    this.yaw = f.yaw + f.turn * e; this.pitch = f.pitch + (f.tilt - f.pitch) * e; this.running = f.t < 1;
     if (f.t === 1) { this.flight = null; f.then?.(); }
   }
 
@@ -148,13 +148,22 @@ export function standNear(target, from, colliders, room, distance = 1.1) {
   const toward = Math.atan2(from.x - target.x, from.z - target.z);
   for (let i = 0; i < 12; i++) {
     const a = toward + Math.ceil(i / 2) * (i % 2 ? 1 : -1) * Math.PI / 6, p = new THREE.Vector3(target.x + Math.sin(a) * distance, EYE, target.z + Math.cos(a) * distance);
-    const inRoom = !room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS);
-    if (inRoom && !colliders.some(box => inside(p, box))) return p;
+    if (free(p, colliders, room)) return p;
   }
   return null;
 }
+// Where to stand to read a board: `distance` straight out from it along the wall's `normal`, else nearer, else a little to one side.
+export function standBefore(point, normal, distance, colliders, room) {
+  const side = new THREE.Vector3(-normal.z, 0, normal.x);
+  for (const shift of [0, 0.5, -0.5, 1, -1]) for (let d = distance; d >= 0.8; d -= 0.3) {
+    const p = point.clone().addScaledVector(normal, d).addScaledVector(side, shift).setY(EYE);
+    if (free(p, colliders, room)) return p;
+  }
+  return null;
+}
+const free = (p, colliders, room) => (!room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS)) && !colliders.some(box => inside(p, box));
 
-// What's under a screen point: a character (by session id) or a spot on the floor.
+// What's under a screen point: a character (by session id), a board on the wall (userData.board) or a spot on the floor.
 const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
 export function pick(event, canvas, camera, scene) {
   const rect = canvas.getBoundingClientRect();
@@ -162,8 +171,10 @@ export function pick(event, canvas, camera, scene) {
   raycaster.setFromCamera(ndc, camera);
   for (const hit of raycaster.intersectObjects(scene.children, true)) {
     let node = hit.object;
-    while (node && !node.userData.sessionId) node = node.parent;
-    if (node) return { kind: 'character', id: node.userData.sessionId };
+    while (node && !node.userData.sessionId && !node.userData.board) node = node.parent;
+    if (node?.userData.sessionId) return { kind: 'character', id: node.userData.sessionId };
+    // A board on a wall that's faded out for the overview is hidden: look past it.
+    if (node) { if (node.visible) return { kind: 'board', node }; continue; }
     if (hit.object.userData.floor) return { kind: 'floor', point: hit.point };
     if (hit.object.visible && !hit.object.material?.transparent) return null;
   }

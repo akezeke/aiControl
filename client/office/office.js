@@ -5,7 +5,7 @@ import { layoutOffice } from './layout.js';
 import { officeStatus, identity, monitorLines } from './status.js';
 import { createRoom } from './room.js';
 import { Cast } from './animation.js';
-import { Player, pick, officeHasKeys, sceneFocused, standNear } from './player.js';
+import { Player, pick, officeHasKeys, sceneFocused, standNear, standBefore, EYE } from './player.js';
 import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createOverlays } from './bubbles.js';
 import { createBoards } from './boards.js';
@@ -37,10 +37,11 @@ export function mountOffice(container, hooks) {
   const player = new Player(renderer.domElement, {
     colliders: () => room.colliders,
     room: () => layout?.room,
-    // In first person, a mouse click that isn't on someone captures the mouse; captured, a click on the floor walks there.
+    // In first person, a mouse click that isn't on someone (or a board) captures the mouse; captured, a click on the floor walks there.
     onPick: (at, mouse) => {
       const hit = under(at);
       if (hit?.kind === 'character') office.talkTo(hit.id);
+      else if (hit?.kind === 'board') office.readBoard(hit.node);
       else if (mouse && !player.locked && !view.overview) player.lock();
       else if (hit?.kind === 'floor' && !view.overview) player.walkTo(hit.point);
     },
@@ -58,16 +59,16 @@ export function mountOffice(container, hooks) {
   };
   const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview) });
   // Tab toggles the overview and Esc leaves it (Tab only from the scene itself: on a button or link it keeps moving focus).
-  // E talks to whoever is outlined, else to whoever is in front of you.
+  // E talks to whoever is outlined (or goes to the board), else to whoever is in front of you.
   listen(document, 'keydown', event => {
     if (!officeHasKeys(event)) return;
     if (event.key === 'Tab' && sceneFocused(renderer.domElement)) { event.preventDefault(); if (!event.repeat) overview(!view.overview); }
     else if (event.key === 'Escape' && view.overview) overview(false);
-    else if (event.code === 'KeyE') { event.preventDefault(); office.talkTo(aimed || office.nearest()); }
+    else if (event.code === 'KeyE') { event.preventDefault(); if (board) office.readBoard(board); else office.talkTo(aimed || office.nearest()); }
   });
   // Outline whatever a click (or E) would get, with its card: under the dot when aiming with it, else under the mouse
   // (the scene or a bubble, not the buttons). Ten times a second is plenty.
-  let mouse = null, hovered = null, aimed = null, dot = false, hoverIn = 0;
+  let mouse = null, hovered = null, aimed = null, board = null, dot = false, hoverIn = 0;
   listen(container, 'pointermove', event => {
     mouse = event.pointerType === 'mouse' && (event.target === renderer.domElement || event.target.closest?.('.office-bubble')) ? event : null;
     if (!dot) card.move(mouse);
@@ -79,10 +80,10 @@ export function mountOffice(container, hooks) {
     if ((hoverIn -= dt) > 0) return;
     hoverIn = 0.1;
     const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
-    aimed = hit?.kind === 'character' ? hit.id : null;
+    aimed = hit?.kind === 'character' ? hit.id : null; board = hit?.kind === 'board' ? hit.node : null;
     const session = aimed && office.snapshot?.sessions.find(session => session.id === aimed);
     card.show(session && hooks.describe?.(session) || null); card.move(aiming ? player.centre : mouse);
-    const node = aimed && cast.characters.get(aimed)?.root || null;
+    const node = aimed && cast.characters.get(aimed)?.root || board;
     renderer.domElement.style.cursor = node && !aiming ? 'pointer' : view.overview ? view.overhead.dragging ? 'grabbing' : 'grab' : '';
     if (node === hovered) return;
     highlight(hovered, false); highlight(node, true); hovered = node; overlays.setAim(!!node);
@@ -119,6 +120,7 @@ export function mountOffice(container, hooks) {
       cast.frozen = !!error;
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id), monitor: monitorLines(session) }]));
       room.sync(layout, office.statuses);
+      for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
       cast.sync(layout, snapshot.sessions, room, office.statuses);
       bubbles.sync(snapshot.sessions.filter(session => layout.desks.has(session.id) || session.parentId).map(session => ({ id: session.id, bubble: office.statuses.get(session.id).bubble, unread: hooks.isUnread?.(session) })));
       const waiting = snapshot.sessions.filter(session => office.statuses.get(session.id).bubble?.highlight);
@@ -152,6 +154,15 @@ export function mountOffice(container, hooks) {
       };
       const spot = standNear(head, player.position, room.colliders, layout?.room);
       if (spot) player.flyTo(spot, head, arrive, !!reducedMotion?.matches); else player.walkTo(head.clone().setY(0), arrive, 1.1, true);
+    },
+    // Fly over to a board on the wall and face it, back far enough to take it all in (and not crane up at the clock).
+    readBoard(node) {
+      office.talking = null; relock = false; overview(false);
+      const box = new THREE.Box3().setFromObject(node), centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+      const normal = new THREE.Vector3(0, 0, 1).transformDirection(node.matrixWorld).setY(0).normalize(), tan = Math.tan(THREE.MathUtils.degToRad(view.fov / 2));
+      const fit = Math.max(size.y / 2 / tan, Math.max(size.x, size.z) / 2 / (tan * camera.aspect)) * 1.25, rise = centre.y - EYE;
+      const spot = standBefore(centre, normal, THREE.MathUtils.clamp(Math.max(fit, Math.abs(rise) * 1.7), 1, 3.5), room.colliders, layout?.room);
+      if (spot) player.flyTo(spot, centre, null, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z)));
     },
     // main.js calls this when the session panel closes.
     panelClosed() { office.talking = null; cast.greet(null); view.focus(null); },
