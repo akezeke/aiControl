@@ -30,24 +30,26 @@ function drawWhiteboard({ g, width: w, height: h }, usage, error, now) {
   }
   const accounts = (usage || []).filter(account => account.windows?.length);
   if (!accounts.length) { g.fillStyle = INK.black; g.font = `36px ${MARKER}`; g.fillText('no usage data yet', 40, 160); return; }
-  let y = 150, slow = false;
+  // Two accounts fill the board; more (e.g. several Claude accounts) write smaller.
+  const k = Math.min(1, (h - 120) / (accounts.length * 182));
+  let y = 110 + 40 * k, slow = false;
   accounts.forEach((account, a) => {
-    g.fillStyle = INK.black; g.font = `bold 46px ${MARKER}`; g.fillText(account.name || account.provider, 40, y);
-    y += 58;
+    g.fillStyle = INK.black; g.font = `bold ${46 * k}px ${MARKER}`; g.fillText(account.name || account.provider, 40, y);
+    y += 58 * k;
     for (const window of account.windows.slice(0, 2)) {
       const view = usageWindowView(window, now), x = 120, barW = w - x - 210, filled = barW * view.barPercent / 100;
-      g.fillStyle = INK.black; g.font = `36px ${MARKER}`; g.fillText(view.shortLabel, x - 66, y);
+      g.fillStyle = INK.black; g.font = `${36 * k}px ${MARKER}`; g.fillText(view.shortLabel, x - 66, y);
       // Bar: an outline with a hatched fill, red once it's high.
       const color = view.tone ? INK.red : INK.green;
-      g.strokeStyle = INK.black; g.lineWidth = 4; g.strokeRect(x, y - 30, barW, 36);
-      g.save(); g.beginPath(); g.rect(x, y - 30, filled, 36); g.clip(); g.strokeStyle = color; g.lineWidth = 6;
-      for (let i = -36; i < filled + 36; i += 13) scribble(g, x + i, y + 6, x + i + 28, y - 30, i + a);
+      g.strokeStyle = INK.black; g.lineWidth = 4; g.strokeRect(x, y - 30 * k, barW, 36 * k);
+      g.save(); g.beginPath(); g.rect(x, y - 30 * k, filled, 36 * k); g.clip(); g.strokeStyle = color; g.lineWidth = 6;
+      for (let i = -36; i < filled + 36; i += 13) scribble(g, x + i, y + 6 * k, x + i + 28, y - 30 * k, i + a);
       g.restore();
-      g.fillStyle = color; g.font = `bold 40px ${MARKER}`; g.fillText(view.percentText, x + barW + 18, y + 4);
+      g.fillStyle = color; g.font = `bold ${40 * k}px ${MARKER}`; g.fillText(view.percentText, x + barW + 18, y + 4 * k);
       if (view.pace > 100) slow = true;
-      y += 52;
+      y += 52 * k;
     }
-    y += 20;
+    y += 20 * k;
   });
   if (slow) { g.save(); g.translate(w - 230, 70); g.rotate(-0.12); g.fillStyle = INK.red; g.font = `bold 46px ${MARKER}`; g.fillText('slow down!', 0, 0); g.restore(); }
 }
