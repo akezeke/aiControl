@@ -5,6 +5,8 @@ import { layoutOffice } from './layout.js';
 import { officeStatus, identity } from './status.js';
 import { createRoom } from './room.js';
 import { Cast } from './animation.js';
+import { Player, pick, officeHasKeys } from './player.js';
+import { OfficeCamera } from './camera.js';
 
 export function webglAvailable() {
   try { const canvas = document.createElement('canvas'); return !!(canvas.getContext('webgl2') || canvas.getContext('webgl')); } catch { return false; }
@@ -18,7 +20,6 @@ export function mountOffice(container, hooks) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#f6e7c8');
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
-  camera.position.set(0, 1.5, 6);
   scene.add(new THREE.HemisphereLight('#fff6e0', '#b8a68a', 2.2));
   const sun = new THREE.DirectionalLight('#ffffff', 1.6); sun.position.set(4, 8, 3); scene.add(sun);
   const room = createRoom(scene);
@@ -27,7 +28,20 @@ export function mountOffice(container, hooks) {
   let layout;
 
   const frames = new Set();
-  frames.add(dt => cast.update(dt, office.camera.position));
+  const player = new Player(renderer.domElement, {
+    colliders: () => room.colliders,
+    onPick: event => {
+      const hit = pick(event, renderer.domElement, camera, scene);
+      if (hit?.kind === 'floor') player.walkTo(hit.point);
+      else if (hit?.kind === 'character') office.talkTo(hit.id);
+    },
+  });
+  const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches });
+  // Hold Tab for the overview.
+  const tab = on => event => { if (event.key !== 'Tab' || (on && !officeHasKeys(event))) return; event.preventDefault(); view.setOverview(on); };
+  const tabDown = tab(true), tabUp = tab(false);
+  document.addEventListener('keydown', tabDown); document.addEventListener('keyup', tabUp);
+  frames.add(dt => { player.update(dt); view.update(dt); cast.update(dt, player.position); });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;
@@ -55,6 +69,8 @@ export function mountOffice(container, hooks) {
       room.sync(layout, office.statuses);
       cast.sync(layout, snapshot.sessions, room, office.statuses);
       office.layout = layout;
+      // First snapshot: stand just inside the door, looking into the room.
+      if (!office.placed) { office.placed = true; const { width, depth } = layout.room; player.place(layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))); }
     },
     unmount() {
       cancelAnimationFrame(raf); observer.disconnect(); document.removeEventListener('visibilitychange', visibility);
@@ -65,7 +81,10 @@ export function mountOffice(container, hooks) {
       });
       renderer.dispose(); renderer.domElement.remove();
     },
-    room, cast, disposers: [() => cast.dispose()],
+    room, cast, player, view,
+    // Task 9 replaces this with the walk-up-and-zoom; for now walk over and open the panel.
+    talkTo(id) { const at = cast.positionOf(id); if (at) player.walkTo(at.setY(0), () => hooks.openPanel(id), 1.2); },
+    disposers: [() => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { document.removeEventListener('keydown', tabDown); document.removeEventListener('keyup', tabUp); }],
   };
   if (import.meta.env?.DEV) globalThis.__office = office; // poke at it from devtools
   return office;

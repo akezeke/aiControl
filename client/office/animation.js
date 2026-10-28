@@ -98,6 +98,7 @@ export class Cast {
 
   #character(id, scale, small = false) {
     const fruit = createFruit(identity(id), { scale }), root = new THREE.Group();
+    root.userData.sessionId = id;
     root.add(fruit.group);
     if (!small) { const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial); shadow.position.y = 0.006; root.add(shadow); }
     else { const laptop = new THREE.Mesh(laptopGeometry, laptopMaterial); laptop.position.set(0, 0.02, 0.32); fruit.group.add(laptop); }

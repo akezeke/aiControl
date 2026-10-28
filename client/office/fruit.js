@@ -17,6 +17,8 @@ const profiles = {
   lemon: [[0, -0.02], [0.05, 0.01], [0.17, 0.07], [0.26, 0.2], [0.28, 0.33], [0.25, 0.46], [0.15, 0.58], [0.05, 0.64], [0, 0.67]],
   eggplant: [[0, 0], [0.2, 0.02], [0.31, 0.14], [0.31, 0.3], [0.24, 0.46], [0.17, 0.6], [0.13, 0.72], [0.06, 0.78], [0, 0.79]],
   strawberry: [[0, 0], [0.06, 0.02], [0.16, 0.13], [0.26, 0.3], [0.31, 0.45], [0.28, 0.55], [0.14, 0.6], [0, 0.6]],
+  // The boss only.
+  pineapple: [[0, 0], [0.18, 0.02], [0.29, 0.14], [0.32, 0.32], [0.3, 0.5], [0.22, 0.64], [0.1, 0.69], [0, 0.7]],
 };
 // Banana: a bent tube, fattest in the middle; `curve` is its spine.
 const bananaSpine = new THREE.CatmullRomCurve3([V(-0.02, 0.0), V(0.11, 0.2), V(0.14, 0.42), V(0.08, 0.66), V(-0.06, 0.86)]);
@@ -71,15 +73,20 @@ const stripes = () => textures.tie ??= canvasTexture(64, (g, n) => {
   for (let i = -n; i < n * 2; i += 16) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + n, n); g.stroke(); }
 });
 
+const diamonds = () => textures.pineapple ??= canvasTexture(128, (g, n) => {
+  g.fillStyle = '#f2b632'; g.fillRect(0, 0, n, n); g.strokeStyle = '#b97d1c'; g.lineWidth = 4;
+  for (let i = -n; i < n * 2; i += 32) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + n, n); g.stroke(); g.beginPath(); g.moveTo(i + n, 0); g.lineTo(i, n); g.stroke(); }
+});
 function bodyMaterial(fruit, color) {
   if (fruit === 'orange') return toonMaterial(color, { bumpMap: peel(), bumpScale: 1.2 });
+  if (fruit === 'pineapple') { const map = diamonds().clone(); map.repeat.set(4, 2); map.needsUpdate = true; return toonMaterial('#ffffff', { map }); }
   if (fruit === 'strawberry') { const map = seeds(color).clone(); map.repeat.set(3, 2); map.needsUpdate = true; return toonMaterial('#ffffff', { map }); }
   return toonMaterial(color);
 }
 
 // Black parts shared by every fruit.
 let hand, shoe;
-function handGeometry() {
+export function handGeometry() {
   if (hand) return hand;
   const parts = [new THREE.SphereGeometry(0.042, 14, 10).scale(1, 0.8, 1.1)];
   for (const [x, len] of [[-0.024, 0.05], [0, 0.058], [0.024, 0.05]]) parts.push(new THREE.CapsuleGeometry(0.012, len, 4, 8).translate(x, 0, 0).rotateX(Math.PI / 2).translate(0, 0, 0.045 + len / 2 - 0.01));
@@ -141,6 +148,11 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   if (fruit === 'apple' || fruit === 'pear') {
     add(arc([V(0, h - 0.06), V(0.01, h + 0.06), V(-0.03, h + 0.12)], 0.016), brown);
     if (fruit === 'apple') { const leaf = add(new THREE.SphereGeometry(0.07, 12, 8).scale(1, 0.18, 0.5), green); leaf.position.set(0.07, h + 0.08, 0); leaf.rotation.z = 0.5; }
+  } else if (fruit === 'pineapple') {
+    for (let i = 0; i < 9; i++) {
+      const a = i / 9 * Math.PI * 2, tall = i % 2 ? 0.2 : 0.3, leaf = add(new THREE.ConeGeometry(0.04, tall, 6).translate(0, tall / 2, 0), green);
+      leaf.position.set(Math.cos(a) * 0.04, h - 0.02, Math.sin(a) * 0.04); leaf.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45);
+    }
   } else if (fruit === 'orange') add(new THREE.SphereGeometry(0.03, 10, 6).scale(1, 0.4, 1).translate(0, h, 0), green);
   else if (fruit === 'eggplant' || fruit === 'strawberry') {
     for (let i = 0; i < 6; i++) {
