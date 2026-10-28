@@ -113,8 +113,8 @@ function bruises() {
   if (textures.bruises) return textures.bruises;
   const texture = textures.bruises = canvasTexture(256, (g, n) => {
     g.fillStyle = '#000'; g.fillRect(0, 0, n, n); g.globalCompositeOperation = 'lighten';
-    for (let i = 0; i < 20; i++) {
-      const x = Math.random() * n, y = Math.random() * n, r = 5 + Math.random() * 9, v = Math.round(115 + Math.random() * 135);
+    for (let i = 0; i < 16; i++) {
+      const x = Math.random() * n, y = Math.random() * n, r = 10 + Math.random() * 14, v = Math.round(115 + Math.random() * 135);
       for (const dx of [-n, 0, n]) for (const dy of [-n, 0, n]) { // drawn again across the edges so the texture tiles
         const spot = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r); spot.addColorStop(0, `rgb(${v},${v},${v})`); spot.addColorStop(1, '#000');
         g.fillStyle = spot; g.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
@@ -258,7 +258,7 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   setExpression('smile');
 
   // Wear: bruises spread over the skin, then bags under the eyes and heavy lids.
-  const spots = new THREE.Mesh(shape.geometry, toonMaterial('#3b2814', { alphaMap: bruises(), alphaTest: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  const spots = new THREE.Mesh(shape.geometry, toonMaterial('#8a5a24', { alphaMap: bruises(), alphaTest: 1, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
   spots.visible = false; spots.raycast = () => {}; own.push(spots.material); body.add(spots);
   const bagMaterial = toonMaterial('#6a5470'), bagHalf = 0.034 / shape.surface(faceY).r;
   let bags = [], droop = 1, blink = 1;
@@ -296,25 +296,26 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
     const knot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8).scale(1, 0.9, 0.6), tieMaterial); own.push(knot.geometry); knot.position.copy(onSkin(0, collarY, 0.012)); body.add(withOutline(knot, 0.006));
   }
 
-  // Limbs. Anchors start inside the body so no join ever shows.
+  // Limbs. Anchors start inside the body so no join ever shows. Facing +z, the left side is +x.
   const shoulderY = h * (fruit === 'banana' ? 0.42 : 0.4), hipY = Math.min(0.06, h * 0.1);
   const anchor = {
-    leftHand: () => { const { x, r } = shape.surface(shoulderY); return V(x - r + 0.05, shoulderY, 0); },
-    rightHand: () => { const { x, r } = shape.surface(shoulderY); return V(x + r - 0.05, shoulderY, 0); },
-    leftFoot: () => V(shape.surface(hipY + 0.04).x - 0.09, hipY + 0.03, 0),
-    rightFoot: () => V(shape.surface(hipY + 0.04).x + 0.09, hipY + 0.03, 0),
+    leftHand: () => { const { x, r } = shape.surface(shoulderY); return V(x + r - 0.05, shoulderY, 0); },
+    rightHand: () => { const { x, r } = shape.surface(shoulderY); return V(x - r + 0.05, shoulderY, 0); },
+    leftFoot: () => V(shape.surface(hipY + 0.04).x + 0.09, hipY + 0.03, 0),
+    rightFoot: () => V(shape.surface(hipY + 0.04).x - 0.09, hipY + 0.03, 0),
   };
-  const limbs = {}, ends = {}, hands = { leftHand: -1, rightHand: 1 };
+  const limbs = {}, ends = {}, hands = { leftHand: 1, rightHand: -1 };
   for (const name of Object.keys(anchor)) {
     limbs[name] = new Limb(limbMaterial, name.endsWith('Foot') ? LIMB_R * 1.1 : LIMB_R); own.push(limbs[name].mesh.geometry); group.add(limbs[name].mesh);
     ends[name] = new THREE.Mesh(name in hands ? handGeometry() : shoeGeometry(), limbMaterial); group.add(ends[name]);
   }
+  ends.rightHand.scale.x = -1; // the hand mesh is a left hand
   const from = new THREE.Vector3(), bend = new THREE.Vector3(), q = new THREE.Quaternion(), forward = V(0, 0, 1);
   const setLimbs = targets => {
     body.updateMatrix();
     for (const [name, to] of Object.entries(targets)) {
       from.copy(anchor[name]()).applyMatrix4(body.matrix);
-      const arm = name in hands, side = arm ? hands[name] : name === 'leftFoot' ? -1 : 1;
+      const arm = name in hands, side = arm ? hands[name] : name === 'leftFoot' ? 1 : -1;
       // Arms bow outward and down; legs bend a little forward at the knee.
       if (arm) bend.set(side * 0.07, -0.06, 0.02); else bend.set(side * 0.02, 0, 0.06);
       limbs[name].set(from, bend, to);
@@ -325,11 +326,11 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   };
   // Hands hang a little out from the shoulders; feet sit under the hips.
   const shoulder = name => anchor[name]().add(body.position);
-  const rest = { leftHand: shoulder('leftHand').add(V(-0.12, -0.32, 0.04)), rightHand: shoulder('rightHand').add(V(0.12, -0.32, 0.04)), leftFoot: V(anchor.leftFoot().x - 0.02, 0.03, 0), rightFoot: V(anchor.rightFoot().x + 0.02, 0.03, 0) };
+  const rest = { leftHand: shoulder('leftHand').add(V(0.12, -0.32, 0.04)), rightHand: shoulder('rightHand').add(V(-0.12, -0.32, 0.04)), leftFoot: V(anchor.leftFoot().x + 0.02, 0.03, 0), rightFoot: V(anchor.rightFoot().x - 0.02, 0.03, 0) };
   setLimbs(rest);
 
   return {
-    group, body, height: h, rest, faceY,
+    group, body, height: h, surface: shape.surface, rest, faceY,
     setBody({ y = LEG, tilt = 0, lean = 0, turn = 0 } = {}) { body.position.y = y; body.rotation.set(lean, turn, tilt); },
     setLimbs, setExpression, setWear,
     // Offline sessions turn grey; the colour comes back when they do.

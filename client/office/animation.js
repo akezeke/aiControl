@@ -3,24 +3,24 @@
 import * as THREE from 'three';
 import { createFruit, LEG } from './fruit.js';
 import { identity } from './status.js';
-import { SEAT_H, DESK_H, CHAIR_Z, KEYS_Z, HELPER_SCALE } from './room.js';
+import { SEAT_H, DESK_H, CHAIR_Z, KEYS_Z, MOUSE_X, BACK_Z, HELPER_SCALE } from './room.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const BLEND = 6;        // per second; about half a second to settle
 const SETTLED = 0.7;    // seconds after a pose change, after which the pose is followed exactly (blending would damp fast typing)
 // The sitter's root sits a little forward of the chair; standing, they step out behind it.
 const SEAT_FORWARD = 0.06, STAND_BACK = -0.8;
-const KEYS = KEYS_Z - CHAIR_Z - SEAT_FORWARD, MOUSE_X = 0.33; // keyboard and mouse, from the sitter's root
+const KEYS = KEYS_Z - CHAIR_Z - SEAT_FORWARD; // the keyboard, from the sitter's root (the mouse's x is the same from either)
 const LOOK_RANGE = 4, WALK_SPEED = 2, GOODBYE = 1.2;
 
-// t is seconds (frozen at 0 with reduced motion), seed spreads characters out of step, h is the fruit's body height,
-// wear (0..1) slows typing down.
-export function poseTargets(pose, t, seed, h, wear = 0) {
-  const s = Math.sin, wave = k => s(t * k + seed), clamp = THREE.MathUtils.clamp;
+// t is seconds (frozen at 0 with reduced motion), seed spreads characters out of step, fruit gives the body's height and shape,
+// wear (0..1) slows typing down and slumps a sleeper further. Facing +z, the left side is +x.
+export function poseTargets(pose, t, seed, fruit, wear = 0) {
+  const s = Math.sin, wave = k => s(t * k + seed), clamp = THREE.MathUtils.clamp, h = fruit.height;
   const seated = (lean, bob = 0) => ({ x: 0, z: SEAT_FORWARD, turn: 0, body: { y: SEAT_H + bob, tilt: 0, lean } });
   const standing = (bounce, tilt = 0) => ({ x: 0, z: STAND_BACK, turn: 0, body: { y: LEG + bounce, tilt, lean: 0 } });
-  const feetUnder = { leftFoot: V(-0.12, 0.03, 0.32), rightFoot: V(0.12, 0.03, 0.32) };
-  const feetStand = { leftFoot: V(-0.11, 0.03, 0), rightFoot: V(0.11, 0.03, 0) };
+  const feetUnder = { leftFoot: V(0.12, 0.03, 0.32), rightFoot: V(-0.12, 0.03, 0.32) };
+  const feetStand = { leftFoot: V(0.11, 0.03, 0), rightFoot: V(-0.11, 0.03, 0) };
   switch (pose) {
     // Quick taps, the hands out of step and wandering over the keys; every so often a pause to read, the right hand on the mouse.
     case 'typing': {
@@ -29,27 +29,34 @@ export function poseTargets(pose, t, seed, h, wear = 0) {
       const body = seated(0.1 * typing - 0.03 * reading, Math.abs(wave(rate / 2)) * 0.005 * typing);
       body.body.tilt = wave(0.7) * 0.025;
       return { ...body, limbs: {
-        leftHand: V(-0.12 + wave(1.3) * 0.04 - reading * 0.06, tap(0), KEYS + wave(0.9) * 0.02 - reading * 0.04),
-        rightHand: V(0.12 + s(t * 1.1 + seed + 2) * 0.04 + reading * (MOUSE_X - 0.12), tap(1.3) + reading * 0.01, KEYS + s(t * 0.8 + seed + 1) * 0.02),
+        leftHand: V(0.12 + wave(1.3) * 0.04 + reading * 0.06, tap(0), KEYS + wave(0.9) * 0.02 - reading * 0.04),
+        rightHand: V(-0.12 + s(t * 1.1 + seed + 2) * 0.04 + reading * (MOUSE_X + 0.12), tap(1.3) + reading * 0.01, KEYS + s(t * 0.8 + seed + 1) * 0.02),
         ...feetUnder } };
     }
     // Leaning back, hand at the chin, the other on the desk, tapping a finger.
     case 'thinking': return { ...seated(-0.1, wave(1.2) * 0.006), limbs: {
-      leftHand: V(-0.24, DESK_H + 0.03, KEYS - 0.08), rightHand: V(0.09, SEAT_H + h * 0.46 + Math.max(0, wave(3)) * 0.012, 0.33), ...feetUnder } };
+      leftHand: V(0.24, DESK_H + 0.03, KEYS - 0.08), rightHand: V(-0.09, SEAT_H + h * 0.46 + Math.max(0, wave(3)) * 0.012, 0.33), ...feetUnder } };
     case 'waving': return { ...standing(Math.abs(wave(6)) * 0.06), limbs: {
-      leftHand: V(-0.36 + wave(9) * 0.06, LEG + h + 0.22, 0.08), rightHand: V(0.36 - wave(9) * 0.06, LEG + h + 0.22, 0.08), ...feetStand } };
-    case 'raising': return { ...standing(Math.abs(wave(3)) * 0.02, 0.12), limbs: {
-      leftHand: V(-0.34, LEG + h * 0.25, 0.06), rightHand: V(0.22 + wave(5) * 0.03, LEG + h + 0.3, 0.06), ...feetStand } };
-    case 'sleeping': return { ...seated(-0.24, wave(1.3) * 0.01), z: SEAT_FORWARD + 0.04, limbs: {
-      leftHand: V(-0.2, SEAT_H + 0.08, 0.28), rightHand: V(0.2, SEAT_H + 0.08, 0.28), leftFoot: V(-0.16, 0.05, 0.62), rightFoot: V(0.16, 0.05, 0.62) } };
+      leftHand: V(0.36 - wave(9) * 0.06, LEG + h + 0.22, 0.08), rightHand: V(-0.36 + wave(9) * 0.06, LEG + h + 0.22, 0.08), ...feetStand } };
+    case 'raising': return { ...standing(Math.abs(wave(3)) * 0.02, -0.12), limbs: {
+      leftHand: V(0.34, LEG + h * 0.25, 0.06), rightHand: V(-0.22 - wave(5) * 0.03, LEG + h + 0.3, 0.06), ...feetStand } };
+    // Sunk back against the chair, breathing slowly, head lolling to one side, hands folded on the belly, legs out.
+    // Thin fruit sit further back: the widest part of the body rests on the chair back.
+    case 'sleeping': {
+      const lean = -0.2 + wave(1.3) * 0.012, tilt = 0.06 + wear * 0.1 + wave(0.3) * 0.015, y = SEAT_H - 0.015 - wear * 0.02;
+      const z = BACK_Z + 0.015 + fruit.surface(h * 0.45).r + h * 0.09, tummy = h * 0.3, { x: middle, r } = fruit.surface(tummy);
+      const turned = new THREE.Euler(lean, 0, tilt), onBody = side => V(middle + side * 0.075, tummy, Math.sqrt(Math.max(0, r * r - 0.0056)) + 0.03).applyEuler(turned).add(V(0, y, 0));
+      return { x: 0, z, turn: 0, body: { y, tilt, lean }, limbs: {
+        leftHand: onBody(1), rightHand: onBody(-1), leftFoot: V(0.15, 0.035, 0.42 - z), rightFoot: V(-0.15, 0.035, 0.42 - z) } };
+    }
     // Walking to or from the door: legs and arms swing in opposition.
     case 'walking': return { ...standing(Math.abs(wave(8)) * 0.03), x: 0, z: 0, limbs: {
-      leftHand: V(-0.34, LEG + h * 0.3, wave(8) * 0.14), rightHand: V(0.34, LEG + h * 0.3, -wave(8) * 0.14),
-      leftFoot: V(-0.11, 0.03 + Math.max(0, wave(8)) * 0.06, -wave(8) * 0.16), rightFoot: V(0.11, 0.03 + Math.max(0, -wave(8)) * 0.06, wave(8) * 0.16) } };
+      leftHand: V(0.34, LEG + h * 0.3, wave(8) * 0.14), rightHand: V(-0.34, LEG + h * 0.3, -wave(8) * 0.14),
+      leftFoot: V(0.11, 0.03 + Math.max(0, wave(8)) * 0.06, -wave(8) * 0.16), rightFoot: V(-0.11, 0.03 + Math.max(0, -wave(8)) * 0.06, wave(8) * 0.16) } };
     case 'slumped': return { ...seated(0.55), limbs: {
-      leftHand: V(-0.3, DESK_H + 0.03, KEYS - 0.06), rightHand: V(0.3, DESK_H + 0.03, KEYS - 0.06), ...feetUnder } };
+      leftHand: V(0.3, DESK_H + 0.03, KEYS - 0.06), rightHand: V(-0.3, DESK_H + 0.03, KEYS - 0.06), ...feetUnder } };
     default: return { ...seated(0), limbs: {
-      leftHand: V(-0.2, DESK_H + 0.03, KEYS - 0.06), rightHand: V(0.2, DESK_H + 0.03, KEYS - 0.06), ...feetUnder } };
+      leftHand: V(0.2, DESK_H + 0.03, KEYS - 0.06), rightHand: V(-0.2, DESK_H + 0.03, KEYS - 0.06), ...feetUnder } };
   }
 }
 
@@ -144,9 +151,9 @@ export class Cast {
       if (c.plus || !c.anchor) continue;
       const { fruit, pose } = c;
       if (c.trip && this.#walk(c, dt, t, k)) continue;
-      const target = poseTargets(pose, t, c.seed, fruit.height, c.wear);
-      // Worn out: slouched lower and to one side.
-      if (c.wear) { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }
+      const target = poseTargets(pose, t, c.seed, fruit, c.wear);
+      // Worn out: slouched lower and to one side (a sleeper already is).
+      if (c.wear && pose !== 'sleeping') { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }
       // Standing characters turn toward the boss when they want something, and anyone you're talking to turns in their chair.
       if (playerPos && (pose === 'waving' || pose === 'raising' || this.facingYou === c.id)) {
         const at = c.root.position, angle = Math.atan2(playerPos.x - at.x, playerPos.z - at.z) - c.anchor.facing;
@@ -177,7 +184,7 @@ export class Cast {
       return trip.to === 'door';
     }
     trip.at.addScaledVector(to.normalize(), Math.min(distance, WALK_SPEED * dt));
-    const target = poseTargets('walking', t, c.seed, fruit.height);
+    const target = poseTargets('walking', t, c.seed, fruit);
     if (!c.current) c.current = clonePose(target); else blendPose(c.current, target, k);
     c.root.position.copy(trip.at); c.root.rotation.y = Math.atan2(to.x, to.z);
     fruit.setBody(c.current.body); fruit.setLimbs(c.current.limbs); fruit.lookAt(null);

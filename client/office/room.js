@@ -13,13 +13,14 @@ import {
 export { WALL_H };
 export const DESK_H = 0.76, SEAT_H = 0.47, HELPER_SCALE = 0.42;
 // In a desk's frame: the chair sits back from the desk edge so the sitter's body clears it; hands reach the keyboard.
-export const CHAIR_Z = -(DESK_D / 2 + 0.42), KEYS_Z = -0.27;
+export const CHAIR_Z = -(DESK_D / 2 + 0.42), KEYS_Z = -0.27, MOUSE_X = -0.33;
+export const BACK_Z = -0.34; // front of the chair back, from the chair's centre
 const MONITOR_Z = DESK_D * 0.28;
 const rugs = ['#f4a6a6', '#a6d8f4', '#b9e4a1', '#f6d28b', '#cdb4f2', '#f7b8de'];
 // Helpers' tiny desks in the parent desk's frame: either side of its chair, then behind it.
 const HELPER_SPOTS = [[0.56, -0.66], [-0.56, -0.66], [-0.6, -1.42]];
 const CUP_SPOTS = [[0.5, -0.34], [0.62, -0.3], [0.56, -0.2], [0.68, -0.19], [0.5, -0.1], [0.63, -0.09]];
-const ITEM_SPOTS = [[-0.6, 0.22], [-0.42, 0.3]]; // the front-left corner stays free
+const ITEM_SPOTS = [[-0.6, 0.22], [-0.42, 0.3], [0.6, 0.24]]; // the front-left corner stays free
 const leds = { green: '#5ee08a', amber: '#ffb23e', dark: '#4d6fa8', red: '#ff6b6b', off: '#2a2d35' };
 
 const B = (w, h, d, x, y, z, r = 0.01) => (r ? rounded(w, h, d, r) : new THREE.BoxGeometry(w, h, d)).translate(x, y, z);
@@ -36,7 +37,7 @@ const monitorParts = () => [
 ];
 const keyboardParts = () => [
   [B(0.42, 0.025, 0.14, 0, DESK_H + 0.0125, KEYS_Z, 0.012), '#e9e6df'], ...[-0.04, 0, 0.04].map(z => [B(0.38, 0.008, 0.028, 0, DESK_H + 0.026, KEYS_Z + z, 0.003), '#cfc9bd']),
-  [B(0.2, 0.006, 0.18, 0.33, DESK_H + 0.003, KEYS_Z, 0.003), '#3d5a80'], [new THREE.SphereGeometry(0.03, 12, 8).scale(0.8, 0.5, 1.25).translate(0.33, DESK_H + 0.016, KEYS_Z), '#e9e6df'],
+  [B(0.2, 0.006, 0.18, MOUSE_X, DESK_H + 0.003, KEYS_Z, 0.003), '#3d5a80'], [new THREE.SphereGeometry(0.03, 12, 8).scale(0.8, 0.5, 1.25).translate(MOUSE_X, DESK_H + 0.016, KEYS_Z), '#e9e6df'],
 ];
 const towerParts = () => [
   [B(0.18, 0.42, 0.4, 0, 0.21, 0, 0.02), '#2f3542'], [B(0.12, 0.014, 0.01, 0, 0.33, -0.2, 0.003), '#8a8f99'], [B(0.12, 0.014, 0.01, 0, 0.3, -0.2, 0.003), '#8a8f99'],
@@ -47,7 +48,7 @@ const chairParts = () => {
   const seat = '#5b7fd6', dark = '#3a3d46', parts = [
     [C(0.055, 0.06, 0.06, 0, 0.08, 0), dark], [C(0.024, 0.024, SEAT_H - 0.18, 0, 0.1 + (SEAT_H - 0.18) / 2, 0, 10), '#8a8f99'], [B(0.22, 0.04, 0.22, 0, SEAT_H - 0.11, 0, 0.01), dark],
     [B(0.52, 0.09, 0.48, 0, SEAT_H - 0.045, 0, 0.04), seat], [B(0.07, 0.03, 0.16, 0, SEAT_H - 0.1, -0.26, 0.008), dark], [B(0.07, 0.4, 0.03, 0, SEAT_H + 0.08, -0.34, 0.008), dark],
-    [rounded(0.46, 0.48, 0.08, 0.04).rotateX(-0.15).translate(0, SEAT_H + 0.38, -0.38), seat],
+    [rounded(0.46, 0.48, 0.08, 0.04).rotateX(-0.15).translate(0, SEAT_H + 0.38, BACK_Z - 0.04), seat],
   ];
   for (let i = 0; i < 5; i++) {
     const a = i / 5 * Math.PI * 2 + Math.PI;
@@ -69,7 +70,7 @@ function createDesk(width = DESK_W, helper = false) {
   const chairShadow = floorShadow(0.72, 0.72, 0.3); chairShadow.position.z = CHAIR_Z; group.add(floorShadow(width, DESK_D * 1.05, 0.3), chairShadow);
   const desk = { group, screen, screenTexture, chair };
   if (helper) return desk;
-  const tower = piece('tower', towerParts); tower.position.set(0.6, DESK_H, 0.19); group.add(tower);
+  const tower = piece('tower', towerParts); tower.position.set(-0.5, 0, 0.06); group.add(tower); // on the floor under the desk, leaving the top free
   desk.led = new THREE.Mesh(once('led', () => new THREE.SphereGeometry(0.012, 8, 6)), new THREE.MeshBasicMaterial({ color: leds.off })); desk.led.position.set(0, 0.39, -0.205); tower.add(desk.led);
   desk.cups = new THREE.Group(); desk.cups.position.y = DESK_H; group.add(desk.cups);
   desk.helpers = [];
