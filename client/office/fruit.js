@@ -306,6 +306,8 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
       worried: { brows: [0.02, -0.012], mouth: [-0.012, 0.006], width: 0.1 },
       curious: { brows: [0, 0], raise: 0.025, mouth: [0, 0], width: 0.07 },
       frown: { brows: [-0.02, 0.01], mouth: [-0.02, 0.012], width: 0.11 },
+      // Fired: brows up in the middle, the mouth well down at the corners.
+      sad: { brows: [0.03, -0.018], mouth: [-0.03, 0.016], width: 0.12 },
       neutral: { brows: [0, 0], mouth: [0, -0.008], width: 0.09 },
       // One brow up, a small flat mouth pushed to one side and slanted: "hmm".
       thinking: { brows: [-0.01, 0.004], raise: 0.03, mouth: [0, 0], width: 0.06, shift: 0.1, slant: 0.012 },

@@ -72,7 +72,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         const { type, data } = await messages.image(id, imageId);
         res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Content-Length', data.length); res.setHeader('Content-Security-Policy', "default-src 'none'"); res.end(data); return;
       }
-      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
+      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|fire|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
       if (sessionRoute && req.method === (sessionRoute[2] === 'history' ? 'GET' : 'POST')) {
         if (!messages) throw fail('Messaging is not available.', 503);
         let id, queuedId;
@@ -83,7 +83,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
           const limit = Math.min(200, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
           json(res, 200, await messages.history(id, limit), req); return;
         }
-        const result = action === 'messages' ? await messages.send(id, await body(req)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
+        const result = action === 'messages' ? await messages.send(id, await body(req)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
         auth.touch(session); json(res, 200, result); return;
       }
       const match = /^\/api\/requests\/([a-f0-9-]{36})\/respond$/.exec(path);

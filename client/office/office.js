@@ -1,7 +1,7 @@
 // The Office theme: a 3D office where each session is a fruit at a desk. main.js mounts it in place of the list.
 import * as THREE from 'three';
 import './office.css';
-import { layoutOffice } from './layout.js';
+import { layoutOffice, VACANT_MS } from './layout.js';
 import { officeStatus, identity, monitorLines } from './status.js';
 import { createRoom } from './room.js';
 import { Cast } from './animation.js';
@@ -12,6 +12,8 @@ import { createBoards } from './boards.js';
 import { highlight } from './toon.js';
 import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
+
+const FIRED = { pose: 'slumped', expression: 'sad', bubble: { icon: '📦', text: 'Fired', highlight: false } };
 
 export function webglAvailable() {
   // three.js needs WebGL 2; the probe's context is released straight away.
@@ -31,6 +33,7 @@ export function mountOffice(container, hooks) {
   const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
   const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });
   let layout;
+  const fired = new Map(); // session id → when it was fired from the panel
   // Seats outlive a reload: the first layout starts from the last one's desks (anyone gone since is dropped at once,
   // not left to walk out), or everyone would sit in whatever order the snapshot lists them.
   const seatsKey = 'ai-control-office-seats';
@@ -160,11 +163,14 @@ export function mountOffice(container, hooks) {
       layout = layoutOffice(snapshot.sessions, layout || savedSeats()); view.setLayout(layout); saveSeats();
       cast.frozen = !!error;
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id), monitor: monitorLines(session) }]));
+      // The fired slump at their desks, then trudge out carrying a box.
+      for (const [id, at] of fired) if (Date.now() - at > VACANT_MS + 10_000) fired.delete(id); else office.statuses.set(id, { ...office.statuses.get(id), ...FIRED });
       room.sync(layout, office.statuses);
       for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
       signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });
       cast.sync(layout, snapshot.sessions, room, office.statuses);
-      bubbles.sync(snapshot.sessions.filter(session => layout.desks.has(session.id) || session.parentId).map(session => ({ id: session.id, bubble: office.statuses.get(session.id).bubble, unread: hooks.isUnread?.(session) })));
+      bubbles.sync([...snapshot.sessions.filter(session => layout.desks.has(session.id) || session.parentId).map(session => ({ id: session.id, bubble: office.statuses.get(session.id).bubble, unread: hooks.isUnread?.(session) })),
+        ...[...fired.keys()].filter(id => layout.desks.get(id)?.vacantSince !== undefined).map(id => ({ id, bubble: FIRED.bubble }))]);
       const waiting = snapshot.sessions.filter(session => office.statuses.get(session.id).bubble?.highlight);
       overlays.setWaiting(waiting.length);
       overlays.setUsageLow((snapshot.usage || []).some(account => account.windows?.some(window => window.usedPercent >= 80)));
@@ -183,6 +189,8 @@ export function mountOffice(container, hooks) {
       renderer.dispose(); renderer.domElement.remove();
     },
     room, cast, player, view,
+    // Their session was just ended from the panel.
+    fire(id) { fired.set(id, Date.now()); if (office.snapshot) office.update(office.snapshot, { error: office.error }); },
     // Fly over, they turn to you, the view settles on their face, then their session opens beside the scene.
     talkTo(id) {
       const parent = office.snapshot?.sessions.find(session => session.id === id)?.parentId;

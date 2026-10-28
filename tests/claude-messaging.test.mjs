@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeMessaging, spawnAgent } from '../server/claude-messaging.mjs';
@@ -124,9 +124,9 @@ test('Claude adapter checks the live registration and leaves waiting permissions
 
 const paneRecord = { ...record, status: 'idle', tmux: 'work:@2.%7' };
 // A fake pane: the paste lands in Claude's input line, and each Enter submits it unless `lostEnters` swallow it.
-function tmuxFixture({ lostEnters = 0, ...options } = {}) {
+function tmuxFixture({ lostEnters = 0, typed = '', ...options } = {}) {
   const calls = [];
-  let input = '';
+  let input = typed;
   const tmux = async (args, stdin) => {
     if (args[0] !== 'capture-pane') calls.push(stdin === undefined ? args : [...args, stdin]);
     if (args[0] === 'display-message') return '100\n';
@@ -209,4 +209,82 @@ test('Stop sends Escape only to a busy, verified pane; effort is typed as /effor
   await effort.adapter.setEffort(paneRecord, 'high');
   assert.equal(effort.calls.find(args => args[0] === 'load-buffer').at(-1), '/effort high');
   await assert.rejects(effort.adapter.setEffort(paneRecord, 'turbo; rm -rf'), /Unknown effort/);
+});
+
+test('the prompt reads empty under Claude’s dim placeholder, and only a prompt between two rules counts', async () => {
+  const read = rows => new ClaudeMessaging({ tmux: async args => args[0] === 'capture-pane' ? rows.join('\n') : '' }).inputText('%7');
+  // As captured: attributes run on into the next row, and the prompt is followed by a no-break space.
+  assert.equal(await read(['> an earlier prompt', '\x1b[38;5;244m────', '\x1b[39m❯\u00a0\x1b[2mTry "write a test"', '\x1b[0m\x1b[38;5;244m────', '\x1b[39m  ⏵⏵ auto mode on']), '');
+  assert.equal(await read(['────', '❯\u00a0\x1b[38;5;2mfix the \x1b[1;38;2;2;2;2mtests\x1b[22m', '────']), 'fix the tests');
+  assert.equal(await read(['────', '❯ /exit', '────']), '/exit');
+  assert.equal(await read(['────', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No']), null);
+  assert.equal(await read(['user@host:~$ ']), null);
+});
+
+test('only commands Claude’s Bash tool started count as running, named by what they run', async () => {
+  const processes = async () => [
+    { pid: 123, ppid: 1, args: 'claude' },
+    { pid: 200, ppid: 123, args: '/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-1.sh && eval npm run dev' },
+    { pid: 201, ppid: 200, args: 'npm run dev' },
+    { pid: 300, ppid: 123, args: 'node mcp-server.js' },
+    { pid: 400, ppid: 999, args: '/bin/bash -c source /home/u/.claude/shell-snapshots/snapshot-bash-2.sh && eval sleep 9' },
+  ];
+  assert.deepEqual(await new ClaudeMessaging({ processes }).commands(123), ['npm run dev']);
+});
+
+test('Fire types /exit only into an empty prompt, rechecks before Enter and waits for Claude to go', async () => {
+  let calls;
+  const fired = tmuxFixture({ alive: async () => !calls.some(args => args.at(-1) === 'Enter') });
+  calls = fired.calls;
+  assert.deepEqual(await fired.adapter.fire(paneRecord, async () => { calls.push(['recheck']); }), { ok: true });
+  assert.deepEqual(calls.map(args => args[0]), ['display-message', 'copy-mode', 'load-buffer', 'paste-buffer', 'recheck', 'send-keys']);
+  assert.equal(calls[2].at(-1), '/exit');
+
+  const draft = tmuxFixture({ typed: 'half a thought' });
+  await assert.rejects(draft.adapter.fire(paneRecord, async () => {}), /draft/);
+  assert.equal(draft.calls.some(args => args[0] === 'paste-buffer'), false);
+  await assert.rejects(tmuxFixture().adapter.fire({ ...paneRecord, status: 'busy' }, async () => {}), /working/);
+
+  // Something started meanwhile: /exit is wiped and Enter never pressed.
+  const busy = tmuxFixture();
+  await assert.rejects(busy.adapter.fire(paneRecord, async () => { throw new Error('busy now'); }), /busy now/);
+  assert.deepEqual(busy.calls.filter(args => args[0] === 'send-keys').map(args => args.slice(3)), [Array(5).fill('BSpace')]);
+
+  const stays = tmuxFixture({ exitMs: 20 });
+  await assert.rejects(stays.adapter.fire(paneRecord, async () => {}), e => e.status === 504 && /still running/.test(e.message));
+});
+
+test('Claude adapter fires only a session that is quiet: idle a while, no subagent, no command running', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'aicontrol-claude-fire-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, `${record.pid}.json`), register = extra => writeFile(path, JSON.stringify({ ...record, cwd: '/work/project', status: 'idle', statusUpdatedAt: Date.now() - 60_000, ...extra }));
+  await register();
+  let running = [];
+  const fired = [];
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock', { sessionsDir: dir, projectsDir: dir, alive: async () => true, messaging: {
+    available: async () => 'tmux', commands: async () => running, stop() {},
+    fire: async (live, recheck) => { await recheck(); fired.push(live.pid); return { ok: true }; },
+  } });
+  await adapter.refresh();
+  assert.equal(adapter.list()[0].messaging.fire, true);
+
+  running = ['npm run dev'];
+  await assert.rejects(adapter.fire(record.sessionId), /npm run dev/);
+  running = [];
+  await register({ status: 'busy' });
+  await assert.rejects(adapter.fire(record.sessionId), /working/);
+  await register({ statusUpdatedAt: Date.now() });
+  await assert.rejects(adapter.fire(record.sessionId), /just finished/);
+  await register();
+  adapter.hooks.set(record.sessionId, { status: 'idle', compacting: 'auto', updatedAt: 0 });
+  await assert.rejects(adapter.fire(record.sessionId), /working/);
+  adapter.hooks.delete(record.sessionId);
+
+  const subagents = join(dir, '-work-project', record.sessionId, 'subagents');
+  await mkdir(subagents, { recursive: true });
+  await writeFile(join(subagents, 'agent-abc123.jsonl'), '{"type":"user","message":{"role":"user","content":"Look around"}}\n');
+  await assert.rejects(adapter.fire(record.sessionId), /subagent/);
+  await rm(subagents, { recursive: true });
+
+  assert.deepEqual(await adapter.fire(record.sessionId), { ok: true });
+  assert.deepEqual(fired, [record.pid]);
 });

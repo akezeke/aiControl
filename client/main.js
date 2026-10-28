@@ -68,6 +68,7 @@ const icons = {
   stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>',
   sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4Z"/><path d="M15.5 9a4 4 0 0 1 0 6m2.5-8.5a7.5 7.5 0 0 1 0 11"/>',
   next: '<path d="m6 5 7 7-7 7m7-14 7 7-7 7"/>',
+  exit: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m5-12 4 4-4 4m4-4H9"/>',
 };
 function icon(name) {
   const span = document.createElement('span'); span.className = 'icon'; span.setAttribute('aria-hidden', 'true');
@@ -492,6 +493,7 @@ function renderSessionHeader(header, session) {
   const next = nextWaiting(session.id);
   if (next) { const b = button('Next', 'quiet-button next-button', openNext, 'next'); b.title = `Next waiting (n): ${next.title}`; actions.append(b); }
   if (session.status === 'working' && session.messaging?.interrupt) { const stop = button('Stop', 'quiet-button stop-button', () => interrupt(session, stop), 'stop'); stop.title = 'Interrupt the current turn'; stop.disabled = !!state.error; actions.append(stop); }
+  if (session.status === 'idle' && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = 'End this session with /exit (refused while anything is still running)'; fire.disabled = !!state.error; actions.append(fire); }
   if (session.messaging?.effort && session.efforts?.length) actions.append(effortPicker(session));
   actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
   const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
@@ -535,6 +537,19 @@ function effortPicker(session) {
     } catch (error) { toast(error.message); select.value = session.efforts.includes(current) ? current : ''; select.disabled = false; }
   };
   return select;
+}
+// The first click arms it for a few seconds; the second ends the session. The server refuses if anything is still running.
+async function fireSession(session, control) {
+  if (state.error) return;
+  const label = control.querySelector('span:not(.icon)');
+  if (!control.classList.contains('armed')) {
+    control.classList.add('armed'); label.textContent = 'Sure?'; control.setAttribute('aria-label', 'Click again to fire');
+    setTimeout(() => { control.classList.remove('armed'); label.textContent = 'Fire'; control.removeAttribute('aria-label'); }, 3000);
+    return;
+  }
+  control.disabled = true;
+  try { await api(`sessions/${encodeURIComponent(session.id)}/fire`, {}); toast('Fired'); office?.fire(session.id); closePanel(); await refresh(); }
+  catch (error) { toast(error.message); control.disabled = false; }
 }
 async function interrupt(session, control) {
   if (state.error) return;

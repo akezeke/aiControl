@@ -1,7 +1,7 @@
 import { connect } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { lstat, realpath, readFile } from 'node:fs/promises';
+import { lstat, realpath, readFile, readdir } from 'node:fs/promises';
 import { dirname, basename, normalize } from 'node:path';
 import { fail } from './requests.mjs';
 
@@ -32,6 +32,33 @@ export async function spawnAgent(cwd, provider, { configDir = '', tmux = runTmux
     return { session: name, pane, window: (await tmux(['display-message', '-p', '-t', pane, '#{window_index}']).catch(() => '')).trim() };
   } catch { throw fail('Could not open a tmux window.', 503); }
 }
+// Every process, with its parent and command line.
+async function listProcesses() {
+  const all = await Promise.all((await readdir('/proc').catch(() => [])).filter(name => /^\d+$/.test(name)).map(async pid => {
+    try {
+      const [stat, cmdline] = await Promise.all([readFile(`/proc/${pid}/stat`, 'utf8'), readFile(`/proc/${pid}/cmdline`, 'utf8')]);
+      return { pid: Number(pid), ppid: Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]), args: cmdline.replaceAll('\0', ' ').trim() };
+    } catch { return null; } // gone meanwhile
+  }));
+  return all.filter(Boolean);
+}
+// A captured screen's rows without what's drawn dim (SGR 2), which is how Claude draws its placeholder ('Try "…"').
+// Attributes run on from row to row; the colour codes' arguments (38;5;n, 38;2;r;g;b) are skipped, not read as codes.
+function undimmedRows(screen) {
+  let dim = false;
+  return screen.split('\n').map(row => row.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').split(/(\x1b\[[\d;:?]*[ -/]*[@-~])/).map(part => {
+    const sgr = /^\x1b\[([\d;:]*)m$/.exec(part);
+    if (!sgr) return part.startsWith('\x1b') || dim ? '' : part;
+    const codes = sgr[1].split(';');
+    for (let i = 0; i < codes.length; i++) {
+      const code = Number(codes[i] || 0);
+      if ([38, 48, 58].includes(code)) i += { 5: 2, 2: 4 }[codes[i + 1]] || 0;
+      else if (code === 2) dim = true;
+      else if (code === 0 || code === 22) dim = false;
+    }
+    return '';
+  }).join(''));
+}
 const tmuxPaneId = record => /\.(%\d+)$/.exec(record.tmux || '')?.[1];
 export const claudeEfforts = ['low', 'medium', 'high', 'xhigh', 'max'];
 
@@ -42,8 +69,8 @@ export class ClaudeMessaging {
   submissions = new Map();
   sockets = new Set();
   typing = Promise.resolve();
-  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000 } = {}) {
-    Object.assign(this, { alive, openSocket, stat, canonical, uid, timeoutMs, tmux, parent, pollMs, settleMs });
+  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000, exitMs = 15_000, processes = listProcesses } = {}) {
+    Object.assign(this, { alive, openSocket, stat, canonical, uid, timeoutMs, tmux, parent, pollMs, settleMs, exitMs, processes });
   }
   async available(record) {
     if (tmuxPaneId(record)) return 'tmux';
@@ -118,16 +145,68 @@ export class ClaudeMessaging {
     await this.type(await this.readyPane(record), { text: `/effort ${effort}`, clientMessageId: randomUUID() });
     return { ok: true };
   }
+  // What Claude's Bash tool still runs, in the foreground or background (dev servers, monitors): each command is a shell,
+  // a child of Claude, that sources Claude's shell snapshot. Named by what that shell started.
+  async commands(pid) {
+    const all = await this.processes();
+    return all.filter(child => child.ppid === pid && child.args.includes('/shell-snapshots/')).map(shell => all.find(child => child.ppid === shell.pid)?.args || 'a shell command');
+  }
+  // What's typed at Claude's prompt: '' when it's empty, null when no prompt shows (a dialog, or Claude has gone).
+  // The input box is the prompt line, and the lines it wraps onto, between two rules.
+  async inputText(pane) {
+    const screen = await this.tmux(['capture-pane', '-p', '-e', '-J', '-t', pane]).catch(() => null);
+    if (screen === null) return null;
+    const rows = undimmedRows(screen), rule = row => /^\s*─/.test(row ?? '');
+    const start = rows.findLastIndex((row, i) => rule(rows[i - 1]) && /^\s*[❯>]/.test(row)), end = rows.findIndex((row, i) => i > start && rule(row));
+    if (start < 0 || end < 0) return null;
+    return rows.slice(start, end).join('\n').replace(/^\s*[❯>]/, '').replaceAll('\u00a0', ' ').trim();
+  }
+  // Ends the session with /exit, typed only into an empty prompt. `recheck` runs once /exit shows there, just before
+  // Enter; if it throws, /exit is wiped again. Done when the process has gone.
+  async fire(record, recheck) {
+    const pane = await this.readyPane(record);
+    if (record.status !== 'idle') throw fail('Claude is working. Stop it first.', 409);
+    const typed = () => this.inputText(pane);
+    return this.queue(async () => {
+      const before = await typed();
+      if (before === null) throw fail('Claude’s prompt isn’t showing. Check its terminal.', 409);
+      if (before) throw fail('There’s a draft in Claude’s prompt. Send or clear it first.', 409);
+      await this.paste(pane, '/exit', randomUUID());
+      try {
+        if (!await this.until(async () => await typed() === '/exit', this.settleMs)) throw fail('Could not type /exit into Claude’s prompt. Check its terminal.', 503);
+        await recheck();
+      } catch (error) {
+        if ((await typed())?.endsWith('/exit')) await this.tmux(['send-keys', '-t', pane, ...Array(5).fill('BSpace')]).catch(() => {});
+        throw error;
+      }
+      try { await this.tmux(['send-keys', '-t', pane, 'Enter']); } catch { throw fail('/exit is in Claude’s prompt but Enter failed. Check the terminal.', 504); }
+      if (!await this.until(async () => !await this.alive(record.pid, record.procStart), this.exitMs)) throw fail('Claude is still running after /exit. Check its terminal.', 504);
+      return { ok: true };
+    });
+  }
+  async paste(pane, text, id) {
+    const buffer = `ai-control-${id}`;
+    try {
+      await this.tmux(['copy-mode', '-q', '-t', pane]);
+      await this.tmux(['load-buffer', '-b', buffer, '-'], text);
+      await this.tmux(['paste-buffer', '-d', '-p', '-r', '-b', buffer, '-t', pane]);
+    } catch { throw fail('Could not type into Claude’s tmux pane. Refresh and try again.', 503); }
+  }
+  async until(check, ms) {
+    for (const end = Date.now() + ms; Date.now() < end; await new Promise(resolve => setTimeout(resolve, this.pollMs))) if (await check()) return true;
+    return check();
+  }
+  // One paste and Enter at a time, so concurrent sends never interleave.
+  queue(run) {
+    const result = this.typing.then(run, run);
+    this.typing = result.catch(() => {});
+    return result;
+  }
   type(pane, body) {
     // Strip control characters so text cannot end the bracketed paste or send keys.
     const text = body.text.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
-    const buffer = `ai-control-${body.clientMessageId}`;
     const run = async () => {
-      try {
-        await this.tmux(['copy-mode', '-q', '-t', pane]);
-        await this.tmux(['load-buffer', '-b', buffer, '-'], text);
-        await this.tmux(['paste-buffer', '-d', '-p', '-r', '-b', buffer, '-t', pane]);
-      } catch { throw fail('Could not type into Claude’s tmux pane. Refresh and try again.', 503); }
+      await this.paste(pane, text, body.clientMessageId);
       // A busy or long session can take a while to take in a paste, and an early Enter hits an empty
       // prompt. So wait until the text shows in the input line, press Enter, and press again only
       // while our own text is still visibly there (so a retry can never confirm a dialog).
@@ -137,19 +216,15 @@ export class ClaudeMessaging {
         const line = screen.split('\n').reverse().find(row => /^\s*[❯>]/.test(row))?.replace(/^\s*[❯>]\s?/, '').replace(/\s+/g, ' ') ?? '';
         return line.includes(snippet) || line.includes('[Pasted text');
       };
-      const until = async (check, ms) => { for (const end = Date.now() + ms; Date.now() < end; await new Promise(resolve => setTimeout(resolve, this.pollMs))) if (await check()) return true; return check(); };
-      await until(inInput, this.settleMs);
+      await this.until(inInput, this.settleMs);
       for (let attempt = 0; attempt < 3; attempt++) {
         try { await this.tmux(['send-keys', '-t', pane, 'Enter']); }
         catch { throw fail('The text is in Claude’s prompt but Enter failed. Check the terminal before sending again.', 504); }
-        if (await until(async () => !await inInput(), this.settleMs / 2)) return { status: 'sent', via: 'tmux', clientMessageId: body.clientMessageId };
+        if (await this.until(async () => !await inInput(), this.settleMs / 2)) return { status: 'sent', via: 'tmux', clientMessageId: body.clientMessageId };
       }
       throw fail('The text is in Claude’s prompt but was not submitted. Press Enter in the terminal.', 504);
     };
-    // One paste and Enter at a time, so concurrent sends never interleave.
-    const result = this.typing.then(run, run);
-    this.typing = result.catch(() => {});
-    return result;
+    return this.queue(run);
   }
   post(record, body) {
     const frame = JSON.stringify({ type: 'user', session_id: record.sessionId, uuid: body.clientMessageId, msgV: 1, msg_id: `cc-msg-${body.clientMessageId.replaceAll('-', '')}`, priority: 'next', message: { role: 'user', content: body.text } }) + '\n';

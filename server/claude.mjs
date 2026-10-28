@@ -10,6 +10,8 @@ import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
 
 // Must match the PermissionRequest hook timeout in scripts/install-hooks.mjs.
 export const hookTimeoutMs = 24 * 3600_000;
+// How long a session must have been idle before it can be fired.
+const QUIET_MS = 5000;
 
 export async function processMatches(pid, start) {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
@@ -94,7 +96,7 @@ export class ClaudeAdapter {
           paths.set(`claude:${record.sessionId}`, transcript);
           // A parked session (handed off to a background job) keeps its last status in the registration, so it can say busy for days.
           const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux';
-          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
+          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux, fire: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
           for (const agent of await this.subagents(record, transcript, paths)) sessions.set(agent.id, agent);
         } catch { /* ignore partially written and stale registration files */ }
       }));
@@ -241,6 +243,21 @@ export class ClaudeAdapter {
   }
   async interrupt(sessionId) { return this.messaging.interrupt(await this.record(sessionId)); }
   async setEffort(sessionId, effort) { return this.messaging.setEffort(await this.record(sessionId), effort); }
+  // Firing ends the session with /exit, so it has to be quiet: idle by its registration and its hooks for a few seconds, not
+  // compacting, no subagent or workflow working and nothing left running from its Bash tool, background ones included.
+  // All of it is checked again with /exit typed, just before Enter.
+  async fire(sessionId) {
+    const quiet = async () => {
+      const record = await this.record(sessionId), hook = this.hooks.get(sessionId), transcript = this.paths.get(`claude:${sessionId}`);
+      if (record.status !== 'idle' || record.parkedJobId || (hook && hook.status !== 'idle') || hook?.compacting) throw fail('Claude is working. Stop it first.', 409);
+      if (Date.now() - Math.max(record.statusUpdatedAt || record.updatedAt || 0, hook?.updatedAt || 0) < QUIET_MS) throw fail('Claude only just finished. Try again in a moment.', 409);
+      if (transcript && (await this.subagents(record, transcript, new Map())).some(agent => agent.status === 'working')) throw fail('A subagent is still working.', 409);
+      const commands = await this.messaging.commands(record.pid);
+      if (commands.length) throw fail(`Still running: ${commands[0].slice(0, 60)}${commands.length > 1 ? ` (+${commands.length - 1})` : ''}. Stop it first.`, 409);
+      return record;
+    };
+    return this.messaging.fire(await quiet(), quiet);
+  }
   async history(id, limit) {
     const [sessionId, agentId] = id.slice(7).split(':');
     if (!this.paths.has(id)) throw fail('Session is no longer available.', 409);
