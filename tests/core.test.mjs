@@ -163,6 +163,14 @@ test('Codex permissions and statuses use documented responses', () => {
   assert.equal(codexStatus({ type: 'notLoaded' }), 'offline');
 });
 
+test('Codex offers session-wide and policy approvals when the server leaves the choice open', () => {
+  const command = codexRequest({ method: 'item/commandExecution/requestApproval', params: { threadId: 't', command: 'npm test', proposedExecpolicyAmendment: ['npm', 'test'] } });
+  assert.deepEqual(command.view.actions.map(a => [a.value, a.label]), [['accept', 'Allow once'], ['acceptForSession', 'Allow for session'], ['acceptWithExecpolicyAmendment', 'Always allow npm test'], ['decline', 'Deny'], ['cancel', 'Cancel turn']]);
+  assert.deepEqual(command.encode({ decision: 'acceptWithExecpolicyAmendment' }), { decision: { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['npm', 'test'] } } });
+  const files = codexRequest({ method: 'item/fileChange/requestApproval', params: { threadId: 't' } });
+  assert.deepEqual(files.view.actions.map(a => a.value), ['accept', 'acceptForSession', 'decline', 'cancel']);
+});
+
 test('Claude hook responses keep the original questions and never approve by default', () => {
   const questions = [{ question: 'Where?', header: 'Place', options: [{ label: 'Here' }], multiSelect: false }];
   const question = claudeRequest({ session_id: 's', hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: { questions } });
@@ -171,6 +179,15 @@ test('Claude hook responses keep the original questions and never approve by def
   const permission = claudeRequest({ session_id: 's', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' } });
   assert.deepEqual(permission.encode({ decision: 'accept' }), { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', updatedInput: { command: 'npm test' } } } });
   assert.equal(permission.encode({ decision: 'decline' }).hookSpecificOutput.decision.behavior, 'deny');
+  // Claude's suggested rules become one "always" button; a denial can carry the user's reason.
+  const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' }];
+  const always = claudeRequest({ session_id: 's', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' }, permission_suggestions: suggestions });
+  assert.deepEqual(always.view.actions.map(a => a.label), ['Allow once', 'Always allow Bash(npm test:*)', 'Deny']);
+  assert.deepEqual(always.encode({ decision: 'always' }).hookSpecificOutput.decision, { behavior: 'allow', updatedInput: { command: 'npm test' }, updatedPermissions: suggestions });
+  assert.deepEqual(always.encode({ decision: 'decline', message: 'Use pnpm' }).hookSpecificOutput.decision, { behavior: 'deny', message: 'Use pnpm' });
+  const plan = claudeRequest({ session_id: 's', hook_event_name: 'PermissionRequest', tool_name: 'ExitPlanMode', tool_input: { plan: '# Plan\n1. Do it' } });
+  assert.equal(plan.view.plan, '# Plan\n1. Do it');
+  assert.deepEqual(plan.view.actions.map(a => a.label), ['Approve', 'Keep planning']);
   // Old PreToolUse hooks get an immediate empty reply, so they never block the terminal.
   assert.equal(claudeRequest({ session_id: 's', hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions } }), null);
 });

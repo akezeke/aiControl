@@ -664,7 +664,7 @@ function spawnButtons(cwd) {
 async function spawnAgent(cwd, provider, control) {
   if (state.error) return;
   control.disabled = true;
-  try { toast(`${providerName(provider)} started in tmux ${(await api('spawn', { cwd, provider })).session}`); }
+  try { const result = await api('spawn', { cwd, provider }); toast(`${providerName(provider)} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
   catch (e) { toast(e.message); }
   finally { control.disabled = false; }
 }

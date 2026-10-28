@@ -184,11 +184,26 @@ test('a failed Enter after pasting is unconfirmed and never retyped', async () =
 test('new agents open in the tmux session working in the project, never the server’s own', async () => {
   const run = panes => { const calls = []; return { calls, tmux: async args => { calls.push(args); return args[0] === 'list-panes' ? panes : '%42\n'; } }; };
   const shared = run('aiControl\t/w/aiControl\nwork\t/w/app\nwork\t/w/aiControl\n');
-  assert.deepEqual(await spawnAgent('/w/aiControl', 'claude', shared.tmux), { session: 'work', pane: '%42' });
-  assert.deepEqual(shared.calls.slice(1), [['new-window', '-t', '=work:', '-d', '-c', '/w/aiControl', '-n', 'claude', '-P', '-F', '#{pane_id}'], ['send-keys', '-t', '%42', 'claude', 'Enter']]);
+  assert.deepEqual(await spawnAgent('/w/aiControl', 'claude', shared.tmux), { session: 'work', pane: '%42', window: '%42' });
+  assert.deepEqual(shared.calls.slice(1, 3), [['new-window', '-t', '=work:', '-d', '-c', '/w/aiControl', '-n', 'claude', '-P', '-F', '#{pane_id}'], ['send-keys', '-t', '%42', 'claude', 'Enter']]);
   const fresh = run('aiControl\t/w/aiControl\n');
   assert.equal((await spawnAgent('/w/aiControl', 'codex', fresh.tmux)).session, 'aiControl-agents');
   assert.equal(fresh.calls[1][0], 'new-session');
+  assert.deepEqual(fresh.calls[2].slice(3), ['codex -c check_for_update_on_startup=false', 'Enter']);
   assert.equal((await spawnAgent('/w/my.app', 'codex', run('').tmux)).session, 'my_app');
   await assert.rejects(spawnAgent('/w/app', 'sh', run('').tmux), /Unknown agent/);
+});
+
+test('Stop sends Escape only to a busy, verified pane; effort is typed as /effort', async () => {
+  const idle = tmuxFixture();
+  await assert.rejects(idle.adapter.interrupt(paneRecord), /not working/);
+  assert.equal(idle.calls.some(args => args.includes('Escape')), false);
+  const busy = tmuxFixture();
+  await busy.adapter.interrupt({ ...paneRecord, status: 'busy' });
+  assert.deepEqual(busy.calls.at(-1), ['send-keys', '-t', '%7', 'Escape']);
+  await assert.rejects(busy.adapter.interrupt({ ...paneRecord, status: 'busy', waitingFor: 'permission' }), /waiting on a prompt/);
+  const effort = tmuxFixture();
+  await effort.adapter.setEffort(paneRecord, 'high');
+  assert.equal(effort.calls.find(args => args[0] === 'load-buffer').at(-1), '/effort high');
+  await assert.rejects(effort.adapter.setEffort(paneRecord, 'turbo; rm -rf'), /Unknown effort/);
 });

@@ -1,4 +1,5 @@
 import { connect } from 'node:net';
+import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { lstat, realpath, readFile } from 'node:fs/promises';
 import { dirname, basename, normalize } from 'node:path';
@@ -24,11 +25,13 @@ export async function spawnAgent(cwd, provider, tmux = runTmux) {
   const target = panes.some(([session]) => session === name) ? ['new-window', '-t', `=${name}:`] : ['new-session', '-s', name];
   try {
     const pane = (await tmux([...target, '-d', '-c', cwd, '-n', provider, '-P', '-F', '#{pane_id}'])).trim();
-    await tmux(['send-keys', '-t', pane, provider, 'Enter']);
-    return { session: name, pane };
+    // Nobody can answer Codex's startup update prompt from here, and the thread only loads past it.
+    await tmux(['send-keys', '-t', pane, provider === 'codex' ? 'codex -c check_for_update_on_startup=false' : provider, 'Enter']);
+    return { session: name, pane, window: (await tmux(['display-message', '-p', '-t', pane, '#{window_index}']).catch(() => '')).trim() };
   } catch { throw fail('Could not open a tmux window.', 503); }
 }
 const tmuxPaneId = record => /\.(%\d+)$/.exec(record.tmux || '')?.[1];
+export const claudeEfforts = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 // Sessions in tmux get the text typed into their pane: Claude sees the user's own
 // prompt, queued like terminal input while busy. Other sessions fall back to the
@@ -86,15 +89,32 @@ export class ClaudeMessaging {
     return entry.promise;
   }
   async deliver(record, body) {
-    if (!await this.alive(record.pid, record.procStart)) throw fail('Claude is no longer running. Refresh before sending.', 409);
     if (tmuxPaneId(record)) {
-      // Enter on an open dialog would pick its default option.
-      if (!['idle', 'busy'].includes(record.status) || record.waitingFor) throw fail('Claude is waiting on a prompt in its terminal.', 409);
-      const pane = await this.verifiedPane(record);
+      const pane = await this.readyPane(record, false);
       if (pane) return this.type(pane, body);
-    }
+    } else if (!await this.alive(record.pid, record.procStart)) throw fail('Claude is no longer running. Refresh before sending.', 409);
     if (!await this.inboxAvailable(record)) throw fail('Claude has no tmux pane or inbox to receive messages.', 409);
     return this.post(record, body);
+  }
+  // Enter or Escape on an open dialog would pick one of its options, so keys go only to a quiet prompt.
+  async readyPane(record, required = true) {
+    if (!await this.alive(record.pid, record.procStart)) throw fail('Claude is no longer running. Refresh before sending.', 409);
+    if (!['idle', 'busy'].includes(record.status) || record.waitingFor) throw fail('Claude is waiting on a prompt in its terminal.', 409);
+    const pane = await this.verifiedPane(record);
+    if (!pane && required) throw fail('Run Claude inside tmux to control it from here.', 409);
+    return pane;
+  }
+  async interrupt(record) {
+    const pane = await this.readyPane(record);
+    if (record.status !== 'busy') throw fail('Claude is not working right now.', 409);
+    try { await this.tmux(['send-keys', '-t', pane, 'Escape']); } catch { throw fail('Could not reach Claude’s tmux pane.', 503); }
+    return { ok: true };
+  }
+  // /effort runs immediately, even mid-turn.
+  async setEffort(record, effort) {
+    if (!claudeEfforts.includes(effort)) throw fail('Unknown effort level.');
+    await this.type(await this.readyPane(record), { text: `/effort ${effort}`, clientMessageId: randomUUID() });
+    return { ok: true };
   }
   type(pane, body) {
     // Strip control characters so text cannot end the bracketed paste or send keys.

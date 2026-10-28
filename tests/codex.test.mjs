@@ -75,7 +75,7 @@ test('large Codex tool results do not disconnect the dashboard or leak into its 
   await adapter.refresh();
   assert.equal(adapter.connected, true);
   assert.equal(server.handshakes, 1);
-  assert.deepEqual(adapter.list()[0].messages.map(m => m.text), ['Check the image.', 'Image processed.']);
+  assert.deepEqual(adapter.list()[0].messages.map(m => m.text), ['Check the image.', 'MCP tool', 'Image processed.']);
   assert.ok(JSON.stringify(adapter.list()).length < 2000);
 });
 
@@ -84,7 +84,7 @@ test('smaller history pages still find the most recent messages across tool resu
     ? { type: 'agentMessage', id: `reply-${index}`, text: `Reply ${index}` }
     : { type: 'commandExecution', id: `tool-${index}`, aggregatedOutput: 'Tool output' } }));
   const { adapter, server } = await connected(t, { items });
-  assert.deepEqual(adapter.list()[0].messages.map(m => m.text), Array.from({ length: messageLimit }, (_, i) => `Reply ${4 * (messageLimit - 1 - i)}`));
+  assert.deepEqual(adapter.list()[0].messages.filter(m => !m.tool).map(m => m.text), Array.from({ length: messageLimit }, (_, i) => `Reply ${4 * (messageLimit - 1 - i)}`));
   const pages = server.messages.filter(m => m.method === 'thread/items/list');
   assert.equal(pages.length, Math.ceil((4 * (messageLimit - 1) + 1) / 10));
   assert.ok(pages.every(m => m.params.limit === 10));

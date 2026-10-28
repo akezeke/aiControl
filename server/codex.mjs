@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fail } from './requests.mjs';
-import { codexMessage, messageLimit, textContent } from './messages.mjs';
+import { codexMessage, messageLimit, recentMessages, textContent, planSteps } from './messages.mjs';
 import { UsagePoller, codexUsageWindows } from './usage.mjs';
 
 export const codexSocketPath = () => join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'app-server-control', 'app-server-control.sock');
@@ -29,12 +29,14 @@ export function codexRequest(message, items = new Map()) {
   }
   if (['item/commandExecution/requestApproval', 'item/fileChange/requestApproval'].includes(method)) {
     const item = items.get(`${p.threadId}:${p.itemId}`);
-    const decisions = p.availableDecisions ?? ['accept', 'decline'];
+    const amendment = Array.isArray(p.proposedExecpolicyAmendment) && p.proposedExecpolicyAmendment.length ? p.proposedExecpolicyAmendment : null;
+    // Older servers list the decisions; current ones accept all of these (the amendment only when proposed).
+    const decisions = (p.availableDecisions ?? ['accept', 'acceptForSession', ...(amendment ? ['acceptWithExecpolicyAmendment'] : []), 'decline', 'cancel']).map(d => typeof d === 'string' ? d : Object.keys(d ?? {})[0]);
     return {
       view: { ...base, title: method.includes('fileChange') ? 'Allow file changes?' : 'Allow this command?',
         details: JSON.stringify({ ...p, ...(item ? { item } : {}) }, null, 2),
-        actions: [{ value: 'accept', label: 'Allow once' }, { value: 'decline', label: 'Deny' }, { value: 'cancel', label: 'Cancel turn' }].filter(x => decisions.includes(x.value)),
-      }, encode: answer => ({ decision: answer.decision }),
+        actions: [{ value: 'accept', label: 'Allow once' }, { value: 'acceptForSession', label: 'Allow for session' }, { value: 'acceptWithExecpolicyAmendment', label: `Always allow ${(amendment ?? []).join(' ')}`.slice(0, 80) }, { value: 'decline', label: 'Deny' }, { value: 'cancel', label: 'Cancel turn' }].filter(x => decisions.includes(x.value)),
+      }, encode: answer => ({ decision: answer.decision === 'acceptWithExecpolicyAmendment' ? { acceptWithExecpolicyAmendment: { execpolicy_amendment: amendment } } : answer.decision }),
     };
   }
   if (method === 'item/permissions/requestApproval') return {
@@ -64,6 +66,8 @@ export function codexRequest(message, items = new Map()) {
   return null;
 }
 
+const codexGoal = goal => goal && { objective: String(goal.objective || '').slice(0, 500), status: goal.status, tokensUsed: goal.tokensUsed, tokenBudget: goal.tokenBudget ?? null, timeUsedSeconds: goal.timeUsedSeconds };
+
 export class CodexAdapter {
   sessions = new Map();
   calls = new Map();
@@ -73,6 +77,7 @@ export class CodexAdapter {
   fresh = new Set();
   items = new Map();
   submissions = new Map();
+  models = new Map();
   startingQueue = new Set();
   queueAttempts = new Set();
   sendingMessages = new Set();
@@ -122,6 +127,7 @@ export class CodexAdapter {
       this.write({ method: 'initialized' });
       this.connected = true; this.detail = 'Connected to the local Codex app-server';
       this.usage.start();
+      this.loadModels();
       await this.refresh();
       if (!current()) return;
       this.lastError = null;
@@ -149,9 +155,10 @@ export class CodexAdapter {
       try { this.write({ id, method, params }); } catch (error) { this.calls.get(id)?.reject(error); this.calls.delete(id); }
     });
   }
+  // Live fields (plan, context, goal, effort) arrive as notifications and survive the periodic re-read.
   upsert(thread) {
     const previous = this.sessions.get(thread.id);
-    this.sessions.set(thread.id, { id: `codex:${thread.id}`, nativeId: thread.id, provider: 'codex', title: thread.name || thread.preview?.slice(0, 130) || 'Codex session', cwd: thread.cwd, project: basename(thread.cwd || 'Unknown'), status: codexStatus(thread.status), updatedAt: Math.max(previous?.updatedAt || 0, thread.updatedAt * 1000 || 0), model: thread.model, branch: thread.gitInfo?.branch, parentId: thread.parentThreadId, detail: previous?.detail || '', control: this.joined.has(thread.id), messages: previous?.messages || [], messagesState: previous?.messagesState || 'loading', queuedMessages: previous?.queuedMessages || [], queueAvailable: previous?.queueAvailable ?? false, queueError: previous?.queueError || '' });
+    this.sessions.set(thread.id, { detail: '', messages: [], messagesState: 'loading', queuedMessages: [], queueAvailable: false, queueError: '', ...previous, id: `codex:${thread.id}`, nativeId: thread.id, provider: 'codex', title: thread.name || thread.preview?.slice(0, 130) || 'Codex session', cwd: thread.cwd, project: basename(thread.cwd || 'Unknown'), status: codexStatus(thread.status), updatedAt: Math.max(previous?.updatedAt || 0, thread.updatedAt * 1000 || 0), model: thread.model, effort: previous?.nextEffort || thread.reasoningEffort || previous?.effort || '', efforts: this.models.get(thread.model) || [], branch: thread.gitInfo?.branch, parentId: thread.parentThreadId, control: this.joined.has(thread.id) });
   }
   async refresh() {
     if (this.refreshing || !this.connected) return;
@@ -178,6 +185,7 @@ export class CodexAdapter {
             catch (error) { if (error.rpcCode === -32600 && /no rollout found/.test(error.message)) { this.fresh.add(id); this.sessions.get(id).messagesState = 'ready'; return; } throw error; }
             if (!current()) return;
             this.joined.add(id); this.fresh.delete(id); this.sessions.get(id).control = true;
+            this.rpc('thread/goal/get', { threadId: id }, { closeOnTimeout: false }).then(({ goal }) => { if (goal && this.sessions.has(id)) this.sessions.get(id).goal = codexGoal(goal); }, () => {});
           }
           await this.refreshMessages(id);
           if (!current()) return;
@@ -188,22 +196,41 @@ export class CodexAdapter {
       }));
     } finally { if (this.connection === connection) this.refreshing = false; }
   }
+  // Effort levels per model, for the effort picker. Optional: older servers lack model/list.
+  async loadModels() {
+    try {
+      let cursor;
+      do {
+        const page = await this.rpc('model/list', { includeHidden: true, ...(cursor ? { cursor } : {}) }, { closeOnTimeout: false });
+        for (const model of page.data ?? []) { const efforts = (model.supportedReasoningEfforts ?? []).map(option => option.reasoningEffort).filter(Boolean); this.models.set(model.id, efforts); this.models.set(model.model, efforts); }
+        cursor = page.nextCursor;
+      } while (cursor && this.models.size < 500);
+    } catch { /* no effort picker */ }
+  }
+  // Newest first, ten items a page, so fifty full tool results (potentially many images) never share
+  // one WebSocket message. Stops after `limit` text messages or 20 pages per 20 messages.
+  async readMessages(threadId, limit = messageLimit) {
+    const connection = this.connection, messages = []; let cursor, more = false;
+    for (let pageNumber = 0, texts = 0; pageNumber < limit && texts < limit; pageNumber++) {
+      const page = await this.rpc('thread/items/list', { threadId, limit: 10, sortDirection: 'desc', ...(cursor ? { cursor } : {}) });
+      if (this.connection !== connection) return null;
+      for (const entry of page.data) { const value = codexMessage(entry); if (value) { messages.push(value); if (!value.tool) texts++; } }
+      cursor = page.nextCursor; more = !!cursor; if (!cursor) break;
+    }
+    return { messages: recentMessages(messages.reverse(), limit), more };
+  }
   async refreshMessages(threadId) {
-    const connection = this.connection;
     const session = this.sessions.get(threadId);
     if (!session) return;
     try {
-      const messages = []; let cursor;
-      // Keep the same 200-item search budget without bundling fifty full tool
-      // results (potentially many images) into a single WebSocket message.
-      for (let pageNumber = 0; pageNumber < 20 && messages.length < messageLimit; pageNumber++) {
-        const page = await this.rpc('thread/items/list', { threadId, limit: 10, sortDirection: 'desc', ...(cursor ? { cursor } : {}) });
-        if (this.connection !== connection) return;
-        for (const entry of page.data) { const value = codexMessage(entry); if (value) messages.push(value); if (messages.length >= messageLimit) break; }
-        cursor = page.nextCursor; if (!cursor) break;
-      }
-      session.messages = messages.reverse(); session.messagesState = messages.length ? 'ready' : 'empty';
+      const result = await this.readMessages(threadId);
+      if (!result) return;
+      session.messages = result.messages; session.messagesState = result.messages.length ? 'ready' : 'empty';
     } catch { session.messagesState = session.messages.length ? 'stale' : 'unavailable'; }
+  }
+  async history(threadId, limit) {
+    this.requireMessaging(threadId);
+    return await this.readMessages(threadId, limit) ?? { messages: [], more: false };
   }
   queueView(entry) {
     return { id: entry.id, text: textContent(entry.input).slice(0, 12_000), clientMessageId: entry.clientUserMessageId, hasAttachments: entry.input?.some(item => item.type !== 'text') || false };
@@ -280,9 +307,12 @@ export class CodexAdapter {
         }
         try {
           submitted = true;
+          // A chosen effort can only ride along with a new turn; a steer keeps the current one.
+          const effort = !active && this.sessions.get(threadId)?.nextEffort;
           const result = await this.rpc(active ? 'turn/steer' : 'turn/start', {
-            threadId, input, clientUserMessageId, ...(active ? { expectedTurnId: turnId } : {}),
+            threadId, input, clientUserMessageId, ...(active ? { expectedTurnId: turnId } : {}), ...(effort ? { effort } : {}),
           });
+          if (effort) { const current = this.sessions.get(threadId); if (current?.nextEffort === effort) { current.effort = effort; delete current.nextEffort; } }
           const confirmedTurnId = active ? result.turnId : result.turn?.id;
           if (!confirmedTurnId) throw fail('Codex did not confirm the message.', 502);
           const current = this.sessions.get(threadId);
@@ -302,6 +332,22 @@ export class CodexAdapter {
       if (submitted && error.rpcCode == null) throw fail('Delivery could not be confirmed. Check the conversation or queue before sending again.', 504);
       throw error;
     } finally { if (locked) this.sendingMessages.delete(threadId); }
+  }
+  async interrupt(threadId) {
+    this.requireMessaging(threadId);
+    const page = await this.rpc('thread/turns/list', { threadId, limit: 1, sortDirection: 'desc', itemsView: 'notLoaded' });
+    const turnId = page.data.find(turn => turn.status === 'inProgress')?.id;
+    if (!turnId) throw fail('Codex is not working right now.', 409);
+    await this.rpc('turn/interrupt', { threadId, turnId });
+    return { ok: true };
+  }
+  // The app-server changes effort only with turn/start, so it applies from the next message sent here.
+  setEffort(threadId, effort) {
+    const session = this.requireMessaging(threadId);
+    if (!session.efforts?.includes(effort)) throw fail('Unknown effort level.');
+    if (effort === session.effort && !session.nextEffort) return { ok: true };
+    session.nextEffort = effort; session.effort = effort;
+    return { ok: true, pending: true };
   }
   async cancelQueuedMessage(threadId, id) {
     this.requireMessaging(threadId);
@@ -340,9 +386,18 @@ export class CodexAdapter {
       const key = `codex:${JSON.stringify(p.requestId)}`;
       this.store.removeSource(key); this.resolutions.get(key)?.resolve(); this.resolutions.delete(key); return;
     }
-    if (message.method === 'thread/status/changed') {
-      const session = this.sessions.get(p.threadId);
-      if (session) session.status = codexStatus(p.status);
+    const live = this.sessions.get(p.threadId);
+    if (message.method === 'thread/status/changed' && live) live.status = codexStatus(p.status);
+    if (live) {
+      if (message.method === 'thread/tokenUsage/updated') live.context = { used: p.tokenUsage?.last?.totalTokens || 0, window: p.tokenUsage?.modelContextWindow || null };
+      if (message.method === 'turn/plan/updated') live.plan = planSteps(p.plan);
+      if (message.method === 'thread/goal/updated') live.goal = codexGoal(p.goal);
+      if (message.method === 'thread/goal/cleared') live.goal = null;
+      if (message.method === 'thread/settings/updated' && p.threadSettings) { live.model = p.threadSettings.model || live.model; if (!live.nextEffort) live.effort = p.threadSettings.effort || live.effort; }
+      // Errors and reroutes have no item; they join the history as notices.
+      const note = message.method === 'error' ? { text: `${p.error?.message || 'Error'}${p.willRetry ? ' · retrying' : ''}`, error: !p.willRetry }
+        : message.method === 'model/rerouted' ? { text: `Model rerouted: ${p.fromModel} → ${p.toModel}` } : null;
+      if (note) { live.messages = recentMessages([...live.messages, { id: `${message.method}:${p.turnId}:${Date.now()}`, role: 'notice', text: note.text.slice(0, 300), truncated: false, timestamp: Date.now(), ...(note.error ? { error: true } : {}) }]); live.updatedAt = Date.now(); }
     }
     if (['turn/completed', 'thread/closed', 'thread/archived'].includes(message.method)) this.store.removeSession(`codex:${p.threadId}`);
     if (message.method === 'item/started') {
@@ -354,7 +409,7 @@ export class CodexAdapter {
     }
     if (message.method === 'item/completed') {
       const session = this.sessions.get(p.threadId), value = p.item && codexMessage(p.item);
-      if (session && value) { session.messages = [...session.messages.filter(m => m.id !== value.id), value].slice(-messageLimit); session.messagesState = 'ready'; session.updatedAt = Date.now(); }
+      if (session && value) { session.messages = recentMessages([...session.messages.filter(m => m.id !== value.id), value]); session.messagesState = 'ready'; session.updatedAt = Date.now(); }
     }
     if (message.id != null && message.method && p.threadId) {
       const request = codexRequest(message, this.items);
@@ -371,6 +426,11 @@ export class CodexAdapter {
       }, sourceKey);
     }
   }
-  list() { return [...this.sessions.values()].map(session => ({ ...session, messaging: { send: this.connected && (this.joined.has(session.nativeId) || this.fresh.has(session.nativeId)), queue: this.connected && this.joined.has(session.nativeId) && session.queueAvailable } })); }
+  list() {
+    return [...this.sessions.values()].map(({ nextEffort, ...session }) => {
+      const send = this.connected && (this.joined.has(session.nativeId) || this.fresh.has(session.nativeId));
+      return { ...session, ...(nextEffort ? { effortPending: true } : {}), messaging: { send, queue: send && this.joined.has(session.nativeId) && session.queueAvailable, interrupt: send && this.joined.has(session.nativeId), effort: send && session.efforts.length > 0 } };
+    });
+  }
   stop() { this.stopped = true; clearTimeout(this.retry); clearInterval(this.timer); this.connection?.close(); }
 }

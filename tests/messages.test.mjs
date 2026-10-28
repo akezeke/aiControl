@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, mkdir, symlink, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claudeMessages, codexMessage, messageLimit, TranscriptReader, claudeTitles, claudeSessionTitle } from '../server/messages.mjs';
+import { claudeMeta, claudeMessages, codexMessage, messageLimit, TranscriptReader, claudeTitles, claudeSessionTitle } from '../server/messages.mjs';
 
 const sessionId = '11111111-2222-3333-4444-555555555555';
 const row = (id, type, content, extra = {}) => JSON.stringify({ uuid: id, sessionId, type, timestamp: '2026-10-25T12:00:00Z', message: { role: type, content }, ...extra });
@@ -18,7 +18,8 @@ test('recent Claude messages include visible text only, bounded to the limit', (
   const messages = claudeMessages(lines, sessionId);
   assert.deepEqual(messages.map(m => m.text), Array.from({ length: messageLimit }, (_, i) => `Visible ${i + 3}`));
   assert.equal(codexMessage({ item: { type: 'reasoning', content: ['private'] } }), null);
-  assert.equal(codexMessage({ item: { type: 'commandExecution', aggregatedOutput: 'output' } }), null);
+  // Tool calls are one line each; their output never reaches the dashboard.
+  assert.equal(JSON.stringify(codexMessage({ item: { type: 'commandExecution', id: 'c', aggregatedOutput: 'output' } })).includes('output'), false);
   assert.equal(codexMessage({ item: { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'Visible' }, { type: 'image', url: 'private' }] } }).text, 'Visible');
 });
 
@@ -118,4 +119,55 @@ test('workflow workers show their task without the harness preface, and tool cal
   assert.equal(messages.at(-2).detail, 'make step-39');
   assert.equal(messages.at(-1).text, 'Edit · src/roof.ts');
   assert.equal(messages.at(-1).detail, '/home/u/repo/src/roof.ts');
+});
+
+test('Codex tool items, notices and failures become one-line entries', () => {
+  const line = item => { const m = codexMessage({ item: { id: 'i', ...item } }); return m && [m.role, m.text, !!m.tool, !!m.failed]; };
+  assert.deepEqual(line({ type: 'commandExecution', command: 'npm test', exitCode: 1, status: 'failed', aggregatedOutput: 'boom' }), ['assistant', 'Shell (exit 1) · npm test', true, true]);
+  assert.deepEqual(line({ type: 'fileChange', status: 'completed', changes: [{ path: '/w/src/a.ts' }, { path: '/w/b.ts' }] }), ['assistant', 'Edit · src/a.ts, w/b.ts', true, false]);
+  assert.deepEqual(line({ type: 'mcpToolCall', server: 'docs', tool: 'search', status: 'completed' }), ['assistant', 'docs/search', true, false]);
+  assert.deepEqual(line({ type: 'webSearch', query: 'tmux paste' }), ['assistant', 'Search · tmux paste', true, false]);
+  assert.deepEqual(line({ type: 'contextCompaction' }), ['notice', 'Context compacted', false, false]);
+  assert.deepEqual(line({ type: 'exitedReviewMode', review: 'Two bugs found.' }), ['assistant', 'Two bugs found.', false, false]);
+  assert.equal(line({ type: 'reasoning', summary: ['x'] }), null);
+});
+
+test('main Claude sessions show tool lines, failed calls, API errors and harness notices', () => {
+  const lines = [
+    row('u1', 'user', 'Run the tests'),
+    row('a1', 'assistant', [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'npm test', description: 'Run tests' } }]),
+    row('r1', 'user', [{ type: 'tool_result', tool_use_id: 'toolu_1', is_error: true, content: 'secret failure output' }]),
+    row('e1', 'assistant', 'API Error: 529 overloaded', { isApiErrorMessage: true }),
+    JSON.stringify({ type: 'system', subtype: 'informational', content: 'Usage limit reached · continuing at 3pm', level: 'notice', uuid: 's1', sessionId, timestamp: new Date().toISOString() }),
+    JSON.stringify({ type: 'system', subtype: 'turn_duration', durationMs: 5000, uuid: 's2', sessionId }),
+    row('u2', 'user', [{ type: 'image', source: {} }, { type: 'text', text: 'Look' }]),
+  ];
+  const messages = claudeMessages(lines, sessionId);
+  assert.deepEqual(messages.map(m => [m.role, m.text, !!m.tool, !!m.failed, !!m.error]), [
+    ['user', 'Run the tests', false, false, false],
+    ['assistant', 'Bash · Run tests', true, true, false],
+    ['notice', 'API Error: 529 overloaded', false, false, true],
+    ['notice', 'Usage limit reached · continuing at 3pm', false, false, false],
+    ['user', '[image] Look', false, false, false],
+  ]);
+  assert.equal(JSON.stringify(messages).includes('secret failure output'), false);
+});
+
+test('Claude session facts come from the newest transcript records', () => {
+  const meta = claudeMeta([
+    JSON.stringify({ type: 'user', sessionId, gitBranch: 'main', permissionMode: 'plan', message: { content: 'x' } }),
+    JSON.stringify({ type: 'assistant', sessionId, effort: 'xhigh', message: { model: 'claude-opus-5-5', usage: { input_tokens: 2, cache_read_input_tokens: 1000, cache_creation_input_tokens: 10, output_tokens: 5 }, content: [{ type: 'tool_use', name: 'TodoWrite', input: { todos: [{ content: 'A', status: 'completed' }, { content: 'B', status: 'in_progress' }, { content: 'C', status: 'pending' }] } }] } }),
+    JSON.stringify({ type: 'assistant', sessionId, message: { model: '<synthetic>', content: [] } }),
+    JSON.stringify({ type: 'queue-operation', sessionId, operation: 'enqueue', content: 'first', timestamp: 't1' }),
+    JSON.stringify({ type: 'queue-operation', sessionId, operation: 'enqueue', content: '<task-notification>x</task-notification>', timestamp: 't2' }),
+    JSON.stringify({ type: 'queue-operation', sessionId, operation: 'enqueue', content: 'second', timestamp: 't3' }),
+    JSON.stringify({ type: 'queue-operation', sessionId, operation: 'dequeue', timestamp: 't4' }),
+  ], sessionId);
+  assert.equal(meta.model, 'claude-opus-5-5');
+  assert.equal(meta.effort, 'xhigh');
+  assert.equal(meta.branch, 'main');
+  assert.equal(meta.permissionMode, 'plan');
+  assert.deepEqual(meta.context, { used: 1017 });
+  assert.deepEqual(meta.plan.map(step => step.status), ['done', 'active', 'pending']);
+  assert.deepEqual(meta.queuedMessages.map(entry => entry.text), ['second']);
 });

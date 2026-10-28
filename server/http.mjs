@@ -62,13 +62,18 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         if (!spawn) throw fail('Starting agents is not available.', 503);
         const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;
       }
-      const messageRoute = /^\/api\/sessions\/([^/]+)\/messages$/.exec(path);
-      const queueRoute = /^\/api\/sessions\/([^/]+)\/queue\/([^/]+)\/cancel$/.exec(path);
-      if ((messageRoute || queueRoute) && req.method === 'POST') {
+      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
+      if (sessionRoute && req.method === (sessionRoute[2] === 'history' ? 'GET' : 'POST')) {
         if (!messages) throw fail('Messaging is not available.', 503);
         let id, queuedId;
-        try { id = decodeURIComponent((messageRoute || queueRoute)[1]); queuedId = queueRoute && decodeURIComponent(queueRoute[2]); } catch { throw fail('Invalid session ID.'); }
-        const result = messageRoute ? await messages.send(id, await body(req)) : await messages.cancel(id, queuedId);
+        try { id = decodeURIComponent(sessionRoute[1]); queuedId = sessionRoute[3] && decodeURIComponent(sessionRoute[3]); } catch { throw fail('Invalid session ID.'); }
+        const action = sessionRoute[2];
+        if (action === 'history') {
+          // Reading older messages is not activity; the 3-second poll isn't either.
+          const limit = Math.min(200, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
+          json(res, 200, await messages.history(id, limit), req); return;
+        }
+        const result = action === 'messages' ? await messages.send(id, await body(req)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
         auth.touch(session); json(res, 200, result); return;
       }
       const match = /^\/api\/requests\/([a-f0-9-]{36})\/respond$/.exec(path);

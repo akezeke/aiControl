@@ -37,10 +37,17 @@ export async function startServer({ host, hostname, tls = null }) {
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
-    if (!session) throw fail(id.startsWith('claude:') ? 'Claude does not expose a cancellable message queue.' : 'Session is no longer available.', 409);
+    if (!session) throw fail(id.startsWith('claude:') ? 'Claude’s queue can only be changed in its terminal.' : 'Session is no longer available.', 409);
     return session.nativeId;
   };
-  const messages = { send: (id, body) => id.startsWith('claude:') ? claude.sendMessage(id.slice(7), body) : codex.sendMessage(messageTarget(id), body), cancel: (id, queuedId) => codex.cancelQueuedMessage(messageTarget(id), queuedId) };
+  const claudeId = id => id.startsWith('claude:') && id.slice(7);
+  const messages = {
+    send: (id, body) => claudeId(id) ? claude.sendMessage(claudeId(id), body) : codex.sendMessage(messageTarget(id), body),
+    cancel: (id, queuedId) => codex.cancelQueuedMessage(messageTarget(id), queuedId),
+    interrupt: id => claudeId(id) ? claude.interrupt(claudeId(id)) : codex.interrupt(messageTarget(id)),
+    effort: (id, body) => claudeId(id) ? claude.setEffort(claudeId(id), body?.effort) : codex.setEffort(messageTarget(id), body?.effort),
+    history: (id, limit) => claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
+  };
   // Only directories a live session already runs in.
   const spawn = ({ cwd, provider } = {}) => [...codex.list(), ...claude.list()].some(s => s.cwd && s.cwd === cwd) ? spawnAgent(cwd, provider) : Promise.reject(fail('Unknown project.', 404));
   const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn });

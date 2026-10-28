@@ -40,7 +40,8 @@ export class RequestStore {
     if (entry.view.kind === 'question') answer = { answers: validateAnswers(entry.view.questions, body.answers) };
     else {
       if (!entry.view.actions?.some(x => x.value === body.decision)) throw fail('Invalid decision.');
-      answer = { decision: body.decision };
+      // An optional reason goes back to the agent with a denial (Claude only).
+      answer = { decision: body.decision, ...(typeof body.message === 'string' && body.message.trim() ? { message: body.message.trim().slice(0, 2000) } : {}) };
     }
     entry.sending = true;
     try {
