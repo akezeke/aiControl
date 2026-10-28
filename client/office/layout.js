@@ -2,8 +2,8 @@
 // Pure, so it runs under node --test. Units are metres; the room spans x 0..width, z 0..depth.
 // Everything is anchored at the back-left corner so a growing pod or grid only extends right and forward and nobody already seated moves.
 // ponytail: when the widest pod gains a pair, pods in later columns still shift right; fixed-width cells if that's distracting.
-export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 2.4, MAX_SUBAGENTS = 3;
-const CHAIR = 1, START = 4, MIN_ROOM = 10;
+export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3;
+const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8;
 
 const podKey = session => session.cwd || session.project || 'Unknown';
 

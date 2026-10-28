@@ -1,6 +1,9 @@
 // The Office theme: a 3D office where each session is a fruit at a desk. main.js mounts it in place of the list.
 import * as THREE from 'three';
 import './office.css';
+import { layoutOffice } from './layout.js';
+import { officeStatus, identity } from './status.js';
+import { createRoom } from './room.js';
 
 export function webglAvailable() {
   try { const canvas = document.createElement('canvas'); return !!(canvas.getContext('webgl2') || canvas.getContext('webgl')); } catch { return false; }
@@ -17,8 +20,8 @@ export function mountOffice(container, hooks) {
   camera.position.set(0, 1.5, 6);
   scene.add(new THREE.HemisphereLight('#fff6e0', '#b8a68a', 2.2));
   const sun = new THREE.DirectionalLight('#ffffff', 1.6); sun.position.set(4, 8, 3); scene.add(sun);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshToonMaterial({ color: '#e9c896' }));
-  floor.rotation.x = -Math.PI / 2; scene.add(floor);
+  const room = createRoom(scene);
+  let layout;
 
   const frames = new Set();
   const resize = () => {
@@ -41,7 +44,13 @@ export function mountOffice(container, hooks) {
   const office = {
     scene, renderer, camera, hooks, container,
     onFrame(fn) { frames.add(fn); return () => frames.delete(fn); },
-    update(snapshot, { error = '' } = {}) { office.snapshot = snapshot; office.error = error; },
+    update(snapshot, { error = '' } = {}) {
+      office.snapshot = snapshot; office.error = error;
+      layout = layoutOffice(snapshot.sessions, layout);
+      office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id) }]));
+      room.sync(layout, office.statuses);
+      office.layout = layout;
+    },
     unmount() {
       cancelAnimationFrame(raf); observer.disconnect(); document.removeEventListener('visibilitychange', visibility);
       for (const fn of office.disposers) fn();
@@ -51,7 +60,8 @@ export function mountOffice(container, hooks) {
       });
       renderer.dispose(); renderer.domElement.remove();
     },
-    disposers: [],
+    room, disposers: [],
   };
+  if (import.meta.env?.DEV) globalThis.__office = office; // poke at it from devtools
   return office;
 }
