@@ -60,7 +60,8 @@ export class Cast {
   }
 
   characterAt(id) { return this.characters.get(id)?.fruit; }
-  positionOf(id) { const c = this.characters.get(id); return c && c.fruit.group.getWorldPosition(new THREE.Vector3()).setY(c.fruit.group.position.y + c.fruit.body.position.y * c.scale + c.fruit.height * c.scale); }
+  // Just above the character's head, in world space.
+  positionOf(id) { const c = this.characters.get(id); if (!c?.fruit) return null; const p = c.fruit.body.getWorldPosition(new THREE.Vector3()); p.y += c.fruit.height * c.scale + 0.08; return p; }
 
   sync(layout, sessions, room, statuses) {
     const seen = new Set();

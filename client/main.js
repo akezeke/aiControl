@@ -250,7 +250,7 @@ function syncOffice() {
   if (officeModule instanceof Promise || root.hasAttribute('data-office-fallback')) return;
   if (!officeModule.webglAvailable()) { root.setAttribute('data-office-fallback', ''); toast('Office needs WebGL; showing the list'); return; }
   const box = el('div'); box.id = 'office'; main.append(box);
-  office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme) });
+  office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread });
   if (state.snapshot) office.update(state.snapshot, { error: state.error });
 }
 

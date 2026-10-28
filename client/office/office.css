@@ -3,3 +3,25 @@
 #office { position: relative; width: 100%; height: 100%; overflow: hidden; background: #f6e7c8; touch-action: none; }
 #office canvas { display: block; width: 100%; height: 100%; }
 @media (max-width: 640px) { :root[data-theme-choice=office]:not([data-office-fallback]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
+
+.office-bubbles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.office-bubble { position: absolute; left: 0; top: 0; transform-origin: 50% 100%; pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 260px; padding: 6px 12px; border: 2.5px solid #1b1a1f; border-radius: 18px; background: #fffdf7; color: #1b1a1f; font: 600 14px/1.2 system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; cursor: pointer; white-space: nowrap; }
+.office-bubble::after { content: ''; position: absolute; left: 50%; bottom: -10px; width: 14px; height: 14px; margin-left: -7px; background: inherit; border: inherit; border-width: 0 2.5px 2.5px 0; transform: rotate(45deg); }
+.office-bubble .text { overflow: hidden; text-overflow: ellipsis; }
+.office-bubble .icon { font-size: 16px; }
+.office-bubble.highlight { background: #ffd166; animation: office-pulse 1.4s ease-in-out infinite; }
+.office-bubble .dot { display: none; width: 9px; height: 9px; border-radius: 50%; background: #4f7cff; }
+.office-bubble.unread .dot { display: block; }
+.office-bubble:focus-visible { outline: 3px solid #4f7cff; outline-offset: 2px; }
+@keyframes office-pulse { 50% { box-shadow: 0 3px 0 #1b1a1f, 0 0 0 6px #ffd16655; } }
+
+.office-overlay { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
+.office-overlay button { min-width: 44px; height: 44px; padding: 0 12px; border: 2.5px solid #1b1a1f; border-radius: 14px; background: #fffdf7; color: #1b1a1f; font: 700 16px system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; cursor: pointer; }
+.office-overlay .office-waiting { background: #ffd166; }
+.office-overlay .office-usage { background: #ff8f7a; cursor: default; }
+.office-overlay .office-eye { display: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+@media (pointer: coarse) { .office-overlay .office-eye { display: block; } }
+.office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; pointer-events: none; transition: opacity .5s; }
+.office-hint.gone { opacity: 0; }
+@media (pointer: coarse) { .office-hint { display: none; } }
+@media (prefers-reduced-motion: reduce) { .office-bubble.highlight { animation: none; } }

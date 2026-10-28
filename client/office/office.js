@@ -7,6 +7,7 @@ import { createRoom } from './room.js';
 import { Cast } from './animation.js';
 import { Player, pick, officeHasKeys } from './player.js';
 import { OfficeCamera } from './camera.js';
+import { Bubbles, createOverlays } from './bubbles.js';
 
 export function webglAvailable() {
   try { const canvas = document.createElement('canvas'); return !!(canvas.getContext('webgl2') || canvas.getContext('webgl')); } catch { return false; }
@@ -37,11 +38,14 @@ export function mountOffice(container, hooks) {
     },
   });
   const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches });
+  const bubbles = new Bubbles(container, id => office.talkTo(id));
+  const overview = on => { view.setOverview(on); if (on) overlays.overviewUsed(); };
+  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverviewHold: overview });
   // Hold Tab for the overview.
-  const tab = on => event => { if (event.key !== 'Tab' || (on && !officeHasKeys(event))) return; event.preventDefault(); view.setOverview(on); };
+  const tab = on => event => { if (event.key !== 'Tab' || (on && !officeHasKeys(event))) return; event.preventDefault(); overview(on); };
   const tabDown = tab(true), tabUp = tab(false);
   document.addEventListener('keydown', tabDown); document.addEventListener('keyup', tabUp);
-  frames.add(dt => { player.update(dt); view.update(dt); cast.update(dt, player.position); });
+  frames.add(dt => { player.update(dt); view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id)); });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;
@@ -68,6 +72,8 @@ export function mountOffice(container, hooks) {
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id) }]));
       room.sync(layout, office.statuses);
       cast.sync(layout, snapshot.sessions, room, office.statuses);
+      bubbles.sync(snapshot.sessions.filter(session => layout.desks.has(session.id) || session.parentId).map(session => ({ id: session.id, bubble: office.statuses.get(session.id).bubble, unread: hooks.isUnread?.(session) })));
+      overlays.setWaiting(snapshot.sessions.filter(session => office.statuses.get(session.id).bubble?.highlight).length);
       office.layout = layout;
       // First snapshot: stand just inside the door, looking into the room.
       if (!office.placed) { office.placed = true; const { width, depth } = layout.room; player.place(layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))); }
@@ -83,8 +89,8 @@ export function mountOffice(container, hooks) {
     },
     room, cast, player, view,
     // Task 9 replaces this with the walk-up-and-zoom; for now walk over and open the panel.
-    talkTo(id) { const at = cast.positionOf(id); if (at) player.walkTo(at.setY(0), () => hooks.openPanel(id), 1.2); },
-    disposers: [() => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { document.removeEventListener('keydown', tabDown); document.removeEventListener('keyup', tabUp); }],
+    talkTo(id) { if (!id) return; const at = cast.positionOf(id); if (at) player.walkTo(at.setY(0), () => hooks.openPanel(id), 1.2); },
+    disposers: [() => bubbles.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { document.removeEventListener('keydown', tabDown); document.removeEventListener('keyup', tabUp); }],
   };
   if (import.meta.env?.DEV) globalThis.__office = office; // poke at it from devtools
   return office;
