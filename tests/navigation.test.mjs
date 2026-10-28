@@ -31,3 +31,11 @@ test('Back from a directly linked detail view stays in the dashboard', () => {
   navigation.close(); assert.equal(selected, null); assert.equal(window.location.hash, '');
   navigation.open('access'); navigation.reset(); assert.equal(window.location.hash, '');
 });
+
+test('Next swaps the open session in place, so Back still returns to the overview', () => {
+  const window = browser(); let selected;
+  const navigation = new PanelNavigation(window, id => { selected = id; });
+  navigation.open('claude:a'); navigation.open('codex:b', { replace: true });
+  assert.equal(selected, 'codex:b');
+  window.history.back(); assert.equal(selected, null);
+});

@@ -27,7 +27,7 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
     const windows = node('div', 'usage-windows');
     for (const window of account.windows || []) {
       const view = usageWindowView(window, now);
-      const cell = node('div', `usage-window ${view.tone}${view.expired ? ' usage-expired' : ''}${window.scope || view.shortLabel.length > 3 ? ' usage-wide' : ''}`);
+      const cell = node('div', `usage-window ${view.tone}${view.expired ? ' usage-expired' : ''}${window.scope || view.shortLabel.length > 3 ? ' usage-wide' : ''}${view.pace >= 100 && window.usedPercent < 100 ? ' usage-pace' : ''}`);
       const label = `${window.label}${window.scope ? ` · ${window.scope}` : ''}`;
       const shortLabel = node('span', 'usage-label', `${view.shortLabel}${window.scope ? `·${window.scope}` : ''}`);
       shortLabel.title = label;
@@ -36,7 +36,8 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
       const reset = node('span', 'usage-reset', view.resetShortText);
       reset.setAttribute('aria-label', view.resetText);
       reset.title = `${view.resetText}${window.resetsAt ? `\n${new Date(window.resetsAt).toLocaleString()}` : ''}`;
-      cell.append(shortLabel, meter, node('strong', 'usage-percent', view.percentText), reset); windows.append(cell);
+      const percent = node('strong', 'usage-percent', view.percentText); percent.title = view.paceText;
+      cell.append(shortLabel, meter, percent, reset); windows.append(cell);
     }
     if (!windows.children.length) {
       const status = node('span', 'usage-note', account.status === 'loading' ? 'Loading…' : 'Unavailable');

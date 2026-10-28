@@ -140,3 +140,10 @@ test('usage presentation labels expired data without inventing a reset or hiding
   assert.match(usageUpdatedText({ updatedAt: now - usageRefreshMs }, now, true), /5m ago · stale/);
   assert.equal(usageUpdatedText({ updatedAt: null, status: 'unavailable' }, now), 'Unavailable');
 });
+
+test('usage pace projects the current rate to the reset, once the window is under way', () => {
+  const now = Date.parse('2026-10-28T12:00:00Z'), hour = 3_600_000;
+  assert.equal(usageWindowView({ label: '5-hour', usedPercent: 40, resetsAt: now + 3 * hour }, now).pace, 100);
+  assert.equal(usageWindowView({ label: 'Weekly', usedPercent: 50, resetsAt: now + 3.5 * 24 * hour }, now).paceText, 'On pace for 100% by reset');
+  assert.equal(usageWindowView({ label: '5-hour', usedPercent: 5, resetsAt: now + 4.9 * hour }, now).pace, null);
+});

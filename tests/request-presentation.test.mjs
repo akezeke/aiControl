@@ -38,3 +38,13 @@ test('permission fields preserve unknown scopes and plain text remains readable'
   // These are data, never HTML or executable commands.
   assert.equal(requestPresentation({ details: JSON.stringify({ command: '<script>alert(1)</script>' }) }).command, '<script>alert(1)</script>');
 });
+
+test('Claude edits and writes are shown as diffs, not as raw fields', async () => {
+  const { lineDiff } = await import('../client/request-presentation.js');
+  assert.equal(lineDiff('a\nb\nc\nd', 'a\nb\nX\nd'), ' a\n b\n-c\n+X\n d');
+  const edit = requestPresentation({ details: JSON.stringify({ file_path: '/w/a.js', old_string: 'one', new_string: 'two' }) });
+  assert.deepEqual(edit.files, [{ path: '/w/a.js', kind: 'edit', diff: '-one\n+two' }]);
+  assert.deepEqual(edit.fields, []);
+  const write = requestPresentation({ details: JSON.stringify({ file_path: '/w/b.js', content: 'x\ny' }) });
+  assert.equal(write.files[0].diff, '+x\n+y');
+});

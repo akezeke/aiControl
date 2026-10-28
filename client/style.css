@@ -424,3 +424,60 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* .project-tag clips (overflow), which would put its baseline at its bottom edge; middle keeps both tags centred. */
 /* Card preview typing in after a change; themes may restyle the cursor. */
 .typing::after { content: '▍'; margin-left: 1px; color: var(--accent); }
+
+/* Session facts: small chips on cards and in the panel summary. */
+.chip { display: inline-block; padding: 0 5px; border: 1px solid var(--line-2); border-radius: 4px; font: 600 10px/16px var(--mono); color: var(--text-3); white-space: nowrap; }
+.chat-info > summary .chip { margin-left: 2px; }
+.plan-chip { color: var(--accent); border-color: currentColor; }
+.mode-chip.plan, .mode-chip.acceptEdits, .mode-chip.auto { color: var(--accent); }
+.mode-chip.bypassPermissions, .ctx-chip.high, .session-card .ctx-chip { color: var(--danger); border-color: currentColor; }
+.agent-mark { position: relative; }
+.unread-dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--panel); }
+.panel-heading-actions select { min-height: 40px; }
+.effort-select { width: auto; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); font-size: 12px; cursor: pointer; }
+.stop-button { color: var(--danger); }
+.alerts-menu.alerts-on > summary { color: var(--accent); }
+.plan-info { grid-column: 2 / -1; min-width: 0; font-size: 12px; color: var(--text-2); }
+.plan-info > summary { display: flex; align-items: center; gap: 8px; min-height: 24px; cursor: pointer; }
+.plan-info > summary > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.plan-meter { flex: 0 0 70px; height: 5px; appearance: none; border: 0; border-radius: 99px; overflow: hidden; background: var(--panel-2); color: var(--accent); }
+.plan-meter::-webkit-progress-bar { background: var(--panel-2); }
+.plan-meter::-webkit-progress-value { background: currentColor; }
+.plan-meter::-moz-progress-bar { background: currentColor; }
+.plan-steps { max-height: 30dvh; overflow: auto; margin: 4px 0 2px; padding: 6px 10px 6px 28px; border-radius: var(--radius-sm); background: var(--sunken); }
+.plan-steps li { padding: 1px 0; }
+.plan-steps li.done { color: var(--text-3); text-decoration: line-through; }
+.plan-steps li.active { color: var(--accent); font-weight: 600; }
+/* Requests: plans, diffs and the deny reason. */
+.request-plan { max-height: 45dvh; overflow: auto; margin: 6px 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--panel); }
+.decision-actions { flex-wrap: wrap; }
+.decision-actions button { flex: 1 1 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deny-reason { width: 100%; min-height: 38px; margin-top: 8px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); font-size: 13px; }
+.diff { white-space: pre; overflow-x: auto; }
+.diff > span { display: block; min-width: max-content; }
+.diff .add { color: var(--ok); background: var(--ok-soft); }
+.diff .del { color: var(--danger); background: var(--danger-soft); }
+.diff .hunk { color: var(--accent); }
+/* History: folded tool runs, failed calls and error notices. */
+.history-older { align-self: center; margin: auto 0 4px; min-height: 34px; font-size: 12px; }
+.history-older + .recent-message { margin-top: 10px; }
+.tool-run { flex: none; margin: 10px 32px 0 10px; padding-left: 12px; border-left: 2px solid var(--line); }
+.tool-run > summary { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--text-3); cursor: pointer; }
+.tool-run > summary::before { content: '▸'; font-size: 10px; transition: transform .15s; }
+.tool-run[open] > summary::before { transform: rotate(90deg); }
+.tool-run > summary > strong { flex: none; font-weight: 600; }
+.tool-run > summary > .tool-call { min-width: 0; }
+.tool-run[open] > summary > .tool-call { display: none; }
+.tool-run > .recent-message.tool { margin: 0; border-left: 0; padding-left: 0; }
+.tool-run-failed { white-space: nowrap; }
+.tool-run-failed, .recent-message.tool.failed .tool-call, .recent-message.tool.failed .tool-call::before { color: var(--danger); }
+:root .history-content > .recent-message.notice.error { color: var(--danger); }
+@media (max-width: 640px) {
+  /* Next, Stop and effort take the top row; the title gets a full-width line below. */
+  .chat-header { grid-template-areas: 'back . actions' 'title title title' 'info info info'; }
+  .plan-info { grid-column: 1 / -1; }
+  .panel-heading-actions { gap: 4px; }
+  .panel-heading-actions > .quiet-button:is(.next-button, .stop-button) { width: 40px; padding: 0; }
+  .panel-heading-actions > .quiet-button:is(.next-button, .stop-button) > span:not(.icon) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .chat-header .panel-heading-actions > .theme-menu { display: none; }
+}

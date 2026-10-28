@@ -12,6 +12,7 @@ import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown } from './message-markdown.js';
 import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
+import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
 
 const app = document.querySelector('#app');
 const firstVisit = !hasSavedTheme();
@@ -20,6 +21,21 @@ const idleMs = 10 * 60_000;
 const sessionActivity = new SessionActivity();
 const messageDrafts = new Map();
 const statValues = new Map();
+const previousStatuses = new Map();
+// Older history fetched for an open panel: session id → { limit, messages, more }.
+const older = new Map();
+// Effort chosen here for Claude, shown until its transcript reports it.
+const pendingEffort = new Map();
+// When each session was last opened, so finished work you haven't looked at gets a dot.
+const seenKey = 'ai-control-seen';
+const seen = (() => { try { return new Map(JSON.parse(localStorage.getItem(seenKey) || '[]')); } catch { return new Map(); } })();
+if (!seen.has('*')) seen.set('*', Date.now());
+function markSeen(id) {
+  if (!id || id === 'access') return;
+  seen.set(id, Date.now());
+  try { localStorage.setItem(seenKey, JSON.stringify([...seen].sort((a, b) => b[1] - a[1]).slice(0, 300))); } catch { /* per tab only */ }
+}
+const unread = session => session.status === 'idle' && !session.parentId && (session.statusSince || 0) > (seen.get(session.id) || seen.get('*'));
 const liveRender = new LiveRender(() => renderData());
 const groupingKey = 'ai-control-grouping';
 const savedGrouping = () => { try { return localStorage.getItem(groupingKey) === 'flat' ? 'flat' : 'project'; } catch { return 'project'; } };
@@ -49,6 +65,9 @@ const icons = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-4 4 3 3m-6 0 2 2"/>',
   theme: '<circle cx="12" cy="12" r="8"/><path d="M12 4v16"/><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/>',
+  stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>',
+  sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4Z"/><path d="M15.5 9a4 4 0 0 1 0 6m2.5-8.5a7.5 7.5 0 0 1 0 11"/>',
+  next: '<path d="m6 5 7 7-7 7m7-14 7 7-7 7"/>',
 };
 function icon(name) {
   const span = document.createElement('span'); span.className = 'icon'; span.setAttribute('aria-hidden', 'true');
@@ -78,14 +97,34 @@ function themeMenu() {
     choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(document.documentElement.dataset.themeChoice === theme.id));
     choice.prepend(el('i', `theme-swatch ${theme.id}`)); choices.append(choice);
   }
-  // The sidebar scrolls and would clip the list, so open it against the viewport there.
+  menu.append(summary, choices); placeMenu(menu, summary, choices); return menu;
+}
+// The sidebar scrolls and would clip the list, so open it against the viewport there.
+function placeMenu(menu, summary, choices) {
   menu.ontoggle = () => {
     choices.removeAttribute('style');
     if (!menu.open || !menu.closest('.sidebar')) return;
     const r = summary.getBoundingClientRect();
     Object.assign(choices.style, { position: 'fixed', top: 'auto', right: 'auto', left: `${Math.max(8, Math.min(r.left, innerWidth - choices.offsetWidth - 8))}px`, bottom: `${innerHeight - r.top + 6}px` });
   };
-  menu.append(summary, choices); return menu;
+}
+// Opt-in notifications and the theme's sound; turning sound on plays it once.
+function alertsMenu() {
+  const menu = el('details', 'theme-menu alerts-menu');
+  const summary = el('summary', 'quiet-button'); summary.append(icon('bell')); summary.setAttribute('aria-label', 'Alerts'); summary.title = 'Alerts';
+  const choices = el('div', 'theme-options'); choices.setAttribute('aria-label', 'Alerts');
+  const sync = () => { for (const option of choices.children) option.setAttribute('aria-pressed', String(!!alertSettings[option.dataset.alert])); menu.classList.toggle('alerts-on', alertSettings.notify || alertSettings.sound); };
+  const notify = button('Notifications', 'theme-choice', async () => {
+    alertSettings.notify = !alertSettings.notify && await enableNotifications();
+    if (!alertSettings.notify && globalThis.Notification?.permission === 'denied') toast('Notifications are blocked for this site');
+    saveAlerts(); sync();
+  }, 'bell');
+  notify.dataset.alert = 'notify';
+  if (!canNotify()) { notify.disabled = true; notify.title = 'Needs HTTPS'; }
+  const sound = button('Sound', 'theme-choice', () => { alertSettings.sound = !alertSettings.sound; saveAlerts(); sync(); if (alertSettings.sound) playSound('on'); }, 'sound');
+  sound.dataset.alert = 'sound';
+  choices.append(notify, sound); menu.append(summary, choices); placeMenu(menu, summary, choices); sync();
+  return menu;
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
 const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA' };
@@ -119,7 +158,7 @@ function showLogin(message = '') {
   messageDrafts.clear();
   clearTimeout(activityTimer); activityTimer = null;
   clearInterval(poll); state.csrf = ''; state.snapshot = null; state.selected = null; panelSignature = ''; document.body.classList.remove('panel-open');
-  app.replaceChildren(); document.documentElement.removeAttribute('data-attention');
+  app.replaceChildren(); document.documentElement.removeAttribute('data-attention'); document.documentElement.removeAttribute('data-working');
   const screen = el('main', 'login-screen');
   screen.append(themeMenu());
   const card = el('section', 'login-card');
@@ -155,7 +194,7 @@ function showWorkspace() {
   shell.append(aside);
   const content = el('div', 'workspace');
   const topbar = el('header', 'topbar');
-  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; topActions.append(live, themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
+  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; topActions.append(live, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
   // Desktop has no top bar: its controls sit at the bottom of the sidebar.
   const wide = matchMedia('(min-width: 641px)'), placeActions = () => (wide.matches ? aside : topbar).append(topActions);
   wide.onchange = placeActions; placeActions();
@@ -171,7 +210,7 @@ function showWorkspace() {
   for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
-  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu); main.append(toolbar);
+  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu); main.append(toolbar);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
   content.append(main); shell.append(content); app.append(shell);
@@ -190,6 +229,7 @@ async function refresh() {
     const snapshot = await api('snapshot');
     if (!state.csrf) return;
     snapshot.sessions = sessionActivity.observe(snapshot.sessions);
+    signal(statusEvents(previousStatuses, snapshot.sessions));
     state.snapshot = snapshot; state.error = ''; liveRender.request();
   } catch (error) {
     if (state.csrf) { state.error = error.message; liveRender.request(); }
@@ -204,6 +244,9 @@ function renderData() {
   const count = sessions.filter(needsInput).length;
   setProperty(document, 'title', `${count ? `(${count}) ` : ''}AI Control`);
   document.documentElement.toggleAttribute('data-attention', count > 0);
+  faviconBadge(count);
+  // Orbit's logo gets a satellite per working session, up to three.
+  document.documentElement.dataset.working = String(Math.min(3, sessions.filter(s => s.status === 'working').length));
   // The overview is covered and inert while a panel is open. Render it once
   // when returning, instead of rebuilding every card behind the chat.
   if (state.selected) {
@@ -256,7 +299,7 @@ function renderData() {
     empty.append(icon(attention ? 'check' : 'terminal'), el('h2', '', attention ? 'Nothing needs your attention.' : total ? 'No sessions match.' : 'Your control room is ready.'), el('p', 'muted', total ? 'Sessions update automatically as your agents work.' : 'Open Codex or Claude Code on this computer. Live sessions will appear here, grouped by project.'));
     return empty;
   });
-  const ages = new Map();
+  const sessionsById = new Map();
   for (const [cwd, list] of sorted) {
     const group = [...groups.children].find(node => node.dataset.key === cwd), header = group.firstChild;
     const headerSignature = JSON.stringify([list[0].project, list.length, cwd]);
@@ -270,14 +313,16 @@ function renderData() {
     const ordered = list.sort(compareSessions), ids = new Set(ordered.map(s => s.id));
     const withChildren = s => [s, ...ordered.filter(child => child.parentId === s.id).flatMap(withChildren)];
     syncList(group.lastChild, ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren).map(session => {
-      ages.set(session.id, session.lastActivityAt);
+      sessionsById.set(session.id, session);
       const lastMessage = session.messages?.at(-1);
       let detail = session.requests[0]?.title || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
       if (session.provider === 'claude' && !session.control && needsInput(session)) detail = 'Open the original client · Hooks not connected';
-      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail, last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)] }];
+      const done = session.plan?.filter(step => step.status === 'done').length;
+      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail, last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
+        plan: session.plan?.length ? [done, session.plan.length] : null, mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), unread: unread(session) }];
     }), renderCard);
   }
-  for (const card of groups.querySelectorAll('.session-card')) setProperty(card.querySelector('.session-age'), 'textContent', age(ages.get(card.dataset.key)));
+  for (const card of groups.querySelectorAll('.session-card')) setProperty(card.querySelector('.session-age'), 'textContent', stateAge(sessionsById.get(card.dataset.key)));
   flipFrom(groups, before);
   if (focusedSession && document.activeElement?.dataset.sessionId !== focusedSession) [...groups.querySelectorAll('[data-session-id]')].find(card => card.dataset.sessionId === focusedSession)?.focus({ preventScroll: true });
   const integrations = document.querySelector('#integrations'), integrationSignature = JSON.stringify(providers);
@@ -291,12 +336,28 @@ function renderData() {
 
 // One-line previews: drop code blocks and Markdown markers (keep snake_case underscores).
 const plainText = text => text.replace(/```[\s\S]*?(```|$)/g, ' ').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, '').replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim();
+// Working and waiting cards count time in that state; others show their last activity.
+const duration = ms => { const m = Math.floor(ms / 60_000); return m < 1 ? '<1m' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d`; };
+function stateAge(session) {
+  if (!session) return '';
+  const since = (needsInput(session) && session.requests?.[0]?.createdAt) || session.statusSince;
+  return ['working', 'question', 'permission'].includes(session.status) && since ? `for ${duration(Date.now() - since)}` : age(session.lastActivityAt);
+}
+const modeLabels = { plan: 'plan', acceptEdits: 'auto-edit', auto: 'auto', bypassPermissions: 'bypass' };
+const contextPercent = context => context?.window ? Math.min(100, Math.round(context.used / context.window * 100)) : null;
+const tokens = n => n >= 1e6 ? `${Number((n / 1e6).toFixed(1))}M` : `${Math.round(n / 1000)}k`;
+function chip(text, className, title) { const node = el('span', `chip ${className}`, text); if (title) node.title = title; return node; }
 function renderCard(session, previous) {
   const card = el('button', `session-card ${session.needs ? 'needs-input' : ''} ${session.parentId ? 'subagent' : ''}`); card.type = 'button'; card.onclick = () => openPanel(session.id);
   // Long card loops run on a page-wide clock, so a rebuilt card continues them instead of restarting.
   card.style.setProperty('--since-load', `${-Math.round(performance.now())}ms`); card.dataset.sessionId = session.id; card.dataset.status = session.status; card.setAttribute('aria-label', `${session.title}, ${providerName(session.provider)}, ${(statuses[session.status] || statuses.unknown)[0]}`);
   const mark = el('span', `agent-mark ${session.provider}`, session.provider === 'codex' ? '⌘' : '✳'); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
-  const body = el('span', 'session-body'); if (session.branch) { const meta = el('span', 'session-meta'); meta.append(el('span', 'branch', session.branch)); body.append(meta); }
+  if (session.unread) card.classList.add('unread');
+  if (session.plan) { card.dataset.plan = ''; card.style.setProperty('--plan', session.plan[0] / session.plan[1]); }
+  const body = el('span', 'session-body');
+  const chips = [session.branch && el('span', 'branch', session.branch), session.plan && chip(`${session.plan[0]}/${session.plan[1]}`, 'plan-chip', 'Plan steps done'),
+    session.mode && chip(modeLabels[session.mode], `mode-chip ${session.mode}`, 'Permission mode'), session.context >= 80 && chip(`ctx ${session.context}%`, 'ctx-chip', 'Context window used')].filter(Boolean);
+  if (chips.length) { const meta = el('span', 'session-meta'); meta.append(...chips); body.append(meta); }
   const title = el('strong', 'session-title'); if (session.project) title.append(el('span', 'project-tag', session.project)); if (session.parentId) { const workflow = session.agentKind === 'workflow', tag = el('span', `subagent-tag${workflow ? ' workflow-tag' : ''}`, workflow ? 'Workflow' : 'Subagent'); tag.title = session.kind || ''; title.append(tag); } title.append(session.title); body.append(title);
   const text = document.createTextNode(session.last ? session.last[1] : session.detail);
   const preview = session.last ? el('span', 'message-preview') : el('span', 'session-description');
@@ -305,6 +366,7 @@ function renderCard(session, previous) {
   const before = previous?.querySelector('.message-preview, .session-description')?.textContent;
   if (before !== undefined && before !== preview.textContent) typewrite(text);
   const right = el('span', 'session-right'); right.append(badge(session.status), el('span', 'session-age'));
+  if (session.unread) { const dot = el('i', 'unread-dot'); dot.title = 'New since you last looked'; mark.append(dot); }
   card.append(mark, body, right); return card;
 }
 
@@ -352,7 +414,7 @@ function flipFrom(root, before) {
 let previousFocus;
 function openPanel(id) { previousFocus = document.activeElement; navigation.open(id); document.querySelector('#panel button')?.focus(); }
 function closePanel() { navigation.close(); }
-function hidePanel() { const closedId = state.selected; state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData(); const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
+function hidePanel() { const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData(); const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
 function revealPanel() { const panel = document.querySelector('#panel'); panel.hidden = false; document.querySelector('#backdrop').hidden = false; document.querySelector('.shell').setAttribute('inert', ''); document.body.classList.add('panel-open'); return panel; }
 function renderPanel() {
   const session = state.snapshot.sessions.find(s => s.id === state.selected);
@@ -360,6 +422,8 @@ function renderPanel() {
   if (!session) { navigation.reset(); hidePanel(); return; }
   if (panel.dataset.sessionId !== session.id) {
     disposeHistory(); disposeComposer(); panelSignature = '';
+    if (panel.dataset.sessionId) { markSeen(panel.dataset.sessionId); older.delete(panel.dataset.sessionId); }
+    markSeen(session.id);
     panel.replaceChildren(); panel.dataset.sessionId = session.id; panel.classList.add('chat-panel'); revealPanel();
     const header = el('header', 'chat-header');
     const recent = el('section', 'recent-messages'); recent.id = 'recent-messages';
@@ -367,7 +431,9 @@ function renderPanel() {
     const composer = el('section', 'message-composer'); composer.id = 'message-composer';
     panel.append(header, recent, requests, composer);
   }
-  const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error]);
+  if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
+  const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
+    session.permissionMode, session.context, session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id]);
   if (signature !== panelSignature) {
     panelSignature = signature;
     renderSessionHeader(panel.querySelector('.chat-header'), session);
@@ -382,15 +448,64 @@ function renderPanel() {
   renderComposer(session);
 }
 
+// Triage: the next session waiting for you, in overview order.
+function nextWaiting(currentId) { return (state.snapshot?.sessions || []).filter(s => needsInput(s) && s.id !== currentId).sort(compareSessions)[0]; }
+function openNext() { const next = nextWaiting(state.selected); if (!next) return; if (state.selected) navigation.open(next.id, { replace: true }); else openPanel(next.id); }
 function renderSessionHeader(header, session) {
-  const expanded = !!header.querySelector('.chat-info')?.open;
+  const expanded = !!header.querySelector('.chat-info')?.open, planOpen = !!header.querySelector('.plan-info')?.open;
   header.replaceChildren();
-  const head = el('div', 'panel-heading'), actions = el('div', 'panel-heading-actions'); actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
+  const head = el('div', 'panel-heading'), actions = el('div', 'panel-heading-actions');
+  const next = nextWaiting(session.id);
+  if (next) { const b = button('Next', 'quiet-button next-button', openNext, 'next'); b.title = `Next waiting (n): ${next.title}`; actions.append(b); }
+  if (session.status === 'working' && session.messaging?.interrupt) { const stop = button('Stop', 'quiet-button stop-button', () => interrupt(session, stop), 'stop'); stop.title = 'Interrupt the current turn'; stop.disabled = !!state.error; actions.append(stop); }
+  if (session.messaging?.effort && session.efforts?.length) actions.append(effortPicker(session));
+  actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
   const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
   const metadata = el('details', 'chat-info'); metadata.open = expanded;
-  metadata.append(el('summary', '', `${providerName(session.provider)} · ${session.project}`));
-  const info = el('dl', 'session-info'); for (const [key, value] of [['Folder', session.cwd], ['Model / version', session.model || 'Not reported'], ['Session', session.nativeId || session.id], ['Connection', session.control ? 'Connected' : 'Status only']]) info.append(el('dt', '', key), el('dd', '', value)); metadata.append(info); if (session.cwd) metadata.append(spawnButtons(session.cwd)); header.append(metadata);
+  const effort = pendingEffort.get(session.id) || session.effort, percent = contextPercent(session.context);
+  const summary = el('summary', '', [providerName(session.provider), session.project, session.model?.replace(/^claude-/, ''), effort].filter(Boolean).join(' · '));
+  if (modeLabels[session.permissionMode]) summary.append(chip(modeLabels[session.permissionMode], `mode-chip ${session.permissionMode}`, 'Permission mode'));
+  if (session.context?.used) summary.append(chip(percent != null ? `${percent}%` : tokens(session.context.used), `ctx-chip${percent >= 80 ? ' high' : ''}`, 'Context used'));
+  metadata.append(summary);
+  const goal = session.goal, cost = session.cost;
+  const rows = [['Folder', session.cwd], ['Model', session.model || 'Not reported'], ['Effort', effort && `${effort}${session.effortPending ? ' · from your next message' : ''}`], ['Mode', session.permissionMode],
+    ['Context', session.context?.used && `${tokens(session.context.used)}${session.context.window ? ` of ${tokens(session.context.window)} (${percent}%)` : ''}`], ['Branch', session.branch],
+    ['Last turn', session.lastTurnMs && duration(session.lastTurnMs)], ['Cost', cost && `$${cost.usd.toFixed(2)} · +${cost.added} −${cost.removed} lines`],
+    ['Goal', goal && `${goal.objective} · ${goal.status}${goal.tokenBudget ? ` · ${tokens(goal.tokensUsed)} of ${tokens(goal.tokenBudget)} tokens` : ''}`],
+    ['Version', session.version && `Claude Code ${session.version}`], ['Session', session.nativeId || session.id], ['Connection', session.control ? 'Connected' : 'Status only']];
+  const info = el('dl', 'session-info'); for (const [key, value] of rows) if (value) info.append(el('dt', '', key), el('dd', '', value)); metadata.append(info); if (session.cwd) metadata.append(spawnButtons(session.cwd)); header.append(metadata);
+  if (session.plan?.length) {
+    const plan = el('details', 'plan-info'); plan.open = planOpen;
+    const done = session.plan.filter(step => step.status === 'done').length, current = session.plan.find(step => step.status === 'active') || session.plan.find(step => step.status === 'pending');
+    const meter = el('progress', 'plan-meter'); meter.max = session.plan.length; meter.value = done;
+    const line = el('summary'); line.append(el('strong', '', `${done}/${session.plan.length}`), meter, el('span', '', current?.step || 'All steps done'));
+    const list = el('ol', 'plan-steps'); for (const step of session.plan) list.append(el('li', step.status, step.step));
+    plan.append(line, list); header.append(plan);
+  }
   if (state.error) header.append(el('p', 'connection-error', 'Reconnecting. Actions are temporarily disabled.'));
+}
+function effortPicker(session) {
+  const select = el('select', 'quiet-button effort-select'); select.setAttribute('aria-label', 'Reasoning effort');
+  select.title = session.provider === 'codex' ? 'Effort · Codex applies it from your next message sent here' : 'Effort';
+  const current = pendingEffort.get(session.id) || session.effort;
+  if (!session.efforts.includes(current)) { const blank = el('option', '', 'effort'); blank.value = ''; blank.disabled = true; select.append(blank); }
+  for (const level of session.efforts) { const option = el('option', '', level); option.value = level; select.append(option); }
+  select.value = session.efforts.includes(current) ? current : ''; select.disabled = !!state.error;
+  select.onchange = async () => {
+    const effort = select.value; select.disabled = true;
+    try {
+      const result = await api(`sessions/${encodeURIComponent(session.id)}/effort`, { effort });
+      if (session.provider === 'claude') pendingEffort.set(session.id, effort);
+      toast(result.pending ? `Effort ${effort} from your next message` : `Effort ${effort}`); panelSignature = ''; await refresh();
+    } catch (error) { toast(error.message); select.value = session.efforts.includes(current) ? current : ''; select.disabled = false; }
+  };
+  return select;
+}
+async function interrupt(session, control) {
+  if (state.error) return;
+  control.disabled = true;
+  try { await api(`sessions/${encodeURIComponent(session.id)}/interrupt`, {}); toast('Stopped'); panelSignature = ''; await refresh(); }
+  catch (error) { toast(error.message); control.disabled = false; }
 }
 
 function renderSessionRequests(requests, session) {
@@ -398,6 +513,7 @@ function renderSessionRequests(requests, session) {
   for (const request of session.requests) {
     const box = el('section', 'request-box'); box.append(el('span', 'eyebrow amber-text', request.kind === 'question' ? 'YOUR INPUT' : 'PERMISSION REQUEST'));
     if (request.kind !== 'question' || request.title !== 'A question for you') box.append(el('h3', '', request.title));
+    if (request.plan) { const rendered = renderMessageMarkdown(request.plan, Infinity), plan = el('div', 'message-text request-plan'); plan.innerHTML = rendered.html + (rendered.more || ''); box.append(plan); }
     if (request.kind !== 'question') renderRequestDetails(box, request);
     const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
     if (request.kind === 'question') {
@@ -430,8 +546,12 @@ function renderSessionRequests(requests, session) {
       box.append(form);
     } else if (request.actions?.length) {
       const actions = el('div', 'decision-actions');
-      for (const action of request.actions) { const b = button(action.label, action.value === 'accept' ? 'primary' : 'secondary', () => respond(request, { decision: action.value }, actions, error)); b.disabled = !!state.error || request.sending; actions.append(b); }
+      // Claude takes a reason with a denial; Enter in the field denies with it.
+      const reason = request.denyMessage && el('input', 'deny-reason');
+      const decide = value => respond(request, { decision: value, ...(value === 'decline' && reason?.value.trim() ? { message: reason.value.trim() } : {}) }, box, error);
+      for (const action of request.actions) { const b = button(action.label, action.value === 'accept' ? 'primary' : 'secondary', () => decide(action.value)); b.title = action.label; b.disabled = !!state.error || request.sending; actions.append(b); }
       box.append(error, actions);
+      if (reason) { reason.type = 'text'; reason.maxLength = 2000; reason.placeholder = 'Deny with a reason…'; reason.setAttribute('aria-label', 'Reason for denying'); reason.disabled = !!state.error || request.sending; reason.onkeydown = event => { if (event.key === 'Enter' && reason.value.trim()) { event.preventDefault(); decide('decline'); } }; box.append(reason); }
     } else box.append(el('p', 'muted', request.note || 'Answer this request in the original client.'));
     requests.append(box);
   }
@@ -531,7 +651,8 @@ function renderComposer(session) {
       edit.disabled = draft.busy || region.draftInput.hasText || !!state.error || !!messagingUnavailableReason(session, state.snapshot);
       row.append(edit);
     }
-    row.append(cancel); queue.append(row);
+    if (session.provider === 'codex') row.append(cancel);
+    queue.append(row);
   }
   if (session.queueError) queue.append(el('p', 'form-error', session.queueError));
 }
@@ -560,11 +681,17 @@ function renderRequestDetails(box, request) {
     box.append(fields);
   }
   for (const file of view.files) {
-    const details = el('details', 'request-file'); details.append(el('summary', '', `${fieldLabel(file.kind)} · ${file.path}`));
+    const details = el('details', 'request-file'); details.append(el('summary', '', `${fieldLabel(file.kind)} · ${file.path}`)); details.open = view.files.length === 1;
     if (file.moveTo) details.append(el('p', '', `Move to ${file.moveTo}`));
-    if (file.diff) details.append(el('pre', 'request-code', file.diff)); box.append(details);
+    if (file.diff) details.append(diffBlock(file.diff)); box.append(details);
   }
   if (view.raw) { const details = el('details', 'request-details'); details.append(el('summary', '', 'Technical details'), el('pre', '', view.raw)); box.append(details); }
+}
+
+function diffBlock(diff) {
+  const pre = el('pre', 'request-code diff');
+  for (const line of diff.split('\n')) pre.append(el('span', /^\+(?!\+\+)/.test(line) ? 'add' : /^-(?!--)/.test(line) ? 'del' : line.startsWith('@@') ? 'hunk' : '', `${line}\n`));
+  return pre;
 }
 
 function disposeHistory() {
@@ -583,39 +710,80 @@ function renderRecentMessages(session, savedPosition) {
     delete region.dataset.signature;
   }
   const flow = region.historyScroll;
-  const signature = JSON.stringify([session.messages, session.messagesState]);
+  const extra = older.get(session.id), messages = mergeHistory(extra?.messages, session.messages || []);
+  const moreAvailable = extra ? extra.more : (session.messages || []).filter(m => !m.tool).length >= 20;
+  const signature = JSON.stringify([messages, session.messagesState, moreAvailable, !!extra?.loading]);
   if (region.dataset.signature === signature) { if (savedPosition) flow.restore(savedPosition); return; }
   const saved = savedPosition || flow.capture();
   const content = region.querySelector('.history-content');
   const existing = new Map([...content.querySelectorAll('[data-message-id]')].map(node => [node.dataset.messageId, node]));
   const children = [];
   region.dataset.signature = signature;
-  if (!session.messages?.length) children.push(el('p', 'muted history-empty', session.messagesState === 'loading' ? 'Loading recent messages…' : session.messagesState === 'empty' ? 'No recent text messages.' : 'Recent messages are not available for this session yet.'));
+  if (moreAvailable && messages.length) {
+    const load = existing.get('older') || button('Older messages', 'quiet-button history-older', () => loadOlder(session.id), 'back');
+    load.dataset.messageId = 'older'; load.disabled = !!extra?.loading; children.push(load);
+  }
+  if (!messages.length) children.push(el('p', 'muted history-empty', session.messagesState === 'loading' ? 'Loading recent messages…' : session.messagesState === 'empty' ? 'No recent text messages.' : 'Recent messages are not available for this session yet.'));
   if (session.messagesState === 'stale') children.push(el('p', 'muted', 'Showing the last messages received.'));
-  for (const message of session.messages || []) {
-    const previous = existing.get(message.id), messageSignature = JSON.stringify(message);
-    if (previous?.dataset.signature === messageSignature) { children.push(previous); continue; }
-    const article = el('article', `recent-message ${message.tool ? 'tool' : message.role}`);
-    article.dataset.messageId = message.id; article.dataset.signature = messageSignature;
-    if (message.tool || message.role === 'notice') { const line = el(message.tool ? 'code' : 'span', message.tool ? 'tool-call' : '', message.text); line.title = [message.detail, message.timestamp && new Date(message.timestamp).toLocaleString()].filter(Boolean).join('\n'); article.append(line); children.push(article); continue; }
-    // A subagent's "user" turn is the task its parent gave it.
-    const meta = el('div', 'message-meta'); meta.append(el('strong', '', message.role === 'user' ? session.parentId ? 'Task' : 'You' : session.parentId ? session.model || 'Subagent' : providerName(session.provider)));
-    if (message.timestamp) { const time = el('time', '', age(message.timestamp)); time.dateTime = new Date(message.timestamp).toISOString(); time.title = new Date(message.timestamp).toLocaleString(); meta.append(time); }
-    const rendered = renderMessageMarkdown(message.text);
-    const body = el('div', 'message-text'); body.innerHTML = rendered.html;
-    article.append(meta, body);
-    if (rendered.more) {
-      const more = el('details', 'message-more'); more.dataset.id = message.id; more.open = !!previous?.querySelector('details[open]');
-      const rest = el('div', 'message-text'); rest.innerHTML = rendered.more;
-      more.append(el('summary', '', 'Read more'), rest); article.append(more);
-    }
-    if (message.truncated) article.append(el('span', 'muted', 'Long message shortened.'));
-    children.push(article);
+  // A main session folds three or more tool calls in a row into one line; a subagent shows each.
+  const entries = [];
+  for (const message of messages) {
+    const run = entries.at(-1);
+    if (message.tool && Array.isArray(run) && run[0].tool) run.push(message); else entries.push(message.tool ? [message] : message);
+  }
+  for (const entry of entries.flatMap(item => Array.isArray(item) && (item.length < 3 || session.parentId) ? item : [item])) {
+    const id = Array.isArray(entry) ? `run:${entry[0].id}` : entry.id, previous = existing.get(id), entrySignature = JSON.stringify(entry);
+    if (previous?.dataset.signature === entrySignature) { children.push(previous); continue; }
+    const node = Array.isArray(entry) ? toolRun(entry, !!previous?.open) : messageNode(entry, session, previous);
+    node.dataset.messageId = id; node.dataset.signature = entrySignature; children.push(node);
   }
   // Keep unchanged messages mounted so expanded text and keyboard focus survive polling.
   for (const node of [...content.children]) if (!children.includes(node)) node.remove();
   children.forEach((node, index) => { if (content.children[index] !== node) content.insertBefore(node, content.children[index] || null); });
   flow.restore(saved);
+}
+// Older pages end where the live window starts, so polling keeps the newest part current.
+function mergeHistory(earlier = [], recent) {
+  if (!earlier.length) return recent;
+  const cut = earlier.findIndex(message => message.id === recent[0]?.id), ids = new Set(recent.map(message => message.id));
+  return [...(cut >= 0 ? earlier.slice(0, cut) : earlier.filter(message => !ids.has(message.id))), ...recent];
+}
+async function loadOlder(id) {
+  const current = older.get(id), limit = Math.min(200, (current?.limit || 20) + 40);
+  older.set(id, { messages: [], more: true, ...current, loading: true }); renderPanel();
+  try { const result = await api(`sessions/${encodeURIComponent(id)}/history?limit=${limit}`); older.set(id, { limit, messages: result.messages, more: result.more && limit < 200 }); }
+  catch (error) { toast(error.message); if (current) older.set(id, current); else older.delete(id); }
+  if (state.selected === id && state.snapshot) renderPanel();
+}
+function toolLine(message) {
+  const article = el('article', `recent-message tool${message.failed ? ' failed' : ''}`);
+  const line = el('code', 'tool-call', message.text); line.title = [message.detail, message.failed && 'Failed', message.timestamp && new Date(message.timestamp).toLocaleString()].filter(Boolean).join('\n');
+  article.append(line); return article;
+}
+function toolRun(run, open) {
+  const details = el('details', 'tool-run'); details.open = open;
+  const failed = run.filter(message => message.failed).length;
+  const summary = el('summary'); summary.append(el('strong', '', `${run.length} tool calls`)); if (failed) summary.append(el('span', 'tool-run-failed', `${failed} failed`));
+  summary.append(el('code', 'tool-call', run.at(-1).text)); details.append(summary, ...run.map(toolLine));
+  return details;
+}
+function messageNode(message, session, previous) {
+  if (message.tool) return toolLine(message);
+  const article = el('article', `recent-message ${message.role}${message.error ? ' error' : ''}`);
+  if (message.role === 'notice') { const line = el('span', '', message.text); line.title = message.timestamp ? new Date(message.timestamp).toLocaleString() : ''; article.append(line); return article; }
+  // A subagent's "user" turn is the task its parent gave it.
+  const meta = el('div', 'message-meta'); meta.append(el('strong', '', message.role === 'user' ? session.parentId ? 'Task' : 'You' : session.parentId ? session.model || 'Subagent' : providerName(session.provider)));
+  if (message.timestamp) { const time = el('time', '', age(message.timestamp)); time.dateTime = new Date(message.timestamp).toISOString(); time.title = new Date(message.timestamp).toLocaleString(); meta.append(time); }
+  const rendered = renderMessageMarkdown(message.text);
+  const body = el('div', 'message-text'); body.innerHTML = rendered.html;
+  article.append(meta, body);
+  if (rendered.more) {
+    const more = el('details', 'message-more'); more.dataset.id = message.id; more.open = !!previous?.querySelector('details[open]');
+    const rest = el('div', 'message-text'); rest.innerHTML = rendered.more;
+    more.append(el('summary', '', 'Read more'), rest); article.append(more);
+  }
+  if (message.truncated) article.append(el('span', 'muted', 'Long message shortened.'));
+  return article;
 }
 
 function renderAccessPanel() {
@@ -689,6 +857,18 @@ document.addEventListener('keydown', event => {
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   }
 });
+// Single-key shortcuts outside text fields: / search, j k move between cards, n next waiting session.
+document.addEventListener('keydown', event => {
+  if (!state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open]')) return;
+  if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); openNext(); return; }
+  if (state.selected) return;
+  if (event.key === '/') { event.preventDefault(); document.querySelector('.search input')?.focus(); return; }
+  if (event.key !== 'j' && event.key !== 'k') return;
+  const cards = [...document.querySelectorAll('#groups .session-card')], index = cards.indexOf(document.activeElement);
+  cards[index < 0 ? 0 : Math.max(0, Math.min(cards.length - 1, index + (event.key === 'j' ? 1 : -1)))]?.focus();
+  event.preventDefault();
+});
+listenForOpen(id => { if (state.csrf) openPanel(id); });
 document.addEventListener('pointerdown', event => { for (const menu of document.querySelectorAll('#agent-filter-menu, .theme-menu')) if (menu.open && !menu.contains(event.target)) menu.open = false; });
 function sendActivity() {
   clearTimeout(activityTimer); activityTimer = null;

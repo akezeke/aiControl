@@ -7,15 +7,17 @@ const element = (tag, className, text) => {
   return node;
 };
 
-// A deterministic session map, independent of the overview's activity ordering.
-export function sessionMapPoints(sessions) {
+// A deterministic session map, independent of the overview's activity ordering. A contact waiting
+// for you closes in on the centre over ten minutes, so the longest wait sits nearest.
+export function sessionMapPoints(sessions, now = Date.now()) {
   const sorted = [...sessions].sort((a, b) => a.id.localeCompare(b.id));
   const columns = Math.max(3, Math.ceil(Math.sqrt(sorted.length * 1.6)));
   const rows = Math.max(1, Math.ceil(sorted.length / columns));
-  return sorted.map((session, index) => ({ session,
-    x: 10 + (index % columns + .5) * 80 / columns,
-    y: 12 + (Math.floor(index / columns) + .5) * 76 / rows,
-  }));
+  return sorted.map((session, index) => {
+    const x = 10 + (index % columns + .5) * 80 / columns, y = 12 + (Math.floor(index / columns) + .5) * 76 / rows;
+    const since = session.requests?.[0]?.createdAt, pull = needsInput(session.status) && since ? Math.min(1, Math.max(0, now - since) / 600_000) * .8 : 0;
+    return { session, x: x + (50 - x) * pull, y: y + (50 - y) * pull };
+  });
 }
 
 // One line per theme; CSS shows the active theme's wording.
@@ -98,9 +100,11 @@ export function renderThemeConsole(container, sessions, { disconnected = false, 
 }
 
 // Called by renderUsage with the shared usage snapshot; remembered for a console built after it.
+// A spent five-hour window is EVA's low power: the radar drops to static.
 let powerAccounts = [];
 export function renderPower(accounts = powerAccounts) {
   powerAccounts = accounts;
+  document.documentElement.toggleAttribute('data-low-power', accounts.some(account => account.windows?.some(w => w.label === '5-hour' && w.usedPercent >= 100)));
   for (const bar of document.querySelectorAll('.power-bar')) {
     const window = accounts.find(account => account.provider === bar.dataset.provider)?.windows?.find(w => w.label === '5-hour');
     const used = Number.isFinite(window?.usedPercent) ? window.usedPercent : null;

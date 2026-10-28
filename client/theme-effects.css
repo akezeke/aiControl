@@ -120,8 +120,10 @@
   .page-heading h1::before { content: '> '; color: var(--text-3); text-shadow: none; }
   .page-heading h1::after { content: ''; display: inline-block; width: .5em; height: .8em; margin-left: .05em; vertical-align: -.02em; background: var(--accent); box-shadow: var(--glow-strong); }
   .machine-label { color: var(--text-2); letter-spacing: .12em; }
-  &[data-attention] .main-content::before { content: '▲ ATTENTION · CREW INPUT REQUIRED'; display: block; margin: -6px 0 14px; padding: 7px 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: linear-gradient(90deg, #ffb547, #ffc76e 50%, #ffb547); color: #1a1003; font: 700 14px/1.2 var(--slab); letter-spacing: .22em; box-shadow: 0 0 22px #ffb54766; }
+  &[data-attention] .main-content::before { content: '▲ PRIORITY ONE · CREW INPUT REQUIRED'; display: block; margin: -6px 0 14px; padding: 7px 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: linear-gradient(90deg, #ffb547, #ffc76e 50%, #ffb547); color: #1a1003; font: 700 14px/1.2 var(--slab); letter-spacing: .22em; box-shadow: 0 0 22px #ffb54766; }
   &[data-attention] .topbar { box-shadow: inset 0 -2px #ffb547, 0 6px 18px #0008; }
+  /* Emergency lighting: amber washes in from the screen edges while the crew is needed. */
+  &[data-attention] .workspace::after { content: ''; position: fixed; inset: 0; z-index: 99; pointer-events: none; background: radial-gradient(ellipse 120% 95% at 50% 50%, transparent 58%, #ffb5471c 82%, #ff8a2440 100%); opacity: .6; }
   .stats { gap: 0; width: fit-content; max-width: 100%; border: 1px solid var(--line-2); }
   .stat { border: 0; border-right: 1px solid var(--line-2); border-radius: 0; background: transparent; box-shadow: none; text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
   .stat:last-child { border-right: 0; }
@@ -347,6 +349,8 @@
   .session-card:is(:hover, :focus-visible)::after { opacity: 1; transform: none; }
   .session-card.needs-input { border-left: 5px solid var(--warn); }
   /* Build progress along the bottom of working units, snapped to whole 8px dots: it grows one dot at a time and the newest three fade in. */
+  /* With a plan, the bar holds real progress instead: steps done of all steps. */
+  .session-card[data-status=working][data-plan] .session-body::after { --fill: var(--plan); }
   .session-card[data-status=working] .session-body::after {
     --fill: .6; --dots: round(down, calc(var(--fill) * 100%), 8px);
     left: 3px; right: 3px; bottom: 3px; height: 3px; filter: drop-shadow(0 0 3px #a8ea5c99);
@@ -421,6 +425,14 @@
   .login-form label { color: #f6efc8; text-shadow: 1px 1px #1d2316; font: 400 13px var(--stencil); text-transform: uppercase; letter-spacing: .1em; }
 }
 
+/* EVA low power: a spent five-hour window drops the radar to static. */
+:root[data-theme=command][data-low-power] {
+  .console-screen::before { opacity: .55; }
+  .console-sweep { visibility: hidden; }
+  .console-contacts { visibility: hidden; }
+  .console-screen::after { content: 'LOW POWER'; display: grid; place-items: center; background: linear-gradient(#0000 38%, #0b0d07e6 38% 62%, #0000 62%); color: #ff6a3d; font: 400 22px var(--readout); letter-spacing: .14em; text-shadow: 0 0 8px #ff6a3d; }
+}
+
 /* ORBIT: the planet-limb wallpaper behind glass. Dark rules key off data-scheme, never the media query. */
 :root[data-theme=modern] {
   --wallpaper: url('/orbit-light.webp');
@@ -439,7 +451,11 @@
   .sidebar { background: transparent; border-right-color: var(--glass-line); }
   .sidebar::before { content: ''; position: fixed; inset: 0 auto 0 0; z-index: -1; width: var(--sidebar-w); background: color-mix(in srgb, var(--panel) 72%, transparent); backdrop-filter: blur(18px) saturate(1.3); -webkit-backdrop-filter: blur(18px) saturate(1.3); pointer-events: none; }
   .brand-variant.modern .brand-mark { position: relative; width: 30px; height: 30px; padding: 0; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #e0e7ff, #818cf8 30%, #4f46e5 58%, #1e1b4b 92%); box-shadow: inset -3px -4px 8px #1e1b4b99, 0 0 0 1px #ffffff33, 0 6px 16px -6px #4f46e5; }
-  .brand-variant.modern .brand-mark i { display: none; }
+  /* One more satellite per working session, up to three, on the same orbit. */
+  .brand-variant.modern .brand-mark i { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #e0e7ff; box-shadow: 0 0 5px #a5b4fc; transform: rotate(-22deg) scaleY(.32) rotate(160deg) translateX(21px) scaleY(3); }
+  .brand-variant.modern .brand-mark i:nth-child(2) { transform: rotate(-22deg) scaleY(.32) rotate(280deg) translateX(21px) scaleY(3); }
+  .brand-variant.modern .brand-mark i:nth-child(3) { transform: rotate(-22deg) scaleY(.32) rotate(100deg) translateX(21px) scaleY(3); }
+  &:not([data-working]) .brand-variant.modern .brand-mark i, &[data-working="0"] .brand-variant.modern .brand-mark i, &[data-working="1"] .brand-variant.modern .brand-mark i:nth-child(n+2), &[data-working="2"] .brand-variant.modern .brand-mark i:nth-child(3) { display: none; }
   /* Only the ring's near half is drawn, so its far half reads as passing behind the planet. */
   .brand-variant.modern .brand-mark::before { content: ''; position: absolute; inset: 11px -7px; border: 1.5px solid #c7d2fe; border-top-color: transparent; border-radius: 50%; transform: rotate(-22deg); opacity: .9; box-shadow: 0 0 6px #a5b4fc88; }
   .brand-variant.modern .brand-mark::after { content: ''; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: #fff; box-shadow: 0 0 6px #fff, 0 0 10px #a5b4fc; transform: rotate(-22deg) scaleY(.32) rotate(40deg) translateX(21px) scaleY(3); }
@@ -523,6 +539,8 @@
 @keyframes interlace { to { background-position: 0 3px; } }
 @keyframes scene-drift { to { transform: translate3d(-1.5%, -1%, 0); } } /* no scale: scaling blurs the photo */
 @keyframes cloud-pass { to { transform: translate3d(-100vw, 0, 0); } }
+@keyframes power-blink { 50%, 100% { color: #ff6a3d40; text-shadow: none; } }
+@keyframes emergency { 0%, 100% { opacity: .15; } 18% { opacity: 1; } 45% { opacity: .35; } }
 @keyframes twinkle { 0%, 100% { opacity: .75; } 50% { opacity: .25; } }
 /* hidden while behind the planet (the orbit's far half) */ @keyframes satellite { 0% { transform: rotate(-22deg) scaleY(.32) rotate(0deg) translateX(21px) scaleY(3); opacity: 1; } 59.7% { transform: rotate(-22deg) scaleY(.32) rotate(215deg) translateX(21px) scaleY(3); opacity: 1; } 63.9% { transform: rotate(-22deg) scaleY(.32) rotate(230deg) translateX(21px) scaleY(3); opacity: 0; } 86.1% { transform: rotate(-22deg) scaleY(.32) rotate(310deg) translateX(21px) scaleY(3); opacity: 0; } 90.3% { transform: rotate(-22deg) scaleY(.32) rotate(325deg) translateX(21px) scaleY(3); opacity: 1; } 100% { transform: rotate(-22deg) scaleY(.32) rotate(360deg) translateX(21px) scaleY(3); opacity: 1; } }
 @keyframes satellite-big { 0% { transform: rotate(-22deg) scaleY(.32) rotate(0deg) translateX(44px) scaleY(3); opacity: 1; } 59.7% { transform: rotate(-22deg) scaleY(.32) rotate(215deg) translateX(44px) scaleY(3); opacity: 1; } 63.9% { transform: rotate(-22deg) scaleY(.32) rotate(230deg) translateX(44px) scaleY(3); opacity: 0; } 86.1% { transform: rotate(-22deg) scaleY(.32) rotate(310deg) translateX(44px) scaleY(3); opacity: 0; } 90.3% { transform: rotate(-22deg) scaleY(.32) rotate(325deg) translateX(44px) scaleY(3); opacity: 1; } 100% { transform: rotate(-22deg) scaleY(.32) rotate(360deg) translateX(44px) scaleY(3); opacity: 1; } }
@@ -549,6 +567,8 @@
     .console-lamps i:nth-child(4n + 1) { animation: cursor-blink 2.4s steps(1) infinite; }
     &[data-attention] .console-lamps i:nth-child(4n + 1) { animation-duration: .6s; }
     &[data-attention] .main-content::before { animation: alert-pulse 1.4s ease-in-out infinite; }
+    &[data-attention] .workspace::after { animation: emergency 2.4s ease-in-out infinite; }
+    .console-contact { transition: left 1.5s ease-in-out, top 1.5s ease-in-out; }
     .live-label:not(.disconnected)::before, .badge.green .dot { animation: signal-pulse 1.5s ease-in-out infinite; }
     .badge.green .dot::after { content: none; }
     .stat-number.tick { animation: phosphor-tick .5s steps(1); }
@@ -572,6 +592,10 @@
     .detail-panel { animation: steel-in .24s cubic-bezier(.3, .8, .3, 1); }
     .session-card[data-status=working] .agent-mark::after { animation: build 1.5s linear infinite; }
     .session-card[data-status=working] .session-body::after { animation: build-bar 6s linear var(--since-load, 0s) infinite; }
+    .session-card[data-status=working][data-plan] .session-body::after { animation: none; }
+    .console-contact { transition: left 1.5s ease-in-out, top 1.5s ease-in-out; }
+    &[data-low-power] .console-screen::before { animation: radar-jitter .15s steps(1) infinite; }
+    &[data-low-power] .console-screen::after { animation: power-blink 1.2s steps(1) infinite; }
     .session-card.needs-input .agent-mark::after, .console-contact:is([data-status=permission], [data-status=question])::before, .typing::after { animation: ready-flash 1s steps(1) infinite; }
     .live-label:not(.disconnected)::before { animation: signal-pulse 1.5s ease-in-out infinite; }
     .badge.green .dot::after { content: none; }
@@ -581,6 +605,10 @@
   :root[data-theme=modern] {
     .shell::before, .login-screen::before { inset: -2%; animation: scene-drift 90s ease-in-out infinite alternate; }
     .brand-variant.modern .brand-mark::after { animation: satellite 9s linear infinite; }
+    .brand-variant.modern .brand-mark i { animation: satellite 9s linear infinite; }
+    .brand-variant.modern .brand-mark i:nth-child(1) { animation-delay: -3s; }
+    .brand-variant.modern .brand-mark i:nth-child(2) { animation-delay: -6s; }
+    .brand-variant.modern .brand-mark i:nth-child(3) { animation-delay: -1.5s; }
     .login-card .brand-variant.modern .brand-mark::after { animation: satellite-big 9s linear infinite; }
     .status-line::before { animation: signal-pulse 3s ease-in-out infinite; }
   }
@@ -639,7 +667,7 @@
     .session-card { padding-left: 6px; padding-right: 6px; }
     .badge::before, .badge::after { content: none; }
     .detail-panel { box-shadow: none; }
-    .chat-header { grid-template-areas: 'back title actions' '. info info'; }
+    .chat-header { grid-template-areas: 'back . actions' 'title title title' 'info info info'; }
     .chat-header::before { display: none; }
     .panel-title { font-size: 18px; letter-spacing: .06em; }
     .recent-message, .recent-message.user { margin-left: 0; margin-right: 0; }
@@ -660,7 +688,7 @@
     .session-title { font-size: 14px; }
     .group-title h2 { font-size: 14px; }
     .panel-title { font-size: 18px; }
-    .chat-header { grid-template-areas: 'back title actions' '. info info'; }
+    .chat-header { grid-template-areas: 'back . actions' 'title title title' 'info info info'; }
     .chat-header::before { display: none; }
   }
   :root[data-theme=modern] {

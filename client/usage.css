@@ -23,3 +23,6 @@
 .usage-state { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 :is(.usage-stale, .usage-expired) .usage-meter { opacity: .55; }
 @media (max-width: 640px) { .usage-account { gap: 8px; padding: 4px 10px; } .usage-windows { gap: 10px; } .usage-window { flex-basis: 118px; min-width: 118px; } }
+/* Projected past 100% by the reset at the current rate. */
+.usage-pace .usage-percent { color: var(--warn); }
+.usage-pace .usage-percent::after { content: '↗'; margin-left: 1px; }

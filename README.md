@@ -9,15 +9,17 @@ A self-hosted dashboard for keeping track of your local Codex and Claude Code se
 ## Features
 
 - Every running Codex and Claude Code session, by project or as a flat list, sorted needs input → working → idle.
-- Answer Claude and Codex permission requests and questions. The terminal stays usable; whichever answers first wins. Nothing is auto-approved.
-- Send messages: start or steer Codex turns, type into Claude sessions running in tmux. Start a new Claude or Codex in a project's tmux session.
-- Recent history as safe Markdown, with Claude subagents and workflow workers nested under their session.
-- Five-hour and weekly usage limits for both accounts.
+- Answer Claude and Codex permission requests and questions: allow once, for the session or always, or deny with a reason. Edits show as diffs, plans as Markdown. The terminal stays usable; whichever answers first wins. Nothing is auto-approved.
+- Send messages: start or steer Codex turns, type into Claude sessions running in tmux. Stop a turn, change effort, or start a new Claude or Codex in a project's tmux session.
+- Recent history as safe Markdown, with folded tool calls, errors and older pages on demand. Claude subagents and workflow workers are nested under their session.
+- Model, effort, permission mode, context, plan progress, goal and cost per session; unread dots for finished work.
+- Notifications (HTTPS) and theme sounds when a session needs you, a favicon badge, and `/` `j` `k` `n` shortcuts.
+- Five-hour and weekly usage limits for both accounts, with a warning when the current pace runs past the limit.
 - This computer only, or your other devices over Tailscale. PIN or password, ten-minute idle lock.
 
 ## More is more
 
-MU/TH/UR and EVA go all in: boot sequences, CRT scanlines, typed-out text, radar contacts that blip on status changes, hazard stripes and a power bar fed by your usage limits. Orbit is the calm option. Effects never block a control and switch off with reduced motion.
+MU/TH/UR and EVA go all in: boot sequences, CRT scanlines, typed-out text, radar contacts that blip on status changes and close in the longer they wait, emergency lighting, hazard stripes, build bars fed by plan progress and a power bar fed by your usage limits that drops the radar to static when spent. Orbit is the calm option. Effects never block a control and switch off with reduced motion.
 
 ## Screenshots
 

@@ -6,10 +6,12 @@ export class PanelNavigation {
   }
   selected() { return new URLSearchParams(this.browser.location.hash.slice(1)).get('session'); }
   sync() { this.onChange(this.selected()); }
-  open(id) {
+  // `replace` swaps the open panel for another, so Back still returns to the overview.
+  open(id, { replace = false } = {}) {
     if (this.selected() !== id) {
-      const { pathname, search } = this.browser.location;
-      this.browser.history.pushState({ aiControlPanel: true }, '', `${pathname}${search}#${new URLSearchParams({ session: id })}`);
+      const { pathname, search } = this.browser.location, url = `${pathname}${search}#${new URLSearchParams({ session: id })}`;
+      if (replace && this.browser.history.state?.aiControlPanel) this.browser.history.replaceState({ aiControlPanel: true }, '', url);
+      else this.browser.history.pushState({ aiControlPanel: true }, '', url);
     }
     this.onChange(id);
   }
