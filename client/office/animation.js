@@ -40,14 +40,15 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
       leftHand: V(0.36 - wave(9) * 0.06, LEG + h + 0.22, 0.08), rightHand: V(-0.36 + wave(9) * 0.06, LEG + h + 0.22, 0.08), ...feetStand } };
     case 'raising': return { ...standing(Math.abs(wave(3)) * 0.02, -0.12), limbs: {
       leftHand: V(0.34, LEG + h * 0.25, 0.06), rightHand: V(-0.22 - wave(5) * 0.03, LEG + h + 0.3, 0.06), ...feetStand } };
-    // Sunk back against the chair, breathing slowly, head lolling to one side, hands folded on the belly, legs out.
+    // Sunk back against the chair, breathing slowly, head lolling to one side, hands folded on the belly, heels up on the desk
+    // in front of the keyboard (legs down to the floor would pass through the seat).
     // Thin fruit sit further back: the widest part of the body rests on the chair back.
     case 'sleeping': {
       const lean = -0.2 + wave(1.3) * 0.012, tilt = 0.06 + wear * 0.1 + wave(0.3) * 0.015, y = SEAT_H - 0.015 - wear * 0.02;
       const z = BACK_Z + 0.015 + fruit.surface(h * 0.45).r + h * 0.09, tummy = h * 0.3, { x: middle, r } = fruit.surface(tummy);
       const turned = new THREE.Euler(lean, 0, tilt), onBody = side => V(middle + side * 0.075, tummy, Math.sqrt(Math.max(0, r * r - 0.0056)) + 0.03).applyEuler(turned).add(V(0, y, 0));
       return { x: 0, z, turn: 0, body: { y, tilt, lean }, limbs: {
-        leftHand: onBody(1), rightHand: onBody(-1), leftFoot: V(0.15, 0.035, 0.42 - z), rightFoot: V(-0.15, 0.035, 0.42 - z) } };
+        leftHand: onBody(1), rightHand: onBody(-1), leftFoot: V(0.09, DESK_H + 0.06, KEYS + SEAT_FORWARD - 0.1 - z), rightFoot: V(-0.09, DESK_H + 0.06, KEYS + SEAT_FORWARD - 0.1 - z) } };
     }
     // Walking to or from the door: legs and arms swing in opposition.
     case 'walking': return { ...standing(Math.abs(wave(8)) * 0.03), x: 0, z: 0, limbs: {

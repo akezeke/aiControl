@@ -321,7 +321,7 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
       limbs[name].set(from, bend, to);
       const end = ends[name]; end.position.copy(to);
       if (arm) { q.setFromUnitVectors(forward, limbs[name].end); end.quaternion.copy(q); }
-      else end.rotation.set(0, 0, 0);
+      else end.rotation.set(-Math.min(1, Math.max(0, to.y - 0.1) * 2), 0, 0); // a foot up off the floor rests on its heel, toes up
     }
   };
   // Hands hang a little out from the shoulders; feet sit under the hips.
