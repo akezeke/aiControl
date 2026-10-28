@@ -69,36 +69,67 @@ export class Bubbles {
 }
 
 // What the list shows and the scene doesn't: branch, plan steps, permission mode, context, how long in this state.
+const span = (className, text) => { const node = document.createElement('span'); node.className = className; node.textContent = text; return node; };
+// Below and right of a screen point, flipped to stay in the scene.
+function placeNear(container, node, at) {
+  const box = container.getBoundingClientRect(), x = at.clientX - box.left, y = at.clientY - box.top, w = node.offsetWidth, h = node.offsetHeight;
+  const left = x + 18 + w > box.width - 8 ? x - 18 - w : x + 18, top = y + 18 + h > box.height - 8 ? y - 18 - h : y + 18;
+  node.style.transform = `translate(${Math.max(8, left).toFixed(0)}px, ${Math.max(8, top).toFixed(0)}px)`;
+}
+
 export function createCard(container) {
   const card = document.createElement('div'); card.className = 'office-card'; card.hidden = true; card.setAttribute('aria-hidden', 'true'); container.append(card);
   const line = (className, ...parts) => { const div = document.createElement('div'); div.className = className; div.append(...parts.filter(part => part || part === 0)); return div; };
-  const span = (className, text) => { const node = document.createElement('span'); node.className = className; node.textContent = text; return node; };
   let shown = '';
   return {
-    // `facts` from main.js's sessionFacts, or null to hide.
+    // `facts` from main.js's sessionFacts (or just a title and project, for a spare desk), or null to hide.
     show(facts) {
       card.hidden = !facts;
       const signature = facts ? JSON.stringify(facts) : '';
       if (!facts || signature === shown) return;
       shown = signature;
       const where = [facts.agent, facts.project, facts.branch && span('branch', facts.branch)].filter(Boolean).flatMap((part, i) => i ? [' · ', part] : [part]);
+      const chips = line('chips', facts.plan && span('chip', `${facts.plan[0]}/${facts.plan[1]} steps`), facts.mode && span(`chip ${facts.mode}`, `${facts.mode} mode`),
+        facts.context != null && span(`chip${facts.context >= 80 ? ' full' : ''}`, `ctx ${facts.context}%`), facts.state && span('state', facts.state));
       card.replaceChildren(...[
-        line('title', span(`mark ${facts.provider}`, facts.provider === 'codex' ? '⌘' : '✳'), facts.title || facts.providerName),
+        line('title', facts.provider && span(`mark ${facts.provider}`, facts.provider === 'codex' ? '⌘' : '✳'), facts.title || facts.providerName),
         where.length && line('where', ...where),
-        line('chips', facts.plan && span('chip', `${facts.plan[0]}/${facts.plan[1]} steps`), facts.mode && span(`chip ${facts.mode}`, `${facts.mode} mode`),
-          facts.context != null && span(`chip${facts.context >= 80 ? ' full' : ''}`, `ctx ${facts.context}%`), span('state', facts.state)),
+        chips.childElementCount && chips,
         facts.detail && line('detail', facts.detail),
       ].filter(Boolean));
     },
-    // Below and right of a screen point, flipped to stay in the scene.
-    move(at) {
-      if (card.hidden || !at) return;
-      const box = container.getBoundingClientRect(), x = at.clientX - box.left, y = at.clientY - box.top, w = card.offsetWidth, h = card.offsetHeight;
-      const left = x + 18 + w > box.width - 8 ? x - 18 - w : x + 18, top = y + 18 + h > box.height - 8 ? y - 18 - h : y + 18;
-      card.style.transform = `translate(${Math.max(8, left).toFixed(0)}px, ${Math.max(8, top).toFixed(0)}px)`;
-    },
+    move(at) { if (!card.hidden && at) placeNear(container, card, at); },
     dispose() { card.remove(); },
   };
+}
+
+// A spare desk's menu: Claude or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
+export function createMenu(container, onChoose) {
+  const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
+  let cwd = null;
+  const items = [['claude', '✳', 'Claude', 'Claude Code'], ['codex', '⌘', 'Codex', 'Codex']].map(([provider, mark, label, name]) => {
+    const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${name} in tmux`;
+    item.append(span(`mark ${provider}`, mark), label);
+    item.onclick = () => { const at = cwd; result.close(); if (at) onChoose(at, provider, item); };
+    menu.append(item); return item;
+  });
+  menu.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.stopPropagation(); result.close(); }
+    else if (['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); items[(items.indexOf(document.activeElement) + 1) % items.length].focus(); }
+  });
+  const result = {
+    get open() { return !menu.hidden; },
+    contains: node => menu.contains(node),
+    // At a screen point; `focus` for the keyboard.
+    show(where, at, focus) {
+      cwd = where; menu.setAttribute('aria-label', `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
+      if (focus) items[0].focus();
+    },
+    move(at) { if (!menu.hidden) placeNear(container, menu, at); },
+    close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; },
+    dispose() { menu.remove(); },
+  };
+  return result;
 }
 
 export function createOverlays(container, { onNext, onList, onOverview }) {

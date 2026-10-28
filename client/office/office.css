@@ -29,6 +29,17 @@
 .office-card .chip.bypass, .office-card .chip.full { background: #ff8f7a; }
 .office-card .detail { color: #3a3742; -webkit-line-clamp: 3; }
 
+.office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 2.5px solid #1b1a1f; border-radius: 12px; background: #fffdf7; box-shadow: 0 3px 0 #1b1a1f; }
+.office-menu[hidden] { display: none; }
+.office-menu button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 8px; background: none; color: #1b1a1f; font: 700 14px system-ui, sans-serif; cursor: pointer; }
+.office-menu button:hover, .office-menu button:focus-visible { background: #ffd166; outline: none; }
+.office-menu button:disabled { opacity: .5; cursor: progress; }
+.office-menu .mark { width: 16px; color: #d97757; text-align: center; }
+.office-menu .mark.codex { color: #1b1a1f; }
+@media (pointer: coarse) { .office-menu button { min-height: 44px; } }
+@media (prefers-reduced-motion: no-preference) { .office-menu { animation: office-menu-in .12s ease-out; } }
+@keyframes office-menu-in { from { opacity: 0; } }
+
 .office-overlay { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
 .office-overlay button { min-width: 44px; height: 44px; padding: 0 12px; border: 2.5px solid #1b1a1f; border-radius: 14px; background: #fffdf7; color: #1b1a1f; font: 700 16px system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; cursor: pointer; }
 .office-overlay .office-waiting { background: #ffd166; }

@@ -254,7 +254,7 @@ function syncOffice() {
   if (!officeModule.webglAvailable()) { fallBack('Office needs WebGL 2; showing the list'); return; }
   const box = el('div'); box.id = 'office'; main.append(box);
   try {
-    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread, describe: sessionFacts });
+    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread, describe: sessionFacts, spawn: spawnAgent });
     if (state.snapshot) office.update(state.snapshot, { error: state.error });
   } catch (error) { console.error(error); office?.unmount(); office = null; fallBack('Office could not start; showing the list'); }
 }

@@ -60,3 +60,12 @@ test('the room never shrinks under you', () => {
   const small = layoutOffice([s('p0x', 'p0')], layoutOffice([s('p0x', 'p0')], big, 1), 100_000);
   assert.ok(small.room.width >= big.room.width && small.room.depth >= big.room.depth);
 });
+test('each pod keeps its next free seat as a spare desk, where a new session then sits', () => {
+  const first = layoutOffice([s('a', 'x'), s('b', 'x')]), pod = first.pods[0];
+  assert.equal(pod.cwd, '/p/x');
+  assert.equal(pod.width, 2 * 1.6, 'the spare starts a second pair');
+  const next = layoutOffice([s('a', 'x'), s('b', 'x'), s('c', 'x')], first), { x, z, rotation } = next.desks.get('c');
+  assert.deepEqual({ x, z, rotation }, pod.spare);
+  assert.notDeepEqual(next.pods[0].spare, pod.spare);
+  assert.equal(layoutOffice([{ id: 'a', project: 'x', status: 'idle' }]).pods[0].spare, null, 'nowhere to start one without a folder');
+});

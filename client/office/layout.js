@@ -9,6 +9,8 @@ const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8, CELL_PAIRS = 3;
 const podKey = session => session.cwd || session.project || 'Unknown';
 
 // A desk's `rotation` is the yaw its sitter faces (0 = +z). Slot k is pair k >> 1; even slots face +z, odd face -z, across a shared desk edge.
+const seat = (pod, slot) => ({ x: pod.left + DESK_W * ((slot >> 1) + 0.5), z: pod.z + (slot % 2 ? DESK_D / 2 : -DESK_D / 2), rotation: slot % 2 ? Math.PI : 0 });
+
 // A session that ends keeps its (empty) desk for VACANT_MS, so it can walk out and the pod doesn't jump at once.
 export function layoutOffice(sessions, previous, now = Date.now()) {
   const top = sessions.filter(s => !s.parentId), ids = new Set(top.map(s => s.id));
@@ -27,7 +29,8 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
   }
   const pods = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
 
-  // Seats from the previous layout stay put; newcomers take the lowest free slot.
+  // Seats from the previous layout stay put; newcomers take the lowest free slot. That slot is also the pod's spare desk,
+  // for starting another agent in its folder, so whoever you start there sits down at it.
   for (const pod of pods) {
     const slots = [], kept = new Set();
     for (const session of pod.sessions) {
@@ -40,7 +43,9 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
       slots[slot] = session.id;
     }
     pod.slots = slots;
-    pod.pairs = Math.max(1, Math.ceil(slots.length / 2));
+    pod.cwd = pod.sessions.find(session => session.cwd && session.vacantSince === undefined)?.cwd;
+    if (pod.cwd) { pod.spare = 0; while (slots[pod.spare] !== undefined) pod.spare++; }
+    pod.pairs = Math.max(1, Math.ceil(Math.max(slots.length, pod.cwd ? pod.spare + 1 : 0) / 2));
     pod.width = pod.pairs * DESK_W;
     pod.depth = 2 * DESK_D + 2 * CHAIR;
   }
@@ -73,12 +78,9 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
     pod.z = AISLE + pod.row * cellD + pod.depth / 2;
     pod.slots.forEach((id, slot) => {
       if (id === undefined) return;
-      const side = slot % 2, pair = slot >> 1, children = kids.get(id) || [];
+      const children = kids.get(id) || [];
       desks.set(id, {
-        sessionId: id, podKey: pod.key, slot,
-        x: pod.left + DESK_W * (pair + 0.5),
-        z: pod.z + (side ? DESK_D / 2 : -DESK_D / 2),
-        rotation: side ? Math.PI : 0,
+        sessionId: id, podKey: pod.key, slot, ...seat(pod, slot),
         subagents: children.slice(0, MAX_SUBAGENTS), overflow: Math.max(0, children.length - MAX_SUBAGENTS),
         ...(vacant.has(id) && { vacantSince: vacant.get(id) }),
       });
@@ -86,7 +88,8 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
   });
 
   return {
-    pods: pods.map(({ key, name, x, z, width, depth: d, slots, col, row }) => ({ key, name, x, z, width, depth: d, col, row, deskIds: slots.filter(id => id !== undefined) })),
+    pods: pods.map(pod => ({ key: pod.key, name: pod.name, cwd: pod.cwd, x: pod.x, z: pod.z, width: pod.width, depth: pod.depth, col: pod.col, row: pod.row,
+      deskIds: pod.slots.filter(id => id !== undefined), spare: pod.cwd ? seat(pod, pod.spare) : null })),
     desks, room: { width, depth }, door: { x: width / 2, z: depth }, grid: { cols, cellW },
   };
 }
