@@ -254,7 +254,7 @@ function syncOffice() {
   if (!officeModule.webglAvailable()) { fallBack('Office needs WebGL 2; showing the list'); return; }
   const box = el('div'); box.id = 'office'; main.append(box);
   try {
-    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread });
+    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread, describe: sessionFacts });
     if (state.snapshot) office.update(state.snapshot, { error: state.error });
   } catch (error) { console.error(error); office?.unmount(); office = null; fallBack('Office could not start; showing the list'); }
 }
@@ -339,11 +339,8 @@ function renderData() {
     syncList(group.lastChild, ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren).map(session => {
       sessionsById.set(session.id, session);
       const lastMessage = session.messages?.at(-1);
-      let detail = session.requests[0]?.title || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
-      if (session.provider === 'claude' && !session.control && needsInput(session)) detail = 'Open the original client · Hooks not connected';
-      const done = session.plan?.filter(step => step.status === 'done').length;
-      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail, last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
-        plan: session.plan?.length ? [done, session.plan.length] : null, mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), unread: unread(session) }];
+      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
+        plan: planProgress(session), mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), unread: unread(session) }];
     }), renderCard);
   }
   for (const card of groups.querySelectorAll('.session-card')) setProperty(card.querySelector('.session-age'), 'textContent', stateAge(sessionsById.get(card.dataset.key)));
@@ -369,6 +366,18 @@ function stateAge(session) {
 }
 const modeLabels = { plan: 'plan', acceptEdits: 'auto-edit', auto: 'auto', bypassPermissions: 'bypass' };
 const contextPercent = context => context?.window ? Math.min(100, Math.round(context.used / context.window * 100)) : null;
+const planProgress = session => session.plan?.length ? [session.plan.filter(step => step.status === 'done').length, session.plan.length] : null;
+function cardDetail(session) {
+  if (session.provider === 'claude' && !session.control && needsInput(session)) return 'Open the original client · Hooks not connected';
+  return session.requests[0]?.title || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
+}
+// What the office's card shows for whoever is outlined: the details a list card has.
+function sessionFacts(session) {
+  const age = stateAge(session);
+  return { provider: session.provider, providerName: providerName(session.provider), title: session.title, project: session.project, branch: session.branch,
+    agent: session.parentId ? session.agentKind === 'workflow' ? 'Workflow' : 'Subagent' : '', plan: planProgress(session), mode: modeLabels[session.permissionMode] || '', context: contextPercent(session.context),
+    state: `${(statuses[session.status] || statuses.unknown)[0]}${age.startsWith('for ') ? ' ' : ' · '}${age}`, detail: cardDetail(session) };
+}
 const tokens = n => n >= 1e6 ? `${Number((n / 1e6).toFixed(1))}M` : `${Math.round(n / 1000)}k`;
 function chip(text, className, title) { const node = el('span', `chip ${className}`, text); if (title) node.title = title; return node; }
 function renderCard(session, previous) {

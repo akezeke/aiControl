@@ -1,5 +1,6 @@
 // Speech bubbles are HTML over the canvas: sharp text, real buttons, and always visible, even through walls.
-// Plus the few controls that stay on screen: who's waiting, low usage, back to the list, the phone overview button, the aiming dot and the hint.
+// Plus the few controls that stay on screen: who's waiting, low usage, back to the list, the phone overview button, the aiming dot and the hint,
+// and the card beside whoever is outlined.
 import * as THREE from 'three';
 
 const hintKey = 'ai-control-office-hint-2';
@@ -37,7 +38,7 @@ export class Bubbles {
         this.layer.append(node); this.nodes.set(id, node);
       }
       const label = bubble.text ? `${bubble.icon} ${bubble.text}` : bubble.icon;
-      if (node.dataset.label !== label) { node.dataset.label = label; drawIcon(node.children[0], bubble.icon); node.children[0].setAttribute('aria-label', bubble.icon); node.children[1].textContent = bubble.text; node.children[1].hidden = !bubble.text; node.title = bubble.text || ''; }
+      if (node.dataset.label !== label) { node.dataset.label = label; drawIcon(node.children[0], bubble.icon); node.children[0].setAttribute('aria-label', bubble.icon); node.children[1].textContent = bubble.text; node.children[1].hidden = !bubble.text; }
       node.classList.toggle('highlight', bubble.highlight);
       node.classList.toggle('unread', !!unread);
     }
@@ -65,6 +66,39 @@ export class Bubbles {
   at(x, y) { return document.elementFromPoint(x, y)?.closest('.office-bubble')?.dataset.id || null; }
 
   dispose() { this.layer.remove(); }
+}
+
+// What the list shows and the scene doesn't: branch, plan steps, permission mode, context, how long in this state.
+export function createCard(container) {
+  const card = document.createElement('div'); card.className = 'office-card'; card.hidden = true; card.setAttribute('aria-hidden', 'true'); container.append(card);
+  const line = (className, ...parts) => { const div = document.createElement('div'); div.className = className; div.append(...parts.filter(part => part || part === 0)); return div; };
+  const span = (className, text) => { const node = document.createElement('span'); node.className = className; node.textContent = text; return node; };
+  let shown = '';
+  return {
+    // `facts` from main.js's sessionFacts, or null to hide.
+    show(facts) {
+      card.hidden = !facts;
+      const signature = facts ? JSON.stringify(facts) : '';
+      if (!facts || signature === shown) return;
+      shown = signature;
+      const where = [facts.agent, facts.project, facts.branch && span('branch', facts.branch)].filter(Boolean).flatMap((part, i) => i ? [' · ', part] : [part]);
+      card.replaceChildren(...[
+        line('title', span(`mark ${facts.provider}`, facts.provider === 'codex' ? '⌘' : '✳'), facts.title || facts.providerName),
+        where.length && line('where', ...where),
+        line('chips', facts.plan && span('chip', `${facts.plan[0]}/${facts.plan[1]} steps`), facts.mode && span(`chip ${facts.mode}`, `${facts.mode} mode`),
+          facts.context != null && span(`chip${facts.context >= 80 ? ' full' : ''}`, `ctx ${facts.context}%`), span('state', facts.state)),
+        facts.detail && line('detail', facts.detail),
+      ].filter(Boolean));
+    },
+    // Below and right of a screen point, flipped to stay in the scene.
+    move(at) {
+      if (card.hidden || !at) return;
+      const box = container.getBoundingClientRect(), x = at.clientX - box.left, y = at.clientY - box.top, w = card.offsetWidth, h = card.offsetHeight;
+      const left = x + 18 + w > box.width - 8 ? x - 18 - w : x + 18, top = y + 18 + h > box.height - 8 ? y - 18 - h : y + 18;
+      card.style.transform = `translate(${Math.max(8, left).toFixed(0)}px, ${Math.max(8, top).toFixed(0)}px)`;
+    },
+    dispose() { card.remove(); },
+  };
 }
 
 export function createOverlays(container, { onNext, onList, onOverview }) {

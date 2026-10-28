@@ -15,6 +15,20 @@
 .office-bubble:focus-visible { outline: 3px solid #4f7cff; outline-offset: 2px; }
 @keyframes office-pulse { 50% { box-shadow: 0 3px 0 #1b1a1f, 0 0 0 6px #ffd16655; } }
 
+.office-card { position: absolute; left: 0; top: 0; z-index: 2000; width: max-content; max-width: min(300px, calc(100% - 16px)); padding: 8px 11px; border: 2.5px solid #1b1a1f; border-radius: 12px; background: #fffdf7; color: #1b1a1f; font: 600 13px/1.35 system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; pointer-events: none; }
+.office-card > div + div { margin-top: 4px; }
+.office-card .title, .office-card .detail { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.office-card .title { font-size: 14px; font-weight: 800; }
+.office-card .mark { margin-right: 5px; color: #d97757; }
+.office-card .mark.codex { color: #1b1a1f; }
+.office-card .where, .office-card .state { color: #5c5866; }
+.office-card .branch { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.office-card .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; }
+.office-card .chip { padding: 0 6px; border: 1.5px solid #1b1a1f; border-radius: 7px; font-size: 12px; }
+.office-card .chip.plan { background: #cfe0ff; }
+.office-card .chip.bypass, .office-card .chip.full { background: #ff8f7a; }
+.office-card .detail { color: #3a3742; -webkit-line-clamp: 3; }
+
 .office-overlay { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
 .office-overlay button { min-width: 44px; height: 44px; padding: 0 12px; border: 2.5px solid #1b1a1f; border-radius: 14px; background: #fffdf7; color: #1b1a1f; font: 700 16px system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; cursor: pointer; }
 .office-overlay .office-waiting { background: #ffd166; }

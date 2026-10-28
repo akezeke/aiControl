@@ -7,7 +7,7 @@ import { createRoom } from './room.js';
 import { Cast } from './animation.js';
 import { Player, pick, officeHasKeys, sceneFocused, standNear } from './player.js';
 import { OfficeCamera } from './camera.js';
-import { Bubbles, createOverlays } from './bubbles.js';
+import { Bubbles, createCard, createOverlays } from './bubbles.js';
 import { createBoards } from './boards.js';
 import { highlight } from './toon.js';
 
@@ -32,8 +32,8 @@ export function mountOffice(container, hooks) {
 
   const frames = new Set(), listeners = [];
   const listen = (target, type, fn) => { target.addEventListener(type, fn); listeners.push(() => target.removeEventListener(type, fn)); };
-  // What a click at a screen point gets: a speech bubble under the dot counts as its character.
-  const under = at => { const id = player.aiming && bubbles.at(at.clientX, at.clientY); return id ? { kind: 'character', id } : pick(at, renderer.domElement, camera, scene); };
+  // What a click at a screen point gets: a speech bubble there counts as its character.
+  const under = at => { const id = bubbles.at(at.clientX, at.clientY); return id ? { kind: 'character', id } : pick(at, renderer.domElement, camera, scene); };
   const player = new Player(renderer.domElement, {
     colliders: () => room.colliders,
     room: () => layout?.room,
@@ -48,6 +48,7 @@ export function mountOffice(container, hooks) {
   const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches });
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
+  const card = createCard(container);
   // The overview frees the mouse to click around; leaving it with Tab captures the mouse again if it was.
   let relock = false;
   const overview = on => {
@@ -64,10 +65,14 @@ export function mountOffice(container, hooks) {
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE') { event.preventDefault(); office.talkTo(aimed || office.nearest()); }
   });
-  // Outline whatever a click (or E) would get: under the dot when aiming with it, else under the mouse. Ten times a second is plenty.
+  // Outline whatever a click (or E) would get, with its card: under the dot when aiming with it, else under the mouse
+  // (the scene or a bubble, not the buttons). Ten times a second is plenty.
   let mouse = null, hovered = null, aimed = null, dot = false, hoverIn = 0;
-  listen(renderer.domElement, 'pointermove', event => { mouse = event.pointerType === 'mouse' ? event : null; });
-  listen(renderer.domElement, 'pointerleave', () => { mouse = null; });
+  listen(container, 'pointermove', event => {
+    mouse = event.pointerType === 'mouse' && (event.target === renderer.domElement || event.target.closest?.('.office-bubble')) ? event : null;
+    if (!dot) card.move(mouse);
+  });
+  listen(container, 'pointerleave', () => { mouse = null; });
   const hover = dt => {
     const aiming = player.aiming && !view.overview && !office.talking;
     if (aiming !== dot) { dot = aiming; overlays.showDot(aiming); hoverIn = 0; }
@@ -75,6 +80,8 @@ export function mountOffice(container, hooks) {
     hoverIn = 0.1;
     const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
     aimed = hit?.kind === 'character' ? hit.id : null;
+    const session = aimed && office.snapshot?.sessions.find(session => session.id === aimed);
+    card.show(session && hooks.describe?.(session) || null); card.move(aiming ? player.centre : mouse);
     const node = aimed && cast.characters.get(aimed)?.root || null;
     renderer.domElement.style.cursor = node && !aiming ? 'pointer' : '';
     if (node === hovered) return;
@@ -156,7 +163,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   if (import.meta.env?.DEV) globalThis.__office = office; // poke at it from devtools
   return office;
