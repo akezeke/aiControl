@@ -156,6 +156,9 @@ export class Cast {
     this.characters.delete(id);
   }
 
+  // Hit by a ball or the boss's coffee: a frown and a jump.
+  startle(id) { const c = this.characters.get(id); if (c && !c.plus) c.startled = this.time; }
+
   update(dt, playerPos) {
     if (this.frozen) return; // connection lost: everyone holds still until it's back
     const still = this.reducedMotion();
@@ -168,12 +171,14 @@ export class Cast {
       // A working or idle sitter may be slacking off (room.js and slack.js have it), or just caught at it.
       const talking = this.facingYou === c.id && !STANDING.has(c.pose), busy = ['typing', 'thinking', 'sleeping'].includes(c.pose), slack = c.anchor.slack;
       const pose = talking ? 'listening' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted' : c.pose;
-      const face = talking && c.expression === 'asleep' ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : c.expression;
+      const startled = this.time - c.startled < 1.6;
+      const face = startled ? 'frown' : talking && c.expression === 'asleep' ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : c.expression;
       if (c.shown !== pose) { if (c.shown) c.changed = this.time; c.shown = pose; }
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
       fruit.buzz(t);
       if (c.trip && this.#walk(c, dt, t, k)) continue;
       const target = poseTargets(pose, t, c.seed, fruit, c.wear);
+      if (startled && !still && this.time - c.startled < 0.3) target.body.y += 0.12;
       // Worn out: slouched lower and to one side (a sleeper already is; one caught slacking sits up straight).
       if (c.wear && pose !== 'sleeping' && pose !== 'busted') { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }
       // Standing characters turn toward the boss when they want something, and anyone you're talking to turns in their chair.

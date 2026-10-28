@@ -30,6 +30,9 @@ export class OfficeCamera {
     for (const [y, arc] of [[0.016, 1.3], [-0.006, 1.35], [-0.027, 1.2]]) mug.add(new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.0105, 6, 12, Math.PI * arc).rotateX(Math.PI / 2).translate(0.09, y, 0), ink));
     mug.add(new THREE.Mesh(new THREE.CapsuleGeometry(0.011, 0.034, 4, 8).rotateZ(Math.PI / 2 - 0.25).translate(0.1, 0.037, 0.006), ink));
     mug.updateMatrix(); const wrist = new THREE.Vector3(0.155, -0.005, 0).applyMatrix4(mug.matrix);
+    // Pouring (F) turns the mug about the wrist: `pour` from 0 to 1, `level` how full it is.
+    this.grip = new THREE.Group(); this.grip.position.copy(wrist); this.hands.add(this.grip); this.grip.add(mug); mug.position.sub(wrist);
+    this.mug = mug; this.pour = 0; this.level = 1;
     const arm = new THREE.QuadraticBezierCurve3(wrist, new THREE.Vector3(0.5, -0.32, -0.5), new THREE.Vector3(0.62, -0.7, -0.25));
     this.hands.add(new THREE.Mesh(new THREE.TubeGeometry(arm, 16, 0.02, 8), ink));
     this.was = { x: 0, z: 0, yaw: 0, pitch: 0 }; this.walk = this.stride = 0; this.sway = new THREE.Vector2();
@@ -74,11 +77,15 @@ export class OfficeCamera {
     const p = this.player, was = this.was, step = Math.hypot(p.position.x - was.x, p.position.z - was.z), rate = 1 / Math.max(dt, 0.001), k = 1 - Math.exp(-dt * 8);
     const spin = Math.atan2(Math.sin(p.yaw - was.yaw), Math.cos(p.yaw - was.yaw)) * rate, nod = (p.pitch - was.pitch) * rate;
     Object.assign(was, { x: p.position.x, z: p.position.z, yaw: p.yaw, pitch: p.pitch });
-    if (instant || step > 0.5) { this.hands.position.set(0, 0, 0); this.hands.rotation.z = 0; this.coffee.rotation.set(0, 0, 0); return; } // reduced motion, or a jump across the room
+    // Held out in front, raised and tipped to the left; the coffee hides once it would show through the side.
+    const tip = this.pour, out = -0.1 * tip, lift = 0.12 * tip;
+    this.grip.rotation.set(-0.25 * tip, 0, 1.15 * tip);
+    this.coffee.visible = this.level > 0.02 && tip < 0.4; this.coffee.position.y = -0.05 + 0.09 * this.level;
+    if (instant || step > 0.5) { this.hands.position.set(out, lift, out); this.hands.rotation.z = 0; this.coffee.rotation.set(0, 0, 0); return; } // reduced motion, or a jump across the room
     this.walk += (Math.min(1, step * rate / 3) - this.walk) * k; this.stride += step * STRIDE;
     this.sway.x += (THREE.MathUtils.clamp(spin * 0.012, -0.03, 0.03) - this.sway.x) * k; this.sway.y += (THREE.MathUtils.clamp(-nod * 0.01, -0.025, 0.025) - this.sway.y) * k;
     const side = Math.sin(this.stride) * this.walk, dip = (1 - Math.cos(this.stride * 2)) * this.walk;
-    this.hands.position.set(side * 0.012 + this.sway.x, -dip * 0.008 + this.sway.y, 0); this.hands.rotation.z = this.sway.x * 1.5;
+    this.hands.position.set(side * 0.012 + this.sway.x + out, -dip * 0.008 + this.sway.y + lift, out); this.hands.rotation.z = this.sway.x * 1.5;
     this.coffee.rotation.set(Math.cos(this.stride * 2) * 0.05 * this.walk - this.sway.y * 3, 0, -side * 0.07 - this.sway.x * 4);
   }
 

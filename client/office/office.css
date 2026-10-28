@@ -49,7 +49,7 @@
 .office-overlay .office-eye[aria-pressed=true] { background: #ffd166; }
 .office-dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fffdf7; box-shadow: 0 0 0 1.5px #1b1a1f; pointer-events: none; transition: transform .12s, background .12s; }
 .office-dot.aim { background: #4f7cff; transform: scale(1.7); }
-.office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; pointer-events: none; transition: opacity .5s; }
+.office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; width: max-content; max-width: calc(100% - 32px); pointer-events: none; transition: opacity .5s; }
 .office-hint.gone { opacity: 0; }
 @media (pointer: coarse) { .office-hint { display: none; } }
 @media (max-width: 640px) { .office-bubble { max-width: 200px; padding: 6px 11px; font-size: 14px; } .office-bubble .icon { width: 19px; height: 19px; } }

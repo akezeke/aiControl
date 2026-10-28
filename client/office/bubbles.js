@@ -3,7 +3,7 @@
 // and the card beside whoever is outlined.
 import * as THREE from 'three';
 
-const hintKey = 'ai-control-office-hint-2';
+const hintKey = 'ai-control-office-hint-3';
 
 // Emoji sit at different heights in their fonts (on Windows the keyboard sits low and the zzz high), so the icon is
 // drawn on a canvas with the drawing itself centred instead of set as text.
@@ -152,7 +152,7 @@ export function createOverlays(container, { onNext, onList, onOverview }) {
   const eye = button('office-eye', '👁', 'Overview', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
   const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
-  const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · Tab overview'; hint.hidden = seen; container.append(hint);
+  const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · E grab · F pour · Tab overview'; hint.hidden = seen; container.append(hint);
   return {
     setWaiting(n) { waiting.hidden = !n; waiting.textContent = `⚠ ${n}`; },
     setUsageLow(on) { usage.hidden = !on; },

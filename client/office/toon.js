@@ -55,8 +55,20 @@ export function highlight(root, on) {
   root?.traverse(node => {
     if (!node.userData.outline) return;
     node.userData.plain ??= node.material;
-    node.material = on ? outlineMaterial(node.userData.plain.userData.thickness * 1.5, '#4f7cff') : node.userData.plain;
+    node.material = on ? outlineMaterial(node.userData.plain.userData.thickness * 1.5, HOVER) : node.userData.plain;
   });
+}
+const INK = new THREE.Color('#1b1a1f'), HOVER = '#4f7cff';
+// An instanced mesh's outline: another instanced mesh sharing its instances, coloured per instance, so `light(i, on)` can
+// outline one copy blue for hover (the same thickness, though).
+export function instancedOutline(mesh, thickness = 0.009) {
+  outlineNormals(mesh.geometry);
+  const hull = new THREE.InstancedMesh(mesh.geometry, outlineMaterial(thickness, '#ffffff'), mesh.count);
+  hull.instanceMatrix = mesh.instanceMatrix; hull.raycast = () => {};
+  for (let i = 0; i < mesh.count; i++) hull.setColorAt(i, INK);
+  hull.light = (i, on) => { hull.setColorAt(i, on ? new THREE.Color(HOVER) : INK); hull.instanceColor.needsUpdate = true; };
+  mesh.add(hull);
+  return hull;
 }
 
 // Shared materials and geometries live for the whole page; the office's unmount disposes GPU copies, which three re-uploads if used again.

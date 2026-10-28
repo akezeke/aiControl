@@ -165,7 +165,8 @@ export function createRoom(scene) {
           redraw(helper, statuses.get(kid));
         });
         desk.group.updateMatrixWorld(true);
-        for (const part of [desk.group.children[0], desk.chair, ...desk.helpers.map(helper => helper.group)]) solid.push(new THREE.Box3().setFromObject(part));
+        // The desk, its monitor (inside the desk's footprint, so only balls notice it), the chair and any helpers' desks.
+        for (const part of [desk.group.children[0], desk.group.children[1], desk.chair, ...desk.helpers.map(helper => helper.group)]) solid.push(new THREE.Box3().setFromObject(part));
       }
       for (const [id, desk] of desks) if (!layout.desks.has(id)) { removeDesk(desk); desks.delete(id); }
       const podKeys = new Set();
@@ -291,6 +292,7 @@ export function createRoom(scene) {
     place(bookshelf(), 0.2, 1.45, Math.PI / 2); shadowUnder(0.25, 1.45, 0.5, 1);
     if (depth / 2 - 1.3 - 1.95 > 1.1) hang(left, picture(1, 0.8, 0.6), along((1.95 + depth / 2 - 1.3) / 2), 1.7);
     place(counter(), 0.32, depth - 1.6, Math.PI / 2); shadowUnder(0.35, depth - 1.6, 0.7, 2.1);
+    room.coffeeCorner = new THREE.Vector3(0.32, 0, depth - 1.6); // props.js fills the boss's mug here
     hang(left, mugShelf(), along(depth - 1.6), 1.75, 0.11);
     if (depth - 3.05 > depth / 2 + 1.35) place(waterCooler(), 0.24, depth - 3.05, Math.PI / 2);
     if (depth - 3.65 > depth / 2 + 1.35) place(plant('bush'), 0.42, depth - 3.65);

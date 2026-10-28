@@ -164,12 +164,18 @@ export function standBefore(point, normal, distance, colliders, room) {
 const free = (p, colliders, room) => (!room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS)) && !colliders.some(box => inside(p, box));
 
 // What's under a screen point: a character (by session id), a board on the wall (userData.board), a pod's sign
-// (userData.hire: { cwd, name }), the light switch (userData.toggle) or a spot on the floor.
+// (userData.hire: { cwd, name }), the light switch (userData.toggle), a ball (userData.prop(instance) gives its body) or a
+// spot on the floor.
 const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
-export function pick(event, canvas, camera, scene) {
+// The direction into the scene through a screen point.
+export function rayAt(event, canvas, camera) {
   const rect = canvas.getBoundingClientRect();
   ndc.set((event.clientX - rect.left) / rect.width * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
+  return raycaster.ray.direction.clone();
+}
+export function pick(event, canvas, camera, scene) {
+  rayAt(event, canvas, camera);
   for (const hit of raycaster.intersectObjects(scene.children, true)) {
     let node = hit.object;
     while (node && !node.userData.sessionId && !node.userData.board && !node.userData.hire && !node.userData.toggle) node = node.parent;
@@ -178,6 +184,7 @@ export function pick(event, canvas, camera, scene) {
     if (node?.userData.hire) return { kind: 'hire', node, point: hit.point, ...node.userData.hire };
     // A board on a wall that's faded out for the overview is hidden: look past it.
     if (node) { if (node.visible) return { kind: 'board', node }; continue; }
+    if (hit.object.userData.prop) { const body = hit.object.userData.prop(hit.instanceId); if (body) return { kind: 'prop', body, distance: hit.distance }; continue; }
     if (hit.object.userData.floor) return { kind: 'floor', point: hit.point };
     if (hit.object.visible && !hit.object.material?.transparent) return null;
   }
