@@ -3,6 +3,7 @@
    Cards and group headings get FLIP transform animations from main.js, so card effects use translate or pseudo-elements.
    Never put transform, filter or backdrop-filter on .sidebar itself: it would trap the fixed theme dropdown. */
 @property --build { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@property --fill { syntax: '<number>'; inherits: false; initial-value: 0; }
 .theme-console { display: none; }
 :root:is([data-theme=alien], [data-theme=command]) {
   .theme-console { display: block; margin: 0 0 14px; min-width: 0; }
@@ -344,8 +345,15 @@
   .session-card::after { content: ''; position: absolute; inset: 3px; pointer-events: none; opacity: 0; transform: scale(.985); background: linear-gradient(#ecd677, #ecd677) left top / 12px 3px, linear-gradient(#ecd677, #ecd677) left top / 3px 12px, linear-gradient(#ecd677, #ecd677) right top / 12px 3px, linear-gradient(#ecd677, #ecd677) right top / 3px 12px, linear-gradient(#ecd677, #ecd677) left bottom / 12px 3px, linear-gradient(#ecd677, #ecd677) left bottom / 3px 12px, linear-gradient(#ecd677, #ecd677) right bottom / 12px 3px, linear-gradient(#ecd677, #ecd677) right bottom / 3px 12px; background-repeat: no-repeat; transition: opacity .14s, transform .14s; }
   .session-card:is(:hover, :focus-visible)::after { opacity: 1; transform: none; }
   .session-card.needs-input { border-left: 5px solid var(--warn); }
-  /* Build progress along the bottom of working units. */
-  .session-card[data-status=working] .session-body::after { left: 3px; right: 3px; bottom: 3px; height: 3px; background: repeating-linear-gradient(90deg, var(--ok) 0 6px, #2c4a17 6px 8px); box-shadow: 0 0 6px #a8ea5c66; clip-path: inset(-6px 40% -6px -6px); }
+  /* Build progress along the bottom of working units, snapped to whole 8px dots: it grows one dot at a time and the newest three fade in. */
+  .session-card[data-status=working] .session-body::after {
+    --fill: .6; --dots: round(down, calc(var(--fill) * 100%), 8px);
+    left: 3px; right: 3px; bottom: 3px; height: 3px; filter: drop-shadow(0 0 3px #a8ea5c99);
+    background: repeating-linear-gradient(90deg, var(--ok) 0 6px, #2c4a17 6px 8px) 0 0 / max(0px, var(--dots) - 24px) 100% no-repeat,
+      repeating-linear-gradient(90deg, #a8ea5cbf 0 6px, transparent 6px 8px) 0 0 / max(0px, var(--dots) - 16px) 100% no-repeat,
+      repeating-linear-gradient(90deg, #a8ea5c80 0 6px, transparent 6px 8px) 0 0 / max(0px, var(--dots) - 8px) 100% no-repeat,
+      repeating-linear-gradient(90deg, #a8ea5c40 0 6px, transparent 6px 8px) 0 0 / var(--dots) 100% no-repeat;
+  }
   --connector: #8f9672;
   .session-card.subagent { grid-template-columns: 28px minmax(0, 1fr) auto; border-width: 1px; border-style: outset; }
   .session-card.subagent::before { border-width: 0 0 3px 3px; border-radius: 0; box-shadow: 1px 1px #0008; }
@@ -505,8 +513,7 @@
 @keyframes boot-out { to { opacity: 0; transform: scale(1, .004); } }
 @keyframes build { to { --build: 360deg; } }
 @keyframes build-once { from { --build: 0deg; opacity: 1; } to { --build: 360deg; opacity: 1; } }
-/* Clipped, not scaled: segments keep their size and more appear each step. */
-@keyframes build-bar { 0% { clip-path: inset(-6px 96% -6px -6px); } 85% { clip-path: inset(-6px -6px); opacity: 1; } 100% { clip-path: inset(-6px -6px); opacity: 0; } }
+@keyframes build-bar { 0% { --fill: 0; } 85% { --fill: 1; opacity: 1; } 100% { --fill: 1; opacity: 0; } }
 @keyframes ready-flash { 0%, 49% { opacity: 1; } 50%, 100% { opacity: .15; } }
 @keyframes eva-flash { 0%, 24%, 50%, 74% { opacity: 1; } 25%, 49%, 75%, 99% { opacity: .35; } }
 @keyframes steel-in { from { transform: translateX(100%); } }
@@ -563,7 +570,7 @@
     .chat-header::before { animation: type-in .8s steps(26) .15s both; }
     .detail-panel { animation: steel-in .24s cubic-bezier(.3, .8, .3, 1); }
     .session-card[data-status=working] .agent-mark::after { animation: build 1.5s linear infinite; }
-    .session-card[data-status=working] .session-body::after { animation: build-bar 3s steps(12) infinite; }
+    .session-card[data-status=working] .session-body::after { animation: build-bar 3s linear infinite; }
     .session-card.needs-input .agent-mark::after, .console-contact:is([data-status=permission], [data-status=question])::before, .typing::after { animation: ready-flash 1s steps(1) infinite; }
     .live-label:not(.disconnected)::before { animation: signal-pulse 1.5s ease-in-out infinite; }
     .badge.green .dot::after { content: none; }
