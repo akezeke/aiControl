@@ -156,6 +156,23 @@ export function agentActivity(lines) {
   return 'tool';
 }
 
+// A main session's latest step: 'tool' while a tool call runs, 'model' while the model works out what comes next
+// (after a prompt, a tool result or its own thinking), 'reply' once it has written text.
+export function claudeStep(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try {
+      const row = JSON.parse(lines[i]), content = row.message?.content;
+      if (!['user', 'assistant'].includes(row.type) || row.isSidechain || row.isMeta || !content) continue;
+      if (row.type === 'user') return 'model';
+      const kinds = [content].flat().map(block => block.type);
+      return kinds.includes('tool_use') ? 'tool' : kinds.every(kind => kind === 'thinking') ? 'model' : 'reply';
+    } catch { /* partial line */ }
+  }
+  return null;
+}
+// 'thinking' once a working session's model has been quiet for a while; short gaps between tool calls don't count.
+export const claudeActivity = (status, step, modifiedAt, now = Date.now()) => status === 'working' && step === 'model' && now - modifiedAt > 8000 ? 'thinking' : '';
+
 export function claudeTitles(lines, sessionId, previous = {}) {
   const titles = { ...previous };
   for (const line of lines) {
@@ -239,7 +256,7 @@ export class TranscriptReader {
           titles = { ...claudeTitles(head.toString('utf8').split('\n'), sessionId), ...titles };
         }
         titles = claudeTitles(lines, sessionId, titles);
-        const result = { messages, messagesState: messages.length ? 'ready' : 'empty', ...titles, ...claudeMeta(lines, sessionId) };
+        const result = { messages, messagesState: messages.length ? 'ready' : 'empty', ...titles, ...claudeMeta(lines, sessionId), step: claudeStep(lines), modifiedAt: stat.mtimeMs };
         this.cache.set(path, { key, result, titles, size: stat.size });
         if (this.cache.size > 100) this.cache.delete(this.cache.keys().next().value);
         return result;

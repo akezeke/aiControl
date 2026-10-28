@@ -24,6 +24,17 @@ const profiles = {
 const bananaSpine = new THREE.CatmullRomCurve3([V(-0.02, 0.0), V(0.11, 0.2), V(0.14, 0.42), V(0.08, 0.66), V(-0.06, 0.86)]);
 const bananaRadius = t => 0.035 + 0.13 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.05)), 0.7);
 
+// Vertices at one position (a seam, a pole) share the average of their normals, so the skin shades as one surface.
+function shareNormals(geometry) {
+  const { position, normal } = geometry.attributes, at = new Map(), n = new THREE.Vector3();
+  for (let i = 0; i < position.count; i++) { const key = [position.getX(i), position.getY(i), position.getZ(i)].map(v => Math.round(v * 1e5)).join(); (at.get(key) || at.set(key, []).get(key)).push(i); }
+  for (const same of at.values()) {
+    if (same.length < 2) continue;
+    n.set(0, 0, 0); for (const i of same) n.x += normal.getX(i), n.y += normal.getY(i), n.z += normal.getZ(i);
+    n.normalize(); for (const i of same) normal.setXYZ(i, n.x, n.y, n.z);
+  }
+}
+
 function smooth(points, count = 28) {
   const curve = new THREE.CatmullRomCurve3(points.map(([r, y]) => V(r, y)));
   return curve.getPoints(count).map(p => new THREE.Vector2(Math.max(0, p.x), p.y));
@@ -35,12 +46,36 @@ function bodyShape(fruit) {
   if (bodies.has(fruit)) return bodies.get(fruit);
   let shape;
   if (fruit === 'banana') {
-    const geometry = new THREE.TubeGeometry(bananaSpine, 40, 1, 20, false), position = geometry.attributes.position, centre = new THREE.Vector3(), v = new THREE.Vector3();
-    for (let i = 0; i <= 40; i++) {
-      bananaSpine.getPoint(i / 40, centre);
-      for (let j = 0; j <= 20; j++) { const k = i * 21 + j; v.fromBufferAttribute(position, k).sub(centre).multiplyScalar(bananaRadius(i / 40)).add(centre); position.setXYZ(k, v.x, v.y, v.z); }
+    // A unit tube bent along the spine, its rings scaled to the radius, then each end rounded off with rings shrinking to a point.
+    const RINGS = 40, SIDES = 20, CAP = 5, ring = SIDES + 1;
+    const tube = new THREE.TubeGeometry(bananaSpine, RINGS, 1, SIDES, false), position = tube.attributes.position, centre = new THREE.Vector3(), v = new THREE.Vector3();
+    for (let i = 0; i <= RINGS; i++) {
+      bananaSpine.getPoint(i / RINGS, centre);
+      for (let j = 0; j <= SIDES; j++) { const k = i * ring + j; v.fromBufferAttribute(position, k).sub(centre).multiplyScalar(bananaRadius(i / RINGS)).add(centre); position.setXYZ(k, v.x, v.y, v.z); }
     }
-    geometry.computeVertexNormals();
+    const points = [...position.array], uvs = [...tube.attributes.uv.array], index = [...tube.index.array];
+    for (const end of [0, 1]) {
+      const base = end * RINGS * ring, out = bananaSpine.getTangent(end).multiplyScalar(end ? 1 : -1), r = bananaRadius(end);
+      bananaSpine.getPoint(end, centre);
+      let previous = base;
+      for (let k = 1; k <= CAP; k++) {
+        const angle = k / CAP * Math.PI / 2, first = points.length / 3;
+        for (let j = 0; j <= SIDES; j++) {
+          v.fromArray(points, (base + j) * 3).sub(centre).multiplyScalar(Math.cos(angle)).add(centre).addScaledVector(out, r * Math.sin(angle));
+          points.push(v.x, v.y, v.z); uvs.push(end, j / SIDES);
+        }
+        // Same winding as the tube's own rings: the far end carries on along it, the near end runs backwards.
+        for (let j = 0; j < SIDES; j++) {
+          const [a0, a1, b0, b1] = end ? [previous + j, previous + j + 1, first + j, first + j + 1] : [first + j, first + j + 1, previous + j, previous + j + 1];
+          index.push(a0, b0, a1, b0, b1, a1);
+        }
+        previous = first;
+      }
+    }
+    tube.dispose();
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3)); geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); geometry.setIndex(index);
+    geometry.computeVertexNormals(); shareNormals(geometry);
     const spine = bananaSpine.getSpacedPoints(60);
     shape = { geometry, height: 0.86, surface: y => { const found = spine.findIndex(p => p.y >= y), t = found < 0 ? 60 : found; return { x: spine[t].x, r: bananaRadius(t / 60) }; } };
   } else {
@@ -72,6 +107,23 @@ const stripes = () => textures.tie ??= canvasTexture(64, (g, n) => {
   g.fillStyle = '#3d4f8c'; g.fillRect(0, 0, n, n); g.strokeStyle = '#c9d2ee'; g.lineWidth = 4;
   for (let i = -n; i < n * 2; i += 16) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + n, n); g.stroke(); }
 });
+
+// Bruises for a tired fruit: soft spots of different strengths, so lowering the alpha test both adds spots and grows them.
+function bruises() {
+  if (textures.bruises) return textures.bruises;
+  const texture = textures.bruises = canvasTexture(256, (g, n) => {
+    g.fillStyle = '#000'; g.fillRect(0, 0, n, n); g.globalCompositeOperation = 'lighten';
+    for (let i = 0; i < 20; i++) {
+      const x = Math.random() * n, y = Math.random() * n, r = 5 + Math.random() * 9, v = Math.round(115 + Math.random() * 135);
+      for (const dx of [-n, 0, n]) for (const dy of [-n, 0, n]) { // drawn again across the edges so the texture tiles
+        const spot = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r); spot.addColorStop(0, `rgb(${v},${v},${v})`); spot.addColorStop(1, '#000');
+        g.fillStyle = spot; g.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+      }
+    }
+  });
+  texture.colorSpace = THREE.NoColorSpace; texture.repeat.set(2.5, 1.5);
+  return texture;
+}
 
 const diamonds = () => textures.pineapple ??= canvasTexture(128, (g, n) => {
   g.fillStyle = '#f2b632'; g.fillRect(0, 0, n, n); g.strokeStyle = '#b97d1c'; g.lineWidth = 4;
@@ -186,6 +238,8 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
       curious: { brows: [0, 0], raise: 0.025, mouth: [0, 0], width: 0.07 },
       frown: { brows: [-0.02, 0.01], mouth: [-0.02, 0.012], width: 0.11 },
       neutral: { brows: [0, 0], mouth: [0, -0.008], width: 0.09 },
+      // One brow up, a small flat mouth pushed to one side and slanted: "hmm".
+      thinking: { brows: [-0.01, 0.004], raise: 0.03, mouth: [0, 0], width: 0.06, shift: 0.1, slant: 0.012 },
       asleep: { brows: [0, 0], mouth: null, width: 0 },
     }[name] || {};
     for (const side of [-1, 1]) {
@@ -197,11 +251,28 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
       for (const side of [-1, 1]) line([onSkin(side * s - 0.05, faceY), onSkin(side * s, faceY - 0.022), onSkin(side * s + 0.05, faceY)], 0.007);
       const o = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.006, 6, 14), ink); o.position.copy(onSkin(0, mouthY, 0)); o.lookAt(o.position.clone().multiplyScalar(2).setY(o.position.y)); face.add(o); lines.push(o);
     } else if (shapes.mouth) {
-      const [corner, middle] = shapes.mouth, half = shapes.width / 2 / Math.max(0.15, shape.surface(mouthY).r);
-      line([onSkin(-half, mouthY + corner), onSkin(0, mouthY + middle * 2), onSkin(half, mouthY + corner)], 0.007);
+      const [corner, middle] = shapes.mouth, half = shapes.width / 2 / Math.max(0.15, shape.surface(mouthY).r), { shift = 0, slant = 0 } = shapes;
+      line([onSkin(shift - half, mouthY + corner - slant), onSkin(shift, mouthY + middle * 2), onSkin(shift + half, mouthY + corner + slant)], 0.007);
     }
   };
   setExpression('smile');
+
+  // Wear: bruises spread over the skin, then bags under the eyes and heavy lids.
+  const spots = new THREE.Mesh(shape.geometry, toonMaterial('#3b2814', { alphaMap: bruises(), alphaTest: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  spots.visible = false; spots.raycast = () => {}; own.push(spots.material); body.add(spots);
+  const bagMaterial = toonMaterial('#6a5470'), bagHalf = 0.034 / shape.surface(faceY).r;
+  let bags = [], droop = 1, blink = 1;
+  const setWear = wear => {
+    for (const mesh of bags) { face.remove(mesh); mesh.geometry.dispose(); }
+    bags = [];
+    spots.visible = wear > 0.15; spots.material.alphaTest = 1 - wear * 0.5;
+    for (let level = 0; level < (wear >= 0.75 ? 2 : wear >= 0.4 ? 1 : 0); level++) for (const side of [-1, 1]) {
+      const y = faceY - 0.058 - level * 0.016, mesh = new THREE.Mesh(arc([onSkin(side * spread - bagHalf, y + 0.008), onSkin(side * spread, y - 0.006), onSkin(side * spread + bagHalf, y + 0.008)], 0.0045), bagMaterial);
+      face.add(mesh); bags.push(mesh);
+    }
+    droop = 1 - Math.max(0, wear - 0.3) * 0.55;
+    eyes.forEach(eye => { eye.scale.y = Math.max(0.1, blink * droop); });
+  };
 
   // Accessories.
   if (accessory === 'glasses') {
@@ -257,16 +328,15 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   const rest = { leftHand: shoulder('leftHand').add(V(-0.12, -0.32, 0.04)), rightHand: shoulder('rightHand').add(V(0.12, -0.32, 0.04)), leftFoot: V(anchor.leftFoot().x - 0.02, 0.03, 0), rightFoot: V(anchor.rightFoot().x + 0.02, 0.03, 0) };
   setLimbs(rest);
 
-  let blink = 1;
   return {
     group, body, height: h, rest, faceY,
     setBody({ y = LEG, tilt = 0, lean = 0, turn = 0 } = {}) { body.position.y = y; body.rotation.set(lean, turn, tilt); },
-    setLimbs, setExpression,
+    setLimbs, setExpression, setWear,
     // Offline sessions turn grey; the colour comes back when they do.
     setGrey(on) { fruitMesh.material = on ? toonMaterial('#9b9a97') : colorMaterial; },
-    setBlink(open) { if (open === blink) return; blink = open; eyes.forEach(eye => { eye.scale.y = Math.max(0.1, open); }); },
+    setBlink(open) { if (open === blink) return; blink = open; eyes.forEach(eye => { eye.scale.y = Math.max(0.1, open * droop); }); },
     // Eyes slide a little toward a point given in the fruit's local space; null looks ahead.
     lookAt(point) { if (!point) { placeEyes(); return; } const dx = THREE.MathUtils.clamp(Math.atan2(point.x, point.z) * 0.25, -0.12, 0.12), dy = THREE.MathUtils.clamp((point.y - body.position.y - faceY) * 0.05, -0.02, 0.02); placeEyes(dx, dy); },
-    dispose() { group.removeFromParent(); for (const mesh of lines) mesh.geometry.dispose(); for (const item of own) item.dispose(); },
+    dispose() { group.removeFromParent(); for (const mesh of [...lines, ...bags]) mesh.geometry.dispose(); for (const item of own) item.dispose(); },
   };
 }

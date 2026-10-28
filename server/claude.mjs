@@ -4,7 +4,7 @@ import { join, basename, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { fail } from './requests.mjs';
-import { TranscriptReader, claudeSessionTitle } from './messages.mjs';
+import { TranscriptReader, claudeSessionTitle, claudeActivity } from './messages.mjs';
 import { TranscriptImages } from './images.mjs';
 import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
 
@@ -88,23 +88,23 @@ export class ClaudeAdapter {
           const hook = this.hooks.get(record.sessionId);
           const states = { idle: 'idle', busy: 'working', running: 'working', working: 'working', waiting: 'question', waiting_for_permission: 'permission', needs_permission: 'permission' };
           const transcript = hook?.transcriptPath || join(account.projectsDir, (record.cwd || '').replace(/[^a-zA-Z0-9-]/g, '-'), `${record.sessionId}.jsonl`);
-          const history = await this.transcripts.read(transcript, record.sessionId);
+          const { step, modifiedAt, ...history } = await this.transcripts.read(transcript, record.sessionId);
           const via = await this.messaging.available(record), canSend = !!via;
           registrations.set(record.sessionId, { record, account }); owners.set(record.sessionId, account);
           paths.set(`claude:${record.sessionId}`, transcript);
           const status = hook?.status || states[record.status] || 'unknown', tmux = via === 'tmux';
-          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
+          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
           for (const agent of await this.subagents(record, transcript, paths)) sessions.set(agent.id, agent);
         } catch { /* ignore partially written and stale registration files */ }
       }));
       for (const [id, hook] of this.hooks) {
         if (sessions.has(id)) continue;
         if (await this.alive(hook.pid, hook.procStart) || this.store.list().some(r => r.sessionId === `claude:${id}`)) {
-          const history = await this.transcripts.read(hook.transcriptPath, id);
+          const { step, modifiedAt, ...history } = await this.transcripts.read(hook.transcriptPath, id);
           const account = this.accounts.find(account => hook.transcriptPath?.startsWith(account.projectsDir + sep));
           if (account) owners.set(id, account);
           paths.set(`claude:${id}`, hook.transcriptPath);
-          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.detail, control: true, messaging: { send: false, queue: false }, ...history });
+          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.detail, activity: claudeActivity(hook.status, step, modifiedAt), control: true, messaging: { send: false, queue: false }, ...history });
         }
         else { this.hooks.delete(id); this.store.removeSession(`claude:${id}`); }
       }

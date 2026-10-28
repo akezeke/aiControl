@@ -4,11 +4,12 @@ const palettes = {
   apple: ['#d62828', '#7cb518', '#f2c14e'], pear: ['#b5c934', '#e0b73f'], banana: ['#f7d23e'], orange: ['#f28c28'],
   lemon: ['#f9e04b'], eggplant: ['#5b2a86', '#7a3ea8'], strawberry: ['#e63946'],
 };
-const ACCESSORIES = ['glasses', 'tie', 'none'], PROPS = ['plant', 'mug', 'duck'];
+const ACCESSORIES = ['glasses', 'tie', 'none'], PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books'];
 const MAX_TEXT = 48;
 
 const looks = {
   working: ['typing', 'smile', '⌨️', 'green'],
+  thinking: ['thinking', 'thinking', '💭', 'green'],
   permission: ['waving', 'worried', '✋', 'amber'],
   question: ['raising', 'curious', '❓', 'amber'],
   idle: ['sleeping', 'asleep', '💤', 'dark'],
@@ -19,11 +20,12 @@ const oneLine = text => {
   return line.length > MAX_TEXT ? `${line.slice(0, MAX_TEXT - 1)}…` : line;
 };
 
-export function officeStatus(session) {
-  const look = looks[session.status];
-  if (!look) return { pose: 'still', expression: 'neutral', bubble: null, screen: 'off' };
+// `activity` is 'thinking' while the model works out its next step (Codex reasoning, or a quiet Claude transcript).
+export function officeStatus(session, now = Date.now()) {
+  const thinking = session.status === 'working' && session.activity === 'thinking', look = looks[thinking ? 'thinking' : session.status];
+  if (!look) return { pose: 'still', expression: 'neutral', bubble: null, screen: 'off', wear: 0, cups: 0 };
   const [pose, expression, icon, screen] = look, request = session.requests?.[0]?.title;
-  const text = {
+  const text = thinking ? 'Thinking' : {
     working: session.detail || 'Working',
     permission: request || 'Needs permission',
     question: request || 'Has a question',
@@ -32,7 +34,24 @@ export function officeStatus(session) {
   }[session.status];
   // Helpers on a desk only chat while working, but always speak up when they need you.
   const talks = !session.parentId || session.status === 'working' || screen === 'amber';
-  return { pose, expression, screen, bubble: talks ? { icon, text: oneLine(text), highlight: screen === 'amber' } : null };
+  return { pose, expression, screen, bubble: talks ? { icon, text: oneLine(text), highlight: screen === 'amber' } : null, ...tiredness(session, now) };
+}
+
+// Minutes since the latest prompt (or the oldest message still in view), up to now while working, else to the last message.
+function turnMinutes(session, now) {
+  const messages = (session.messages || []).filter(message => message.timestamp);
+  const start = messages.findLast(message => message.role === 'user' && !message.tool) || messages[0];
+  if (!start) return 0;
+  return Math.max(0, (session.status === 'working' ? now : messages.at(-1).timestamp) - start.timestamp) / 60_000;
+}
+// Wear (0..1, in tenths so it changes rarely) builds up as the context fills toward auto-compact, and a little over a long turn;
+// a coffee cup joins the desk at each of CUPS minutes into the turn.
+const CUPS = [3, 10, 20, 35, 60, 90];
+export function tiredness(session, now = Date.now()) {
+  const { used = 0, window } = session.context || {}, fill = used / (window || (used > 200_000 ? 1_000_000 : 200_000)), minutes = turnMinutes(session, now);
+  const clamp = value => Math.min(1, Math.max(0, value));
+  const wear = Math.max(clamp((fill - 0.35) / 0.5), 0.7 * clamp(minutes / 90));
+  return { wear: Math.round(wear * 10) / 10, cups: CUPS.filter(at => minutes >= at).length };
 }
 
 // 32-bit FNV-1a; each trait salts the id so traits don't move together.

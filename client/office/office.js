@@ -25,8 +25,6 @@ export function mountOffice(container, hooks) {
   scene.background = new THREE.Color('#f6e7c8');
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
   camera.userData.canvas = renderer.domElement;
-  scene.add(new THREE.HemisphereLight('#fff6e0', '#b8a68a', 2.2));
-  const sun = new THREE.DirectionalLight('#ffffff', 1.6); sun.position.set(4, 8, 3); scene.add(sun);
   const room = createRoom(scene);
   const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
   const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });

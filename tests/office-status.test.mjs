@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { officeStatus, identity, isTypingTarget, monitorLines, FRUITS } from '../client/office/status.js';
+import { officeStatus, identity, isTypingTarget, monitorLines, tiredness, FRUITS } from '../client/office/status.js';
 
 test('every status maps to a pose', () => {
   const want = { working: 'typing', permission: 'waving', question: 'raising', idle: 'sleeping', error: 'slumped', offline: 'still', unknown: 'still' };
@@ -40,4 +40,26 @@ test('monitor shows the title and the last lines, one line each, marked by kind'
 });
 test('a subagent that needs you speaks up', () => {
   assert.equal(officeStatus({ status: 'permission', parentId: 'p', requests: [{ title: 'Run it' }] }).bubble?.highlight, true);
+});
+test('a working session that is thinking gets its own pose and bubble', () => {
+  const s = officeStatus({ status: 'working', activity: 'thinking', detail: 'Read', requests: [] });
+  assert.deepEqual([s.pose, s.expression, s.bubble.text], ['thinking', 'thinking', 'Thinking']);
+  assert.equal(officeStatus({ status: 'idle', activity: 'thinking', requests: [] }).pose, 'sleeping');
+});
+test('wear follows context fill and long turns; cups follow the turn', () => {
+  const now = 1_000_000_000, at = minutes => now - minutes * 60_000;
+  const turn = (minutes, extra = {}) => tiredness({ status: 'working', messages: [{ role: 'user', text: 'go', timestamp: at(minutes) }, { role: 'assistant', text: 'ok', timestamp: at(0) }], ...extra }, now);
+  assert.deepEqual(turn(1), { wear: 0, cups: 0 });
+  assert.deepEqual(turn(25), { wear: 0.2, cups: 3 });
+  assert.equal(turn(200).cups, 6);
+  assert.equal(turn(1, { context: { used: 150_000 } }).wear, 0.8);
+  assert.equal(turn(1, { context: { used: 300_000 } }).wear, 0, 'past 200k the window must be 1M');
+  assert.equal(turn(1, { context: { used: 90_000, window: 100_000 } }).wear, 1);
+  // Idle: the turn ended with its last message, so the cups stay but stop piling up.
+  const idle = { status: 'idle', messages: [{ role: 'user', text: 'go', timestamp: at(60) }, { role: 'assistant', text: 'done', timestamp: at(48) }] };
+  assert.equal(tiredness(idle, now).cups, 2);
+});
+test('desk props come from a wider set', () => {
+  const props = new Set(Array.from({ length: 80 }, (_, i) => identity(`s${i}`).props).flat());
+  assert.ok(['frame', 'cactus', 'books'].some(prop => props.has(prop)));
 });

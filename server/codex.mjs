@@ -405,7 +405,7 @@ export class CodexAdapter {
       if (['commandExecution', 'fileChange'].includes(p.item.type)) this.items.set(`${p.threadId}:${p.item.id}`, p.item);
       if (this.items.size > 200) this.items.delete(this.items.keys().next().value);
       const session = this.sessions.get(p.threadId);
-      if (session) { session.detail = p.item.command || p.item.text?.slice(0, 300) || p.item.type; session.updatedAt = Date.now(); }
+      if (session) { session.detail = p.item.command || p.item.text?.slice(0, 300) || p.item.type; session.activity = p.item.type === 'reasoning' ? 'thinking' : ''; session.updatedAt = Date.now(); }
     }
     if (message.method === 'item/completed') {
       const session = this.sessions.get(p.threadId), value = p.item && codexMessage(p.item);
