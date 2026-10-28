@@ -297,3 +297,13 @@ test('a new Codex thread takes its first message before it can be joined, then j
   await adapter.refresh();
   assert.equal(adapter.list()[0].control, true);
 });
+
+test('a thread compacting its context shows that until the compaction item completes', async t => {
+  const { adapter } = await connected(t, {});
+  const emit = (method, item) => adapter.socket.emit('message', Buffer.from(JSON.stringify({ method, params: { threadId: 'live-thread', turnId: 't', item } })));
+  emit('item/started', { type: 'contextCompaction', id: 'squeeze' });
+  assert.deepEqual([adapter.list()[0].activity, adapter.list()[0].detail], ['compacting', 'Compacting context']);
+  emit('item/completed', { type: 'contextCompaction', id: 'squeeze' });
+  assert.equal(adapter.list()[0].activity, '');
+  assert.equal(adapter.list()[0].messages.at(-1).text, 'Context compacted');
+});

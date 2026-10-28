@@ -94,7 +94,7 @@ export class ClaudeAdapter {
           paths.set(`claude:${record.sessionId}`, transcript);
           // A parked session (handed off to a background job) keeps its last status in the registration, so it can say busy for days.
           const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux';
-          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
+          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
           for (const agent of await this.subagents(record, transcript, paths)) sessions.set(agent.id, agent);
         } catch { /* ignore partially written and stale registration files */ }
       }));
@@ -105,7 +105,7 @@ export class ClaudeAdapter {
           const account = this.accounts.find(account => hook.transcriptPath?.startsWith(account.projectsDir + sep));
           if (account) owners.set(id, account);
           paths.set(`claude:${id}`, hook.transcriptPath);
-          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.detail, activity: claudeActivity(hook.status, step, modifiedAt), control: true, messaging: { send: false, queue: false }, ...history });
+          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.detail, activity: hook.compacting ? 'compacting' : claudeActivity(hook.status, step, modifiedAt), control: true, messaging: { send: false, queue: false }, ...history });
         }
         else { this.hooks.delete(id); this.store.removeSession(`claude:${id}`); }
       }
@@ -194,8 +194,10 @@ export class ClaudeAdapter {
         const previous = this.hooks.get(e.session_id);
         const state = { cwd: e.cwd, pid: envelope.pid, procStart: envelope.procStart, transcriptPath: e.transcript_path || previous?.transcriptPath, updatedAt: Date.now(), status: 'working', detail: e.tool_name || '' };
         if (e.hook_event_name === 'Stop') state.status = 'idle';
-        // A new, resumed or cleared session waits at its prompt; one compacted mid-turn carries on with what it was doing.
-        if (e.hook_event_name === 'SessionStart') state.status = e.source === 'compact' ? previous?.status || 'working' : 'idle';
+        // Compacting lasts until the session starts again on the summary. A new, resumed or cleared session waits at its
+        // prompt, and so does one compacted by /compact; auto-compacting happens mid-turn, which carries on.
+        if (e.hook_event_name === 'PreCompact') { state.compacting = e.trigger === 'manual' ? 'manual' : 'auto'; state.detail = 'Compacting context'; }
+        if (e.hook_event_name === 'SessionStart') state.status = e.source !== 'compact' || previous?.compacting === 'manual' ? 'idle' : previous?.compacting ? 'working' : previous?.status || 'working';
         if (e.hook_event_name === 'Notification') { state.status = { permission_prompt: 'permission', idle_prompt: 'idle', elicitation_dialog: 'question' }[e.notification_type] || previous?.status || 'unknown'; state.detail = e.message || ''; }
         if (e.hook_event_name === 'SessionEnd') { this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
         const request = claudeRequest(e);

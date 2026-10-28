@@ -46,6 +46,10 @@ test('a working session that is thinking gets its own pose and bubble', () => {
   assert.deepEqual([s.pose, s.expression, s.bubble.text], ['thinking', 'thinking', 'Thinking']);
   assert.equal(officeStatus({ status: 'idle', activity: 'thinking', requests: [] }).pose, 'sleeping');
 });
+test('a session compacting its context says so', () => {
+  const s = officeStatus({ status: 'working', activity: 'compacting', detail: 'Compacting context', requests: [] });
+  assert.deepEqual([s.pose, s.bubble.icon, s.bubble.text], ['thinking', '🗜️', 'Compacting']);
+});
 test('wear follows context fill and long turns; cups follow the turn', () => {
   const now = 1_000_000_000, at = minutes => now - minutes * 60_000;
   const turn = (minutes, extra = {}) => tiredness({ status: 'working', messages: [{ role: 'user', text: 'go', timestamp: at(minutes) }, { role: 'assistant', text: 'ok', timestamp: at(0) }], ...extra }, now);

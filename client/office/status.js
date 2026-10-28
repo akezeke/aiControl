@@ -10,6 +10,7 @@ const MAX_TEXT = 48;
 const looks = {
   working: ['typing', 'smile', '⌨️', 'green'],
   thinking: ['thinking', 'thinking', '💭', 'green'],
+  compacting: ['thinking', 'thinking', '🗜️', 'green'],
   permission: ['waving', 'worried', '✋', 'amber'],
   question: ['raising', 'curious', '❓', 'amber'],
   idle: ['sleeping', 'asleep', '💤', 'dark'],
@@ -20,12 +21,13 @@ const oneLine = text => {
   return line.length > MAX_TEXT ? `${line.slice(0, MAX_TEXT - 1)}…` : line;
 };
 
-// `activity` is 'thinking' while the model works out its next step (Codex reasoning, or a quiet Claude transcript).
+// `activity` is 'thinking' while the model works out its next step (Codex reasoning, or a quiet Claude transcript),
+// and 'compacting' while it squeezes its context down to a summary.
 export function officeStatus(session, now = Date.now()) {
-  const thinking = session.status === 'working' && session.activity === 'thinking', look = looks[thinking ? 'thinking' : session.status];
+  const activity = session.status === 'working' && ['thinking', 'compacting'].includes(session.activity) ? session.activity : '', look = looks[activity || session.status];
   if (!look) return { pose: 'still', expression: 'neutral', bubble: null, screen: 'off', wear: 0, cups: 0 };
   const [pose, expression, icon, screen] = look, request = session.requests?.[0]?.title;
-  const text = thinking ? 'Thinking' : {
+  const text = activity ? { thinking: 'Thinking', compacting: 'Compacting' }[activity] : {
     working: session.detail || 'Working',
     permission: request || 'Needs permission',
     question: request || 'Has a question',

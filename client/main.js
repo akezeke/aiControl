@@ -340,7 +340,7 @@ function renderData() {
       sessionsById.set(session.id, session);
       const lastMessage = session.messages?.at(-1);
       return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
-        plan: planProgress(session), mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), unread: unread(session) }];
+        plan: planProgress(session), mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), compacting: compacting(session), unread: unread(session) }];
     }), renderCard);
   }
   for (const card of groups.querySelectorAll('.session-card')) setProperty(card.querySelector('.session-age'), 'textContent', stateAge(sessionsById.get(card.dataset.key)));
@@ -366,6 +366,7 @@ function stateAge(session) {
 }
 const modeLabels = { plan: 'plan', acceptEdits: 'auto-edit', auto: 'auto', bypassPermissions: 'bypass' };
 const contextPercent = context => context?.window ? Math.min(100, Math.round(context.used / context.window * 100)) : null;
+const compacting = session => session.status === 'working' && session.activity === 'compacting';
 const planProgress = session => session.plan?.length ? [session.plan.filter(step => step.status === 'done').length, session.plan.length] : null;
 function cardDetail(session) {
   if (session.provider === 'claude' && !session.control && needsInput(session)) return 'Open the original client · Hooks not connected';
@@ -389,7 +390,7 @@ function renderCard(session, previous) {
   if (session.plan) { card.dataset.plan = ''; card.style.setProperty('--plan', session.plan[0] / session.plan[1]); }
   const body = el('span', 'session-body');
   const chips = [session.branch && el('span', 'branch', session.branch), session.plan && chip(`${session.plan[0]}/${session.plan[1]}`, 'plan-chip', 'Plan steps done'),
-    session.mode && chip(modeLabels[session.mode], `mode-chip ${session.mode}`, 'Permission mode'), session.context >= 80 && chip(`ctx ${session.context}%`, 'ctx-chip', 'Context window used')].filter(Boolean);
+    session.mode && chip(modeLabels[session.mode], `mode-chip ${session.mode}`, 'Permission mode'), session.compacting ? chip('compacting', 'compact-chip', 'Compacting context') : session.context >= 80 && chip(`ctx ${session.context}%`, 'ctx-chip', 'Context window used')].filter(Boolean);
   if (chips.length) { const meta = el('span', 'session-meta'); meta.append(...chips); body.append(meta); }
   const title = el('strong', 'session-title'); if (session.project) title.append(el('span', 'project-tag', session.project)); if (session.parentId) { const workflow = session.agentKind === 'workflow', tag = el('span', `subagent-tag${workflow ? ' workflow-tag' : ''}`, workflow ? 'Workflow' : 'Subagent'); tag.title = session.kind || ''; title.append(tag); } title.append(session.title); body.append(title);
   const text = document.createTextNode(session.last ? session.last[1] : session.detail);
@@ -466,7 +467,7 @@ function renderPanel() {
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
-    session.permissionMode, session.context, session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id]);
+    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id]);
   if (signature !== panelSignature) {
     panelSignature = signature;
     renderSessionHeader(panel.querySelector('.chat-header'), session);
@@ -498,6 +499,7 @@ function renderSessionHeader(header, session) {
   const effort = pendingEffort.get(session.id) || session.effort, percent = contextPercent(session.context);
   const summary = el('summary', '', [providerName(session.provider), session.account, session.project, session.model?.replace(/^claude-/, ''), effort].filter(Boolean).join(' · '));
   if (modeLabels[session.permissionMode]) summary.append(chip(modeLabels[session.permissionMode], `mode-chip ${session.permissionMode}`, 'Permission mode'));
+  if (compacting(session)) summary.append(chip('compacting', 'compact-chip', 'Compacting context'));
   if (session.context?.used) summary.append(chip(percent != null ? `${percent}%` : tokens(session.context.used), `ctx-chip${percent >= 80 ? ' high' : ''}`, 'Context used'));
   metadata.append(summary);
   const goal = session.goal, cost = session.cost;

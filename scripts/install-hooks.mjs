@@ -10,7 +10,7 @@ export const hookCommand = `${quote(process.execPath)} ${quote(join(root, 'scrip
 export function mergeHooks(settings, remove = false) {
   const result = structuredClone(settings);
   result.hooks ??= {};
-  const events = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd'];
+  const events = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'PreCompact', 'SessionEnd'];
   // PreToolUse is only cleaned up: it blocked the terminal while a question waited here.
   for (const name of [...events, 'PreToolUse']) {
     const current = result.hooks[name] ?? [];

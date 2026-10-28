@@ -45,6 +45,16 @@ test('a session that just started is idle until it gets a prompt, and compacting
   send('SessionStart', { source: 'clear' }); assert.equal(adapter.hooks.get('fresh').status, 'idle');
 });
 
+test('compacting shows as working until the summary is in, then /compact waits at the prompt and auto-compact carries on', () => {
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock');
+  const send = (hook_event_name, extra = {}) => { const socket = new HookSocket(); adapter.accept(socket); socket.emit('data', Buffer.from(JSON.stringify({ pid: 1, event: { session_id: 'squeeze', cwd: '/w', hook_event_name, ...extra } }) + '\n')); };
+  const now = () => [adapter.hooks.get('squeeze').status, adapter.hooks.get('squeeze').compacting];
+  send('Stop'); send('PreCompact', { trigger: 'manual' }); assert.deepEqual(now(), ['working', 'manual']);
+  send('SessionStart', { source: 'compact' }); assert.deepEqual(now(), ['idle', undefined]);
+  send('UserPromptSubmit'); send('PreCompact', { trigger: 'auto' }); assert.deepEqual(now(), ['working', 'auto']);
+  send('SessionStart', { source: 'compact' }); assert.deepEqual(now(), ['working', undefined]);
+});
+
 test('a parallel tool completing does not clear unrelated Claude permissions', async t => {
   const store = new RequestStore();
   const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: '/does-not-exist', alive: async () => true });
