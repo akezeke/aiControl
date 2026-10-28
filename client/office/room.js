@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { toonMaterial } from './toon.js';
 import { createLights, dims } from './lights.js';
+import { createSlacking } from './slack.js';
 import { DESK_W, DESK_D } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
@@ -78,6 +79,7 @@ function createDesk(color, width = DESK_W, helper = false) {
   const tower = piece('tower', towerParts); tower.position.set(-0.5, 0, 0.06); group.add(tower); // on the floor under the desk, leaving the top free
   desk.led = new THREE.Mesh(once('led', () => new THREE.SphereGeometry(0.012, 8, 6)), new THREE.MeshBasicMaterial({ color: leds.off })); desk.led.position.set(0, 0.39, -0.205); tower.add(desk.led);
   desk.cups = new THREE.Group(); desk.cups.position.y = DESK_H; group.add(desk.cups);
+  desk.slack = { show: null, wary: false, busted: 0, calm: 0 }; // slack.js: something silly on the screen now and then
   desk.helpers = [];
   return desk;
 }
@@ -125,6 +127,8 @@ export function createRoom(scene) {
   const shell = new THREE.Group(); root.add(shell);
   // Fill, daylight and the screens' glow (lights.js); the ceiling lamps (point lights, in the shell) do the rest.
   const lights = createLights(root, BEAM);
+  // Back to the terminal: redrawn from the latest status even if it hasn't changed.
+  const slacking = createSlacking(desk => { desk.screenKey = null; redraw(desk, desk.status); });
   const desks = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
   const room = {
     colliders: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
@@ -135,6 +139,7 @@ export function createRoom(scene) {
         seat: desk.chair.getWorldPosition(new THREE.Vector3()).setY(SEAT_H),
         facing: desk.group.rotation.y,
         monitor: desk.screen.getWorldPosition(new THREE.Vector3()),
+        slack: desk.slack,
         top: new THREE.Vector3(0, DESK_H, 0).applyMatrix4(desk.group.matrixWorld),
         helpers: desk.helpers.map(helper => ({ seat: helper.chair.getWorldPosition(new THREE.Vector3()).setY(0), facing: desk.group.rotation.y, top: new THREE.Vector3(0, DESK_H, 0).applyMatrix4(helper.group.matrixWorld) })),
       };
@@ -178,13 +183,14 @@ export function createRoom(scene) {
       room.colliders = [...room.wallColliders, ...room.furnitureColliders, ...solid];
       lights.refresh();
     },
-    // Each frame: the light switch, and the screens' light on the desks nearest the camera.
-    update(dt, eye, still) { lights.update(dt, eye, still, desks.values()); },
+    // Each frame: the light switch, the screens' light on the desks nearest the camera, and anyone slacking off.
+    update(dt, eye, still) { const all = [...desks.values()]; lights.update(dt, eye, still, all); slacking.update(dt, eye, still, all); },
     dispose() { disposeTree(root); },
   };
 
   const redraw = (desk, status) => {
-    desk.glow = status?.screen;
+    desk.glow = status?.screen; desk.status = status;
+    if (desk.slack?.show) return; // slack.js has the screen
     const key = JSON.stringify([status?.screen, status?.monitor]);
     if (desk.screenKey !== key) { desk.screenKey = key; desk.screenTexture.redraw(status?.monitor, status?.screen); }
   };

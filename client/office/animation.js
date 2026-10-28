@@ -23,11 +23,12 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
   const feetStand = { leftFoot: V(0.11, 0.03, 0), rightFoot: V(-0.11, 0.03, 0) };
   switch (pose) {
     // Quick taps, the hands out of step and wandering over the keys; every so often a pause to read, the right hand on the mouse.
-    case 'typing': {
-      const reading = clamp((wave(0.45) + s(t * 0.17 + seed * 2) * 0.7 - 0.85) * 3, 0, 1), typing = 1 - reading, rate = 22 * (1 - wear * 0.4);
+    // Just caught slacking off ('busted'): sitting up straight and typing flat out, no pauses.
+    case 'busted': case 'typing': {
+      const eager = pose === 'busted', reading = eager ? 0 : clamp((wave(0.45) + s(t * 0.17 + seed * 2) * 0.7 - 0.85) * 3, 0, 1), typing = 1 - reading, rate = eager ? 30 : 22 * (1 - wear * 0.4);
       const tap = phase => DESK_H + 0.035 + Math.abs(s(t * rate + seed + phase)) * 0.03 * typing;
-      const body = seated(0.1 * typing - 0.03 * reading, Math.abs(wave(rate / 2)) * 0.005 * typing);
-      body.body.tilt = wave(0.7) * 0.025;
+      const body = seated(eager ? 0.16 : 0.1 * typing - 0.03 * reading, Math.abs(wave(rate / 2)) * 0.005 * typing + (eager ? 0.02 : 0));
+      body.body.tilt = eager ? 0 : wave(0.7) * 0.025;
       return { ...body, limbs: {
         leftHand: V(0.12 + wave(1.3) * 0.04 + reading * 0.06, tap(0), KEYS + wave(0.9) * 0.02 - reading * 0.04),
         rightHand: V(-0.12 + s(t * 1.1 + seed + 2) * 0.04 + reading * (MOUSE_X + 0.12), tap(1.3) + reading * 0.01, KEYS + s(t * 0.8 + seed + 1) * 0.02),
@@ -54,6 +55,12 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
     case 'walking': return { ...standing(Math.abs(wave(8)) * 0.03), x: 0, z: 0, limbs: {
       leftHand: V(0.34, LEG + h * 0.3, wave(8) * 0.14), rightHand: V(-0.34, LEG + h * 0.3, -wave(8) * 0.14),
       leftFoot: V(0.11, 0.03 + Math.max(0, wave(8)) * 0.06, -wave(8) * 0.16), rightFoot: V(-0.11, 0.03 + Math.max(0, -wave(8)) * 0.06, wave(8) * 0.16) } };
+    // Slacking off (slack.js): leaning back, the right hand on the mouse, the left on the desk; a chuckle now and then.
+    case 'slacking': {
+      const chuckle = Math.max(0, wave(0.7)) ** 6;
+      return { ...seated(-0.12, Math.abs(s(t * 15)) * 0.01 * chuckle), limbs: {
+        leftHand: V(0.24, DESK_H + 0.03, KEYS - 0.1), rightHand: V(MOUSE_X, DESK_H + 0.045, KEYS + wave(0.6) * 0.015), ...feetUnder } };
+    }
     case 'slumped': return { ...seated(0.55), limbs: {
       leftHand: V(0.3, DESK_H + 0.03, KEYS - 0.06), rightHand: V(-0.3, DESK_H + 0.03, KEYS - 0.06), ...feetUnder } };
     // Talking to you: turned in the chair, sitting up, hands resting in the lap, nodding now and then.
@@ -158,20 +165,25 @@ export class Cast {
       if (c.plus || !c.anchor) continue;
       const { fruit } = c;
       // Whoever you're talking to stops what they're doing (a sleeper wakes up), turns in the chair and listens.
-      const talking = this.facingYou === c.id && !STANDING.has(c.pose), pose = talking ? 'listening' : c.pose, face = talking && c.expression === 'asleep' ? 'neutral' : c.expression;
+      // A working or idle sitter may be slacking off (room.js and slack.js have it), or just caught at it.
+      const talking = this.facingYou === c.id && !STANDING.has(c.pose), busy = ['typing', 'thinking', 'sleeping'].includes(c.pose), slack = c.anchor.slack;
+      const pose = talking ? 'listening' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted' : c.pose;
+      const face = talking && c.expression === 'asleep' ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : c.expression;
       if (c.shown !== pose) { if (c.shown) c.changed = this.time; c.shown = pose; }
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
       fruit.buzz(t);
       if (c.trip && this.#walk(c, dt, t, k)) continue;
       const target = poseTargets(pose, t, c.seed, fruit, c.wear);
-      // Worn out: slouched lower and to one side (a sleeper already is).
-      if (c.wear && pose !== 'sleeping') { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }
+      // Worn out: slouched lower and to one side (a sleeper already is; one caught slacking sits up straight).
+      if (c.wear && pose !== 'sleeping' && pose !== 'busted') { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }
       // Standing characters turn toward the boss when they want something, and anyone you're talking to turns in their chair.
       if (playerPos && (pose === 'waving' || pose === 'raising' || this.facingYou === c.id)) {
         const at = c.root.position, angle = Math.atan2(playerPos.x - at.x, playerPos.z - at.z) - c.anchor.facing;
         target.turn = Math.atan2(Math.sin(angle), Math.cos(angle));
       }
-      if (!c.current) c.current = clonePose(target); else blendPose(c.current, target, this.time - c.changed > SETTLED ? 1 : k, k);
+      // Caught out, they snap to it.
+      const kPose = pose === 'busted' && !still ? 1 - Math.exp(-dt * 20) : k;
+      if (!c.current) c.current = clonePose(target); else blendPose(c.current, target, this.time - c.changed > SETTLED ? 1 : kPose, kPose);
       const p = c.current, facing = c.anchor.facing, x = p.x * c.scale, z = p.z * c.scale;
       c.root.position.copy(c.anchor.seat).setY(0).add(new THREE.Vector3(Math.cos(facing) * x + Math.sin(facing) * z, 0, -Math.sin(facing) * x + Math.cos(facing) * z));
       c.root.rotation.y = facing + p.turn;
