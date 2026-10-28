@@ -1,6 +1,6 @@
 import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
-import { appendFile, writeFile, unlink } from 'node:fs/promises';
+import { appendFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { hostname as machineName } from 'node:os';
 import { createServer as createViteServer } from 'vite';
@@ -59,7 +59,9 @@ export async function startServer({ host, hostname, tls = null }) {
   try { await claude.start(); } catch (e) { server.close(); await vite.close(); throw e; }
   codex.start();
   claudeUsage.start();
-  await writeFile(join(dataDir, 'server.json'), JSON.stringify({ pid: process.pid, url: origin, host, port, startedAt: new Date().toISOString() }), { mode: 0o600 });
+  // npm start polls for this file; write then rename so it never reads a partial file.
+  await writeFile(join(dataDir, 'server.json.tmp'), JSON.stringify({ pid: process.pid, url: origin, host, port, startedAt: new Date().toISOString() }), { mode: 0o600 });
+  await rename(join(dataDir, 'server.json.tmp'), join(dataDir, 'server.json'));
   console.log(`AI Control: ${origin}`);
   let closing = false;
   async function close() {
