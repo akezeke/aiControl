@@ -37,6 +37,14 @@ test('malformed hook messages never create an actionable request', () => {
   assert.deepEqual(socket.output, [{}]);
 });
 
+test('a session that just started is idle until it gets a prompt, and compacting keeps its state', () => {
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock');
+  const send = (hook_event_name, extra = {}) => { const socket = new HookSocket(); adapter.accept(socket); socket.emit('data', Buffer.from(JSON.stringify({ pid: 1, event: { session_id: 'fresh', cwd: '/w', hook_event_name, ...extra } }) + '\n')); };
+  send('SessionStart', { source: 'startup' }); assert.equal(adapter.hooks.get('fresh').status, 'idle');
+  send('UserPromptSubmit'); send('SessionStart', { source: 'compact' }); assert.equal(adapter.hooks.get('fresh').status, 'working');
+  send('SessionStart', { source: 'clear' }); assert.equal(adapter.hooks.get('fresh').status, 'idle');
+});
+
 test('a parallel tool completing does not clear unrelated Claude permissions', async t => {
   const store = new RequestStore();
   const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: '/does-not-exist', alive: async () => true });

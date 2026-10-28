@@ -194,6 +194,8 @@ export class ClaudeAdapter {
         const previous = this.hooks.get(e.session_id);
         const state = { cwd: e.cwd, pid: envelope.pid, procStart: envelope.procStart, transcriptPath: e.transcript_path || previous?.transcriptPath, updatedAt: Date.now(), status: 'working', detail: e.tool_name || '' };
         if (e.hook_event_name === 'Stop') state.status = 'idle';
+        // A new, resumed or cleared session waits at its prompt; one compacted mid-turn carries on with what it was doing.
+        if (e.hook_event_name === 'SessionStart') state.status = e.source === 'compact' ? previous?.status || 'working' : 'idle';
         if (e.hook_event_name === 'Notification') { state.status = { permission_prompt: 'permission', idle_prompt: 'idle', elicitation_dialog: 'question' }[e.notification_type] || previous?.status || 'unknown'; state.detail = e.message || ''; }
         if (e.hook_event_name === 'SessionEnd') { this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
         const request = claudeRequest(e);
