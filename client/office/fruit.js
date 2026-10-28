@@ -129,7 +129,7 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   group.add(body); group.scale.setScalar(scale);
   body.position.y = LEG;
 
-  const fruitMesh = withOutline(new THREE.Mesh(shape.geometry, bodyMaterial(fruit, color)));
+  const colorMaterial = bodyMaterial(fruit, color), fruitMesh = withOutline(new THREE.Mesh(shape.geometry, colorMaterial));
   fruitMesh.userData.part = 'body'; body.add(fruitMesh);
   const h = shape.height;
   // Where something sits on the front of the body: `angle` around the vertical, `y` up the body, `out` off the skin.
@@ -250,6 +250,8 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
     group, body, height: h, rest, faceY,
     setBody({ y = LEG, tilt = 0, lean = 0, turn = 0 } = {}) { body.position.y = y; body.rotation.set(lean, turn, tilt); },
     setLimbs, setExpression,
+    // Offline sessions turn grey; the colour comes back when they do.
+    setGrey(on) { fruitMesh.material = on ? toonMaterial('#9b9a97') : colorMaterial; },
     setBlink(open) { if (open === blink) return; blink = open; eyes.forEach(eye => { eye.scale.y = Math.max(0.1, open); }); },
     // Eyes slide a little toward a point given in the fruit's local space; null looks ahead.
     lookAt(point) { if (!point) { placeEyes(); return; } const dx = THREE.MathUtils.clamp(Math.atan2(point.x, point.z) * 0.25, -0.12, 0.12), dy = THREE.MathUtils.clamp((point.y - body.position.y - faceY) * 0.05, -0.02, 0.02); placeEyes(dx, dy); },

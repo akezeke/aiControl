@@ -4,6 +4,7 @@ import './office.css';
 import { layoutOffice } from './layout.js';
 import { officeStatus, identity } from './status.js';
 import { createRoom } from './room.js';
+import { Cast } from './animation.js';
 
 export function webglAvailable() {
   try { const canvas = document.createElement('canvas'); return !!(canvas.getContext('webgl2') || canvas.getContext('webgl')); } catch { return false; }
@@ -21,9 +22,12 @@ export function mountOffice(container, hooks) {
   scene.add(new THREE.HemisphereLight('#fff6e0', '#b8a68a', 2.2));
   const sun = new THREE.DirectionalLight('#ffffff', 1.6); sun.position.set(4, 8, 3); scene.add(sun);
   const room = createRoom(scene);
+  const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });
   let layout;
 
   const frames = new Set();
+  frames.add(dt => cast.update(dt, office.camera.position));
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;
@@ -49,6 +53,7 @@ export function mountOffice(container, hooks) {
       layout = layoutOffice(snapshot.sessions, layout);
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id) }]));
       room.sync(layout, office.statuses);
+      cast.sync(layout, snapshot.sessions, room, office.statuses);
       office.layout = layout;
     },
     unmount() {
@@ -60,7 +65,7 @@ export function mountOffice(container, hooks) {
       });
       renderer.dispose(); renderer.domElement.remove();
     },
-    room, disposers: [],
+    room, cast, disposers: [() => cast.dispose()],
   };
   if (import.meta.env?.DEV) globalThis.__office = office; // poke at it from devtools
   return office;
