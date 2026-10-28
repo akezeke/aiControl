@@ -74,6 +74,7 @@ export function mountOffice(container, hooks) {
     update(snapshot, { error = '' } = {}) {
       office.snapshot = snapshot; office.error = error;
       layout = layoutOffice(snapshot.sessions, layout);
+      cast.frozen = !!error;
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id), monitor: monitorLines(session) }]));
       room.sync(layout, office.statuses);
       cast.sync(layout, snapshot.sessions, room, office.statuses);

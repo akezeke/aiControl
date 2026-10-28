@@ -35,3 +35,9 @@ test('room grows with pods and desks never overlap', () => {
   const spots = [...l.desks.values()].map(d => `${d.x.toFixed(2)},${d.z.toFixed(2)}`);
   assert.equal(new Set(spots).size, spots.length);
 });
+test('departed desks stay 30 s, then free up', () => {
+  const first = layoutOffice([s('a', 'x'), s('b', 'x')], undefined, 0);
+  const gone = layoutOffice([s('b', 'x')], first, 1000);
+  assert.ok(gone.desks.get('a').vacantSince === 1000);
+  assert.equal(layoutOffice([s('b', 'x')], gone, 31_001).desks.has('a'), false);
+});

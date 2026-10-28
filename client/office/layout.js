@@ -2,14 +2,22 @@
 // Pure, so it runs under node --test. Units are metres; the room spans x 0..width, z 0..depth.
 // Everything is anchored at the back-left corner so a growing pod or grid only extends right and forward and nobody already seated moves.
 // ponytail: when the widest pod gains a pair, pods in later columns still shift right; fixed-width cells if that's distracting.
-export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3;
+export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3, VACANT_MS = 30_000;
 const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8;
 
 const podKey = session => session.cwd || session.project || 'Unknown';
 
 // A desk's `rotation` is the yaw its sitter faces (0 = +z). Slot k is pair k >> 1; even slots face +z, odd face -z, across a shared desk edge.
-export function layoutOffice(sessions, previous) {
+// A session that ends keeps its (empty) desk for VACANT_MS, so it can walk out and the pod doesn't jump at once.
+export function layoutOffice(sessions, previous, now = Date.now()) {
   const top = sessions.filter(s => !s.parentId), ids = new Set(top.map(s => s.id));
+  for (const [id, old] of previous?.desks || []) {
+    if (ids.has(id)) continue;
+    const since = old.vacantSince ?? now;
+    if (now - since >= VACANT_MS) continue;
+    const pod = previous.pods.find(p => p.key === old.podKey);
+    top.push({ id, cwd: old.podKey, project: pod?.name, vacantSince: since });
+  }
   const groups = new Map();
   for (const session of top) {
     const key = podKey(session);
@@ -40,6 +48,7 @@ export function layoutOffice(sessions, previous) {
   const cellW = Math.max(DESK_W, ...pods.map(p => p.width)) + AISLE, cellD = Math.max(...pods.map(p => p.depth), 2 * DESK_D + 2 * CHAIR) + AISLE;
   const width = Math.max(MIN_ROOM, cols * cellW + AISLE), depth = Math.max(MIN_ROOM, rows * cellD + AISLE + START);
 
+  const vacant = new Map(top.filter(s => s.vacantSince !== undefined).map(s => [s.id, s.vacantSince]));
   const kids = new Map();
   for (const session of sessions) if (session.parentId && ids.has(session.parentId)) {
     if (!kids.has(session.parentId)) kids.set(session.parentId, []);
@@ -60,6 +69,7 @@ export function layoutOffice(sessions, previous) {
         z: pod.z + (side ? DESK_D / 2 : -DESK_D / 2),
         rotation: side ? Math.PI : 0,
         subagents: children.slice(0, MAX_SUBAGENTS), overflow: Math.max(0, children.length - MAX_SUBAGENTS),
+        ...(vacant.has(id) && { vacantSince: vacant.get(id) }),
       });
     });
   });

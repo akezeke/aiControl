@@ -8,7 +8,7 @@ import { SEAT_H, DESK_H } from './room.js';
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const BLEND = 6;        // per second; about half a second to settle
 const SEAT_FORWARD = 0.2, STAND_SIDE = 0.8;
-const LOOK_RANGE = 4;
+const LOOK_RANGE = 4, WALK_SPEED = 2, GOODBYE = 1.2;
 
 // t is seconds (frozen at 0 with reduced motion), seed spreads characters out of step, h is the fruit's body height.
 export function poseTargets(pose, t, seed, h) {
@@ -26,6 +26,10 @@ export function poseTargets(pose, t, seed, h) {
       leftHand: V(-0.34, LEG + h * 0.25, 0.06), rightHand: V(0.22 + wave(5) * 0.03, LEG + h + 0.3, 0.06), ...feetStand } };
     case 'sleeping': return { ...seated(-0.24, wave(1.3) * 0.01), z: SEAT_FORWARD + 0.12, limbs: {
       leftHand: V(-0.2, SEAT_H + 0.08, 0.28), rightHand: V(0.2, SEAT_H + 0.08, 0.28), leftFoot: V(-0.16, 0.05, 0.62), rightFoot: V(0.16, 0.05, 0.62) } };
+    // Walking to or from the door: legs and arms swing in opposition.
+    case 'walking': return { ...standing(Math.abs(wave(8)) * 0.03), x: 0, z: 0, limbs: {
+      leftHand: V(-0.34, LEG + h * 0.3, wave(8) * 0.14), rightHand: V(0.34, LEG + h * 0.3, -wave(8) * 0.14),
+      leftFoot: V(-0.11, 0.03 + Math.max(0, wave(8)) * 0.06, -wave(8) * 0.16), rightFoot: V(0.11, 0.03 + Math.max(0, -wave(8)) * 0.06, wave(8) * 0.16) } };
     case 'slumped': return { ...seated(0.55), limbs: {
       leftHand: V(-0.3, DESK_H + 0.03, 0.42), rightHand: V(0.3, DESK_H + 0.03, 0.42), ...feetUnder } };
     default: return { ...seated(0), limbs: {
@@ -65,21 +69,28 @@ export class Cast {
   // Just above the character's head, in world space.
   positionOf(id) { const c = this.characters.get(id); if (!c?.fruit) return null; const p = c.fruit.body.getWorldPosition(new THREE.Vector3()); p.y += c.fruit.height * c.scale + 0.08; return p; }
 
-  sync(layout, sessions, room, statuses) {
-    const seen = new Set();
+  sync(layout, sessions, room, statuses, { animate = true } = {}) {
+    const seen = new Set(), still = this.reducedMotion();
+    this.door = new THREE.Vector3(layout.door.x, 0, layout.door.z - 0.6);
+    const firstSync = !this.synced; this.synced = true;
     const place = (id, make) => {
       seen.add(id);
       let c = this.characters.get(id);
       if (!c) { c = make(); this.characters.set(id, c); this.scene.add(c.root); }
-      const status = statuses.get(id);
+      const status = statuses.get(id) || { pose: 'waving', expression: 'smile' };
       if (c.expression !== status.expression) { c.expression = status.expression; c.fruit.setExpression(status.expression); }
       if (c.pose !== status.pose) { c.pose = status.pose; c.fruit.setGrey(status.pose === 'still'); }
       return c;
     };
     for (const [id, desk] of layout.desks) {
       const anchor = room.deskAnchor(id); if (!anchor) continue;
-      const c = place(id, () => this.#character(id, 1));
+      const isNew = !this.characters.has(id), c = place(id, () => this.#character(id, 1));
       c.anchor = anchor;
+      // Newcomers walk in from the door (not on the first load, when everyone is simply there).
+      if (isNew && !firstSync && animate && !still) c.trip = { at: this.door.clone(), to: 'desk' };
+      // Ended sessions say goodbye, then walk out; with reduced motion they just vanish.
+      if (desk.vacantSince === undefined && c.leaving) { c.leaving = false; c.root.visible = true; c.trip = still ? null : { to: 'desk' }; }
+      if (desk.vacantSince !== undefined && !c.leaving) { c.leaving = true; c.trip = still ? null : { wait: GOODBYE, to: 'door' }; c.root.visible = !still; }
       desk.subagents.forEach((kid, i) => {
         const k = place(kid, () => this.#character(kid, 0.42, true));
         // Small helpers stand on the parent's desk beside the monitor, each at a tiny laptop.
@@ -116,12 +127,14 @@ export class Cast {
   }
 
   update(dt, playerPos) {
+    if (this.frozen) return; // connection lost: everyone holds still until it's back
     const still = this.reducedMotion();
     this.time += dt;
     const t = still ? 0 : this.time, k = still ? 1 : 1 - Math.exp(-dt * BLEND), local = new THREE.Vector3();
     for (const c of this.characters.values()) {
       if (c.plus || !c.anchor) continue;
       const { fruit } = c, pose = c.small ? (c.subPose === 'typing' ? 'standTyping' : 'standStill') : c.pose;
+      if (c.trip && this.#walk(c, dt, t, k)) continue;
       const target = c.small ? smallPose(pose, t, c.seed) : poseTargets(pose, t, c.seed, fruit.height);
       // Standing characters turn toward the boss when they want something, and anyone you're talking to turns in their chair.
       if (!c.small && playerPos && (pose === 'waving' || pose === 'raising' || this.facingYou === c.id)) {
@@ -140,6 +153,25 @@ export class Cast {
       if (playerPos && !c.small && c.root.position.distanceTo(local.copy(playerPos).setY(0)) < LOOK_RANGE) fruit.lookAt(fruit.group.worldToLocal(local.copy(playerPos)));
       else fruit.lookAt(null);
     }
+  }
+
+  // Moves a character along its trip (door → desk, or desk → door). Returns true while the trip owns the character.
+  #walk(c, dt, t, k) {
+    const trip = c.trip, { fruit } = c;
+    if (trip.wait > 0) { trip.wait -= dt; return false; } // still waving goodbye at the desk
+    if (!trip.at) trip.at = c.root.position.clone().setY(0);
+    const seat = c.anchor.seat.clone().setY(0), goal = trip.to === 'desk' ? seat : this.door, to = goal.clone().sub(trip.at), distance = to.length();
+    if (distance < 0.05) {
+      c.trip = null;
+      if (trip.to === 'door') c.root.visible = false;
+      return trip.to === 'door';
+    }
+    trip.at.addScaledVector(to.normalize(), Math.min(distance, WALK_SPEED * dt));
+    const target = poseTargets('walking', t, c.seed, fruit.height);
+    if (!c.current) c.current = clonePose(target); else blendPose(c.current, target, k);
+    c.root.position.copy(trip.at); c.root.rotation.y = Math.atan2(to.x, to.z);
+    fruit.setBody(c.current.body); fruit.setLimbs(c.current.limbs); fruit.lookAt(null);
+    return true;
   }
 
   dispose() { for (const [id, c] of this.characters) this.#remove(id, c); }
