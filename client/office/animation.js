@@ -161,6 +161,7 @@ export class Cast {
       const talking = this.facingYou === c.id && !STANDING.has(c.pose), pose = talking ? 'listening' : c.pose, face = talking && c.expression === 'asleep' ? 'neutral' : c.expression;
       if (c.shown !== pose) { if (c.shown) c.changed = this.time; c.shown = pose; }
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
+      fruit.buzz(t);
       if (c.trip && this.#walk(c, dt, t, k)) continue;
       const target = poseTargets(pose, t, c.seed, fruit, c.wear);
       // Worn out: slouched lower and to one side (a sleeper already is).

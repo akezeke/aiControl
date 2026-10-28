@@ -7,7 +7,7 @@ import { toonMaterial, withOutline } from './toon.js';
 const V = (x, y, z = 0) => new THREE.Vector3(x, y, z);
 export const LEG = 0.56;            // hip to floor when standing
 const LIMB_R = 0.02, TUBE = 14, RADIAL = 7;
-const INK = '#1b1a1f', LIMB = '#26252b';
+const INK = '#1b1a1f', LIMB = '#26252b', ROT = new THREE.Color('#5c3c1c'); // ROT: what wear browns the skin toward
 
 // Profiles run bottom to top as [radius, height]; a Catmull-Rom pass smooths them before lathing.
 const profiles = {
@@ -108,22 +108,30 @@ const stripes = () => textures.tie ??= canvasTexture(64, (g, n) => {
   for (let i = -n; i < n * 2; i += 16) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + n, n); g.stroke(); }
 });
 
-// Bruises for a tired fruit: soft spots of different strengths, so lowering the alpha test both adds spots and grows them.
+// Bruises for a tired fruit: speckles and soft spots of different strengths, so lowering the alpha test first freckles the skin,
+// then adds spots and grows them; the strongest spots get dark cores from a second, stricter test.
 function bruises() {
   if (textures.bruises) return textures.bruises;
   const texture = textures.bruises = canvasTexture(256, (g, n) => {
     g.fillStyle = '#000'; g.fillRect(0, 0, n, n); g.globalCompositeOperation = 'lighten';
-    for (let i = 0; i < 16; i++) {
-      const x = Math.random() * n, y = Math.random() * n, r = 10 + Math.random() * 14, v = Math.round(115 + Math.random() * 135);
+    const spot = (r, low, high) => {
+      const x = Math.random() * n, y = Math.random() * n, v = Math.round(low + Math.random() * (high - low));
       for (const dx of [-n, 0, n]) for (const dy of [-n, 0, n]) { // drawn again across the edges so the texture tiles
-        const spot = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r); spot.addColorStop(0, `rgb(${v},${v},${v})`); spot.addColorStop(1, '#000');
-        g.fillStyle = spot; g.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+        const fill = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r); fill.addColorStop(0.35, `rgb(${v},${v},${v})`); fill.addColorStop(1, '#000'); // a flat core, so a spot shows up already sized
+        g.fillStyle = fill; g.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
       }
-    }
+    };
+    for (let i = 0; i < 170; i++) spot(5 + Math.random() * 4, 110, 235);
+    for (let i = 0; i < 26; i++) spot(10 + Math.random() * 20, 115, 250);
   });
   texture.colorSpace = THREE.NoColorSpace; texture.repeat.set(2.5, 1.5);
   return texture;
 }
+// A banana goes black from the ends in (u runs along it, the caps sit at 0 and 1).
+const tipFade = () => textures.tipFade ??= Object.assign(canvasTexture(64, (g, n) => {
+  const fade = g.createLinearGradient(0, 0, n, 0); fade.addColorStop(0, '#fff'); fade.addColorStop(0.3, '#000'); fade.addColorStop(0.7, '#000'); fade.addColorStop(1, '#fff');
+  g.fillStyle = fade; g.fillRect(0, 0, n, n);
+}), { colorSpace: THREE.NoColorSpace });
 
 const diamonds = () => textures.pineapple ??= canvasTexture(128, (g, n) => {
   g.fillStyle = '#f2b632'; g.fillRect(0, 0, n, n); g.strokeStyle = '#b97d1c'; g.lineWidth = 4;
@@ -133,11 +141,12 @@ function bodyMaterial(fruit, color) {
   if (fruit === 'orange') return toonMaterial(color, { bumpMap: peel(), bumpScale: 1.2 });
   if (fruit === 'pineapple') { const map = diamonds().clone(); map.repeat.set(4, 2); map.needsUpdate = true; return toonMaterial('#ffffff', { map }); }
   if (fruit === 'strawberry') { const map = seeds(color).clone(); map.repeat.set(3, 2); map.needsUpdate = true; return toonMaterial('#ffffff', { map }); }
-  return toonMaterial(color);
+  return toonMaterial(color).clone(); // its own, since wear browns it
 }
 
 // Black parts shared by every fruit.
-let hand, shoe;
+let hand, shoe, fly;
+const flyGeometry = () => fly ??= new THREE.SphereGeometry(0.017, 6, 4);
 export function handGeometry() {
   if (hand) return hand;
   const parts = [new THREE.SphereGeometry(0.042, 14, 10).scale(1, 0.8, 1.1)];
@@ -188,8 +197,8 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   group.add(body); group.scale.setScalar(scale);
   body.position.y = LEG;
 
-  const colorMaterial = bodyMaterial(fruit, color), fruitMesh = withOutline(new THREE.Mesh(shape.geometry, colorMaterial));
-  fruitMesh.userData.part = 'body'; body.add(fruitMesh);
+  const colorMaterial = bodyMaterial(fruit, color), fresh = colorMaterial.color.clone(), fruitMesh = withOutline(new THREE.Mesh(shape.geometry, colorMaterial));
+  fruitMesh.userData.part = 'body'; body.add(fruitMesh); own.push(colorMaterial);
   const h = shape.height;
   // Where something sits on the front of the body: `angle` around the vertical, `y` up the body, `out` off the skin.
   const onSkin = (angle, y, out = 0.004) => { const { x, r } = shape.surface(y); return V(x + Math.sin(angle) * (r + out), y, Math.cos(angle) * (r + out)); };
@@ -257,15 +266,25 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   };
   setExpression('smile');
 
-  // Wear: bruises spread over the skin, then bags under the eyes and heavy lids.
-  const spots = new THREE.Mesh(shape.geometry, toonMaterial('#8a5a24', { alphaMap: bruises(), alphaTest: 1, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-  spots.visible = false; spots.raycast = () => {}; own.push(spots.material); body.add(spots);
+  // Wear: the skin browns and bruises (a banana's ends go black), then come bags under the eyes, heavy lids and flies.
+  const overlay = (color, alphaMap, offset) => {
+    const mesh = new THREE.Mesh(shape.geometry, toonMaterial(color, { alphaMap, alphaTest: 1, transparent: true, opacity: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: offset, polygonOffsetUnits: offset }));
+    mesh.visible = false; mesh.raycast = () => {}; own.push(mesh.material); body.add(mesh); return mesh;
+  };
+  const spots = overlay('#7a4a1c', bruises(), -2), rot = overlay('#3b2414', bruises(), -3), tips = fruit === 'banana' ? overlay('#2e1f10', tipFade(), -3) : null;
+  const flies = [0, 1, 2].map(() => { const fly = new THREE.Mesh(flyGeometry(), ink); fly.visible = false; body.add(fly); return fly; }), buzzX = shape.surface(h * 0.9).x;
   const bagMaterial = toonMaterial('#6a5470'), bagHalf = 0.034 / shape.surface(faceY).r;
   let bags = [], droop = 1, blink = 1;
   const setWear = wear => {
     for (const mesh of bags) { face.remove(mesh); mesh.geometry.dispose(); }
     bags = [];
-    spots.visible = wear > 0.15; spots.material.alphaTest = 1 - wear * 0.5;
+    // Front-loaded, so even a mildly tired fruit looks it.
+    const age = Math.min(1, wear * 1.6);
+    colorMaterial.color.copy(fresh).lerp(ROT, age * 0.6);
+    spots.visible = wear > 0.05; spots.material.alphaTest = 1 - age * 0.8;
+    rot.visible = wear > 0.25; rot.material.alphaTest = 1 - (wear - 0.2) * 0.75;
+    if (tips) { tips.visible = wear > 0.15; tips.material.alphaTest = 1 - age * 0.75; }
+    flies.forEach(fly => { fly.visible = wear >= 0.7; });
     for (let level = 0; level < (wear >= 0.75 ? 2 : wear >= 0.4 ? 1 : 0); level++) for (const side of [-1, 1]) {
       const y = faceY - 0.058 - level * 0.016, mesh = new THREE.Mesh(arc([onSkin(side * spread - bagHalf, y + 0.008), onSkin(side * spread, y - 0.006), onSkin(side * spread + bagHalf, y + 0.008)], 0.0045), bagMaterial);
       face.add(mesh); bags.push(mesh);
@@ -334,6 +353,11 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
     setBody({ y = LEG, tilt = 0, lean = 0, turn = 0 } = {}) { body.position.y = y; body.rotation.set(lean, turn, tilt); },
     setLimbs, setExpression, setWear,
     // Offline sessions turn grey; the colour comes back when they do.
+    // Flies loop around a worn-out head; t is seconds, frozen with reduced motion.
+    buzz(t) {
+      if (!flies[0].visible) return;
+      flies.forEach((fly, i) => { const a = t * (2.4 + i * 0.9) + i * 2.1; fly.position.set(buzzX + Math.sin(a) * 0.24 + Math.sin(a * 3.1) * 0.04, h + 0.1 + Math.sin(a * 1.7 + i) * 0.07, Math.cos(a) * 0.24); });
+    },
     setGrey(on) { fruitMesh.material = on ? toonMaterial('#9b9a97') : colorMaterial; },
     setBlink(open) { if (open === blink) return; blink = open; eyes.forEach(eye => { eye.scale.y = Math.max(0.1, open * droop); }); },
     // Eyes slide a little toward a point given in the fruit's local space; null looks ahead.
