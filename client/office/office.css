@@ -50,3 +50,8 @@
   :root[data-theme-choice=office]:not([data-office-fallback]) .panel-backdrop { background: transparent; backdrop-filter: none; }
 }
 body.panel-open .office-hint { display: none; }
+/* It fades in gently as the view settles on whoever you're talking to. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-choice=office]:not([data-office-fallback]) .detail-panel { animation: office-panel-in .4s ease; }
+}
+@keyframes office-panel-in { from { opacity: 0; transform: translateX(12px); } }

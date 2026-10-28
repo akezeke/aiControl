@@ -45,7 +45,7 @@ export function mountOffice(container, hooks) {
       else if (hit?.kind === 'floor' && !view.overview) player.walkTo(hit.point);
     },
   });
-  const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches });
+  const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches, container });
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   const card = createCard(container);
@@ -54,7 +54,7 @@ export function mountOffice(container, hooks) {
   const overview = on => {
     if (on === view.overview) return;
     if (on) { relock = player.locked; player.unlock(); overlays.overviewUsed(); } else if (relock) { relock = false; player.lock(); }
-    view.setOverview(on); overlays.setOverview(on);
+    view.setOverview(on); player.setOverview(on); overlays.setOverview(on);
   };
   const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview) });
   // Tab toggles the overview and Esc leaves it (Tab only from the scene itself: on a button or link it keeps moving focus).
@@ -83,13 +83,13 @@ export function mountOffice(container, hooks) {
     const session = aimed && office.snapshot?.sessions.find(session => session.id === aimed);
     card.show(session && hooks.describe?.(session) || null); card.move(aiming ? player.centre : mouse);
     const node = aimed && cast.characters.get(aimed)?.root || null;
-    renderer.domElement.style.cursor = node && !aiming ? 'pointer' : '';
+    renderer.domElement.style.cursor = node && !aiming ? 'pointer' : view.overview ? view.overhead.dragging ? 'grabbing' : 'grab' : '';
     if (node === hovered) return;
     highlight(hovered, false); highlight(node, true); hovered = node; overlays.setAim(!!node);
   };
   frames.add(dt => {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
-    // The overview only picks people: you stay where you were.
+    // The overview has the keys and drags while it's up: you stay where you were.
     if (!view.overview) player.update(dt);
     view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); hover(dt);
   });

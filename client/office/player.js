@@ -1,12 +1,12 @@
 // You, the boss: first-person movement with WASD (Shift runs, Space jumps), arrow keys to look, collision with walls and desks.
 // With a mouse, a click captures it (pointer lock): moving looks around, a click picks what's under the dot, right-click or Esc lets go.
 // Looking with the arrow keys aims with the dot too, until the mouse moves.
-// Touch drags to look and taps to walk or pick someone.
+// Touch drags the view along with the finger and taps to walk or pick someone. While the overview is up it has the keys and drags.
 import * as THREE from 'three';
 import { isTypingTarget } from './status.js';
 
 export const EYE = 1.5;
-const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
+const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, TOUCH_LOOK = 0.006, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
 const keys = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] };
 const turns = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
@@ -23,12 +23,12 @@ export class Player {
   constructor(canvas, { colliders, room, onPick }) {
     this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08;
     this.colliders = colliders; this.room = room; this.onPick = onPick; this.held = new Set(); this.target = null;
-    this.locked = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
+    this.locked = false; this.overview = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
     this.disposers = [];
     listen(document, 'keydown', event => {
       this.shift = event.shiftKey;
-      if (!officeHasKeys(event)) return;
+      if (!officeHasKeys(event) || this.overview) return;
       if (keys[event.code] || turns[event.code]) { this.held.add(event.code); this.target = null; if (turns[event.code]) this.keyLook = true; event.preventDefault(); }
       else if (event.code === 'Space' && sceneFocused(canvas)) { event.preventDefault(); this.jump(); }
     });
@@ -37,13 +37,14 @@ export class Player {
     listen(document, 'pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; });
     const look = (x, y, speed) => { this.yaw -= x * speed; this.pitch = THREE.MathUtils.clamp(this.pitch - y * speed, -1.1, 0.8); };
     // Captured: every move looks, a left click picks under the dot, a right click lets go.
-    // Otherwise a drag looks around and a press that barely moves is a click on what's under it.
+    // Otherwise a drag looks around and a press that barely moves is a click on what's under it; a second finger makes it neither.
     let drag = null;
     listen(canvas, 'contextmenu', event => event.preventDefault());
     listen(canvas, 'pointerdown', event => {
       if (this.locked) { if (event.button === 0) this.onPick(this.centre, true); else if (event.button === 2) this.unlock(); return; }
       this.keyLook = false;
       if (event.button !== 0) return;
+      if (drag) { drag.moved = true; return; }
       drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }; canvas.setPointerCapture(event.pointerId);
     });
     listen(canvas, 'pointermove', event => {
@@ -53,12 +54,16 @@ export class Player {
       if (!drag || drag.id !== event.pointerId) return;
       if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < DRAG_SLOP) return;
       drag.moved = true;
-      look(event.movementX, event.movementY, LOOK);
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y; drag.x = event.clientX; drag.y = event.clientY;
+      // A finger drags the scene along with it (turning the other way to a mouse), and a bit quicker: phone screens are small.
+      if (!this.overview) { if (event.pointerType === 'touch') look(-dx, -dy, TOUCH_LOOK); else look(dx, dy, LOOK); }
     });
     listen(canvas, 'pointerup', event => { if (drag && !drag.moved) this.onPick(event, event.pointerType === 'mouse'); drag = null; });
     listen(canvas, 'pointercancel', () => { drag = null; });
   }
 
+  // You stop where you are while the overview is up.
+  setOverview(on) { this.overview = on; this.held.clear(); this.target = null; this.keyLook = false; }
   // Browsers without pointer lock, or that refuse it, keep drag-to-look.
   lock() { if (!this.locked) try { this.canvas.requestPointerLock()?.catch?.(() => {}); } catch { /* not allowed here */ } }
   unlock() { if (this.locked) document.exitPointerLock(); }
