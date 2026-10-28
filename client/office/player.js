@@ -164,7 +164,7 @@ export function standBefore(point, normal, distance, colliders, room) {
 const free = (p, colliders, room) => (!room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS)) && !colliders.some(box => inside(p, box));
 
 // What's under a screen point: a character (by session id), a board on the wall (userData.board), a spare desk
-// (userData.spare: { cwd, name }) or a spot on the floor.
+// (userData.spare: { cwd, name }), the light switch (userData.toggle) or a spot on the floor.
 const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
 export function pick(event, canvas, camera, scene) {
   const rect = canvas.getBoundingClientRect();
@@ -172,8 +172,9 @@ export function pick(event, canvas, camera, scene) {
   raycaster.setFromCamera(ndc, camera);
   for (const hit of raycaster.intersectObjects(scene.children, true)) {
     let node = hit.object;
-    while (node && !node.userData.sessionId && !node.userData.board && !node.userData.spare) node = node.parent;
+    while (node && !node.userData.sessionId && !node.userData.board && !node.userData.spare && !node.userData.toggle) node = node.parent;
     if (node?.userData.sessionId) return { kind: 'character', id: node.userData.sessionId };
+    if (node?.userData.toggle) { if (node.visible) return { kind: 'toggle', node }; continue; } // the light switch, hidden with its wall
     if (node?.userData.spare) return { kind: 'spare', node, point: hit.point, ...node.userData.spare };
     // A board on a wall that's faded out for the overview is hidden: look past it.
     if (node) { if (node.visible) return { kind: 'board', node }; continue; }

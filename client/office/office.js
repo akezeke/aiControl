@@ -47,6 +47,7 @@ export function mountOffice(container, hooks) {
       if (hit?.kind === 'character') office.talkTo(hit.id);
       else if (hit?.kind === 'board') office.readBoard(hit.node);
       else if (hit?.kind === 'spare') office.offerDesk(hit, at);
+      else if (hit?.kind === 'toggle') hit.node.userData.toggle();
       else if (mouse && !player.locked && !view.overview) player.lock();
       else if (hit?.kind === 'floor' && !view.overview) player.walkTo(hit.point);
     },
@@ -85,12 +86,12 @@ export function mountOffice(container, hooks) {
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE' && !menu.contains(event.target)) {
       event.preventDefault();
-      if (board) office.readBoard(board); else if (spare) office.offerDesk(spare, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
+      if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (spare) office.offerDesk(spare, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
     }
   });
   // Outline whatever a click (or E) would get, with its card: under the dot when aiming with it, else under the mouse
   // (the scene or a bubble, not the buttons). Ten times a second is plenty.
-  let mouse = null, hovered = null, aimed = null, board = null, spare = null, dot = false, hoverIn = 0;
+  let mouse = null, hovered = null, aimed = null, board = null, spare = null, toggle = null, dot = false, hoverIn = 0;
   listen(container, 'pointermove', event => {
     mouse = event.pointerType === 'mouse' && (event.target === renderer.domElement || event.target.closest?.('.office-bubble')) ? event : null;
     if (!dot) card.move(mouse);
@@ -103,10 +104,10 @@ export function mountOffice(container, hooks) {
     hoverIn = 0.1;
     if (menu.open) return; // the spare desk keeps its outline while its menu is up
     const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
-    aimed = hit?.kind === 'character' ? hit.id : null; board = hit?.kind === 'board' ? hit.node : null; spare = hit?.kind === 'spare' ? hit : null;
+    aimed = hit?.kind === 'character' ? hit.id : null; board = hit?.kind === 'board' ? hit.node : null; spare = hit?.kind === 'spare' ? hit : null; toggle = hit?.kind === 'toggle' ? hit.node : null;
     const session = aimed && office.snapshot?.sessions.find(session => session.id === aimed);
     card.show(session && hooks.describe?.(session) || spare && { title: 'New agent', project: spare.cwd.replace(/^\/home\/[^/]+/, '~') } || null); card.move(aiming ? player.centre : mouse);
-    const node = aimed && cast.characters.get(aimed)?.root || board || spare?.node;
+    const node = aimed && cast.characters.get(aimed)?.root || board || spare?.node || toggle;
     renderer.domElement.style.cursor = node && !aiming ? 'pointer' : view.overview ? view.overhead.dragging ? 'grabbing' : 'grab' : '';
     if (node === hovered) return;
     highlight(hovered, false); highlight(node, true); hovered = node; overlays.setAim(!!node);
@@ -119,7 +120,7 @@ export function mountOffice(container, hooks) {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
     // The overview has the keys and drags while it's up: you stay where you were.
     if (!view.overview) player.update(dt);
-    view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     tiltSigns();
   });
   const resize = () => {

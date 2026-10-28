@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { toonMaterial } from './toon.js';
+import { createLights, dims } from './lights.js';
 import { DESK_W, DESK_D } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
@@ -16,6 +17,8 @@ export const DESK_H = 0.76, SEAT_H = 0.47, HELPER_SCALE = 0.42;
 export const CHAIR_Z = -(DESK_D / 2 + 0.42), KEYS_Z = -0.27, MOUSE_X = -0.33;
 export const BACK_Z = -0.34; // front of the chair back, from the chair's centre
 const MONITOR_Z = DESK_D * 0.28;
+// A screen's light, in its desk's frame: just in front of it, aimed at the sitter's face.
+const BEAM = { from: new THREE.Vector3(0, DESK_H + 0.34, MONITOR_Z - 0.1), to: new THREE.Vector3(0, SEAT_H + 0.45, CHAIR_Z + 0.1) };
 // Each pod's colours: its rug, and its chairs in a stronger shade.
 const teams = [['#f4a6a6', '#e0675c'], ['#a6d8f4', '#3d8fd1'], ['#b9e4a1', '#4fa84a'], ['#f6d28b', '#e8a23a'], ['#cdb4f2', '#8a63d2'], ['#f7b8de', '#d9559c']];
 // Helpers' tiny desks in the parent desk's frame: either side of its chair, then behind it.
@@ -115,9 +118,8 @@ function signTexture(name) {
 export function createRoom(scene) {
   const root = new THREE.Group(); scene.add(root);
   const shell = new THREE.Group(); root.add(shell);
-  // Soft fill plus daylight through the back windows; the ceiling lamps (point lights, in the shell) do the rest.
-  const sun = new THREE.DirectionalLight('#fff8ee', 0.55); sun.position.set(-2, 6, -7);
-  root.add(new THREE.HemisphereLight('#f6f4ff', '#5d6575', 0.6), sun);
+  // Fill, daylight and the screens' glow (lights.js); the ceiling lamps (point lights, in the shell) do the rest.
+  const lights = createLights(root, BEAM);
   const desks = new Map(), spares = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
   const room = {
     colliders: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
@@ -181,11 +183,15 @@ export function createRoom(scene) {
       }
       for (const [key, desk] of spares) if (!podKeys.has(key)) { removeDesk(desk); spares.delete(key); }
       room.colliders = [...room.wallColliders, ...room.furnitureColliders, ...solid];
+      lights.refresh();
     },
+    // Each frame: the light switch, and the screens' light on the desks nearest the camera.
+    update(dt, eye, still) { lights.update(dt, eye, still, desks.values()); },
     dispose() { disposeTree(root); },
   };
 
   const redraw = (desk, status) => {
+    desk.glow = status?.screen;
     const key = JSON.stringify([status?.screen, status?.monitor]);
     if (desk.screenKey !== key) { desk.screenKey = key; desk.screenTexture.redraw(status?.monitor, status?.screen); }
   };
@@ -201,7 +207,7 @@ export function createRoom(scene) {
 
   function createSign(pod) {
     const group = new THREE.Group(), texture = signTexture(pod.name), y = 2.35;
-    const board = new THREE.Mesh(once('sign', () => rounded(1.6, 0.4, 0.05, 0.03)), [null, null, null, null, null, null].map((_, i) => i === 4 || i === 5 ? new THREE.MeshBasicMaterial({ map: texture }) : toonMaterial('#2f3542')));
+    const board = new THREE.Mesh(once('sign', () => rounded(1.6, 0.4, 0.05, 0.03)), [null, null, null, null, null, null].map((_, i) => i === 4 || i === 5 ? dims(new THREE.MeshBasicMaterial({ map: texture })) : toonMaterial('#2f3542')));
     board.position.y = y; group.add(board);
     for (const x of [-0.6, 0.6]) { const cord = new THREE.Mesh(once('cord', () => new THREE.CylinderGeometry(0.008, 0.008, WALL_H - y - 0.2, 6)), toonMaterial('#2f3542')); cord.position.set(x, (WALL_H + y + 0.2) / 2, 0); group.add(cord); }
     const rug = new THREE.Mesh(once('rug', () => new RoundedBoxGeometry(1, 0.012, 1, 2, 0.005)), toonMaterial(teams[podColors.get(pod.key)][0])); rug.position.y = 0.006; group.add(rug);
@@ -266,18 +272,19 @@ export function createRoom(scene) {
     }
     place(plant('tree'), 0.5, 0.5); place(plant('snake'), width - 0.5, 0.5);
 
-    // Door in the front wall, facing into the room, with a coat rack and an extinguisher beside it.
+    // Door in the front wall, facing into the room, with a coat rack, an extinguisher and the light switch beside it.
     const doorGroup = new THREE.Group(); doorGroup.position.set(door.x - width / 2, -WALL_H / 2, -WALL_T / 2 - 0.02); doorGroup.rotation.y = Math.PI; front.add(doorGroup);
     const panel = mesh(rounded(1.05, 2.15, 0.06, 0.03), toonMaterial('#e0574a')); panel.position.y = 1.075; doorGroup.add(panel);
     const knob = mesh(new THREE.SphereGeometry(0.04, 12, 8), toonMaterial('#f2c14e'), 0.006); knob.position.set(0.4, 1.05, 0.06); doorGroup.add(knob);
     place(coatRack(), door.x + 0.85, depth - 0.35, 0.4);
     hang(front, extinguisher(), door.x - width / 2 - 0.75, 0.25, 0);
+    hang(front, lights.createSwitch(), door.x - width / 2 - 0.72, 1.2, 0.008);
 
     // Boards; boards.js draws on their faces. The whiteboard is on the left wall, the clock above the door, the waiting board beside it.
-    const board = (w, h, frameColor) => { const g = new THREE.Group(); const frame = mesh(rounded(w + 0.1, h + 0.1, 0.05, 0.02), toonMaterial(frameColor), 0.008); g.add(frame); const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: '#ffffff' })); face.position.z = 0.03; g.add(face); g.userData.face = face; return g; };
+    const board = (w, h, frameColor) => { const g = new THREE.Group(); const frame = mesh(rounded(w + 0.1, h + 0.1, 0.05, 0.02), toonMaterial(frameColor), 0.008); g.add(frame); const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); face.position.z = 0.03; g.add(face); g.userData.face = face; return g; };
     const whiteboard = hang(left, board(2.4, 1.2, '#c0c4cc'), 0, 1.65, 0.03);
     const clock = new THREE.Group(); const rim = mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 32).rotateX(Math.PI / 2), toonMaterial('#2f3542'), 0.008); clock.add(rim);
-    const clockFace = new THREE.Mesh(new THREE.CircleGeometry(0.25, 32), new THREE.MeshBasicMaterial({ color: '#ffffff' })); clockFace.position.z = 0.032; clock.add(clockFace); clock.userData.face = clockFace;
+    const clockFace = new THREE.Mesh(new THREE.CircleGeometry(0.25, 32), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); clockFace.position.z = 0.032; clock.add(clockFace); clock.userData.face = clockFace;
     hang(front, clock, door.x - width / 2, 2.6, 0.04);
     const waiting = hang(front, board(1.1, 0.8, '#3a4352'), door.x - width / 2 - 1.4, 1.5, 0.03);
     room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face };
@@ -311,9 +318,10 @@ export function createRoom(scene) {
     const tiles = canvasTexture(128, 128, g => { g.fillStyle = '#fbfbfa'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#d8dce2'; g.lineWidth = 4; g.strokeRect(0, 0, 128, 128); });
     tiles.wrapS = tiles.wrapT = THREE.RepeatWrapping; tiles.repeat.set(width / 1.2, depth / 1.2);
     const ceiling = new THREE.Group(); shell.add(ceiling);
-    const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), new THREE.MeshBasicMaterial({ map: tiles, color: '#dfe2e7', transparent: true }));
+    // Switched off, the lamps go grey and their glow goes out (black adds nothing).
+    const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), dims(new THREE.MeshBasicMaterial({ map: tiles, color: '#dfe2e7', transparent: true }), 0.3));
     ceilingPlane.rotation.x = Math.PI / 2; ceilingPlane.position.set(width / 2, WALL_H, depth / 2); ceiling.add(ceilingPlane);
-    const lampMaterial = new THREE.MeshBasicMaterial({ color: '#fff8e2', transparent: true }), glowMaterial = new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+    const lampMaterial = dims(new THREE.MeshBasicMaterial({ color: '#fff8e2', transparent: true }), 0.45), glowMaterial = dims(new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0);
     for (let x = 2; x < width - 1; x += 4) for (let z = 2; z < depth - 1; z += 4) {
       const lamp = new THREE.Mesh(once('lamp', () => new THREE.CylinderGeometry(0.35, 0.4, 0.06, 24)), lampMaterial); lamp.position.set(x, WALL_H - 0.03, z); ceiling.add(lamp);
       const glow = new THREE.Mesh(once('glow', () => new THREE.PlaneGeometry(2.4, 2.4).rotateX(Math.PI / 2)), glowMaterial); glow.position.set(x, WALL_H - 0.005, z); ceiling.add(glow);
@@ -322,7 +330,7 @@ export function createRoom(scene) {
     // The lamps' light: a few point lights on a coarse grid (each one costs every lit pixel, so not one per lamp).
     const cols = Math.ceil(width / 8), rows = Math.ceil(depth / 8);
     for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
-      const light = new THREE.PointLight('#ffecd0', 6, 0, 1.5); light.position.set((i + 0.5) * width / cols, WALL_H - 0.35, (j + 0.5) * depth / rows); shell.add(light);
+      const light = dims(new THREE.PointLight('#ffecd0', 6, 0, 1.5), 0); light.position.set((i + 0.5) * width / cols, WALL_H - 0.35, (j + 0.5) * depth / rows); shell.add(light);
     }
   }
 
