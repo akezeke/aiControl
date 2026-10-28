@@ -84,16 +84,17 @@ function uuid() {
   const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
+function chooseTheme(id) {
+  applyTheme(id);
+  for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
+  syncOffice();
+}
 function themeMenu() {
   const menu = el('details', 'theme-menu');
   const summary = el('summary', 'quiet-button'); summary.append(icon('theme')); summary.setAttribute('aria-label', 'Change theme'); summary.title = 'Change theme';
   const choices = el('div', 'theme-options'); choices.setAttribute('aria-label', 'Color theme');
   for (const theme of themes) {
-    const choice = button(theme.name, 'theme-choice', () => {
-      applyTheme(theme.id);
-      for (const option of document.querySelectorAll('[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === theme.id));
-      menu.open = false; summary.focus();
-    });
+    const choice = button(theme.name, 'theme-choice', () => { chooseTheme(theme.id); menu.open = false; summary.focus(); });
     choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(document.documentElement.dataset.themeChoice === theme.id));
     choice.prepend(el('i', `theme-swatch ${theme.id}`)); choices.append(choice);
   }
@@ -157,7 +158,7 @@ function showLogin(message = '') {
   disposeComposer(); liveRender.cancel();
   messageDrafts.clear();
   clearTimeout(activityTimer); activityTimer = null;
-  clearInterval(poll); state.csrf = ''; state.snapshot = null; state.selected = null; panelSignature = ''; document.body.classList.remove('panel-open');
+  clearInterval(poll); office?.unmount(); office = null; state.csrf = ''; state.snapshot = null; state.selected = null; panelSignature = ''; document.body.classList.remove('panel-open');
   app.replaceChildren(); document.documentElement.removeAttribute('data-attention'); document.documentElement.removeAttribute('data-working');
   const screen = el('main', 'login-screen');
   screen.append(themeMenu());
@@ -236,10 +237,28 @@ async function refresh() {
   } finally { loading = false; }
 }
 
+// The Office theme swaps the list for a 3D scene, downloaded only once it is chosen.
+let office = null, officeModule = null, listTheme = savedTheme() === 'office' ? 'modern-light' : savedTheme();
+function syncOffice() {
+  const root = document.documentElement, main = document.querySelector('.main-content');
+  if (root.dataset.themeChoice !== 'office' || !main) {
+    if (root.dataset.themeChoice && root.dataset.themeChoice !== 'office') listTheme = root.dataset.themeChoice;
+    office?.unmount(); office = null; document.querySelector('#office')?.remove(); root.removeAttribute('data-office-fallback'); return;
+  }
+  if (office) { if (state.snapshot) office.update(state.snapshot, { error: state.error }); return; }
+  if (!officeModule) { officeModule = import('./office/office.js').then(module => { officeModule = module; syncOffice(); }, () => { officeModule = null; toast('Office failed to load'); }); return; }
+  if (officeModule instanceof Promise || root.hasAttribute('data-office-fallback')) return;
+  if (!officeModule.webglAvailable()) { root.setAttribute('data-office-fallback', ''); toast('Office needs WebGL; showing the list'); return; }
+  const box = el('div'); box.id = 'office'; main.append(box);
+  office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme) });
+  if (state.snapshot) office.update(state.snapshot, { error: state.error });
+}
+
 function renderData() {
   if (!state.snapshot || !document.querySelector('#groups')) {
     const error = document.querySelector('#error'); if (error && state.error) { error.hidden = false; error.textContent = state.error; } return;
   }
+  syncOffice();
   const { sessions, providers } = state.snapshot;
   const count = sessions.filter(needsInput).length;
   setProperty(document, 'title', `${count ? `(${count}) ` : ''}AI Control`);
@@ -912,7 +931,7 @@ function showThemePicker() {
     choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
   }
   dialog.append(el('h2', '', 'Pick a theme'), grid);
-  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); };
+  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncOffice(); };
   document.body.append(dialog); dialog.showModal();
 }
 if (firstVisit) showThemePicker();
