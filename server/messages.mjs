@@ -185,13 +185,19 @@ export class TranscriptReader {
     this.visibleIds.get(sessionId).add(id);
     this.cache.clear();
   }
+  // The real path of a session's (or one of its agents') transcript, or null unless it is inside a projects folder.
+  async locate(file, sessionId, agentId) {
+    if (!file || !/^[a-f0-9-]{16,64}$/i.test(sessionId) || (agentId !== undefined && !/^[a-z0-9]{1,64}$/i.test(agentId))) return null;
+    const path = await realpath(file);
+    const own = agentId !== undefined ? path.includes(`/${sessionId}/subagents/`) && path.endsWith(`/agent-${agentId}.jsonl`) : path.endsWith(`/${sessionId}.jsonl`);
+    return own && this.projectsDirs.some(dir => path.startsWith(dir + sep)) ? path : null;
+  }
   // `older` asks for a longer history than the snapshot carries; those reads skip the cache.
   async read(file, sessionId, agentId, older) {
-    if (!file || !/^[a-f0-9-]{16,64}$/i.test(sessionId) || (agentId !== undefined && !/^[a-z0-9]{1,64}$/i.test(agentId))) return { messages: [], messagesState: 'unavailable' };
     const agent = agentId !== undefined, limit = older || (agent ? agentMessageLimit : messageLimit), maxBytes = (older ? 32 : 4) * 1024 * 1024;
     try {
-      const path = await realpath(file);
-      if (!this.projectsDirs.some(dir => path.startsWith(dir + sep)) || !(agent ? path.includes(`/${sessionId}/subagents/`) && path.endsWith(`/agent-${agentId}.jsonl`) : path.endsWith(`/${sessionId}.jsonl`))) return { messages: [], messagesState: 'unavailable' };
+      const path = await this.locate(file, sessionId, agentId);
+      if (!path) return { messages: [], messagesState: 'unavailable' };
       const handle = await open(path, 'r');
       try {
         const stat = await handle.stat();

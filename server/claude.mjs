@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { fail } from './requests.mjs';
 import { TranscriptReader, claudeSessionTitle } from './messages.mjs';
+import { TranscriptImages } from './images.mjs';
 import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
 
 // Must match the PermissionRequest hook timeout in scripts/install-hooks.mjs.
@@ -63,7 +64,7 @@ export class ClaudeAdapter {
   stoppedAgents = new Set();
   connected = false;
   detail = 'Discovering local Claude Code sessions…';
-  constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), accounts = [{ label: '', sessionsDir, projectsDir }], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.accounts = accounts; this.transcripts = new TranscriptReader(accounts.map(account => account.projectsDir)); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
+  constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), accounts = [{ label: '', sessionsDir, projectsDir }], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.accounts = accounts; this.transcripts = new TranscriptReader(accounts.map(account => account.projectsDir)); this.images = new TranscriptImages(); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
   async start() {
     // The tmux/start guard prevents duplicate servers; only remove our stale socket.
     try { if ((await lstat(this.socketPath)).isSocket()) await unlink(this.socketPath); else throw new Error('Hook socket path is occupied by a file.'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -239,6 +240,23 @@ export class ClaudeAdapter {
     const [sessionId, agentId] = id.slice(7).split(':');
     if (!this.paths.has(id)) throw fail('Session is no longer available.', 409);
     return this.transcripts.read(this.paths.get(id), sessionId, agentId, limit);
+  }
+  // Images seen in a session's transcript, by id; never by path.
+  async imageList(id) {
+    const { sessionId, path } = await this.transcript(id);
+    return { images: await this.images.list(path, sessionId) };
+  }
+  async image(id, imageId) {
+    const { sessionId, path } = await this.transcript(id);
+    const image = /^[a-f0-9-]{36}:\d{1,3}$/i.test(imageId) && await this.images.get(path, sessionId, imageId);
+    if (!image) throw fail('Image not found.', 404);
+    return image;
+  }
+  async transcript(id) {
+    const [sessionId, agentId] = id.slice(7).split(':');
+    const path = this.paths.has(id) && await this.transcripts.locate(this.paths.get(id), sessionId, agentId).catch(() => null);
+    if (!path) throw fail('Session is no longer available.', 409);
+    return { sessionId, path };
   }
   async stop() {
     clearInterval(this.timer);

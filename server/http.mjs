@@ -62,6 +62,16 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         if (!spawn) throw fail('Starting agents is not available.', 503);
         const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;
       }
+      // A session's images: the list as JSON, or one image's bytes (its type checked from the bytes).
+      const imageRoute = /^\/api\/sessions\/([^/]+)\/images(?:\/([^/]+))?$/.exec(path);
+      if (imageRoute && req.method === 'GET') {
+        if (!messages?.images) throw fail('Images are not available.', 503);
+        let id, imageId;
+        try { id = decodeURIComponent(imageRoute[1]); imageId = imageRoute[2] && decodeURIComponent(imageRoute[2]); } catch { throw fail('Invalid session ID.'); }
+        if (!imageId) { json(res, 200, await messages.images(id)); return; }
+        const { type, data } = await messages.image(id, imageId);
+        res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Content-Length', data.length); res.setHeader('Content-Security-Policy', "default-src 'none'"); res.end(data); return;
+      }
       const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
       if (sessionRoute && req.method === (sessionRoute[2] === 'history' ? 'GET' : 'POST')) {
         if (!messages) throw fail('Messaging is not available.', 503);
