@@ -127,6 +127,7 @@ test('Codex tool items, notices and failures become one-line entries', () => {
   assert.deepEqual(line({ type: 'fileChange', status: 'completed', changes: [{ path: '/w/src/a.ts' }, { path: '/w/b.ts' }] }), ['assistant', 'Edit · src/a.ts, w/b.ts', true, false]);
   assert.deepEqual(line({ type: 'mcpToolCall', server: 'docs', tool: 'search', status: 'completed' }), ['assistant', 'docs/search', true, false]);
   assert.deepEqual(line({ type: 'webSearch', query: 'tmux paste' }), ['assistant', 'Search · tmux paste', true, false]);
+  assert.deepEqual(line({ type: 'commandExecution', command: "/usr/bin/zsh -lc 'git log -1 --format='\\''%s'\\'''", exitCode: 0 }), ['assistant', "Shell · git log -1 --format='%s'", true, false]);
   assert.deepEqual(line({ type: 'contextCompaction' }), ['notice', 'Context compacted', false, false]);
   assert.deepEqual(line({ type: 'exitedReviewMode', review: 'Two bugs found.' }), ['assistant', 'Two bugs found.', false, false]);
   assert.equal(line({ type: 'reasoning', summary: ['x'] }), null);

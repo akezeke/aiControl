@@ -25,6 +25,8 @@ function toolLine(id, name, value, timestamp, failed) {
   return { id, role: 'assistant', text: label ? `${name} · ${label}` : name, truncated: false, timestamp: timestamp || null, tool: true, ...(failed ? { failed: true } : {}), ...(raw && raw !== label ? { detail: raw.slice(0, 2000) } : {}) };
 }
 const notice = (id, text, timestamp, error) => { const value = message(id, 'notice', text.split('\n')[0].slice(0, 300), timestamp); return value && error ? { ...value, error: true } : value; };
+// Codex runs commands as `/usr/bin/zsh -lc '…'`; show only the command.
+const unwrapShell = command => typeof command === 'string' ? command.replace(/^(?:\S*\/)?(?:ba|z)?sh -l?c (['"])([\s\S]*)\1$/, (_, quote, inner) => quote === "'" ? inner.replaceAll("'\\''", "'") : inner) : command;
 // Reasoning, hook prompts and sleeps stay out: they are noise next to the conversation.
 export function codexMessage(entry) {
   const item = entry.item ?? entry;
@@ -36,7 +38,7 @@ export function codexMessage(entry) {
     case 'exitedReviewMode': return message(item.id, 'assistant', item.review || 'Review finished', time);
     case 'enteredReviewMode': return notice(item.id, 'Review started', time);
     case 'contextCompaction': return notice(item.id, 'Context compacted', time);
-    case 'commandExecution': return toolLine(item.id, item.exitCode ? `Shell (exit ${item.exitCode})` : 'Shell', item.command, time, failed);
+    case 'commandExecution': return toolLine(item.id, item.exitCode ? `Shell (exit ${item.exitCode})` : 'Shell', unwrapShell(item.command), time, failed);
     case 'fileChange': return toolLine(item.id, 'Edit', (item.changes ?? []).map(change => shortPath(change.path || '')).join(', '), time, failed);
     case 'mcpToolCall': return toolLine(item.id, [item.server, item.tool].filter(Boolean).join('/') || 'MCP tool', '', time, failed);
     case 'dynamicToolCall': return toolLine(item.id, item.tool || 'Tool', '', time, failed);
