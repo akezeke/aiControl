@@ -43,7 +43,7 @@ function outlineMaterial(thickness, color = '#1b1a1f') {
   outlines.set(key, material);
   return material;
 }
-export function withOutline(mesh, thickness = 0.012) {
+export function withOutline(mesh, thickness = 0.009) {
   outlineNormals(mesh.geometry);
   const hull = new THREE.Mesh(mesh.geometry, outlineMaterial(thickness));
   hull.userData.outline = true; hull.raycast = () => {};
@@ -55,7 +55,7 @@ export function highlight(root, on) {
   root?.traverse(node => {
     if (!node.userData.outline) return;
     node.userData.plain ??= node.material;
-    node.material = on ? outlineMaterial(node.userData.plain.userData.thickness * 1.8, '#4f7cff') : node.userData.plain;
+    node.material = on ? outlineMaterial(node.userData.plain.userData.thickness * 1.5, '#4f7cff') : node.userData.plain;
   });
 }
 
