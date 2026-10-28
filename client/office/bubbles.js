@@ -118,9 +118,14 @@ export function createMenu(container, onChoose) {
     item.onclick = () => { const at = cwd; result.close(); if (at) onChoose(at, provider, item); };
     menu.append(item); return item;
   });
+  // Keys stay in the menu: the arrows and WASD would otherwise walk or pan the camera behind it.
   menu.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { event.stopPropagation(); result.close(); }
-    else if (['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); items[(items.indexOf(document.activeElement) + 1) % items.length].focus(); }
+    event.stopPropagation();
+    if (event.key === 'Escape') result.close();
+    else if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+      event.preventDefault();
+      items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+    }
   });
   const result = {
     get open() { return !menu.hidden; },
