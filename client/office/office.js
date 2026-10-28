@@ -50,7 +50,7 @@ export function mountOffice(container, hooks) {
   const talkKey = event => { if (event.code === 'KeyE' && officeHasKeys(event)) { event.preventDefault(); office.talkTo(office.nearest()); } };
   document.addEventListener('keydown', talkKey);
   document.addEventListener('keydown', tabDown); document.addEventListener('keyup', tabUp);
-  frames.add(dt => { player.update(dt); view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id)); boards.tick(); });
+  frames.add(dt => { player.update(dt); view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;

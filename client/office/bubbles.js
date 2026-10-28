@@ -33,7 +33,8 @@ export class Bubbles {
   }
 
   // Projects every bubble to the screen each frame; nearer ones are bigger and drawn on top.
-  update(camera, positionOf) {
+  // `zoomOut` (0..1) shrinks bubbles as the overview rises, so a whole room of them still fits.
+  update(camera, positionOf, zoomOut = 0) {
     const { clientWidth: w, clientHeight: h } = this.layer, p = new THREE.Vector3();
     for (const [id, node] of this.nodes) {
       const at = positionOf(id);
@@ -42,7 +43,7 @@ export class Bubbles {
       p.copy(at).project(camera);
       if (p.z > 1 || Math.abs(p.x) > 1.2 || Math.abs(p.y) > 1.2) { node.hidden = true; continue; }
       node.hidden = false;
-      const scale = THREE.MathUtils.clamp(4 / distance, 0.8, 1);
+      const scale = THREE.MathUtils.clamp(4 / distance, 0.8, 1) * (1 - 0.35 * zoomOut);
       node.style.transform = `translate(${((p.x + 1) / 2 * w).toFixed(1)}px, ${((1 - p.y) / 2 * h).toFixed(1)}px) translate(-50%, -100%) scale(${scale.toFixed(3)})`;
       node.style.zIndex = String(1000 - Math.round(distance * 10));
     }

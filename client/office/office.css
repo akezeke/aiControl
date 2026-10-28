@@ -24,6 +24,7 @@
 .office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; pointer-events: none; transition: opacity .5s; }
 .office-hint.gone { opacity: 0; }
 @media (pointer: coarse) { .office-hint { display: none; } }
+@media (max-width: 640px) { .office-bubble { max-width: 200px; padding: 6px 11px; font-size: 14px; } .office-bubble .icon { font-size: 16px; } }
 @media (prefers-reduced-motion: reduce) { .office-bubble.highlight { animation: none; } }
 
 /* Talking: a narrower panel and no dimming, so the character stays in view beside it. */

@@ -33,7 +33,7 @@ export class OfficeCamera {
     const p = this.player, eye = p.position, look = new THREE.Vector3(Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch), Math.cos(p.yaw) * Math.cos(p.pitch)).add(eye);
     // Talking: ease the view onto the character's face, a little lower and closer than standing eye level.
     if (this.focusAmount > 0.001 && this.focusPoint) look.lerp(this.focusPoint, this.focusAmount);
-    const size = this.room.size?.split('x').map(Number) || [10, 10], [w, d] = size, height = Math.max(w, d) * 0.62 + 1;
+    const size = this.room.size?.split('x').map(Number) || [10, 10], [w, d] = size, height = (Math.max(w, d) * 0.62 + 1) / Math.min(1, this.camera.aspect * 1.2); // pull back further on tall (phone) screens
     const overFrom = new THREE.Vector3(w / 2, height, d + height * 0.45), overLook = new THREE.Vector3(w / 2, 0, d / 2 + 0.3);
     this.from.copy(eye).lerp(overFrom, this.amount); this.look.copy(look).lerp(overLook, this.amount);
     this.camera.position.copy(this.from); this.camera.lookAt(this.look);
