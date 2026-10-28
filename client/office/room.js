@@ -17,8 +17,9 @@ export const DESK_H = 0.76, SEAT_H = 0.47, HELPER_SCALE = 0.42;
 export const CHAIR_Z = -(DESK_D / 2 + 0.42), KEYS_Z = -0.27, MOUSE_X = -0.33;
 export const BACK_Z = -0.34; // front of the chair back, from the chair's centre
 const MONITOR_Z = DESK_D * 0.28;
-// A screen's light, in its desk's frame: just in front of it, aimed at the sitter's face.
-const BEAM = { from: new THREE.Vector3(0, DESK_H + 0.34, MONITOR_Z - 0.1), to: new THREE.Vector3(0, SEAT_H + 0.45, CHAIR_Z + 0.1) };
+// A screen's light, in its desk's frame: from the face of the screen (any further out lights the monitor like a desk lamp),
+// level with it toward the sitter.
+const BEAM = { from: new THREE.Vector3(0, DESK_H + 0.34, MONITOR_Z - 0.04), to: new THREE.Vector3(0, DESK_H + 0.22, CHAIR_Z) };
 // Each pod's colours: its rug, and its chairs in a stronger shade.
 const teams = [['#f4a6a6', '#e0675c'], ['#a6d8f4', '#3d8fd1'], ['#b9e4a1', '#4fa84a'], ['#f6d28b', '#e8a23a'], ['#cdb4f2', '#8a63d2'], ['#f7b8de', '#d9559c']];
 // Helpers' tiny desks in the parent desk's frame: either side of its chair, then behind it.

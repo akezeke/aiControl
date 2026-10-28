@@ -21,7 +21,8 @@ export function createLights(root, beam) {
   const sun = dims(new THREE.DirectionalLight('#fff8ee', 0.55), 0.2); sun.position.set(-2, 6, -7);
   root.add(dims(new THREE.HemisphereLight('#f6f4ff', '#5d6575', 0.6), 0.25), sun);
   const pool = Array.from({ length: SCREENS }, () => {
-    const light = new THREE.SpotLight('#ffffff', 0, 3, 1.15, 0.9, 2); root.add(light, light.target);
+    // A soft, wide cone that fades slowly, like a lit panel rather than a bulb.
+    const light = new THREE.SpotLight('#ffffff', 0, 2.5, 1.35, 1, 1); root.add(light, light.target);
     return { light, desk: null, on: false, level: 0, strength: 0 };
   });
   let on = true, level = -1, stale = true, assignIn = 0, rocker = null, led = null;
