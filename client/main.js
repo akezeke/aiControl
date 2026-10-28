@@ -463,12 +463,12 @@ function renderSessionHeader(header, session) {
   const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
   const metadata = el('details', 'chat-info'); metadata.open = expanded;
   const effort = pendingEffort.get(session.id) || session.effort, percent = contextPercent(session.context);
-  const summary = el('summary', '', [providerName(session.provider), session.project, session.model?.replace(/^claude-/, ''), effort].filter(Boolean).join(' · '));
+  const summary = el('summary', '', [providerName(session.provider), session.account, session.project, session.model?.replace(/^claude-/, ''), effort].filter(Boolean).join(' · '));
   if (modeLabels[session.permissionMode]) summary.append(chip(modeLabels[session.permissionMode], `mode-chip ${session.permissionMode}`, 'Permission mode'));
   if (session.context?.used) summary.append(chip(percent != null ? `${percent}%` : tokens(session.context.used), `ctx-chip${percent >= 80 ? ' high' : ''}`, 'Context used'));
   metadata.append(summary);
   const goal = session.goal, cost = session.cost;
-  const rows = [['Folder', session.cwd], ['Model', session.model || 'Not reported'], ['Effort', effort && `${effort}${session.effortPending ? ' · from your next message' : ''}`], ['Mode', session.permissionMode],
+  const rows = [['Folder', session.cwd], ['Account', session.account], ['Model', session.model || 'Not reported'], ['Effort', effort && `${effort}${session.effortPending ? ' · from your next message' : ''}`], ['Mode', session.permissionMode],
     ['Context', session.context?.used && `${tokens(session.context.used)}${session.context.window ? ` of ${tokens(session.context.window)} (${percent}%)` : ''}`], ['Branch', session.branch],
     ['Last turn', session.lastTurnMs && duration(session.lastTurnMs)], ['Cost', cost && `$${cost.usd.toFixed(2)} · +${cost.added} −${cost.removed} lines`],
     ['Goal', goal && `${goal.objective} · ${goal.status}${goal.tokenBudget ? ` · ${tokens(goal.tokensUsed)} of ${tokens(goal.tokenBudget)} tokens` : ''}`],

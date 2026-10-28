@@ -10,6 +10,8 @@ const node = (tag, className, text) => {
 
 export function renderUsage(container, accounts, { now = Date.now(), disconnected = false } = {}) {
   const rows = node('div', 'usage-accounts');
+  // With several Claude accounts every row gets a label column, empty for the default one, so meters stay aligned.
+  const labelled = accounts?.some(account => account.label);
   if (!accounts) {
     rows.append(node('span', 'usage-note', 'Usage unavailable · restart server'));
   }
@@ -24,6 +26,7 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
     mark.setAttribute('aria-label', `${account.name} · ${updated}${detail ? ` · ${detail}` : ''}`);
     mark.title = `${account.name} · ${updated}${account.updatedAt ? `\n${new Date(account.updatedAt).toLocaleString()}` : ''}${detail ? `\n${detail}` : ''}`;
     row.append(mark);
+    if (labelled) { const tag = node('span', 'usage-tag', account.label || ''); tag.title = account.name; row.append(tag); }
     const windows = node('div', 'usage-windows');
     for (const window of account.windows || []) {
       const view = usageWindowView(window, now);

@@ -16,7 +16,8 @@ async function parentPid(pid) {
 }
 // A new agent gets a window in the tmux session already working in this project, else in a session
 // named after it. The command is typed into a shell, so an error or exit stays readable there.
-export async function spawnAgent(cwd, provider, tmux = runTmux) {
+// configDir starts Claude under another account (CLAUDE_CONFIG_DIR); empty means the default ~/.claude.
+export async function spawnAgent(cwd, provider, { configDir = '', tmux = runTmux } = {}) {
   if (!['claude', 'codex'].includes(provider)) throw fail('Unknown agent.');
   const panes = (await tmux(['list-panes', '-a', '-F', '#{session_name}\t#{pane_current_path}']).catch(() => '')).split('\n').map(line => line.split('\t'));
   // npm stop ends the server's own session, so agents never go there.
@@ -26,7 +27,8 @@ export async function spawnAgent(cwd, provider, tmux = runTmux) {
   try {
     const pane = (await tmux([...target, '-d', '-c', cwd, '-n', provider, '-P', '-F', '#{pane_id}'])).trim();
     // Nobody can answer Codex's startup update prompt from here, and the thread only loads past it.
-    await tmux(['send-keys', '-t', pane, provider === 'codex' ? 'codex -c check_for_update_on_startup=false' : provider, 'Enter']);
+    const command = provider === 'codex' ? 'codex -c check_for_update_on_startup=false' : configDir ? `CLAUDE_CONFIG_DIR='${configDir.replaceAll("'", "'\\''")}' claude` : 'claude';
+    await tmux(['send-keys', '-t', pane, command, 'Enter']);
     return { session: name, pane, window: (await tmux(['display-message', '-p', '-t', pane, '#{window_index}']).catch(() => '')).trim() };
   } catch { throw fail('Could not open a tmux window.', 503); }
 }

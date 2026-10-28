@@ -106,8 +106,9 @@ export function renderPower(accounts = powerAccounts) {
   powerAccounts = accounts;
   document.documentElement.toggleAttribute('data-low-power', accounts.some(account => account.windows?.some(w => w.label === '5-hour' && w.usedPercent >= 100)));
   for (const bar of document.querySelectorAll('.power-bar')) {
-    const window = accounts.find(account => account.provider === bar.dataset.provider)?.windows?.find(w => w.label === '5-hour');
-    const used = Number.isFinite(window?.usedPercent) ? window.usedPercent : null;
+    // With several accounts of one provider, the fullest one sets the bar.
+    const levels = accounts.filter(account => account.provider === bar.dataset.provider).map(account => account.windows?.find(w => w.label === '5-hour')?.usedPercent).filter(Number.isFinite);
+    const used = levels.length ? Math.max(...levels) : null;
     bar.style.setProperty('--level', used == null ? 0 : Math.min(1, used / 100));
     bar.dataset.tone = used == null ? 'off' : used >= 100 ? 'full' : used >= 80 ? 'high' : '';
     bar.title = `${bar.dataset.provider === 'codex' ? 'Codex' : 'Claude'} 5h · ${used == null ? 'no data' : `${Math.round(used)}%`}`;

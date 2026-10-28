@@ -51,7 +51,7 @@ The first run asks how to reach the dashboard (Tailscale or this computer only) 
 npm run attach             # Open the server's tmux session
 npm stop                   # Stop the server
 npm restart                # Restart it
-npm run setup              # Change Tailscale/local mode and certificate
+npm run setup              # Change Tailscale/local mode, certificate and Claude accounts
 npm run password           # Change the PIN/password and sign out everywhere
 npm run dev:local          # Run on 127.0.0.1 only
 npm run demo               # Demo dashboard on port 47842, PIN 1234
@@ -70,7 +70,7 @@ npm test
 ## How it works
 
 - **Codex:** connects to the app-server control socket (`~/.codex/app-server-control/`, or `CODEX_HOME`) and rejoins loaded threads.
-- **Claude Code:** reads running sessions from `~/.claude/sessions` and transcripts from `~/.claude/projects`. Hooks forward questions and permission requests over a local socket. Messages are pasted into the session's tmux pane, or sent to its inbox outside tmux.
+- **Claude Code:** reads running sessions from `~/.claude/sessions` and transcripts from `~/.claude/projects`. Several accounts (`CLAUDE_CONFIG_DIR` folders, any name) go in `claudeDirs` in `.local/config.json`; `npm run setup` offers the ones it finds. Each gets its own hooks, sessions and usage row. Hooks forward questions and permission requests over a local socket. Messages are pasted into the session's tmux pane, or sent to its inbox outside tmux.
 - **Usage:** Codex's `account/rateLimits/read`, and the Claude CLI's internal OAuth usage endpoint with its existing login. Credentials never leave the backend.
 
 ## License
