@@ -29,6 +29,8 @@ export function mockCodexServer({ status = 'active', question = true, items, rat
           if (message.method === 'thread/loaded/list') send({ id: message.id, result: { data: [thread.id], nextCursor: null } });
           if (message.method === 'thread/resume' || message.method === 'thread/read') {
             if (message.params.threadId !== thread.id) throw new Error('Resumed an unloaded thread');
+            // A new thread writes its rollout on the first turn; until then only resume fails.
+            if (message.method === 'thread/resume' && fixture.noRollout) { send({ id: message.id, error: { code: -32600, message: `no rollout found for thread id ${thread.id}` } }); return; }
             send({ id: message.id, result: { thread } });
             if (message.method === 'thread/resume' && question) send({ id: 97, method: 'item/tool/requestUserInput', params: { threadId: thread.id, questions: [{ id: 'choice', question: 'Continue?', isOther: false, options: [{ label: 'Yes' }] }] } });
           }
@@ -62,7 +64,7 @@ export function mockCodexServer({ status = 'active', question = true, items, rat
               input = fixture.queue.splice(index, 1)[0].input;
             }
             const turn = { id: `turn-${fixture.turns.length + 1}`, status: 'inProgress', input };
-            fixture.turns.push(turn); fixture.currentTurnId = turn.id; thread.status = { type: 'active', activeFlags: [] };
+            fixture.turns.push(turn); fixture.currentTurnId = turn.id; fixture.noRollout = false; thread.status = { type: 'active', activeFlags: [] };
             send({ id: message.id, result: { turn } });
             send({ method: 'thread/status/changed', params: { threadId: thread.id, status: thread.status } });
           }

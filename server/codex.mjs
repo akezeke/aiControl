@@ -69,6 +69,8 @@ export class CodexAdapter {
   calls = new Map();
   resolutions = new Map();
   joined = new Set();
+  // Loaded threads with no rollout until their first turn: resume fails, but turn/start works.
+  fresh = new Set();
   items = new Map();
   submissions = new Map();
   startingQueue = new Set();
@@ -96,7 +98,7 @@ export class CodexAdapter {
       this.connected = false; this.detail = `Codex disconnected: ${reason.slice(0, 250)} Retrying…`;
       this.usage.stop('Codex is disconnected. Usage will refresh when it reconnects.');
       if (!this.stopped && this.lastError !== reason) { this.lastError = reason; this.log(`[Codex connection] ${reason.slice(0, 250)}`); }
-      this.joined.clear(); this.items.clear();
+      this.joined.clear(); this.fresh.clear(); this.items.clear();
       for (const session of this.sessions.values()) { session.status = 'offline'; session.control = false; this.store.removeSession(session.id); }
       for (const request of this.store.list()) if (request.provider === 'codex') this.store.removeSession(request.sessionId);
       for (const pending of [...this.calls.values(), ...this.resolutions.values()]) pending.reject(fail('Codex disconnected. Verify the request in the original client.', 503));
@@ -163,7 +165,7 @@ export class CodexAdapter {
         if (!current()) return;
         loaded.push(...page.data); cursor = page.nextCursor;
       } while (cursor);
-      for (const id of this.sessions.keys()) if (!loaded.includes(id)) { this.store.removeSession(`codex:${id}`); this.sessions.delete(id); this.joined.delete(id); }
+      for (const id of this.sessions.keys()) if (!loaded.includes(id)) { this.store.removeSession(`codex:${id}`); this.sessions.delete(id); this.joined.delete(id); this.fresh.delete(id); }
       // Only join already-loaded threads; never resume a saved conversation from disk.
       for (let start = 0; start < loaded.length; start += 8) await Promise.all(loaded.slice(start, start + 8).map(async id => {
         try {
@@ -172,9 +174,10 @@ export class CodexAdapter {
           if (!current()) return;
           this.upsert(result.thread);
           if (!this.joined.has(id)) {
-            await this.rpc('thread/resume', { threadId: id, excludeTurns: true });
+            try { await this.rpc('thread/resume', { threadId: id, excludeTurns: true }); }
+            catch (error) { if (error.rpcCode === -32600 && /no rollout found/.test(error.message)) { this.fresh.add(id); this.sessions.get(id).messagesState = 'ready'; return; } throw error; }
             if (!current()) return;
-            this.joined.add(id); this.sessions.get(id).control = true;
+            this.joined.add(id); this.fresh.delete(id); this.sessions.get(id).control = true;
           }
           await this.refreshMessages(id);
           if (!current()) return;
@@ -224,7 +227,7 @@ export class CodexAdapter {
   }
   requireMessaging(threadId) {
     const session = this.sessions.get(threadId);
-    if (!session || !this.joined.has(threadId)) throw fail('This session is no longer connected.', 409);
+    if (!session || !(this.joined.has(threadId) || this.fresh.has(threadId))) throw fail('This session is no longer connected.', 409);
     if (!this.connected) throw fail('Codex is disconnected. Reconnect before sending.', 503);
     return session;
   }
@@ -368,6 +371,6 @@ export class CodexAdapter {
       }, sourceKey);
     }
   }
-  list() { return [...this.sessions.values()].map(session => ({ ...session, messaging: { send: this.connected && this.joined.has(session.nativeId), queue: this.connected && this.joined.has(session.nativeId) && session.queueAvailable } })); }
+  list() { return [...this.sessions.values()].map(session => ({ ...session, messaging: { send: this.connected && (this.joined.has(session.nativeId) || this.fresh.has(session.nativeId)), queue: this.connected && this.joined.has(session.nativeId) && session.queueAvailable } })); }
   stop() { this.stopped = true; clearTimeout(this.retry); clearInterval(this.timer); this.connection?.close(); }
 }

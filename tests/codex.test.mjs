@@ -285,3 +285,15 @@ test('ambiguous delivery failures are retained and never automatically resubmitt
   await assert.rejects(adapter.sendMessage('thread', body), error => error.status === 504);
   assert.equal(sends, 1);
 });
+
+test('a new Codex thread takes its first message before it can be joined, then joins', async t => {
+  const store = new RequestStore(), server = mockCodexServer({ status: 'idle', question: false });
+  server.noRollout = true;
+  const adapter = new CodexAdapter(store, { createSocket: server.connect, log: () => {} });
+  t.after(() => { adapter.stop(); server.close(); }); adapter.start();
+  await until(() => adapter.list()[0]?.messaging.send, 'fresh thread never became sendable');
+  assert.deepEqual([adapter.list()[0].control, adapter.list()[0].messaging.queue, adapter.list()[0].messagesState], [false, false, 'ready']);
+  assert.equal((await adapter.sendMessage('live-thread', message('Start the game.'))).status, 'sent');
+  await adapter.refresh();
+  assert.equal(adapter.list()[0].control, true);
+});
