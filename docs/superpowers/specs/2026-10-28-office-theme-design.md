@@ -59,7 +59,7 @@ Poses blend over about 0.5 s. Bubbles are HTML elements positioned over the scen
 - **Room:** closed room with floor, full-height walls, windows with a sky gradient, a door and a tiled ceiling with decorative round lamps. Fixed toon lighting, no per-desk lights.
 - **Pods:** one group of desks per project, desks facing in pairs, sized to the session count. The project's sign hangs from the ceiling on cords; its border glows amber when someone there is waiting.
 - **Desk:** desk, chair, monitor whose screen color shows status (green working, amber waiting, dark idle), keyboard, and 0–2 props (plant, mug, rubber duck) picked by session id.
-- **Floor plan:** pods in a grid around an open start area by the door, with wide walkways. Order by project name, then session start time, so desks never swap between refreshes. The room grows and shrinks with the grid.
+- **Floor plan:** pods in a grid around an open start area by the door, with wide walkways. Pods are ordered by project name; sessions keep their desk across refreshes and new ones take the first free desk (the snapshot has no session start time). The room grows and shrinks with the grid.
 - **Arrivals and departures:** a new session walks in from the door and sits down. An ended session stands, waves and walks out; its desk stays for 30 s before the pod shrinks.
 - **Size:** designed for about 30 sessions.
 - **In-world info:**
