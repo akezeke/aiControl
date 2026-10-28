@@ -5,7 +5,7 @@ import { officeHasKeys } from './player.js';
 
 // Looking down at 55°, with room for the heads and bubbles over the desks and a margin round the screen edge.
 // Zoom goes from 3 m off the floor out to 1.6 times the fitted distance.
-const PITCH = 55 * Math.PI / 180, HEADS = 2.2, MARGIN = 0.07, CLOSEST = 3, FURTHEST = 1.6, KEY_PAN = 0.9, KEY_ZOOM = 1.5;
+export const PITCH = 55 * Math.PI / 180; const HEADS = 2.2, MARGIN = 0.07, CLOSEST = 3, FURTHEST = 1.6, KEY_PAN = 0.9, KEY_ZOOM = 1.5;
 const SLOPE = new THREE.Vector3(0, Math.sin(PITCH), Math.cos(PITCH));
 const PAN = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
 const ZOOM = { '+': -1, '=': -1, '-': 1, '_': 1 };

@@ -10,6 +10,8 @@ import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createMenu, createOverlays } from './bubbles.js';
 import { createBoards } from './boards.js';
 import { highlight } from './toon.js';
+import { shared } from './furniture.js';
+import { PITCH } from './overview.js';
 
 export function webglAvailable() {
   // three.js needs WebGL 2; the probe's context is released straight away.
@@ -109,11 +111,16 @@ export function mountOffice(container, hooks) {
     if (node === hovered) return;
     highlight(hovered, false); highlight(node, true); hovered = node; overlays.setAim(!!node);
   };
+  // The pods' name signs hang edge-on to the overview: it tips them up to face it, and a bit bigger (room.js shares their
+  // geometry as shared.sign; office.update finds them).
+  let signs = [];
+  const tiltSigns = () => { for (const sign of signs) { sign.rotation.x = -PITCH * view.amount; sign.scale.setScalar(1 + 0.4 * view.amount); } };
   frames.add(dt => {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
     // The overview has the keys and drags while it's up: you stay where you were.
     if (!view.overview) player.update(dt);
     view.update(dt); cast.update(dt, player.position); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    tiltSigns();
   });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
@@ -142,6 +149,7 @@ export function mountOffice(container, hooks) {
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id), monitor: monitorLines(session) }]));
       room.sync(layout, office.statuses);
       for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
+      signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });
       cast.sync(layout, snapshot.sessions, room, office.statuses);
       bubbles.sync(snapshot.sessions.filter(session => layout.desks.has(session.id) || session.parentId).map(session => ({ id: session.id, bubble: office.statuses.get(session.id).bubble, unread: hooks.isUnread?.(session) })));
       const waiting = snapshot.sessions.filter(session => office.statuses.get(session.id).bubble?.highlight);
