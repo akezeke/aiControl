@@ -1,7 +1,7 @@
 :root[data-theme-choice=office]:not([data-office-fallback]) .main-content { max-width: none; padding: 0; height: 100dvh; }
 :root[data-theme-choice=office]:not([data-office-fallback]) .main-content > :not(#office) { display: none; }
 #office { position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: #f6e7c8; touch-action: none; }
-#office canvas { display: block; width: 100%; height: 100%; }
+#office > canvas { display: block; width: 100%; height: 100%; }
 @media (max-width: 640px) { :root[data-theme-choice=office]:not([data-office-fallback]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
 
 .office-bubbles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
