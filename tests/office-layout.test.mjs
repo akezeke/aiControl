@@ -14,6 +14,15 @@ test('keeps seats when a session joins', () => {
   const next = layoutOffice([s('a', 'x'), s('b', 'x'), s('c', 'x')], first);
   for (const id of ['b', 'c']) assert.deepEqual([next.desks.get(id).x, next.desks.get(id).z], [first.desks.get(id).x, first.desks.get(id).z]);
 });
+test('a fresh layout seats the same whatever order the sessions come in', () => {
+  const seats = l => [...l.desks.values()].map(d => `${d.sessionId}@${d.slot}`).sort();
+  assert.deepEqual(seats(layoutOffice([s('c', 'x'), s('a', 'x'), s('b', 'x')])), seats(layoutOffice([s('b', 'x'), s('c', 'x'), s('a', 'x')])));
+});
+test('seats saved from an earlier page keep their slots, and anyone gone is dropped at once', () => {
+  const saved = { desks: new Map([['b', { podKey: '/p/x', slot: 0, vacantSince: -Infinity }], ['gone', { podKey: '/p/x', slot: 1, vacantSince: -Infinity }]]), pods: [], room: { width: 0, depth: 0 } };
+  const l = layoutOffice([s('a', 'x'), s('b', 'x')], saved);
+  assert.equal(l.desks.get('b').slot, 0); assert.equal(l.desks.get('a').slot, 1); assert.equal(l.desks.has('gone'), false);
+});
 test('missing project goes to Unknown', () => {
   const l = layoutOffice([{ id: 'a', status: 'idle' }]);
   assert.equal(l.pods[0].name, 'Unknown');

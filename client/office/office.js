@@ -31,6 +31,18 @@ export function mountOffice(container, hooks) {
   const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
   const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });
   let layout;
+  // Seats outlive a reload: the first layout starts from the last one's desks (anyone gone since is dropped at once,
+  // not left to walk out), or everyone would sit in whatever order the snapshot lists them.
+  const seatsKey = 'ai-control-office-seats';
+  let seats = '';
+  const savedSeats = () => {
+    try { return { desks: new Map(JSON.parse(localStorage.getItem(seatsKey) || '[]').map(([id, podKey, slot]) => [id, { podKey, slot, vacantSince: -Infinity }])), pods: [], room: { width: 0, depth: 0 } }; }
+    catch { return undefined; }
+  };
+  const saveSeats = () => {
+    const now = JSON.stringify([...layout.desks.values()].filter(desk => desk.vacantSince === undefined).map(desk => [desk.sessionId, desk.podKey, desk.slot]));
+    if (now !== seats) { seats = now; try { localStorage.setItem(seatsKey, now); } catch { /* per tab only */ } }
+  };
 
   const frames = new Set(), listeners = [];
   const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); listeners.push(() => target.removeEventListener(type, fn, options)); };
@@ -145,7 +157,7 @@ export function mountOffice(container, hooks) {
     onFrame(fn) { frames.add(fn); return () => frames.delete(fn); },
     update(snapshot, { error = '' } = {}) {
       office.snapshot = snapshot; office.error = error;
-      layout = layoutOffice(snapshot.sessions, layout); view.setLayout(layout);
+      layout = layoutOffice(snapshot.sessions, layout || savedSeats()); view.setLayout(layout); saveSeats();
       cast.frozen = !!error;
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id), monitor: monitorLines(session) }]));
       room.sync(layout, office.statuses);

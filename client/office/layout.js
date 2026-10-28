@@ -38,7 +38,8 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
       const old = previous?.desks.get(session.id);
       if (old?.podKey === pod.key && slots[old.slot] === undefined) { slots[old.slot] = session.id; kept.add(session.id); }
     }
-    for (const session of pod.sessions) {
+    // By id, so a fresh page seats everyone the same way whatever order the snapshot lists them in.
+    for (const session of [...pod.sessions].sort((a, b) => a.id.localeCompare(b.id))) {
       if (kept.has(session.id)) continue;
       let slot = 0; while (slots[slot] !== undefined) slot++;
       slots[slot] = session.id;
