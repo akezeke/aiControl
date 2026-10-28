@@ -7,7 +7,6 @@ import { DESK_W, DESK_D } from './layout.js';
 
 export const WALL_H = 3, DESK_H = 0.76, SEAT_H = 0.47;
 const WALL_T = 0.2;
-const screens = { green: '#5ee08a', amber: '#ffb23e', dark: '#2b3140', red: '#ff5a5a', off: '#16181d' };
 const rugs = ['#f4a6a6', '#a6d8f4', '#b9e4a1', '#f6d28b', '#cdb4f2', '#f7b8de'];
 
 const shared = {};
@@ -38,7 +37,9 @@ function createDesk({ props }) {
   // Monitor: chunky bezel, glowing screen, round foot.
   const monitor = new THREE.Group(); monitor.position.set(0, DESK_H, DESK_D * 0.28); monitor.rotation.y = Math.PI; group.add(monitor);
   const bezel = mesh(once('bezel', () => rounded(0.62, 0.4, 0.06, 0.03)), dark); bezel.position.y = 0.34; monitor.add(bezel);
-  const screen = new THREE.Mesh(once('screen', () => new THREE.PlaneGeometry(0.54, 0.32)), new THREE.MeshBasicMaterial({ color: screens.off }));
+  // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change.
+  const screenTexture = canvasTexture(432, 256, drawScreen);
+  const screen = new THREE.Mesh(once('screen', () => new THREE.PlaneGeometry(0.54, 0.32)), new THREE.MeshBasicMaterial({ map: screenTexture }));
   screen.position.set(0, 0.34, 0.031); monitor.add(screen);
   const neck = mesh(once('neck', () => new THREE.CylinderGeometry(0.03, 0.03, 0.14, 8)), dark, 0.006); neck.position.y = 0.09; monitor.add(neck);
   const foot = mesh(once('foot', () => new THREE.CylinderGeometry(0.12, 0.13, 0.025, 20)), dark, 0.006); foot.position.y = 0.012; monitor.add(foot);
@@ -52,8 +53,24 @@ function createDesk({ props }) {
   // Props on the desk corners.
   const spots = [[-DESK_W * 0.36, DESK_D * 0.2], [DESK_W * 0.36, DESK_D * 0.2]];
   props.forEach((prop, i) => { const item = makeProp(prop); item.position.set(spots[i][0], DESK_H, spots[i][1]); group.add(item); });
-  return { group, screen, chair };
+  return { group, screen, screenTexture, chair };
 }
+
+const tints = { green: ['#0f2a1a', '#5ee08a'], amber: ['#2e2108', '#ffb23e'], dark: ['#151821', '#7d8699'], red: ['#2e0f0f', '#ff6b6b'], off: ['#0d0e12', '#3a3f4b'] };
+function drawScreen(g, w, h, monitor = null, tone = 'off') {
+  const [background, accent] = tints[tone] || tints.off;
+  g.fillStyle = background; g.fillRect(0, 0, w, h);
+  if (!monitor) return;
+  g.fillStyle = accent; g.fillRect(0, 0, w, 34);
+  g.fillStyle = background; g.font = 'bold 20px ui-monospace, monospace'; g.textBaseline = 'middle';
+  g.fillText(clip(g, monitor.title, w - 20), 10, 18);
+  g.font = '17px ui-monospace, monospace'; g.textBaseline = 'top';
+  monitor.lines.forEach(({ text, kind }, i) => {
+    g.fillStyle = kind === 'user' ? '#ffffff' : kind === 'tool' ? accent : '#c9cfdb';
+    g.fillText(clip(g, `${kind === 'user' ? '› ' : kind === 'tool' ? '• ' : '  '}${text}`, w - 20), 10, 46 + i * 34);
+  });
+}
+const clip = (g, text, max) => { let t = String(text); while (t.length > 1 && g.measureText(t).width > max) t = t.slice(0, -2) + '…'; return t; };
 
 function makeProp(kind) {
   const group = new THREE.Group();
@@ -111,7 +128,8 @@ export function createRoom(scene) {
         let desk = desks.get(id);
         if (!desk) { desk = createDesk({ props: statuses.get(id)?.identity?.props || [] }); desks.set(id, desk); root.add(desk.group); }
         desk.group.position.set(place.x, 0, place.z); desk.group.rotation.y = place.rotation;
-        desk.screen.material.color.set(screens[statuses.get(id)?.screen] || screens.off);
+        const status = statuses.get(id), screenKey = JSON.stringify([status?.screen, status?.monitor]);
+        if (desk.screenKey !== screenKey) { desk.screenKey = screenKey; desk.screenTexture.redraw(status?.monitor, status?.screen); }
       }
       for (const [id, desk] of desks) if (!layout.desks.has(id)) { removeDesk(desk); desks.delete(id); }
       const podKeys = new Set();
@@ -139,7 +157,7 @@ export function createRoom(scene) {
     return { group, texture, rug, waiting: null };
   }
 
-  function removeDesk(desk) { desk.group.removeFromParent(); desk.screen.material.dispose(); }
+  function removeDesk(desk) { desk.group.removeFromParent(); desk.screenTexture.dispose(); desk.screen.material.dispose(); }
 
   function buildShell({ room: { width, depth }, door }) {
     disposeTree(shell, false);

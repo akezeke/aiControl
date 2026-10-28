@@ -49,6 +49,15 @@ export function identity(id) {
   };
 }
 
+// What the session's monitor shows: its title and last few message lines, newest at the bottom.
+export function monitorLines(session, count = 6) {
+  const lines = (session.messages || []).slice(-count).map(message => ({
+    kind: message.tool ? 'tool' : message.role === 'user' ? 'user' : 'assistant',
+    text: oneLine(message.text).replace(/[`*_#>]/g, ''),
+  }));
+  return { title: session.title || session.project || 'Session', lines };
+}
+
 export function isTypingTarget(element) {
   if (!element) return false;
   return ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName) || !!element.isContentEditable || !!element.closest?.('#panel');

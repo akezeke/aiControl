@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import './office.css';
 import { layoutOffice } from './layout.js';
-import { officeStatus, identity } from './status.js';
+import { officeStatus, identity, monitorLines } from './status.js';
 import { createRoom } from './room.js';
 import { Cast } from './animation.js';
 import { Player, pick, officeHasKeys } from './player.js';
@@ -69,7 +69,7 @@ export function mountOffice(container, hooks) {
     update(snapshot, { error = '' } = {}) {
       office.snapshot = snapshot; office.error = error;
       layout = layoutOffice(snapshot.sessions, layout);
-      office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id) }]));
+      office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id), monitor: monitorLines(session) }]));
       room.sync(layout, office.statuses);
       cast.sync(layout, snapshot.sessions, room, office.statuses);
       bubbles.sync(snapshot.sessions.filter(session => layout.desks.has(session.id) || session.parentId).map(session => ({ id: session.id, bubble: office.statuses.get(session.id).bubble, unread: hooks.isUnread?.(session) })));
