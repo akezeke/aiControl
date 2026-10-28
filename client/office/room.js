@@ -16,7 +16,8 @@ export const DESK_H = 0.76, SEAT_H = 0.47, HELPER_SCALE = 0.42;
 export const CHAIR_Z = -(DESK_D / 2 + 0.42), KEYS_Z = -0.27, MOUSE_X = -0.33;
 export const BACK_Z = -0.34; // front of the chair back, from the chair's centre
 const MONITOR_Z = DESK_D * 0.28;
-const rugs = ['#f4a6a6', '#a6d8f4', '#b9e4a1', '#f6d28b', '#cdb4f2', '#f7b8de'];
+// Each pod's colours: its rug, and its chairs in a stronger shade.
+const teams = [['#f4a6a6', '#e0675c'], ['#a6d8f4', '#3d8fd1'], ['#b9e4a1', '#4fa84a'], ['#f6d28b', '#e8a23a'], ['#cdb4f2', '#8a63d2'], ['#f7b8de', '#d9559c']];
 // Helpers' tiny desks in the parent desk's frame: either side of its chair, then behind it.
 const HELPER_SPOTS = [[0.56, -0.66], [-0.56, -0.66], [-0.6, -1.42]];
 const CUP_SPOTS = [[0.5, -0.34], [0.62, -0.3], [0.56, -0.2], [0.68, -0.19], [0.5, -0.1], [0.63, -0.09]];
@@ -26,9 +27,9 @@ const leds = { green: '#5ee08a', amber: '#ffb23e', dark: '#4d6fa8', red: '#ff6b6
 const B = (w, h, d, x, y, z, r = 0.01) => (r ? rounded(w, h, d, r) : new THREE.BoxGeometry(w, h, d)).translate(x, y, z);
 const C = (top, bottom, h, x, y, z, n = 14) => new THREE.CylinderGeometry(top, bottom, h, n).translate(x, y, z);
 const deskParts = width => [
-  [B(width * 0.94, 0.07, DESK_D * 0.92, 0, DESK_H - 0.035, 0, 0.03), '#c98f5a'],
-  ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, z]) => [C(0.035, 0.03, DESK_H - 0.07, x * width * 0.42, (DESK_H - 0.07) / 2, z * DESK_D * 0.36, 10), '#a8743f']),
-  [B(width * 0.8, 0.34, 0.02, 0, DESK_H - 0.24, DESK_D * 0.36, 0.006), '#b98352'],
+  [B(width * 0.94, 0.07, DESK_D * 0.92, 0, DESK_H - 0.035, 0, 0.03), '#f3f1ec'],
+  ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, z]) => [C(0.035, 0.03, DESK_H - 0.07, x * width * 0.42, (DESK_H - 0.07) / 2, z * DESK_D * 0.36, 10), '#3a3d46']),
+  [B(width * 0.8, 0.34, 0.02, 0, DESK_H - 0.24, DESK_D * 0.36, 0.006), '#d5dae1'],
 ];
 // Chunky bezel with a bump on the back; the screen is a separate plane.
 const monitorParts = () => [
@@ -44,8 +45,8 @@ const towerParts = () => [
   ...[0.08, 0.11, 0.14].map(y => [B(0.1, 0.006, 0.006, 0, y, -0.2, 0), '#4a5160']), [C(0.018, 0.018, 0.012, 0, 0, 0, 12).rotateX(Math.PI / 2).translate(0, 0.24, -0.2), '#8a8f99'],
 ];
 // Office chair: padded seat and back on a gas post, five-star base on casters. Its origin is on the floor under the seat.
-const chairParts = () => {
-  const seat = '#5b7fd6', dark = '#3a3d46', parts = [
+const chairParts = seat => {
+  const dark = '#3a3d46', parts = [
     [C(0.055, 0.06, 0.06, 0, 0.08, 0), dark], [C(0.024, 0.024, SEAT_H - 0.18, 0, 0.1 + (SEAT_H - 0.18) / 2, 0, 10), '#8a8f99'], [B(0.22, 0.04, 0.22, 0, SEAT_H - 0.11, 0, 0.01), dark],
     [B(0.52, 0.09, 0.48, 0, SEAT_H - 0.045, 0, 0.04), seat], [B(0.07, 0.03, 0.16, 0, SEAT_H - 0.1, -0.26, 0.008), dark], [B(0.07, 0.4, 0.03, 0, SEAT_H + 0.08, -0.34, 0.008), dark],
     [rounded(0.46, 0.48, 0.08, 0.04).rotateX(-0.15).translate(0, SEAT_H + 0.38, BACK_Z - 0.04), seat],
@@ -59,16 +60,16 @@ const chairParts = () => {
 
 // One desk in its own frame: the sitter faces +z from the chair at -z; the monitor is at the far (+z) edge facing them.
 // A helper's desk is the same, narrower and bare, and scaled down.
-function createDesk(width = DESK_W, helper = false) {
+function createDesk(color, width = DESK_W, helper = false) {
   const group = new THREE.Group();
   group.add(piece(`desk${width}`, () => deskParts(width)), piece('monitor', monitorParts), piece('keyboard', keyboardParts, 0.005));
   // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change.
   const screenTexture = helper ? canvasTexture(216, 128, drawScreen) : canvasTexture(432, 256, drawScreen);
   const screen = new THREE.Mesh(once('screen', () => new THREE.PlaneGeometry(0.54, 0.32)), new THREE.MeshBasicMaterial({ map: screenTexture }));
   screen.position.set(0, DESK_H + 0.34, MONITOR_Z - 0.032); screen.rotation.y = Math.PI; group.add(screen);
-  const chair = piece('chair', chairParts); chair.position.z = CHAIR_Z; group.add(chair);
+  const chair = piece(`chair${color}`, () => chairParts(color)); chair.position.z = CHAIR_Z; group.add(chair);
   const chairShadow = floorShadow(0.72, 0.72, 0.3); chairShadow.position.z = CHAIR_Z; group.add(floorShadow(width, DESK_D * 1.05, 0.3), chairShadow);
-  const desk = { group, screen, screenTexture, chair };
+  const desk = { group, screen, screenTexture, chair, color };
   if (helper) return desk;
   const tower = piece('tower', towerParts); tower.position.set(-0.5, 0, 0.06); group.add(tower); // on the floor under the desk, leaving the top free
   desk.led = new THREE.Mesh(once('led', () => new THREE.SphereGeometry(0.012, 8, 6)), new THREE.MeshBasicMaterial({ color: leds.off })); desk.led.position.set(0, 0.39, -0.205); tower.add(desk.led);
@@ -113,9 +114,9 @@ export function createRoom(scene) {
   const root = new THREE.Group(); scene.add(root);
   const shell = new THREE.Group(); root.add(shell);
   // Soft fill plus daylight through the back windows; the ceiling lamps (point lights, in the shell) do the rest.
-  const sun = new THREE.DirectionalLight('#fff4de', 0.55); sun.position.set(-2, 6, -7);
-  root.add(new THREE.HemisphereLight('#fff1d6', '#6e5c4a', 0.6), sun);
-  const desks = new Map(), signs = new Map();
+  const sun = new THREE.DirectionalLight('#fff8ee', 0.55); sun.position.set(-2, 6, -7);
+  root.add(new THREE.HemisphereLight('#f6f4ff', '#5d6575', 0.6), sun);
+  const desks = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
   const room = {
     colliders: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
     deskAnchor(id) {
@@ -132,9 +133,10 @@ export function createRoom(scene) {
     sync(layout, statuses) {
       if (room.size !== `${layout.room.width}x${layout.room.depth}`) buildShell(layout);
       const solid = [];
+      for (const pod of layout.pods) if (!podColors.has(pod.key)) podColors.set(pod.key, podColors.size % teams.length);
       for (const [id, place] of layout.desks) {
         let desk = desks.get(id);
-        if (!desk) { desk = createDesk(); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group); }
+        if (!desk) { desk = createDesk(teams[podColors.get(place.podKey)][1]); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group); }
         desk.group.position.set(place.x, 0, place.z); desk.group.rotation.y = place.rotation;
         const status = statuses.get(id);
         redraw(desk, status);
@@ -144,7 +146,7 @@ export function createRoom(scene) {
         while (desk.helpers.length > place.subagents.length) removeDesk(desk.helpers.pop());
         place.subagents.forEach((kid, i) => {
           let helper = desk.helpers[i];
-          if (!helper) { helper = desk.helpers[i] = createDesk(1, true); helper.group.scale.setScalar(HELPER_SCALE); helper.group.position.set(HELPER_SPOTS[i][0], 0, HELPER_SPOTS[i][1]); desk.group.add(helper.group); }
+          if (!helper) { helper = desk.helpers[i] = createDesk(desk.color, 1, true); helper.group.scale.setScalar(HELPER_SCALE); helper.group.position.set(HELPER_SPOTS[i][0], 0, HELPER_SPOTS[i][1]); desk.group.add(helper.group); }
           redraw(helper, statuses.get(kid));
         });
         desk.group.updateMatrixWorld(true);
@@ -186,7 +188,7 @@ export function createRoom(scene) {
     const board = new THREE.Mesh(once('sign', () => rounded(1.6, 0.4, 0.05, 0.03)), [null, null, null, null, null, null].map((_, i) => i === 4 || i === 5 ? new THREE.MeshBasicMaterial({ map: texture }) : toonMaterial('#2f3542')));
     board.position.y = y; group.add(board);
     for (const x of [-0.6, 0.6]) { const cord = new THREE.Mesh(once('cord', () => new THREE.CylinderGeometry(0.008, 0.008, WALL_H - y - 0.2, 6)), toonMaterial('#2f3542')); cord.position.set(x, (WALL_H + y + 0.2) / 2, 0); group.add(cord); }
-    const rug = new THREE.Mesh(once('rug', () => new RoundedBoxGeometry(1, 0.012, 1, 2, 0.005)), toonMaterial(rugs[signs.size % rugs.length])); rug.position.y = 0.006; group.add(rug);
+    const rug = new THREE.Mesh(once('rug', () => new RoundedBoxGeometry(1, 0.012, 1, 2, 0.005)), toonMaterial(teams[podColors.get(pod.key)][0])); rug.position.y = 0.006; group.add(rug);
     return { group, texture, rug, waiting: null };
   }
 
@@ -198,32 +200,31 @@ export function createRoom(scene) {
   function buildShell({ room: { width, depth }, door }) {
     disposeTree(shell, false);
     room.size = `${width}x${depth}`;
-    const wallMaterial = () => toonMaterial('#f3ead8', { transparent: true });
-    // Floor: warm planks drawn once into a repeating texture.
-    const planks = canvasTexture(256, 256, g => {
-      g.fillStyle = '#e2b47c'; g.fillRect(0, 0, 256, 256); g.strokeStyle = '#c99a63'; g.lineWidth = 3;
-      for (let y = 0; y <= 256; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
-      for (let y = 0; y < 256; y += 32) { const x = (y / 32 % 2) * 128 + 64; g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 32); g.stroke(); }
+    // Floor: carpet tiles, a shade apart, drawn once into a repeating texture.
+    const carpet = canvasTexture(128, 128, g => {
+      for (const [x, y] of [[0, 0], [64, 0], [0, 64], [64, 64]]) { g.fillStyle = (x + y) % 128 ? '#8899af' : '#8192a9'; g.fillRect(x, y, 64, 64); }
+      g.strokeStyle = '#7889a0'; g.lineWidth = 1.5; g.strokeRect(0, 0, 128, 128); g.strokeRect(0, 0, 64, 64); g.strokeRect(64, 64, 64, 64);
     });
-    planks.wrapS = planks.wrapT = THREE.RepeatWrapping; planks.repeat.set(width / 2, depth / 2);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), toonMaterial('#ffffff', { map: planks }));
+    carpet.wrapS = carpet.wrapT = THREE.RepeatWrapping; carpet.repeat.set(width / 1.6, depth / 1.6);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), toonMaterial('#ffffff', { map: carpet }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(width / 2, 0, depth / 2); floor.userData.floor = true; shell.add(floor);
 
     // Walls, each with the inward normal used to fade the ones between the overview camera and the room.
     // What hangs on a wall is its child, so it hides with the wall. Side walls' local x runs toward -z: x = depth / 2 - z.
     room.fadeables.walls = []; room.wallColliders = [];
-    const wall = (w, x, z, rotation, normal) => {
-      const m = mesh(new THREE.BoxGeometry(w, WALL_H, WALL_T), wallMaterial(), 0);
+    const wall = (w, x, z, rotation, normal, color = '#eef1f5') => {
+      const m = mesh(new THREE.BoxGeometry(w, WALL_H, WALL_T), toonMaterial(color, { transparent: true }), 0);
       m.position.set(x, WALL_H / 2, z); m.rotation.y = rotation; shell.add(m);
-      const trim = mesh(new THREE.BoxGeometry(w, 0.14, WALL_T + 0.04), toonMaterial('#8c6a4f'), 0); trim.position.y = -WALL_H / 2 + 0.07; m.add(trim);
+      const trim = mesh(new THREE.BoxGeometry(w, 0.14, WALL_T + 0.04), toonMaterial('#3a4352'), 0); trim.position.y = -WALL_H / 2 + 0.07; m.add(trim);
       room.fadeables.walls.push({ mesh: m, normal });
       room.wallColliders.push(new THREE.Box3().setFromObject(m));
       return m;
     };
-    const back = wall(width + WALL_T * 2, width / 2, -WALL_T / 2, 0, new THREE.Vector3(0, 0, 1));
+    // Two accent walls: teal behind the windows, coral on the right.
+    const back = wall(width + WALL_T * 2, width / 2, -WALL_T / 2, 0, new THREE.Vector3(0, 0, 1), '#3fa39b');
     const front = wall(width + WALL_T * 2, width / 2, depth + WALL_T / 2, 0, new THREE.Vector3(0, 0, -1));
     const left = wall(depth, -WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(1, 0, 0));
-    const right = wall(depth, width + WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(-1, 0, 0));
+    const right = wall(depth, width + WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(-1, 0, 0), '#ee8a6c');
     // Hangs `item` on a wall at world height y; `along` is the wall's local x. Back and left walls face +z locally, front and right -z.
     const hang = (on, item, along, y, out = 0.02) => { const flip = on === front || on === right; item.position.set(along, y - WALL_H / 2, (WALL_T / 2 + out) * (flip ? -1 : 1)); if (flip) item.rotation.y = Math.PI; on.add(item); return item; };
 
@@ -251,7 +252,7 @@ export function createRoom(scene) {
 
     // Door in the front wall, facing into the room, with a coat rack and an extinguisher beside it.
     const doorGroup = new THREE.Group(); doorGroup.position.set(door.x - width / 2, -WALL_H / 2, -WALL_T / 2 - 0.02); doorGroup.rotation.y = Math.PI; front.add(doorGroup);
-    const panel = mesh(rounded(1.05, 2.15, 0.06, 0.03), toonMaterial('#9b6a43')); panel.position.y = 1.075; doorGroup.add(panel);
+    const panel = mesh(rounded(1.05, 2.15, 0.06, 0.03), toonMaterial('#e0574a')); panel.position.y = 1.075; doorGroup.add(panel);
     const knob = mesh(new THREE.SphereGeometry(0.04, 12, 8), toonMaterial('#f2c14e'), 0.006); knob.position.set(0.4, 1.05, 0.06); doorGroup.add(knob);
     place(coatRack(), door.x + 0.85, depth - 0.35, 0.4);
     hang(front, extinguisher(), door.x - width / 2 - 0.75, 0.25, 0);
@@ -262,7 +263,7 @@ export function createRoom(scene) {
     const clock = new THREE.Group(); const rim = mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 32).rotateX(Math.PI / 2), toonMaterial('#2f3542'), 0.008); clock.add(rim);
     const clockFace = new THREE.Mesh(new THREE.CircleGeometry(0.25, 32), new THREE.MeshBasicMaterial({ color: '#ffffff' })); clockFace.position.z = 0.032; clock.add(clockFace); clock.userData.face = clockFace;
     hang(front, clock, door.x - width / 2, 2.6, 0.04);
-    const waiting = hang(front, board(1.1, 0.8, '#8c6a4f'), door.x - width / 2 - 1.4, 1.5, 0.03);
+    const waiting = hang(front, board(1.1, 0.8, '#3a4352'), door.x - width / 2 - 1.4, 1.5, 0.03);
     room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face };
 
     // Left wall: a bookshelf at the back, the coffee corner at the front, pictures where there's room.
@@ -280,7 +281,7 @@ export function createRoom(scene) {
 
     // Lounge: a rug, a sofa against the front wall, an armchair, a low table, a lamp and a plant.
     const lx = width - 2.1;
-    const lounge = rug(3.1, 2.5, '#5f8fb5'); lounge.position.set(width - 1.85, 0.007, depth - 1.5); shell.add(lounge);
+    const lounge = rug(3.1, 2.5, '#f2c14e'); lounge.position.set(width - 1.85, 0.007, depth - 1.5); shell.add(lounge);
     place(sofa(), lx, depth - 0.5, Math.PI); shadowUnder(lx, depth - 0.5, 2, 0.95);
     place(armchair(), width - 0.6, depth - 1.75, -Math.PI / 2); shadowUnder(width - 0.6, depth - 1.75, 0.9, 0.95);
     place(lowTable(), lx, depth - 1.65); shadowUnder(lx, depth - 1.65, 1.2, 0.7);
@@ -291,10 +292,10 @@ export function createRoom(scene) {
     if (door.x - 2.2 > 2) { hang(front, picture(5, 0.8, 0.8), (door.x - 2.2) / 2 + 0.4 - width / 2, 1.7); place(plant('bush'), door.x - 2.6, depth - 0.45); }
 
     // Ceiling tiles and round lamps, each with a soft glow; hidden as one group in the overview.
-    const tiles = canvasTexture(128, 128, g => { g.fillStyle = '#fbf8f1'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#ddd6c6'; g.lineWidth = 4; g.strokeRect(0, 0, 128, 128); });
+    const tiles = canvasTexture(128, 128, g => { g.fillStyle = '#fbfbfa'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#d8dce2'; g.lineWidth = 4; g.strokeRect(0, 0, 128, 128); });
     tiles.wrapS = tiles.wrapT = THREE.RepeatWrapping; tiles.repeat.set(width / 1.2, depth / 1.2);
     const ceiling = new THREE.Group(); shell.add(ceiling);
-    const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), new THREE.MeshBasicMaterial({ map: tiles, color: '#d8d0c0', transparent: true }));
+    const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), new THREE.MeshBasicMaterial({ map: tiles, color: '#dfe2e7', transparent: true }));
     ceilingPlane.rotation.x = Math.PI / 2; ceilingPlane.position.set(width / 2, WALL_H, depth / 2); ceiling.add(ceilingPlane);
     const lampMaterial = new THREE.MeshBasicMaterial({ color: '#fff8e2', transparent: true }), glowMaterial = new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
     for (let x = 2; x < width - 1; x += 4) for (let z = 2; z < depth - 1; z += 4) {
@@ -302,10 +303,10 @@ export function createRoom(scene) {
       const glow = new THREE.Mesh(once('glow', () => new THREE.PlaneGeometry(2.4, 2.4).rotateX(Math.PI / 2)), glowMaterial); glow.position.set(x, WALL_H - 0.005, z); ceiling.add(glow);
     }
     room.fadeables.ceiling = ceiling;
-    // The lamps' light: a few warm point lights on a coarse grid (each one costs every lit pixel, so not one per lamp).
+    // The lamps' light: a few point lights on a coarse grid (each one costs every lit pixel, so not one per lamp).
     const cols = Math.ceil(width / 8), rows = Math.ceil(depth / 8);
     for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
-      const light = new THREE.PointLight('#ffe2b0', 6, 0, 1.5); light.position.set((i + 0.5) * width / cols, WALL_H - 0.35, (j + 0.5) * depth / rows); shell.add(light);
+      const light = new THREE.PointLight('#ffecd0', 6, 0, 1.5); light.position.set((i + 0.5) * width / cols, WALL_H - 0.35, (j + 0.5) * depth / rows); shell.add(light);
     }
   }
 
