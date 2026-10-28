@@ -51,14 +51,14 @@ export function mountOffice(container, hooks) {
   const player = new Player(renderer.domElement, {
     colliders: () => room.colliders,
     room: () => layout?.room,
-    // In first person, a mouse click that isn't on someone (or a board or spare desk) captures the mouse; captured, a click on
-    // the floor walks there. A press that closes the spare desk's menu does nothing else.
+    // In first person, a mouse click that isn't on someone (or a board or a pod's sign) captures the mouse; captured, a click on
+    // the floor walks there. A press that closes the sign's menu does nothing else.
     onPick: (at, mouse) => {
       if (dismissed) return;
       const hit = under(at);
       if (hit?.kind === 'character') office.talkTo(hit.id);
       else if (hit?.kind === 'board') office.readBoard(hit.node);
-      else if (hit?.kind === 'spare') office.offerDesk(hit, at);
+      else if (hit?.kind === 'hire') office.offerHire(hit, at);
       else if (hit?.kind === 'toggle') hit.node.userData.toggle();
       else if (mouse && !player.locked && !view.overview) player.lock();
       else if (hit?.kind === 'floor' && !view.overview) player.walkTo(hit.point);
@@ -89,7 +89,7 @@ export function mountOffice(container, hooks) {
   };
   const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview) });
   // Tab toggles the overview and Esc closes the menu or leaves the overview (Tab only from the scene itself: on a button or
-  // link it keeps moving focus). E talks to whoever is outlined (or goes to the board, flips the light switch, or offers the spare desk), else to
+  // link it keeps moving focus). E talks to whoever is outlined (or goes to the board, flips the light switch, or opens a pod sign's menu), else to
   // whoever is in front of you.
   listen(document, 'keydown', event => {
     if (!officeHasKeys(event)) return;
@@ -98,12 +98,12 @@ export function mountOffice(container, hooks) {
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE' && !menu.contains(event.target)) {
       event.preventDefault();
-      if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (spare) office.offerDesk(spare, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
+      if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
     }
   });
   // Outline whatever a click (or E) would get, with its card: under the dot when aiming with it, else under the mouse
   // (the scene or a bubble, not the buttons). Ten times a second is plenty.
-  let mouse = null, hovered = null, aimed = null, board = null, spare = null, toggle = null, dot = false, hoverIn = 0;
+  let mouse = null, hovered = null, aimed = null, board = null, hire = null, toggle = null, dot = false, hoverIn = 0;
   listen(container, 'pointermove', event => {
     mouse = event.pointerType === 'mouse' && (event.target === renderer.domElement || event.target.closest?.('.office-bubble')) ? event : null;
     if (!dot) card.move(mouse);
@@ -114,12 +114,12 @@ export function mountOffice(container, hooks) {
     if (aiming !== dot) { dot = aiming; overlays.showDot(aiming); hoverIn = 0; }
     if ((hoverIn -= dt) > 0) return;
     hoverIn = 0.1;
-    if (menu.open) return; // the spare desk keeps its outline while its menu is up
+    if (menu.open) return; // the sign keeps its outline while its menu is up
     const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
-    aimed = hit?.kind === 'character' ? hit.id : null; board = hit?.kind === 'board' ? hit.node : null; spare = hit?.kind === 'spare' ? hit : null; toggle = hit?.kind === 'toggle' ? hit.node : null;
+    aimed = hit?.kind === 'character' ? hit.id : null; board = hit?.kind === 'board' ? hit.node : null; hire = hit?.kind === 'hire' ? hit : null; toggle = hit?.kind === 'toggle' ? hit.node : null;
     const session = aimed && office.snapshot?.sessions.find(session => session.id === aimed);
-    card.show(session && hooks.describe?.(session) || spare && { title: 'New agent', project: spare.cwd.replace(/^\/home\/[^/]+/, '~') } || null); card.move(aiming ? player.centre : mouse);
-    const node = aimed && cast.characters.get(aimed)?.root || board || spare?.node || toggle;
+    card.show(session && hooks.describe?.(session) || hire && { title: 'Hire', project: hire.cwd.replace(/^\/home\/[^/]+/, '~') } || null); card.move(aiming ? player.centre : mouse);
+    const node = aimed && cast.characters.get(aimed)?.root || board || hire?.node || toggle;
     renderer.domElement.style.cursor = node && !aiming ? 'pointer' : view.overview ? view.overhead.dragging ? 'grabbing' : 'grab' : '';
     if (node === hovered) return;
     highlight(hovered, false); highlight(node, true); hovered = node; overlays.setAim(!!node);
@@ -206,8 +206,8 @@ export function mountOffice(container, hooks) {
       const spot = standBefore(centre, normal, THREE.MathUtils.clamp(Math.max(fit, Math.abs(rise) * 1.7), 1, 3.5), room.colliders, layout?.room);
       if (spot) player.flyTo(spot, centre, null, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z)));
     },
-    // A spare desk: let go of the mouse and offer Claude or Codex, started in its pod's folder.
-    offerDesk({ cwd, node, point }, at, focus = false) {
+    // A pod's sign: let go of the mouse and offer Claude or Codex, started in the pod's folder.
+    offerHire({ cwd, node, point }, at, focus = false) {
       player.unlock(); card.show(null);
       highlight(hovered, false); highlight(node, true); hovered = node;
       menuAt.copy(point); menu.show(cwd, at, focus);

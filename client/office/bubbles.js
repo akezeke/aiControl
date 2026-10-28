@@ -87,7 +87,7 @@ export function createCard(container) {
   const line = (className, ...parts) => { const div = document.createElement('div'); div.className = className; div.append(...parts.filter(part => part || part === 0)); return div; };
   let shown = '';
   return {
-    // `facts` from main.js's sessionFacts (or just a title and project, for a spare desk), or null to hide.
+    // `facts` from main.js's sessionFacts (or just a title and project, for a pod's sign), or null to hide.
     show(facts) {
       card.hidden = !facts;
       const signature = facts ? JSON.stringify(facts) : '';
@@ -108,7 +108,7 @@ export function createCard(container) {
   };
 }
 
-// A spare desk's menu: Claude or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
+// A pod sign's menu: Claude or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
 export function createMenu(container, onChoose) {
   const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
   let cwd = null;

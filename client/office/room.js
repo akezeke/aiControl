@@ -82,14 +82,12 @@ function createDesk(color, width = DESK_W, helper = false) {
   return desk;
 }
 
-const tints = { green: ['#0f2a1a', '#5ee08a'], amber: ['#2e2108', '#ffb23e'], dark: ['#151821', '#7d8699'], red: ['#2e0f0f', '#ff6b6b'], off: ['#0d0e12', '#3a3f4b'], spare: ['#151821', '#4f7cff'] };
+const tints = { green: ['#0f2a1a', '#5ee08a'], amber: ['#2e2108', '#ffb23e'], dark: ['#151821', '#7d8699'], red: ['#2e0f0f', '#ff6b6b'], off: ['#0d0e12', '#3a3f4b'] };
 // Drawn at 432×256 and scaled to the canvas, so helpers' smaller screens show the same thing.
 function drawScreen(g, w, h, monitor = null, tone = 'off') {
   const [background, accent] = tints[tone] || tints.off;
   g.setTransform(w / 432, 0, 0, h / 256, 0, 0); w = 432; h = 256;
   g.fillStyle = background; g.fillRect(0, 0, w, h);
-  // A spare desk's screen is a big + : start someone here.
-  if (tone === 'spare') { g.fillStyle = accent; g.fillRect(w / 2 - 9, h / 2 - 54, 18, 108); g.fillRect(w / 2 - 54, h / 2 - 9, 108, 18); }
   if (!monitor) return;
   g.fillStyle = accent; g.fillRect(0, 0, w, 34);
   g.fillStyle = background; g.font = 'bold 20px ui-monospace, monospace'; g.textBaseline = 'middle';
@@ -121,7 +119,7 @@ export function createRoom(scene) {
   const shell = new THREE.Group(); root.add(shell);
   // Fill, daylight and the screens' glow (lights.js); the ceiling lamps (point lights, in the shell) do the rest.
   const lights = createLights(root, BEAM);
-  const desks = new Map(), spares = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
+  const desks = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
   const room = {
     colliders: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
     deskAnchor(id) {
@@ -165,24 +163,11 @@ export function createRoom(scene) {
         if (!sign) { sign = createSign(pod); signs.set(pod.key, sign); root.add(sign.group); }
         sign.group.position.set(pod.x, 0, pod.z);
         sign.rug.scale.set(pod.width + 0.6, 1, pod.depth + 0.4);
+        sign.board.userData.hire = pod.cwd ? { cwd: pod.cwd, name: pod.name } : null; // clicking it starts another agent in the pod's folder
         const waiting = pod.deskIds.some(id => statuses.get(id)?.bubble?.highlight);
         if (sign.waiting !== waiting) { sign.waiting = waiting; sign.texture.redraw(waiting); }
       }
       for (const [key, sign] of signs) if (!podKeys.has(key)) { disposeTree(sign.group); signs.delete(key); }
-      // Each pod's spare desk, bare and switched off but for a + on the screen (and the back of the monitor, for the far side
-      // of the pod); clicking it starts an agent in the pod's folder.
-      for (const pod of layout.pods) {
-        let desk = spares.get(pod.key);
-        if (!pod.spare) { if (desk) { removeDesk(desk); spares.delete(pod.key); } continue; }
-        if (!desk) {
-          desk = createDesk(teams[podColors.get(pod.key)][1]); desk.screenTexture.redraw(null, 'spare'); spares.set(pod.key, desk); root.add(desk.group);
-          const back = new THREE.Mesh(once('screenBack', () => new THREE.PlaneGeometry(0.3, 0.18)), desk.screen.material); back.position.set(0, DESK_H + 0.32, MONITOR_Z + 0.081); desk.group.add(back);
-        }
-        desk.group.userData.spare = { cwd: pod.cwd, name: pod.name };
-        desk.group.position.set(pod.spare.x, 0, pod.spare.z); desk.group.rotation.y = pod.spare.rotation; desk.group.updateMatrixWorld(true);
-        for (const part of [desk.group.children[0], desk.chair]) solid.push(new THREE.Box3().setFromObject(part));
-      }
-      for (const [key, desk] of spares) if (!podKeys.has(key)) { removeDesk(desk); spares.delete(key); }
       room.colliders = [...room.wallColliders, ...room.furnitureColliders, ...solid];
       lights.refresh();
     },
@@ -212,7 +197,7 @@ export function createRoom(scene) {
     board.position.y = y; group.add(board);
     for (const x of [-0.6, 0.6]) { const cord = new THREE.Mesh(once('cord', () => new THREE.CylinderGeometry(0.008, 0.008, WALL_H - y - 0.2, 6)), toonMaterial('#2f3542')); cord.position.set(x, (WALL_H + y + 0.2) / 2, 0); group.add(cord); }
     const rug = new THREE.Mesh(once('rug', () => new RoundedBoxGeometry(1, 0.012, 1, 2, 0.005)), toonMaterial(teams[podColors.get(pod.key)][0])); rug.position.y = 0.006; group.add(rug);
-    return { group, texture, rug, waiting: null };
+    return { group, board, texture, rug, waiting: null };
   }
 
   function removeDesk(desk) {

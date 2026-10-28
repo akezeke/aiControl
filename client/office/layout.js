@@ -30,8 +30,7 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
   }
   const pods = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
 
-  // Seats from the previous layout stay put; newcomers take the lowest free slot. That slot is also the pod's spare desk,
-  // for starting another agent in its folder, so whoever you start there sits down at it.
+  // Seats from the previous layout stay put; newcomers take the lowest free slot.
   for (const pod of pods) {
     const slots = [], kept = new Set();
     for (const session of pod.sessions) {
@@ -45,9 +44,9 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
       slots[slot] = session.id;
     }
     pod.slots = slots;
+    // The folder the pod's sign starts another agent in (room.js), from someone still here.
     pod.cwd = pod.sessions.find(session => session.cwd && session.vacantSince === undefined)?.cwd;
-    if (pod.cwd) { pod.spare = 0; while (slots[pod.spare] !== undefined) pod.spare++; }
-    pod.pairs = Math.max(1, Math.ceil(Math.max(slots.length, pod.cwd ? pod.spare + 1 : 0) / 2));
+    pod.pairs = Math.max(1, Math.ceil(slots.length / 2));
     pod.width = pod.pairs * DESK_W;
     pod.depth = 2 * DESK_D + 2 * CHAIR;
   }
@@ -91,7 +90,7 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
 
   return {
     pods: pods.map(pod => ({ key: pod.key, name: pod.name, cwd: pod.cwd, x: pod.x, z: pod.z, width: pod.width, depth: pod.depth, col: pod.col, row: pod.row,
-      deskIds: pod.slots.filter(id => id !== undefined), spare: pod.cwd ? seat(pod, pod.spare) : null })),
+      deskIds: pod.slots.filter(id => id !== undefined) })),
     desks, room: { width, depth }, door: { x: width / 2, z: depth }, grid: { cols, cellW },
   };
 }
