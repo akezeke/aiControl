@@ -4,6 +4,17 @@ import * as THREE from 'three';
 
 const hintKey = 'ai-control-office-hint-2';
 
+// Emoji sit at different heights in their fonts (on Windows the keyboard sits low and the zzz high), so the icon is
+// drawn on a canvas with the drawing itself centred instead of set as text.
+function drawIcon(canvas, icon) {
+  const g = canvas.getContext('2d'), size = canvas.width, measure = scale => { g.font = `${size * scale}px system-ui, sans-serif`; return g.measureText(icon); };
+  let m = measure(0.82);
+  const fit = Math.min(1, size * 0.96 / (m.actualBoundingBoxLeft + m.actualBoundingBoxRight || 1), size * 0.96 / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent || 1));
+  if (fit < 1) m = measure(0.82 * fit);
+  g.clearRect(0, 0, size, size);
+  g.fillText(icon, (size - m.actualBoundingBoxRight + m.actualBoundingBoxLeft) / 2, (size + m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+}
+
 export class Bubbles {
   constructor(container, onClick) {
     this.layer = document.createElement('div'); this.layer.className = 'office-bubbles'; container.append(this.layer);
@@ -19,13 +30,14 @@ export class Bubbles {
       let node = this.nodes.get(id);
       if (!node) {
         node = document.createElement('button'); node.type = 'button'; node.className = 'office-bubble';
-        node.append(document.createElement('span'), document.createElement('span'), document.createElement('i'));
-        node.children[0].className = 'icon'; node.children[1].className = 'text'; node.children[2].className = 'dot';
+        const icon = document.createElement('canvas'); icon.width = icon.height = 64; icon.className = 'icon'; icon.setAttribute('role', 'img');
+        node.append(icon, document.createElement('span'), document.createElement('i'));
+        node.children[1].className = 'text'; node.children[2].className = 'dot';
         node.dataset.id = id; node.onclick = () => this.onClick(id);
         this.layer.append(node); this.nodes.set(id, node);
       }
       const label = bubble.text ? `${bubble.icon} ${bubble.text}` : bubble.icon;
-      if (node.dataset.label !== label) { node.dataset.label = label; node.children[0].textContent = bubble.icon; node.children[1].textContent = bubble.text; node.children[1].hidden = !bubble.text; node.title = bubble.text || ''; }
+      if (node.dataset.label !== label) { node.dataset.label = label; drawIcon(node.children[0], bubble.icon); node.children[0].setAttribute('aria-label', bubble.icon); node.children[1].textContent = bubble.text; node.children[1].hidden = !bubble.text; node.title = bubble.text || ''; }
       node.classList.toggle('highlight', bubble.highlight);
       node.classList.toggle('unread', !!unread);
     }

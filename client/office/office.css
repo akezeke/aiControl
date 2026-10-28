@@ -8,7 +8,7 @@
 .office-bubble { position: absolute; left: 0; top: 0; transform-origin: 50% 100%; pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 340px; padding: 9px 16px; border: 3px solid #1b1a1f; border-radius: 22px; background: #fffdf7; color: #1b1a1f; font: 700 18px/1.2 system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; cursor: pointer; white-space: nowrap; }
 .office-bubble::after { content: ''; position: absolute; left: 50%; bottom: -12px; width: 18px; height: 18px; margin-left: -9px; background: inherit; border: inherit; border-width: 0 3px 3px 0; transform: rotate(45deg); }
 .office-bubble .text { overflow: hidden; text-overflow: ellipsis; }
-.office-bubble .icon { font-size: 21px; }
+.office-bubble .icon { flex: none; width: 25px; height: 25px; }
 .office-bubble.highlight { background: #ffd166; animation: office-pulse 1.4s ease-in-out infinite; }
 .office-bubble .dot { display: none; width: 9px; height: 9px; border-radius: 50%; background: #4f7cff; }
 .office-bubble.unread .dot { display: block; }
@@ -27,7 +27,7 @@
 .office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; pointer-events: none; transition: opacity .5s; }
 .office-hint.gone { opacity: 0; }
 @media (pointer: coarse) { .office-hint { display: none; } }
-@media (max-width: 640px) { .office-bubble { max-width: 200px; padding: 6px 11px; font-size: 14px; } .office-bubble .icon { font-size: 16px; } }
+@media (max-width: 640px) { .office-bubble { max-width: 200px; padding: 6px 11px; font-size: 14px; } .office-bubble .icon { width: 19px; height: 19px; } }
 @media (prefers-reduced-motion: reduce) { .office-bubble.highlight { animation: none; } .office-dot { transition: none; } }
 
 /* Talking: a narrower panel and no dimming, so the character stays in view beside it. */
