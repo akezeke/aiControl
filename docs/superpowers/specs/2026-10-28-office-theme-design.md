@@ -30,12 +30,16 @@ Out of scope for now: answering requests in game dialogue (the existing side pan
 
 ## Characters
 
-- **Fruit bodies:** apple, pear, banana, lemon, eggplant, strawberry. Each is one smooth mesh (a spun curve, or a tapered tube for the banana) with its stem, leaf or cap. The fruit and a color from that fruit's palette are picked by hashing the session id, so they stay the same across reloads.
-- **Noodle limbs:** two arms and two legs. Each is a tube along a curve from a point inside the body to a sphere hand or foot, rebuilt every frame from the pose. No joints, no gaps. Limbs use a darker shade of the body color.
-- **Eyes only:** two white spheres sunk into the body with black pupils. They blink at random, look at the boss when nearby and otherwise at the monitor, and close to flat lids when asleep.
-- **Look:** `MeshToonMaterial` with a three-step light ramp, black outlines from an inverted, slightly larger copy of each shape, and a dark circle under each character as its shadow (no real shadows).
+Concept art (reference, not committed): an apple with round glasses, a banana with a striped tie, and an orange, each with thin black limbs, small black eyes with eyebrows, and a small smile.
+
+- **Fruit bodies:** apple, pear, banana, orange, lemon, eggplant, strawberry. Each is one smooth mesh (a spun curve, or a tapered bent tube for the banana) with its stem, leaf or cap; the orange gets a small peel-bump texture. The fruit and a color from that fruit's palette are picked by hashing the session id, so they stay the same across reloads.
+- **Noodle limbs:** thin black arms and long thin black legs. Each is a tube along a curve from a point inside the body to the hand or foot, rebuilt every frame from the pose. No joints, no gaps. Seated poses tuck the legs under the desk.
+- **Hands and feet:** smooth black cartoon hands (thumb plus three fingers, one mesh) and rounded black shoes; the limb tube ends inside them.
+- **Face, drawn on the fruit:** small black oval eyes, short eyebrows and a small mouth line. They blink at random, look at the boss when nearby and otherwise at the monitor. Expressions follow status: smile while working, worried eyebrows for permission, raised eyebrow for a question, closed eyes and a small "o" mouth while asleep, frown on error.
+- **Accessories:** picked by session id: round glasses, a striped tie, or nothing. Adding one is one function.
+- **Look:** `MeshToonMaterial` with a soft three-band light ramp, thin dark outlines from an inverted, slightly larger copy of each shape, and a dark circle under each character as its shadow (no real shadows).
 - **Subagents:** smaller fruits of the parent's kind on the parent's desk with tiny laptops. Up to 3 per desk; more show as "+N". Bubbles only while working.
-- **Boss:** in first person you see noodle hands holding a coffee mug. In the overview you are a pineapple wearing a tie.
+- **Boss:** in first person you see black noodle hands holding a coffee mug. In the overview you are a pineapple wearing a tie.
 
 ## Status → pose and bubble
 
