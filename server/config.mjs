@@ -6,7 +6,8 @@ import { mkdirSync, readFileSync } from 'node:fs';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
 export const dataDir = join(root, '.local');
-export const hookSocket = join(dataDir, 'hooks.sock');
+// Some filesystems (e.g. WSL's /mnt/c) can't hold Unix sockets, so prefer the private per-user runtime dir.
+export const hookSocket = process.env.XDG_RUNTIME_DIR ? join(process.env.XDG_RUNTIME_DIR, 'ai-control-hooks.sock') : join(dataDir, 'hooks.sock');
 export const authFile = join(dataDir, 'auth.json');
 export const settingsFile = join(dataDir, 'config.json');
 export const port = 47841;
