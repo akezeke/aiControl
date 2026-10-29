@@ -98,10 +98,11 @@ function createDesk(color, width = DESK_W, helper = false, notes = 0) {
   const group = new THREE.Group(), key = `desk${width}${color}${helper ? 'helper' : ''}`;
   const geometry = once(key, () => deskGeometry(width, color, helper)), monitor = piece(`monitor${notes}`, () => [...monitorParts(), ...monitorNoteParts(notes)]);
   group.add(mesh(geometry, painted(), 0.008), monitor, piece('keyboard', keyboardParts, 0.005));
-  // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change.
+  // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change. It's the monitor's
+  // (which sits at the desk's origin), so pointing at either is pointing at the monitor (userData.monitor: whose it is).
   const screenTexture = helper ? canvasTexture(216, 128, drawScreen) : canvasTexture(432, 256, drawScreen);
   const screen = new THREE.Mesh(once('screen', () => new THREE.PlaneGeometry(0.54, 0.32)), new THREE.MeshBasicMaterial({ map: screenTexture }));
-  screen.position.set(0, DESK_H + 0.34, MONITOR_Z - 0.032); screen.rotation.y = Math.PI; group.add(screen);
+  screen.position.set(0, DESK_H + 0.34, MONITOR_Z - 0.032); screen.rotation.y = Math.PI; monitor.add(screen);
   const chair = new THREE.Object3D(); chair.position.z = CHAIR_Z; group.add(chair); // where the sitter sits
   // The desk's and the chair's shadows in one, in the desk's frame; room.sync draws every desk's in one mesh.
   const plane = floorShadow(1, 1).geometry;
@@ -186,7 +187,7 @@ export function createRoom(scene) {
       for (const [id, place] of layout.desks) {
         let desk = desks.get(id);
         if (!desk) { desk = createDesk(teams[podColors.get(place.podKey)][1], DESK_W, false, statuses.get(id)?.identity?.notes); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group); }
-        desk.group.position.set(place.x, 0, place.z); desk.group.rotation.y = place.rotation;
+        desk.group.position.set(place.x, 0, place.z); desk.group.rotation.y = place.rotation; desk.monitor.userData.monitor = id;
         const status = statuses.get(id);
         redraw(desk, status);
         if (desk.led.material.userData.tone !== status?.screen) { desk.led.material.userData.tone = status?.screen; desk.led.material.color.set(leds[status?.screen] || leds.off); }
@@ -196,7 +197,7 @@ export function createRoom(scene) {
         place.subagents.forEach((kid, i) => {
           let helper = desk.helpers[i];
           if (!helper) { helper = desk.helpers[i] = createDesk(desk.color, 1, true); helper.group.scale.setScalar(HELPER_SCALE); helper.group.position.set(HELPER_SPOTS[i][0], 0, HELPER_SPOTS[i][1]); desk.group.add(helper.group); }
-          redraw(helper, statuses.get(kid));
+          helper.monitor.userData.monitor = kid; redraw(helper, statuses.get(kid));
         });
         desk.group.updateMatrixWorld(true);
         // The desk, its monitor (inside the desk's footprint, so only thrown things notice it), the chair and any helpers' desks,
