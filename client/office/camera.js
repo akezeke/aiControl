@@ -36,6 +36,7 @@ export class OfficeCamera {
     const arm = new THREE.QuadraticBezierCurve3(wrist, new THREE.Vector3(0.5, -0.32, -0.5), new THREE.Vector3(0.62, -0.7, -0.25));
     this.hands.add(new THREE.Mesh(new THREE.TubeGeometry(arm, 16, 0.02, 8), ink));
     this.was = { x: 0, z: 0, yaw: 0, pitch: 0 }; this.walk = this.stride = 0; this.sway = new THREE.Vector2();
+    this.slosh = new THREE.Vector2(); this.sloshing = new THREE.Vector2(); // the coffee's tilt and how fast it's tilting
     this.from = new THREE.Vector3(); this.look = new THREE.Vector3();
   }
 
@@ -73,6 +74,7 @@ export class OfficeCamera {
   }
 
   // Walking bobs the mug and sloshes the coffee; turning or looking up and down drags it a little behind.
+  // The coffee chases its tilt on a loose spring, so it overshoots and rocks for a moment after you stop or turn.
   carry(dt, instant) {
     const p = this.player, was = this.was, step = Math.hypot(p.position.x - was.x, p.position.z - was.z), rate = 1 / Math.max(dt, 0.001), k = 1 - Math.exp(-dt * 8);
     const spin = Math.atan2(Math.sin(p.yaw - was.yaw), Math.cos(p.yaw - was.yaw)) * rate, nod = (p.pitch - was.pitch) * rate;
@@ -81,12 +83,16 @@ export class OfficeCamera {
     const tip = this.pour, out = -0.1 * tip, lift = 0.12 * tip;
     this.grip.rotation.set(-0.25 * tip, 0, 1.15 * tip);
     this.coffee.visible = this.level > 0.02 && tip < 0.4; this.coffee.position.y = -0.05 + 0.09 * this.level;
-    if (instant || step > 0.5) { this.hands.position.set(out, lift, out); this.hands.rotation.z = 0; this.coffee.rotation.set(0, 0, 0); return; } // reduced motion, or a jump across the room
+    if (instant || step > 0.5) { this.hands.position.set(out, lift, out); this.hands.rotation.z = 0; this.coffee.rotation.set(0, 0, 0); this.slosh.set(0, 0); this.sloshing.set(0, 0); return; } // reduced motion, or a jump across the room
     this.walk += (Math.min(1, step * rate / 3) - this.walk) * k; this.stride += step * STRIDE;
     this.sway.x += (THREE.MathUtils.clamp(spin * 0.012, -0.03, 0.03) - this.sway.x) * k; this.sway.y += (THREE.MathUtils.clamp(-nod * 0.01, -0.025, 0.025) - this.sway.y) * k;
     const side = Math.sin(this.stride) * this.walk, dip = (1 - Math.cos(this.stride * 2)) * this.walk;
     this.hands.position.set(side * 0.012 + this.sway.x + out, -dip * 0.008 + this.sway.y + lift, out); this.hands.rotation.z = this.sway.x * 1.5;
-    this.coffee.rotation.set(Math.cos(this.stride * 2) * 0.05 * this.walk - this.sway.y * 3, 0, -side * 0.07 - this.sway.x * 4);
+    // Walking pace nearly matches the spring (about 1.8 Hz), which carries the tilt to about one and a half times its aim.
+    const s = this.slosh, v = this.sloshing, t = Math.min(dt, 0.05), ax = Math.cos(this.stride * 2) * 0.05 * this.walk - this.sway.y * 3, az = -side * 0.07 - this.sway.x * 4;
+    v.x += (130 * (ax - s.x) - 5 * v.x) * t; v.y += (130 * (az - s.y) - 5 * v.y) * t;
+    s.addScaledVector(v, t).clampScalar(-0.3, 0.3); // past that the far edge would rise over the rim
+    this.coffee.rotation.set(this.slosh.x, 0, this.slosh.y);
   }
 
   // The ceiling goes with the overview; a wall fades when it faces away from the camera (it's between the camera and the room).
