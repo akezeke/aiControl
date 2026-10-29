@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 
 const W = 432, H = 256; // the screen canvas, as drawScreen in room.js sees it
-const FIRST = [15, 30], GAP = [40, 100], LENGTH = [20, 40], CALM = 120, BUSTED = 3; // seconds; CALM: a caught desk behaves this long
+const FIRST = [15, 30], GAP = [20, 40], LENGTH = [20, 40], CALM = 120, BUSTED = 3; // seconds; CALM: a caught desk behaves this long
 const HEARD = 1.5, SEEN = 3.5, FPS = 12; // metres: anywhere this near, or this near on the side the screen faces
 const NOTICE = 2; // seconds the boss can watch before they notice (wary halfway, it shows on their face)
 const SLACKERS = new Set(['green', 'dark']); // the screen tones (status.js) of desks that may slack: working or idle
