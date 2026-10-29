@@ -213,7 +213,7 @@ test('Claude discovery reads every config folder, excludes stale PIDs and uses f
   await writeFile(join(work, 'sessions/123.json'), JSON.stringify({ pid: 123, procStart: 'old', sessionId: 'stale', cwd: '/home/a/project', status: 'idle' }));
   await writeFile(join(personal, 'sessions/456.json'), JSON.stringify({ pid: 456, procStart: 'live', sessionId: 'current', cwd: '/home/b/project', name: 'Current work', status: 'busy' }));
   await mkdir(join(dir, '.claude-code-router'));
-  assert.deepEqual(claudeDirs(dir, undefined), [work, personal]);
+  assert.deepEqual(claudeDirs(dir, null), [work, personal]);
   assert.deepEqual(claudeDirs(join(dir, '.claude-code-router'), '/custom/'), ['/custom']);
   const adapter = new ClaudeAdapter(new RequestStore(), join(dir, 'unused.sock'), { accounts: claudeAccounts({ claudeDirs: [work, personal] }, dir), alive: async (pid, start) => pid === 456 && start === 'live' });
   await adapter.refresh();
