@@ -429,6 +429,11 @@ export function createRoom(scene, renderer) {
     place(counter(), 0.32, depth - 1.6, Math.PI / 2); shadowUnder(0.35, depth - 1.6, 0.7, 2.1);
     // E or a click on the machine fills the boss's mug (room.onCoffee, from office.js).
     room.coffeeMachine = place(coffeeMachine(), 0.32, depth - 1.6, Math.PI / 2, false); room.coffeeMachine.userData.toggle = () => room.onCoffee?.();
+    // Taped over its front while a usage window is used up, with its light gone red; boards.js writes on it and shows it.
+    const sign = new THREE.Group(); sign.visible = false; sign.position.set(-0.535, 1.23, 0.122); room.coffeeMachine.add(sign);
+    sign.userData.face = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.135), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); sign.userData.face.rotation.z = 0.06;
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.017, 10, 8), new THREE.MeshBasicMaterial({ color: '#ff3b30' })); led.position.set(0.135, -0.01, -0.006);
+    sign.add(sign.userData.face, led); room.coffeeSign = sign;
     hang(left, mugShelf(), along(depth - 1.6), 1.75, 0.11);
     hang(left, notes('coffee', [[0, 0.05, 0.08, NOTE.yellow], [0.07, -0.05, -0.12, NOTE.green]]), along(depth - 0.75), 1.25, 0.004);
     bin('#3a3d46', 0.3, depth - 0.35);
