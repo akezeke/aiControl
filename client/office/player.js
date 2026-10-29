@@ -14,7 +14,7 @@ const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from)
 // Keys belong to the office only when nothing else wants them: no focused input, no open panel or dialog.
 export function officeHasKeys(event) {
   return !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target) && !isTypingTarget(document.activeElement)
-    && !document.body.classList.contains('panel-open') && !document.querySelector('dialog[open], details[open]');
+    && !document.body.classList.contains('panel-open') && !document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open]');
 }
 // Nothing focused but the scene: on a button or link, Tab and Space keep their usual meaning.
 export const sceneFocused = canvas => [document.body, canvas, null].includes(document.activeElement);
