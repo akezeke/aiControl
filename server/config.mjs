@@ -7,8 +7,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
 export const dataDir = join(root, '.local');
-// Some filesystems (e.g. WSL's /mnt/c) can't hold Unix sockets, so prefer the private per-user runtime dir.
-export const hookSocket = process.env.XDG_RUNTIME_DIR ? join(process.env.XDG_RUNTIME_DIR, 'ai-control-hooks.sock') : join(dataDir, 'hooks.sock');
+// Some filesystems (e.g. WSL's /mnt/c) can't hold Unix sockets, so prefer the private per-user runtime dir. A Claude
+// started without XDG_RUNTIME_DIR (cron, sudo -u) must still find the server's socket, so fall back to its usual place.
+const runtimeDir = process.env.XDG_RUNTIME_DIR || [`/run/user/${process.getuid?.()}`].find(dir => existsSync(dir));
+export const hookSocket = runtimeDir ? join(runtimeDir, 'ai-control-hooks.sock') : join(dataDir, 'hooks.sock');
 export const authFile = join(dataDir, 'auth.json');
 export const settingsFile = join(dataDir, 'config.json');
 export const port = 47841;
