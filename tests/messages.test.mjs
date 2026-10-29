@@ -35,6 +35,18 @@ test('Claude harness rows are notices, not user prompts', () => {
   assert.deepEqual(messages.map(m => [m.role, m.text]), [['user', 'Fix it\nlog'], ['notice', 'Agent "Fix shadows" finished'], ['user', '/model opus'], ['notice', 'Context compacted'], ['notice', 'Interrupted']]);
 });
 
+test('Claude messages sent mid-turn appear where the turn took them in', () => {
+  const queued = (id, prompt, kind) => JSON.stringify({ uuid: id, sessionId, type: 'attachment', timestamp: '2026-10-25T12:00:00Z', attachment: { type: 'queued_command', prompt, commandMode: 'prompt', origin: { kind } } });
+  const messages = claudeMessages([
+    row('a', 'assistant', 'Shooting the phone view.'),
+    queued('q1', 'what are you working on?', 'human'),
+    queued('q2', [{ type: 'text', text: 'and the mug' }, { type: 'image', source: {} }], 'human'),
+    queued('q3', '<task-notification>\n<summary>Agent "Fix" finished</summary>\n</task-notification>', 'task-notification'),
+    row('b', 'assistant', 'The screenshots.'),
+  ], sessionId);
+  assert.deepEqual(messages.map(m => [m.role, m.text]), [['assistant', 'Shooting the phone view.'], ['user', 'what are you working on?'], ['user', '[image] and the mug'], ['notice', 'Agent "Fix" finished'], ['assistant', 'The screenshots.']]);
+});
+
 test('Claude titles prefer user names, then the latest generated title over a derived name', () => {
   const titles = claudeTitles([
     JSON.stringify({ type: 'ai-title', sessionId, aiTitle: 'Earlier title' }),
@@ -186,6 +198,17 @@ test('Claude session facts come from the newest transcript records', () => {
   assert.deepEqual(meta.context, { used: 1017 });
   assert.deepEqual(meta.plan.map(step => step.status), ['done', 'active', 'pending']);
   assert.deepEqual(meta.queuedMessages.map(entry => entry.text), ['second']);
+});
+
+test('a message removed with different tag attributes leaves the queue', () => {
+  const op = (operation, content) => JSON.stringify({ type: 'queue-operation', sessionId, operation, content, timestamp: 't' });
+  const meta = claudeMeta([
+    op('enqueue', '<cross-session-message from="a" hop-chain="1,2" from-name="b">\nhi\n</cross-session-message>'),
+    op('remove', '<cross-session-message from="a" from-name="b">\nhi\n</cross-session-message>'),
+    op('enqueue', 'drop it then'),
+    op('dequeue'),
+  ], sessionId);
+  assert.deepEqual(meta.queuedMessages, []);
 });
 
 test('a turn shows its latest tool call, not one from an earlier turn', async () => {
