@@ -128,8 +128,11 @@ export class ClaudeMessaging {
   // Enter or Escape on an open dialog would pick one of its options, so keys go only to a quiet prompt.
   async readyPane(record, required = true) {
     if (!await this.alive(record.pid, record.procStart)) throw fail('Claude is no longer running. Refresh before sending.', 409);
-    if (!['idle', 'busy'].includes(record.status) || record.waitingFor) throw fail('Claude is waiting on a prompt in its terminal.', 409);
+    if (record.status === 'waiting' || record.waitingFor) throw fail('Claude is waiting on a prompt in its terminal.', 409);
     const pane = await this.verifiedPane(record);
+    // Statuses Claude adds over time, such as 'shell' (at its prompt while background shells run), are judged on
+    // screen: a dialog takes the prompt box's place.
+    if (!['idle', 'busy'].includes(record.status) && (!pane || await this.inputText(pane) === null)) throw fail('Claude is waiting on a prompt in its terminal.', 409);
     if (!pane && required) throw fail('Run Claude inside tmux to control it from here.', 409);
     return pane;
   }
@@ -211,9 +214,9 @@ export class ClaudeMessaging {
       // prompt. So wait until the text shows in the input line, press Enter, and press again only
       // while our own text is still visibly there (so a retry can never confirm a dialog).
       const snippet = text.split('\n').find(line => line.trim())?.trim().replace(/\s+/g, ' ').slice(0, 20) || '';
+      // The prompt box itself, not a ❯ row of the agent picker that can sit below it.
       const inInput = async () => {
-        const screen = await this.tmux(['capture-pane', '-p', '-J', '-t', pane]).catch(() => '');
-        const line = screen.split('\n').reverse().find(row => /^\s*[❯>]/.test(row))?.replace(/^\s*[❯>]\s?/, '').replace(/\s+/g, ' ') ?? '';
+        const line = (await this.inputText(pane))?.replace(/\s+/g, ' ') ?? '';
         return line.includes(snippet) || line.includes('[Pasted text');
       };
       await this.until(inInput, this.settleMs);

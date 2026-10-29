@@ -88,7 +88,7 @@ export class ClaudeAdapter {
           const record = JSON.parse(await readFile(join(account.sessionsDir, file), 'utf8'));
           if (!await this.alive(record.pid, record.procStart) || !record.sessionId) return;
           const hook = this.hooks.get(record.sessionId);
-          const states = { idle: 'idle', busy: 'working', running: 'working', working: 'working', waiting: 'question', waiting_for_permission: 'permission', needs_permission: 'permission' };
+          const states = { idle: 'idle', shell: 'idle', busy: 'working', running: 'working', working: 'working', waiting: 'question', waiting_for_permission: 'permission', needs_permission: 'permission' };
           const transcript = hook?.transcriptPath || join(account.projectsDir, (record.cwd || '').replace(/[^a-zA-Z0-9-]/g, '-'), `${record.sessionId}.jsonl`);
           const { step, modifiedAt, ...history } = await this.transcripts.read(transcript, record.sessionId);
           const via = await this.messaging.available(record), canSend = !!via;
@@ -249,6 +249,7 @@ export class ClaudeAdapter {
   async fire(sessionId) {
     const quiet = async () => {
       const record = await this.record(sessionId), hook = this.hooks.get(sessionId), transcript = this.paths.get(`claude:${sessionId}`);
+      if (record.status === 'shell') throw fail('Background shells are still running. Stop them first.', 409);
       if (record.status !== 'idle' || record.parkedJobId || (hook && hook.status !== 'idle') || hook?.compacting) throw fail('Claude is working. Stop it first.', 409);
       if (Date.now() - Math.max(record.statusUpdatedAt || record.updatedAt || 0, hook?.updatedAt || 0) < QUIET_MS) throw fail('Claude only just finished. Try again in a moment.', 409);
       if (transcript && (await this.subagents(record, transcript, new Map())).some(agent => agent.status === 'working')) throw fail('A subagent is still working.', 409);

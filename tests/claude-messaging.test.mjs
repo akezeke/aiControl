@@ -167,12 +167,23 @@ test('an Enter that a slow session misses is pressed again only while the text i
 
 test('tmux typing refuses open dialogs and falls back to the inbox when the pane moved', async () => {
   const { adapter, calls } = tmuxFixture();
-  for (const status of [{ status: 'waiting' }, { status: 'shell' }, { status: 'busy', waitingFor: 'permission' }]) await assert.rejects(adapter.send({ ...paneRecord, ...status }, body), e => e.status === 409);
+  for (const status of [{ status: 'waiting' }, { status: 'busy', waitingFor: 'permission' }]) await assert.rejects(adapter.send({ ...paneRecord, ...status }, body), e => e.status === 409);
   assert.equal(calls.length, 0);
   const moved = tmuxFixture({ parent: async () => 1 });
   assert.equal((await moved.adapter.send(paneRecord, body)).status, 'submitted');
   assert.equal(moved.calls.length, 1);
   assert.equal(moved.frames.length, 1);
+});
+
+test('an unknown status such as shell types only while Claude’s prompt box shows, not the agent picker below it', async () => {
+  // The first Enter is lost: the text is still in the prompt, so it must be pressed again.
+  const picker = tmuxFixture({ lostEnters: 1 });
+  const tmux = picker.adapter.tmux;
+  picker.adapter.tmux = async (args, stdin) => { const out = await tmux(args, stdin); return args[0] === 'capture-pane' ? `${out}\n  ↑/↓ to select\n❯ ● main\n  ◯ general-purpose` : out; };
+  assert.equal((await picker.adapter.send({ ...paneRecord, status: 'shell' }, body)).status, 'sent');
+  assert.equal(picker.calls.filter(args => args[0] === 'send-keys').length, 2);
+  const dialog = tmuxFixture({ tmux: async args => args[0] === 'display-message' ? '100\n' : args[0] === 'capture-pane' ? 'Allow Bash?\n❯ 1. Yes\n  2. No' : '' });
+  await assert.rejects(dialog.adapter.send({ ...paneRecord, status: 'shell' }, body), e => e.status === 409);
 });
 
 test('a failed Enter after pasting is unconfirmed and never retyped', async () => {
