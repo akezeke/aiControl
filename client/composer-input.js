@@ -1,3 +1,23 @@
+// iOS Safari keeps the layout viewport full height under the keyboard: interactive-widget=resizes-content
+// is in WebKit but not yet in Safari. While a field has focus, fit the panel to the visual viewport, so the
+// composer sits on the keyboard. Once a browser resizes the layout viewport this returns null and CSS sizes it.
+// Blur restores the CSS size at once, since iOS 26.0 can keep reporting a short viewport after the keyboard.
+export function keyboardFrame(viewport, layoutHeight, typing) {
+  if (!viewport || !typing || Math.abs(viewport.scale - 1) > 0.01 || layoutHeight - viewport.height < 1) return null;
+  return { top: `${Math.round(viewport.offsetTop)}px`, height: `${Math.round(viewport.height)}px` };
+}
+export function followKeyboard(viewport = globalThis.visualViewport) {
+  if (!viewport) return;
+  const sync = field => {
+    const panel = document.querySelector('#panel'); if (!panel) return;
+    const { top = '', height = '' } = keyboardFrame(viewport, innerHeight, !!field?.matches?.('input, textarea')) || {};
+    if (panel.style.top !== top || panel.style.height !== height) { Object.assign(panel.style, { top, height }); panel.toggleAttribute('data-keyboard', !!height); }
+  };
+  for (const type of ['resize', 'scroll']) viewport.addEventListener(type, () => sync(document.activeElement));
+  document.addEventListener('focusin', event => sync(event.target));
+  document.addEventListener('focusout', event => sync(event.relatedTarget));
+}
+
 // The textarea owns its text while editing. Polling never writes it back.
 export class ComposerInput {
   constructor(input, draft, onControlsChange, {

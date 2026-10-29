@@ -94,7 +94,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .restoring-login { padding: 30px; text-align: center; }
 
 /* Workspace shell */
-.shell { display: flex; min-height: 100svh; }
+.shell { display: flex; min-height: 100svh; contain-intrinsic-size: auto none; }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 4; width: var(--sidebar-w); display: flex; flex-direction: column; padding: 18px 12px; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
 .sidebar .brand { margin: 4px 8px 22px; }
 .sidebar-label { margin: 18px 10px 6px; font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
@@ -213,6 +213,9 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 
 /* Side panel */
 .panel-open { overflow: hidden; }
+/* A full-width panel covers the overview: skip rendering it and its theme loops.
+   contain-intrinsic-size keeps its height, so the page keeps its scroll position. */
+@media (max-width: 640px) { .panel-open .shell { content-visibility: hidden; } }
 .panel-backdrop { position: fixed; inset: 0; z-index: 10; background: #0b0f1766; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 .detail-panel { position: fixed; inset: 0 0 0 auto; z-index: 11; width: min(100%, max(640px, min(1100px, 70vw))); padding: max(16px, env(safe-area-inset-top)) 22px 32px; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); box-shadow: var(--shadow-lg); }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -317,6 +320,8 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .chat-idle { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; line-height: 1.5; color: var(--text-3); }
 .chat-idle .icon { width: 15px; height: 15px; }
 .message-composer { flex: 0 1 auto; min-height: 0; max-height: 45%; overflow-y: auto; padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: var(--panel); border-top: 1px solid var(--line); }
+/* The keyboard covers the home indicator, so its safe-area inset would only leave a gap. */
+#panel[data-keyboard] :is(.message-composer, .chat-requests) { padding-bottom: 10px; }
 .composer-row { display: flex; align-items: flex-end; gap: 8px; }
 .composer-row textarea { flex: 1; min-width: 0; max-height: 160px; resize: vertical; }
 .composer-row .primary { flex: none; min-height: 44px; }

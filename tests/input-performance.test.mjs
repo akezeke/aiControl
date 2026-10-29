@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ComposerInput } from '../client/composer-input.js';
+import { ComposerInput, keyboardFrame } from '../client/composer-input.js';
 import { LiveRender } from '../client/live-render.js';
 
 function clock() {
@@ -132,4 +132,13 @@ test('default timers keep the browser global receiver for scheduling and cancell
   }
   assert.ok(receivers.length > 0);
   assert.ok(receivers.every(receiver => receiver === globalThis), 'browser timers must be called on the global object');
+});
+
+test('the panel fits above an iOS keyboard only while typing at normal zoom', () => {
+  const keyboard = { height: 500.4, offsetTop: 120, scale: 1 };
+  assert.deepEqual(keyboardFrame(keyboard, 844, true), { top: '120px', height: '500px' });
+  assert.equal(keyboardFrame(keyboard, 844, false), null); // closed, or a stale iOS 26.0 viewport after blur
+  assert.equal(keyboardFrame({ ...keyboard, scale: 2 }, 844, true), null); // pinch zoom
+  assert.equal(keyboardFrame({ height: 500, offsetTop: 0, scale: 1 }, 500, true), null); // resizes-content honoured
+  assert.equal(keyboardFrame(undefined, 844, true), null);
 });

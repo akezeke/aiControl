@@ -7,7 +7,7 @@ import { HistoryScroll } from './history-scroll.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects } from './session-order.js';
 import { messagingUnavailableReason } from './messaging-status.js';
-import { ComposerInput } from './composer-input.js';
+import { ComposerInput, followKeyboard } from './composer-input.js';
 import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown } from './message-markdown.js';
 import { renderUsage } from './usage.js';
@@ -889,6 +889,7 @@ document.addEventListener('visibilitychange', () => {
   else if (state.csrf) refresh();
 });
 window.addEventListener('pagehide', () => { if (activityTimer) sendActivity(); });
+followKeyboard();
 setInterval(() => { if (state.csrf && Date.now() - state.lastActivity >= idleMs) lock(); }, 1000);
 
 // Reuse an unexpired login without treating page loads or polling as activity.
