@@ -87,8 +87,8 @@ export class ClaudeMessaging {
   submissions = new Map();
   sockets = new Set();
   typing = Promise.resolve();
-  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000, exitMs = 15_000, processes = listProcesses } = {}) {
-    Object.assign(this, { alive, openSocket, stat, canonical, uid, timeoutMs, tmux, parent, pollMs, settleMs, exitMs, processes });
+  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000, exitMs = 15_000, processes = listProcesses, signal = (pid, name) => process.kill(pid, name) } = {}) {
+    Object.assign(this, { alive, openSocket, stat, canonical, uid, timeoutMs, tmux, parent, pollMs, settleMs, exitMs, processes, signal });
   }
   async available(record) {
     if (tmuxPaneId(record)) return 'tmux';
@@ -184,9 +184,19 @@ export class ClaudeMessaging {
   }
   // Ends the session with /exit, typed only into an empty prompt. `recheck` runs once /exit shows there, just before
   // Enter; if it throws, /exit is wiped again. Done when the process has gone.
+  // Outside tmux, an interactive Claude gets SIGTERM instead, which it takes like /exit: it quits within a second or two,
+  // its terminal gets its shell back and the session can be resumed. A draft in its prompt can't be seen, so it goes too.
   async fire(record, recheck) {
-    const pane = await this.readyPane(record);
+    const pane = await this.readyPane(record, false);
     if (record.status !== 'idle') throw fail('Claude is working. Stop it first.', 409);
+    if (!pane) {
+      if (record.kind !== 'interactive') throw fail('Only terminal sessions can be fired.', 409);
+      await recheck();
+      if (!await this.alive(record.pid, record.procStart)) return { ok: true };
+      try { this.signal(record.pid, 'SIGTERM'); } catch { throw fail('Could not signal Claude.', 503); }
+      if (!await this.until(async () => !await this.alive(record.pid, record.procStart), this.exitMs)) throw fail('Claude is still running after SIGTERM. Check its terminal.', 504);
+      return { ok: true };
+    }
     const typed = () => this.inputText(pane);
     return this.queue(async () => {
       const before = await typed();

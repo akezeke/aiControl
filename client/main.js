@@ -495,7 +495,7 @@ function renderSessionHeader(header, session) {
   const next = nextWaiting(session.id);
   if (next) { const b = button('Next', 'quiet-button next-button', openNext, 'next'); b.title = `Next waiting (n): ${next.title}`; actions.append(b); }
   if (session.status === 'working' && session.messaging?.interrupt) { const stop = button('Stop', 'quiet-button stop-button', () => interrupt(session, stop), 'stop'); stop.title = 'Interrupt the current turn'; stop.disabled = !!state.error; actions.append(stop); }
-  if ((session.status === 'idle' || session.asks) && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = 'End this session with /exit (refused while anything is still running)'; fire.disabled = !!state.error; actions.append(fire); }
+  if ((session.status === 'idle' || session.asks) && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = `End this session with ${session.messaging.via === 'tmux' ? '/exit' : 'SIGTERM'} (refused while anything is still running)`; fire.disabled = !!state.error; actions.append(fire); }
   if (session.messaging?.effort && session.efforts?.length) actions.append(effortPicker(session));
   actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
   const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
