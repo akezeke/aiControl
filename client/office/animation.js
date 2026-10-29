@@ -11,7 +11,7 @@ const SETTLED = 0.7;    // seconds after a pose change, after which the pose is 
 // The sitter's root sits a little forward of the chair; standing, they step out behind it.
 const SEAT_FORWARD = 0.06, STAND_BACK = -0.8, STANDING = new Set(['waving', 'raising', 'impatient']);
 const KEYS = KEYS_Z - CHAIR_Z - SEAT_FORWARD; // the keyboard, from the sitter's root (the mouse's x is the same from either)
-const LOOK_RANGE = 4, WALK_SPEED = 2, GOODBYE = 1.2, STARTLED = 2.5;
+const LOOK_RANGE = 4, WALK_SPEED = 2, GOODBYE = 1.2, STARTLED = 2.5, FINISHED = 2.5, WORKING = new Set(['typing', 'thinking', 'squeezing']);
 // Waiting on you gets louder: a raised hand, then after a couple of minutes both arms waving, after ten a tapping foot.
 const WAVE_AFTER = 2 * 60_000, TAP_AFTER = 10 * 60_000;
 export const waitingPose = (since, now = Date.now()) => now - since >= TAP_AFTER ? 'impatient' : now - since >= WAVE_AFTER ? 'waving' : 'raising';
@@ -56,6 +56,16 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
       const akimbo = side => V(hip.x + side * (hip.r + 0.06), LEG + h * 0.32, 0.05), watch = V(0.06, LEG + h * 0.24, fruit.surface(h * 0.24).r + 0.08);
       return { ...standing(tap * 0.01, 0.04), elbows: 0.18, glance: check > 0.5 ? watch : null, limbs: {
         leftHand: akimbo(1).lerp(watch, check), rightHand: akimbo(-1), leftFoot: V(0.11, 0.03, 0), rightFoot: V(-0.11, 0.03 + tap * 0.05, 0.03) } };
+    }
+    // Just finished: a long stretch, arms overhead, swaying, eyes shut and mouth open in a yawn (the 'asleep' face)...
+    case 'stretching': {
+      const base = seated(-0.14); base.body.tilt = wave(1.6) * 0.06;
+      return { ...base, limbs: { leftHand: V(0.15, SEAT_H + h + 0.3, -0.04), rightHand: V(-0.15, SEAT_H + h + 0.3, -0.04), ...feetUnder } };
+    }
+    // ...or a cheer, bouncing in the seat with both arms up in a V.
+    case 'cheering': {
+      const bounce = Math.abs(wave(7)), wide = fruit.surface(h * 0.6).r + 0.22, up = SEAT_H + h + 0.1 + bounce * 0.06;
+      return { ...seated(0.02, bounce * 0.03), limbs: { leftHand: V(wide, up, 0.06), rightHand: V(-wide, up, 0.06), ...feetUnder } };
     }
     // Sunk back against the chair, breathing slowly, head lolling to one side, arms hanging down past the seat, heels up on the desk
     // in front of the keyboard (legs down to the floor would pass through the seat).
@@ -131,6 +141,8 @@ export class Cast {
       if (!c) { c = make(); this.characters.set(id, c); this.scene.add(c.root); }
       const status = statuses.get(id) || { pose: 'waving', expression: 'smile' };
       c.expression = status.expression; c.since = status.since;
+      // Done: a sitter going from work to idle stretches or punches the air before nodding off (not on a page load).
+      if (c.pose !== status.pose && !firstSync && !still && WORKING.has(c.pose) && status.pose === 'sleeping') c.finished = this.time;
       if (c.pose !== status.pose) { c.pose = status.pose; c.changed = this.time; c.fruit.setGrey(status.pose === 'still'); }
       if (c.wear !== (status.wear || 0)) { c.wear = status.wear || 0; c.changed = this.time; c.fruit.setWear(c.wear); }
       return c;
@@ -187,9 +199,10 @@ export class Cast {
       // Whoever you're talking to stops what they're doing (a sleeper wakes up), turns in the chair and listens.
       // A working or idle sitter may be slacking off (room.js and slack.js have it), or just caught at it.
       const talking = this.facingYou === c.id && !STANDING.has(c.pose), busy = ['typing', 'thinking', 'sleeping'].includes(c.pose), slack = c.anchor.slack;
-      const pose = talking ? 'listening' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted' : STANDING.has(c.pose) && c.since ? waitingPose(c.since) : c.pose;
+      const finishing = this.time - c.finished < FINISHED, cheer = c.seed % 2 ? 'cheering' : 'stretching';
+      const pose = talking ? 'listening' : finishing ? cheer : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted' : STANDING.has(c.pose) && c.since ? waitingPose(c.since) : c.pose;
       const since = this.time - c.startled, startled = since < STARTLED;
-      const face = startled ? 'frown' : talking && ['asleep', 'squeezed'].includes(c.expression) ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : pose === 'impatient' ? 'annoyed' : c.expression;
+      const face = startled ? 'frown' : talking && ['asleep', 'squeezed'].includes(c.expression) ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : pose === 'impatient' ? 'annoyed' : pose === 'stretching' ? 'asleep' : pose === 'cheering' ? 'smile' : c.expression;
       if (c.shown !== pose) { if (c.shown) c.changed = this.time; c.shown = pose; }
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
       fruit.buzz(t);

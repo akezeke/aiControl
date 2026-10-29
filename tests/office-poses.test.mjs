@@ -22,3 +22,12 @@ test('waiting on you gets louder: a raised hand, waving after two minutes, a tap
   assert.ok(frames.every(p => p.elbows > 0 && p.limbs.rightHand.x < -fruit.surface(fruit.height * 0.32).r), 'a hand on the hip, outside the body');
   assert.ok(frames.some(p => p.glance) && frames.some(p => !p.glance), 'looks at the watch now and then');
 });
+
+test('finishing is a stretch (hands together overhead) or a cheer (arms out in a V), in the seat', () => {
+  const [stretch, cheer] = ['stretching', 'cheering'].map(pose => poseTargets(pose, 0.4, 1, fruit)), seated = poseTargets('typing', 0, 1, fruit);
+  for (const p of [stretch, cheer]) {
+    assert.ok(p.limbs.leftHand.y > p.body.y + fruit.height && p.limbs.rightHand.y > p.body.y + fruit.height, 'hands above the head');
+    assert.ok(Math.abs(p.z - seated.z) < 0.01, 'stays in the chair');
+  }
+  assert.ok(cheer.limbs.leftHand.x - cheer.limbs.rightHand.x > 2 * (stretch.limbs.leftHand.x - stretch.limbs.rightHand.x), 'a cheer spreads wider');
+});
