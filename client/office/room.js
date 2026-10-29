@@ -8,6 +8,7 @@ import { toonMaterial, withOutline } from './toon.js';
 import { createLights, dims } from './lights.js';
 import { createSlacking } from './slack.js';
 import { createWindows } from './windows.js';
+import { createScreens, SCREEN_W, SCREEN_H } from './screens.js';
 import { DESK_W, DESK_D } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
@@ -28,7 +29,7 @@ const teams = [['#f4a6a6', '#e0675c'], ['#a6d8f4', '#3d8fd1'], ['#b9e4a1', '#4fa
 // Helpers' tiny desks in the parent desk's frame: either side of its chair, then behind it.
 const HELPER_SPOTS = [[0.56, -0.66], [-0.56, -0.66], [-0.6, -1.42]];
 const CUP_SPOTS = [[0.5, -0.34], [0.62, -0.3], [0.56, -0.2], [0.68, -0.19], [0.5, -0.1], [0.63, -0.09]];
-const ITEM_SPOTS = [[-0.6, 0.22], [-0.42, 0.3], [0.6, 0.24]]; // the front-left corner stays free
+const ITEM_SPOTS = [[-0.6, 0.22], [-0.42, 0.3], [-0.62, -0.06]]; // the front-left corner stays free, and the back left for a second monitor
 const leds = { green: '#5ee08a', amber: '#ffb23e', dark: '#4d6fa8', red: '#ff6b6b', off: '#2a2d35' };
 
 const B = (w, h, d, x, y, z, r = 0.01) => (r ? rounded(w, h, d, r) : new THREE.BoxGeometry(w, h, d)).translate(x, y, z);
@@ -43,6 +44,13 @@ const monitorParts = () => [
   [B(0.62, 0.4, 0.06, 0, DESK_H + 0.34, MONITOR_Z, 0.03), '#3a3d46'], [B(0.34, 0.22, 0.06, 0, DESK_H + 0.32, MONITOR_Z + 0.05, 0.025), '#3a3d46'],
   [C(0.03, 0.03, 0.14, 0, DESK_H + 0.09, MONITOR_Z + 0.02, 8), '#3a3d46'], [C(0.12, 0.13, 0.025, 0, DESK_H + 0.012, MONITOR_Z, 20), '#3a3d46'],
 ];
+// A second, smaller monitor for a session with screenshots to show: back left, turned to face the chair. Merged into the
+// first, so it costs no draws; its glass starts past the first's bezel (x > SIDE.edge).
+const SIDE = { x: 0.53, z: 0.16, y: DESK_H + 0.3, turn: Math.atan2(0.53, 0.16 - CHAIR_Z), edge: 0.315 };
+const sideMonitorParts = () => [
+  [B(0.465, 0.3, 0.045, 0, SIDE.y, 0, 0.022), '#3a3d46'], [B(0.26, 0.16, 0.045, 0, SIDE.y - 0.015, 0.035, 0.018), '#3a3d46'],
+  [C(0.024, 0.024, 0.16, 0, DESK_H + 0.08, 0.02, 8), '#3a3d46'], [C(0.09, 0.1, 0.02, 0, DESK_H + 0.01, 0, 20), '#3a3d46'],
+].map(([geometry, c]) => [geometry.rotateY(SIDE.turn).translate(SIDE.x, 0, SIDE.z), c]);
 const keyboardParts = () => [
   [B(0.42, 0.025, 0.14, 0, DESK_H + 0.0125, KEYS_Z, 0.012), '#e9e6df'], ...[-0.04, 0, 0.04].map(z => [B(0.38, 0.008, 0.028, 0, DESK_H + 0.026, KEYS_Z + z, 0.003), '#cfc9bd']),
   [B(0.2, 0.006, 0.18, MOUSE_X, DESK_H + 0.003, KEYS_Z, 0.003), '#3d5a80'], [new THREE.SphereGeometry(0.03, 12, 8).scale(0.8, 0.5, 1.25).translate(MOUSE_X, DESK_H + 0.016, KEYS_Z), '#e9e6df'],
@@ -94,20 +102,22 @@ function deskGeometry(width, color, helper) {
 
 // One desk in its own frame: the sitter faces +z from the chair at -z; the monitor is at the far (+z) edge facing them.
 // A helper's desk is the same, narrower and bare, and scaled down. `notes` post-its are stuck to the monitor.
+const monitorPiece = (notes, pair) => piece(`monitor${notes}${pair ? 'pair' : ''}`, () => [...monitorParts(), ...monitorNoteParts(notes), ...(pair ? sideMonitorParts() : [])]);
 function createDesk(color, width = DESK_W, helper = false, notes = 0) {
   const group = new THREE.Group(), key = `desk${width}${color}${helper ? 'helper' : ''}`;
-  const geometry = once(key, () => deskGeometry(width, color, helper)), monitor = piece(`monitor${notes}`, () => [...monitorParts(), ...monitorNoteParts(notes)]);
+  const geometry = once(key, () => deskGeometry(width, color, helper)), monitor = monitorPiece(notes, false);
   group.add(mesh(geometry, painted(), 0.008), monitor, piece('keyboard', keyboardParts, 0.005));
-  // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change. It's the monitor's
-  // (which sits at the desk's origin), so pointing at either is pointing at the monitor (userData.monitor: whose it is).
-  const screenTexture = helper ? canvasTexture(216, 128, drawScreen) : canvasTexture(432, 256, drawScreen);
-  const screen = new THREE.Mesh(once('screen', () => new THREE.PlaneGeometry(0.54, 0.32)), new THREE.MeshBasicMaterial({ map: screenTexture }));
-  screen.position.set(0, DESK_H + 0.34, MONITOR_Z - 0.032); screen.rotation.y = Math.PI; monitor.add(screen);
+  // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change, and screens.js shows
+  // it where `screen` is. That's the monitor's (which sits at the desk's origin), as is where a second one's glass would be.
+  const screenTexture = canvasTexture(SCREEN_W, SCREEN_H, drawScreen);
+  const screen = new THREE.Object3D(); screen.position.set(0, DESK_H + 0.34, MONITOR_Z - 0.032); screen.rotation.y = Math.PI; screen.userData.glass = 'main'; monitor.add(screen);
+  const side = new THREE.Object3D(); side.position.set(0, SIDE.y, -0.0245).applyAxisAngle(new THREE.Vector3(0, 1, 0), SIDE.turn).add(new THREE.Vector3(SIDE.x, 0, SIDE.z));
+  side.rotation.y = Math.PI + SIDE.turn; side.userData.glass = 'side'; monitor.add(side);
   const chair = new THREE.Object3D(); chair.position.z = CHAIR_Z; group.add(chair); // where the sitter sits
   // The desk's and the chair's shadows in one, in the desk's frame; room.sync draws every desk's in one mesh.
   const plane = floorShadow(1, 1).geometry;
   const shadow = once(`deskShadow${width}`, () => mergeGeometries([plane.clone().scale(width, 1, DESK_D * 1.05), plane.clone().scale(0.72, 1, 0.72).translate(0, 0, CHAIR_Z)]));
-  const desk = { group, screen, screenTexture, chair, color, monitor, shadow, solids: geometry.userData.solids };
+  const desk = { group, screen, screenTexture, chair, color, monitor, notes, shadow, solids: geometry.userData.solids };
   if (helper) return desk;
   desk.led = new THREE.Mesh(once('led', () => new THREE.SphereGeometry(0.012, 8, 6)), new THREE.MeshBasicMaterial({ color: leds.off })); desk.led.position.set(TOWER[0], 0.39, TOWER[1] - 0.205); group.add(desk.led);
   desk.cups = new THREE.Group(); desk.cups.position.y = DESK_H; group.add(desk.cups);
@@ -131,6 +141,17 @@ function drawScreen(g, w, h, monitor = null, tone = 'off') {
     g.fillStyle = kind === 'user' ? '#ffffff' : kind === 'tool' ? accent : '#c9cfdb';
     g.fillText(clip(g, `${kind === 'user' ? '› ' : kind === 'tool' ? '• ' : '  '}${text}`, w - 20), 10, 46 + i * 34);
   });
+}
+// The second monitor: the newest screenshot, fitted in, and how many there are.
+function drawShot(g, w, h, shot = null) {
+  g.fillStyle = '#0d0e12'; g.fillRect(0, 0, w, h);
+  if (!shot) return;
+  const { bitmap, count } = shot, k = Math.min(w / bitmap.width, h / bitmap.height), dw = bitmap.width * k, dh = bitmap.height * k;
+  g.drawImage(bitmap, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  if (count < 2) return;
+  g.font = 'bold 20px system-ui, sans-serif'; const label = String(count), pill = g.measureText(label).width + 16;
+  g.fillStyle = '#1b1a1fd9'; g.beginPath(); g.roundRect(w - pill - 8, h - 34, pill, 26, 13); g.fill();
+  g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(label, w - 8 - pill / 2, h - 20);
 }
 const clip = (g, text, max) => { let t = String(text); while (t.length > 1 && g.measureText(t).width > max) t = t.slice(0, -2) + '…'; return t; };
 
@@ -157,8 +178,10 @@ const badgeGeometry = () => { const g = new THREE.CylinderGeometry(0.12, 0.12, 0
 // The board's edges in one group and its two faces in another (a box's groups run +x, -x, +y, -y, +z, -z).
 const boardGeometry = () => { const g = rounded(1.6, 0.4, 0.05, 0.03), [, , , , front, back] = g.groups; g.clearGroups(); g.addGroup(0, front.start, 0); g.addGroup(front.start, front.count + back.count, 1); return g; };
 
-export function createRoom(scene) {
+export function createRoom(scene, renderer) {
   const root = new THREE.Group(); scene.add(root);
+  // Every screen, on shared textures (screens.js); `shots`: each session's newest screenshot, for its second monitor.
+  const screens = createScreens(root, renderer), shots = new Map();
   const shell = new THREE.Group(); root.add(shell);
   // Fill, daylight and the screens' glow (lights.js); the ceiling lamps (point lights, in the shell) do the rest.
   const lights = createLights(root, BEAM);
@@ -186,7 +209,10 @@ export function createRoom(scene) {
       for (const pod of layout.pods) if (!podColors.has(pod.key)) podColors.set(pod.key, podColors.size % teams.length);
       for (const [id, place] of layout.desks) {
         let desk = desks.get(id);
-        if (!desk) { desk = createDesk(teams[podColors.get(place.podKey)][1], DESK_W, false, statuses.get(id)?.identity?.notes); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group); }
+        if (!desk) {
+          desk = createDesk(teams[podColors.get(place.podKey)][1], DESK_W, false, statuses.get(id)?.identity?.notes); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group);
+          desk.glass = screens.add(desk.screen, desk.screenTexture, 0.54, 0.32); showShot(desk, shots.get(id));
+        }
         desk.group.position.set(place.x, 0, place.z); desk.group.rotation.y = place.rotation; desk.monitor.userData.monitor = id;
         const status = statuses.get(id);
         redraw(desk, status);
@@ -196,7 +222,7 @@ export function createRoom(scene) {
         while (desk.helpers.length > place.subagents.length) removeDesk(desk.helpers.pop());
         place.subagents.forEach((kid, i) => {
           let helper = desk.helpers[i];
-          if (!helper) { helper = desk.helpers[i] = createDesk(desk.color, 1, true); helper.group.scale.setScalar(HELPER_SCALE); helper.group.position.set(HELPER_SPOTS[i][0], 0, HELPER_SPOTS[i][1]); desk.group.add(helper.group); }
+          if (!helper) { helper = desk.helpers[i] = createDesk(desk.color, 1, true); helper.group.scale.setScalar(HELPER_SCALE); helper.group.position.set(HELPER_SPOTS[i][0], 0, HELPER_SPOTS[i][1]); desk.group.add(helper.group); helper.glass = screens.add(helper.screen, helper.screenTexture, 0.54, 0.32); }
           helper.monitor.userData.monitor = kid; redraw(helper, statuses.get(kid));
         });
         desk.group.updateMatrixWorld(true);
@@ -206,6 +232,7 @@ export function createRoom(scene) {
         for (const [box, owner] of [[top, id], [new THREE.Box3().setFromObject(desk.monitor), id], [seat, id], ...desk.helpers.map((helper, i) => [new THREE.Box3().setFromObject(helper.group), place.subagents[i]])]) solid.push(Object.assign(box, { owner }));
       }
       for (const [id, desk] of desks) if (!layout.desks.has(id)) { removeDesk(desk); desks.delete(id); }
+      screens.moved();
       // Every desk's shadow in one mesh, rebuilt when one moves, comes or goes.
       const all = [...desks.values()].flatMap(desk => [desk, ...desk.helpers]), toRoot = root.matrixWorld.clone().invert();
       const at = all.map(desk => toRoot.clone().multiply(desk.group.matrixWorld)), key = at.map(m => m.elements.map(v => v.toFixed(3)).join()).join(';');
@@ -229,8 +256,16 @@ export function createRoom(scene) {
       room.colliders = [...room.wallColliders, ...room.furnitureColliders, ...solid];
       lights.refresh();
     },
-    // Each frame: the light switch, the screens' light on the desks nearest the camera, and anyone slacking off.
-    update(dt, eye, still) { const all = [...desks.values()]; lights.update(dt, eye, still, all); slacking.update(dt, eye, still, all); },
+    // A session's newest screenshot ({ bitmap, count }) for its second monitor, or null for none (and no second monitor).
+    setShot(id, shot) { if (shot) shots.set(id, shot); else shots.delete(id); const desk = desks.get(id); if (desk) showShot(desk, shot); },
+    // Which of a monitor's screens a point on it is nearest: its glass (where it is), and whether it's the second one's.
+    glass(monitor, point) {
+      const side = !!point && monitor.children.some(child => child.userData.glass === 'side') && !!desks.get(monitor.userData.monitor)?.side && monitor.worldToLocal(point.clone()).x > SIDE.edge;
+      return { anchor: monitor.children.find(child => child.userData.glass === (side ? 'side' : 'main')), side };
+    },
+    // Each frame: the light switch, the screens' light on the desks nearest the camera, anyone slacking off, then the screens
+    // drawn on since the last frame.
+    update(dt, eye, still) { const all = [...desks.values()]; lights.update(dt, eye, still, all); slacking.update(dt, eye, still, all); screens.flush(); },
     dispose() { disposeTree(root); },
   };
 
@@ -240,6 +275,19 @@ export function createRoom(scene) {
     const key = JSON.stringify([status?.screen, status?.monitor]);
     if (desk.screenKey !== key) { desk.screenKey = key; desk.screenTexture.redraw(status?.monitor, status?.screen); }
   };
+  // Two monitors while there are screenshots to show, else one: the monitor is swapped for the other piece, glass and all.
+  function showShot(desk, shot = null) {
+    if (!!shot !== !!desk.side) {
+      const old = desk.monitor, next = monitorPiece(desk.notes, !!shot);
+      next.userData = old.userData;
+      for (const child of [...old.children]) if (!child.userData.outline) next.add(child);
+      old.removeFromParent(); desk.group.add(next); desk.monitor = next;
+      if (shot) { const texture = canvasTexture(SCREEN_W, SCREEN_H, drawShot); desk.side = { texture, glass: screens.add(next.children.find(child => child.userData.glass === 'side'), texture, 0.405, 0.24), shot: null }; }
+      else { screens.remove(desk.side.glass); desk.side.texture.dispose(); desk.side = null; }
+      screens.moved();
+    }
+    if (shot && desk.side.shot !== shot) { desk.side.shot = shot; desk.side.texture.redraw(shot); }
+  }
   function addItems(desk, props) {
     props.forEach((prop, i) => { const item = deskItem(prop); item.position.set(ITEM_SPOTS[i][0], DESK_H, ITEM_SPOTS[i][1]); item.rotation.y = (i - 0.5) * 0.5; desk.group.add(item); });
   }
@@ -264,7 +312,7 @@ export function createRoom(scene) {
 
   function removeDesk(desk) {
     desk.group.removeFromParent();
-    for (const d of [desk, ...desk.helpers || []]) { d.screenTexture.dispose(); d.screen.material.dispose(); d.led?.material.dispose(); }
+    for (const d of [desk, ...desk.helpers || []]) { screens.remove(d.glass); screens.remove(d.side?.glass); d.screenTexture.dispose(); d.side?.texture.dispose(); d.led?.material.dispose(); }
   }
 
   function buildShell({ room: { width, depth }, door }) {

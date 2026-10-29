@@ -83,6 +83,24 @@ test('the Claude adapter serves images only for known sessions with transcripts 
   await assert.rejects(claude.imageList(`claude:${sessionId}`), { status: 409 });
 });
 
+test("a session's images take in its subagents', finished or not, under the agent's id", async t => {
+  const { dir, projects, path } = await transcript(t), agents = join(projects, 'repo', sessionId, 'subagents'), worker = join(agents, 'workflows', 'wf_run-1');
+  await mkdir(worker, { recursive: true });
+  const at = minute => ({ timestamp: `2026-10-28T12:0${minute}:00Z` });
+  await writeFile(path, row(1, [image(png)], at(1)) + row(4, [image(png)], at(4)));
+  await writeFile(join(agents, 'agent-abc123.jsonl'), row(2, [{ type: 'tool_result', tool_use_id: 'a', content: [image(jpeg)] }], { ...at(2), agentId: 'abc123', isSidechain: true }));
+  await writeFile(join(agents, 'agent-abc123.meta.json'), JSON.stringify({ description: 'Check the layout' }));
+  await writeFile(join(worker, 'agent-def456.jsonl'), row(3, [image(png)], at(3)));
+  const claude = new ClaudeAdapter(new RequestStore(), join(dir, 'hook.sock'), { accounts: [{ label: '', sessionsDir: join(dir, 'sessions'), projectsDir: projects }] });
+  claude.paths.set(`claude:${sessionId}`, path);
+  const { images } = await claude.imageList(`claude:${sessionId}`);
+  assert.deepEqual(images.map(i => [i.id, i.agent]), [[`${uuid(1)}:0`, undefined], [`abc123.${uuid(2)}:0`, 'Check the layout'], [`def456.${uuid(3)}:0`, 'Subagent'], [`${uuid(4)}:0`, undefined]]);
+  assert.deepEqual((await claude.image(`claude:${sessionId}`, `abc123.${uuid(2)}:0`)).data, jpeg);
+  assert.deepEqual((await claude.image(`claude:${sessionId}`, `def456.${uuid(3)}:0`)).data, png);
+  await assert.rejects(claude.image(`claude:${sessionId}`, `nope99.${uuid(2)}:0`), { status: 404 });
+  await assert.rejects(claude.image(`claude:${sessionId}`, `../abc123.${uuid(2)}:0`), { status: 404 });
+});
+
 test('image endpoints need a login and send only the image', async t => {
   const { dir } = await transcript(t), file = join(dir, 'auth.json'), password = 'correct horse testing battery';
   await savePassword(file, password);

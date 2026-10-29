@@ -197,7 +197,7 @@ export function pick(event, canvas, camera, scene) {
     let node = hit.object;
     while (node && !node.userData.sessionId && !node.userData.monitor && !node.userData.board && !node.userData.hire && !node.userData.toggle) node = node.parent;
     if (node?.userData.sessionId) return { kind: 'character', id: node.userData.sessionId };
-    if (node?.userData.monitor) return { kind: 'monitor', id: node.userData.monitor, node };
+    if (node?.userData.monitor) return { kind: 'monitor', id: node.userData.monitor, node, point: hit.point };
     if (node?.userData.toggle) { if (node.visible) return { kind: 'toggle', node }; continue; } // the light switch, hidden with its wall
     if (node?.userData.hire) return { kind: 'hire', node, point: hit.point, ...node.userData.hire };
     // A board on a wall that's faded out for the overview is hidden: look past it.

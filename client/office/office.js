@@ -13,6 +13,7 @@ import { highlight } from './toon.js';
 import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
 import { createProps, REACH } from './props.js';
+import { createScreenshots } from './screenshots.js';
 
 const FIRED = { pose: 'slumped', expression: 'sad', bubble: { icon: '📦', text: 'Fired', highlight: false } };
 
@@ -30,7 +31,7 @@ export function mountOffice(container, hooks) {
   scene.background = new THREE.Color('#f6e7c8');
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
   camera.userData.canvas = renderer.domElement;
-  const room = createRoom(scene);
+  const room = createRoom(scene, renderer);
   const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
   const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });
   let layout;
@@ -62,7 +63,7 @@ export function mountOffice(container, hooks) {
       if (props.holding && !view.overview) { props.throw(rayAt(at, renderer.domElement, camera)); return; }
       const hit = under(at);
       if (hit?.kind === 'character') office.talkTo(hit.id);
-      else if (hit?.kind === 'monitor') office.readScreen(hit.id, hit.node);
+      else if (hit?.kind === 'monitor') office.readScreen(hit.id, hit.node, hit.point);
       else if (hit?.kind === 'board') office.readBoard(hit.node);
       else if (hit?.kind === 'hire') office.offerHire(hit, at);
       else if (hit?.kind === 'toggle') hit.node.userData.toggle();
@@ -83,6 +84,7 @@ export function mountOffice(container, hooks) {
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   const card = createCard(container);
   const menu = createMenu(container, (cwd, provider, item) => hooks.spawn?.(cwd, provider, item));
+  const shots = createScreenshots(container, { room, onClose: () => office.panelClosed(), onSession: id => hooks.openPanel(id) });
   // It stays by the spot on the desk you picked as the view moves, and closes once that's off the screen.
   let dismissed = false; const menuAt = new THREE.Vector3(), onScreen = new THREE.Vector3();
   const follow = () => {
@@ -92,7 +94,11 @@ export function mountOffice(container, hooks) {
     const r = renderer.domElement.getBoundingClientRect();
     menu.move({ clientX: r.left + (onScreen.x + 1) / 2 * r.width, clientY: r.top + (1 - onScreen.y) / 2 * r.height });
   };
-  listen(document, 'pointerdown', event => { dismissed = menu.open && !menu.contains(event.target); if (dismissed) menu.close(); }, true);
+  // The screenshots close the same way.
+  listen(document, 'pointerdown', event => {
+    const outside = [menu, shots].filter(open => open.open && !open.contains(event.target));
+    dismissed = outside.length > 0; for (const open of outside) open.close();
+  }, true);
   // The overview frees the mouse to click around; leaving it captures the mouse again if it was (see `free`).
   const overview = on => {
     if (on === view.overview) return;
@@ -116,7 +122,7 @@ export function mountOffice(container, hooks) {
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE' && !menu.contains(event.target)) {
       event.preventDefault();
-      if (props.holding) props.throw(); else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
+      if (props.holding) props.throw(); else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node, monitor.point); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
     }
     else if (event.code === 'KeyF' && !view.overview && !office.talking) { event.preventDefault(); if (!event.repeat) props.pour(true); }
   });
@@ -139,8 +145,9 @@ export function mountOffice(container, hooks) {
     const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
     aimed = hit?.kind === 'character' ? hit.id : null; monitor = hit?.kind === 'monitor' ? hit : null; board = hit?.kind === 'board' ? hit.node : null; hire = hit?.kind === 'hire' ? hit : null; toggle = hit?.kind === 'toggle' ? hit.node : null;
     prop = hit?.kind === 'prop' && !props.holding ? hit.body : null; props.aim(prop);
-    const whose = aimed || monitor?.id, session = whose && office.snapshot?.sessions.find(session => session.id === whose);
-    card.show(session && hooks.describe?.(session) || hire && { title: 'Hire', project: hire.cwd.replace(/^\/home\/[^/]+/, '~') } || null); card.move(aiming ? player.centre : mouse);
+    const whose = aimed || monitor?.id, session = whose && office.snapshot?.sessions.find(session => session.id === whose), facts = session && hooks.describe?.(session);
+    const count = monitor && room.glass(monitor.node, monitor.point).side && shots.count(monitor.id); // the second monitor: the screenshots
+    card.show(facts && count ? { ...facts, detail: `${count} screenshot${count === 1 ? '' : 's'}` } : facts || hire && { title: 'Hire', project: hire.cwd.replace(/^\/home\/[^/]+/, '~') } || null); card.move(aiming ? player.centre : mouse);
     const node = aimed && cast.characters.get(aimed)?.root || monitor?.node || board || hire?.node || toggle;
     renderer.domElement.style.cursor = (node || prop) && !aiming ? 'pointer' : view.overview ? view.overhead.dragging ? 'grabbing' : 'grab' : '';
     overlays.setAim(!!(node || prop));
@@ -192,6 +199,7 @@ export function mountOffice(container, hooks) {
       // The fired slump at their desks, then trudge out carrying a box.
       for (const [id, at] of fired) if (Date.now() - at > VACANT_MS + 10_000) fired.delete(id); else office.statuses.set(id, { ...office.statuses.get(id), ...FIRED });
       room.sync(layout, office.statuses);
+      shots.sync(snapshot.sessions.filter(session => session.provider === 'claude' && !session.parentId && layout.desks.has(session.id)));
       for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
       signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });
       cast.sync(layout, snapshot.sessions, room, office.statuses);
@@ -231,22 +239,23 @@ export function mountOffice(container, hooks) {
       const spot = standNear(head, player.position, room.colliders, layout?.room);
       if (spot) player.flyTo(spot, head, arrive, !!reducedMotion?.matches); else player.walkTo(head.clone().setY(0), arrive, 1.1, true);
     },
-    // Fly over to a board on the wall and face it, back far enough to take it all in (and not crane up at the clock).
     // Look over their shoulder at their screen, then their session opens beside the scene; unlike a talk, they keep working.
-    readScreen(id, node) {
+    // The second monitor (`point` on it) opens the screenshots instead.
+    readScreen(id, node, point) {
       const token = office.talking = {};
       overview(false); player.unlock(); menu.close();
-      const glass = node.children.find(child => child.geometry === shared.screen) || node, scale = glass.getWorldScale(new THREE.Vector3()).x; // helpers' desks are small
+      const { anchor: glass, side } = room.glass(node, point), scale = glass.getWorldScale(new THREE.Vector3()).x; // helpers' desks are small
       const centre = glass.getWorldPosition(new THREE.Vector3()), normal = new THREE.Vector3(0, 0, 1).transformDirection(glass.matrixWorld).setY(0).normalize();
       const shoulder = centre.clone().addScaledVector(new THREE.Vector3(-normal.z, 0, normal.x), 0.45 * scale), rise = centre.y - EYE;
       const arrive = () => {
         if (office.talking !== token) return;
         view.focus(centre);
-        setTimeout(() => { if (office.talking === token) hooks.openPanel(id); }, reducedMotion?.matches ? 0 : 400);
+        setTimeout(() => { if (office.talking === token) { if (side) shots.show(id); else hooks.openPanel(id); } }, reducedMotion?.matches ? 0 : 400);
       };
       const spot = standBefore(shoulder, normal, Math.max(0.8, 1.9 * scale), room.colliders, layout?.room);
       if (spot) player.flyTo(spot, centre, arrive, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z))); else arrive();
     },
+    // Fly over to a board on the wall and face it, back far enough to take it all in (and not crane up at the clock).
     readBoard(node) {
       office.talking = null; overview(false); menu.close();
       const box = new THREE.Box3().setFromObject(node), centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
@@ -273,7 +282,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => shots.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }

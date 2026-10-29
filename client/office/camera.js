@@ -60,8 +60,8 @@ export class OfficeCamera {
     // Running, or flying over to someone, widens the view a little.
     const fov = this.fov + (p.running && !instant ? RUN_FOV : 0);
     if (Math.abs(fov - this.camera.fov) > 0.01) { this.camera.fov += (fov - this.camera.fov) * k; this.camera.updateProjectionMatrix(); }
-    // While talking, shift the picture left so the character is centred in the part the panel leaves open.
-    const panel = document.querySelector('#panel'), canvas = this.camera.userData.canvas, shift = panel && !panel.hidden && innerWidth > 640 ? panel.offsetWidth / 2 * this.focusAmount : 0;
+    // While talking, shift the picture left so the character is centred in the part the panel (or the screenshots) leaves open.
+    const panel = document.querySelector('#panel:not([hidden]), .office-shots[open]'), canvas = this.camera.userData.canvas, shift = panel && innerWidth > 640 ? panel.offsetWidth / 2 * this.focusAmount : 0;
     if (canvas && Math.abs(shift - (this.shift || 0)) > 0.5) {
       this.shift = shift;
       if (shift) this.camera.setViewOffset(canvas.clientWidth, canvas.clientHeight, shift, 0, canvas.clientWidth, canvas.clientHeight); else this.camera.clearViewOffset();

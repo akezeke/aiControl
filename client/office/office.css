@@ -66,3 +66,30 @@ body.panel-open .office-hint { display: none; }
   :root[data-theme-choice=office]:not([data-office-fallback]) .detail-panel { animation: office-panel-in .4s ease; }
 }
 @keyframes office-panel-in { from { opacity: 0; transform: translateX(12px); } }
+
+/* The screenshots a session looked at, beside the scene like the session panel: the picture big, over a strip of them all. */
+.office-shots { position: absolute; inset: 12px 12px 12px auto; z-index: 2002; width: min(calc(100% - 24px), max(520px, 44vw)); height: auto; max-height: none; margin: 0; padding: 0; display: none; flex-direction: column; border: 2.5px solid #1b1a1f; border-radius: 14px; background: #fffdf7; color: #1b1a1f; box-shadow: 0 3px 0 #1b1a1f; overflow: hidden; }
+.office-shots[open] { display: flex; }
+.office-shots:focus { outline: none; }
+.office-shots .head { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; font: 600 13px system-ui, sans-serif; }
+.office-shots .title { min-width: 0; flex: 0 1 auto; padding: 0; border: 0; background: none; color: inherit; font: 800 14px system-ui, sans-serif; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.office-shots .title:hover, .office-shots .title:focus-visible { text-decoration: underline; outline: none; }
+.office-shots .meta { flex: 1 1 auto; min-width: 0; color: #5c5866; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.office-shots .close { flex: none; width: 34px; height: 34px; border: 0; border-radius: 9px; background: none; color: inherit; font: 700 16px system-ui, sans-serif; cursor: pointer; }
+.office-shots .close:hover, .office-shots .close:focus-visible { background: #ffd166; outline: none; }
+.office-shots .stage { position: relative; flex: 1 1 auto; min-height: 0; background: #1b1a1f; }
+.office-shots .big { display: block; width: 100%; height: 100%; cursor: zoom-in; }
+.office-shots .big img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.office-shots .step { position: absolute; top: 50%; width: 36px; height: 52px; margin-top: -26px; border: 2px solid #1b1a1f; border-radius: 10px; background: #fffdf7e6; color: #1b1a1f; font: 800 24px/1 system-ui, sans-serif; cursor: pointer; }
+.office-shots .step.prev { left: 8px; } .office-shots .step.next { right: 8px; }
+.office-shots .step:disabled { display: none; }
+.office-shots .step:hover, .office-shots .step:focus-visible { background: #ffd166; outline: none; }
+.office-shots .strip { position: relative; flex: none; display: flex; gap: 6px; padding: 8px; overflow-x: auto; scrollbar-width: thin; }
+.office-shots .strip:empty { display: none; }
+.office-shots .thumb { flex: none; width: 76px; height: 48px; padding: 0; border: 2px solid #1b1a1f; border-radius: 7px; background: #1b1a1f; overflow: hidden; cursor: pointer; }
+.office-shots .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.office-shots .thumb.current { outline: 3px solid #4f7cff; outline-offset: 1px; }
+.office-shots .thumb.failed { opacity: .4; }
+.office-shots .thumb:focus-visible { outline: 3px solid #ffd166; outline-offset: 1px; }
+@media (max-width: 640px) { .office-shots { inset: 8px; width: auto; } }
+@media (prefers-reduced-motion: no-preference) { .office-shots[open] { animation: office-panel-in .3s ease; } }

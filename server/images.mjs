@@ -75,7 +75,7 @@ export class TranscriptImages {
       entry.images = entry.images.slice(-imageLimit);
     }
     this.cache.delete(path); this.cache.set(path, entry);
-    if (this.cache.size > 100) this.cache.delete(this.cache.keys().next().value);
+    if (this.cache.size > 1000) this.cache.delete(this.cache.keys().next().value);
     return entry;
   }
 }
