@@ -182,6 +182,7 @@ export class Cast {
       if (c.pose !== status.pose && !firstSync && !still && WORKING.has(c.pose) && status.pose === 'sleeping') { c.finished = this.time; c.fan = undefined; }
       if (c.pose !== status.pose) { c.pose = status.pose; c.changed = this.time; c.fruit.setGrey(status.pose === 'still'); }
       if (c.wear !== (status.wear || 0)) { c.wear = status.wear || 0; c.changed = this.time; c.fruit.setWear(c.wear); }
+      if (c.shades !== (status.mode === 'bypass')) { c.shades = status.mode === 'bypass'; c.fruit.setShades(c.shades); }
       return c;
     };
     for (const [id, desk] of layout.desks) {

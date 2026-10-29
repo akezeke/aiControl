@@ -383,6 +383,7 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
   };
 
   // Accessories (status.js picks them, at most one per slot).
+  const specs = [];
   if (has.has('glasses')) {
     // Frames and lenses: two meshes.
     const frames = [], lenses = [], lens = new THREE.MeshBasicMaterial({ color: '#dff3ff', transparent: true, opacity: 0.25 });
@@ -393,8 +394,24 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
     }
     frames.push(arc([onSkin(-spread + 0.07, faceY + 0.01, 0.032), onSkin(0, faceY + 0.025, 0.036), onSkin(spread - 0.07, faceY + 0.01, 0.032)], 0.006));
     const frame = mergeGeometries(frames), glass = mergeGeometries(lenses); own.push(frame, glass, lens);
-    face.add(new THREE.Mesh(frame, toonMaterial('#7a4b3a')), new THREE.Mesh(glass, lens));
+    specs.push(new THREE.Mesh(frame, toonMaterial('#7a4b3a')), new THREE.Mesh(glass, lens)); face.add(...specs);
   }
+  // Bypass mode: dark wayfarers over any glasses, one painted mesh with a glint on each lens, made when first worn.
+  let shades = null;
+  const setShades = on => {
+    if (on && !shades) {
+      const lens = new THREE.Shape().moveTo(-0.062, 0.04).lineTo(0.062, 0.04).quadraticCurveTo(0.066, -0.048, 0, -0.048).quadraticCurveTo(-0.066, -0.048, -0.062, 0.04), parts = [];
+      for (const side of [-1, 1]) {
+        const at = onSkin(side * spread, faceY, 0.034), glint = new THREE.CircleGeometry(0.01, 10).scale(2, 0.6, 1).rotateZ(0.6).translate(-0.026, 0.018, 0.002);
+        parts.push([baked(new THREE.ShapeGeometry(lens, 6), at, outward(at)), '#23262e'], [baked(glint, at, outward(at)), '#c9d6e8']);
+        parts.push([arc([onSkin(side * (spread + 0.25), faceY + 0.035, 0.032), onSkin(side * 1.2, faceY + 0.03, 0.01), onSkin(side * 1.6, faceY + 0.01, -0.01)], 0.007), '#111216']);
+      }
+      parts.push([arc([-1, -0.5, 0, 0.5, 1].map(k => onSkin(k * (spread + 0.25), faceY + 0.04, 0.038 - Math.abs(k) * 0.004)), 0.01), '#111216']);
+      shades = new THREE.Mesh(paint(parts), painted()); own.push(shades.geometry); face.add(shades);
+    }
+    if (shades) shades.visible = on;
+    for (const mesh of specs) mesh.visible = !on;
+  };
   const collarY = faceY - 0.14;
   if (has.has('tie')) {
     // Collar, blade and knot: one mesh and its outline.
@@ -503,7 +520,7 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
   return {
     group, body, height: h, surface: shape.surface, rest, faceY,
     setBody({ y = LEG, tilt = 0, lean = 0, turn = 0 } = {}) { body.position.y = y; body.rotation.set(lean, turn, tilt); },
-    setLimbs, setExpression, setWear,
+    setLimbs, setExpression, setWear, setShades,
     // Offline sessions turn grey; the colour comes back when they do.
     // Flies loop around a worn-out head; t is seconds, frozen with reduced motion.
     buzz(t) {

@@ -75,12 +75,22 @@ const towerParts = () => [
   [B(0.18, 0.42, 0.4, 0, 0.21, 0, 0.02), '#2f3542'], [B(0.12, 0.014, 0.01, 0, 0.33, -0.2, 0.003), '#8a8f99'], [B(0.12, 0.014, 0.01, 0, 0.3, -0.2, 0.003), '#8a8f99'],
   ...[0.08, 0.11, 0.14].map(y => [B(0.1, 0.006, 0.006, 0, y, -0.2, 0), '#4a5160']), [C(0.018, 0.018, 0.012, 0, 0, 0, 12).rotateX(Math.PI / 2).translate(0, 0.24, -0.2), '#8a8f99'],
 ];
-// Office chair: padded seat and back on a gas post, five-star base on casters. Its origin is on the floor under the seat.
-const chairParts = seat => {
+// Whose agent sits there, as in the list: Claude's ✳ or Codex's ⌘ on a cream disc, flat and facing +z.
+const P = (w, h, x, y, a = 0) => new THREE.PlaneGeometry(w, h).rotateZ(a).translate(x, y, 0.002);
+const markParts = provider => {
+  const strokes = provider === 'codex'
+    ? [...[-1, 1].flatMap(s => [P(0.08, 0.008, 0, s * 0.02), P(0.008, 0.08, s * 0.02, 0)]), ...[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([x, y]) => new THREE.RingGeometry(0.011, 0.019, 20).translate(x * 0.035, y * 0.035, 0.002))]
+    : [0, 1, 2, 3].map(i => P(0.1, 0.014, 0, 0, i * Math.PI / 4));
+  return [[new THREE.CircleGeometry(0.075, 24), '#fffaf0'], ...strokes.map(geometry => [geometry, provider === 'codex' ? '#1d2330' : '#d97757'])];
+};
+// Office chair: padded seat and back on a gas post, five-star base on casters, the agent's mark on the back. Its origin is on
+// the floor under the seat.
+const chairParts = (seat, provider) => {
   const dark = '#3a3d46', parts = [
     [C(0.055, 0.06, 0.06, 0, 0.08, 0), dark], [C(0.024, 0.024, SEAT_H - 0.18, 0, 0.1 + (SEAT_H - 0.18) / 2, 0, 10), '#8a8f99'], [B(0.22, 0.04, 0.22, 0, SEAT_H - 0.11, 0, 0.01), dark],
     [B(0.52, 0.09, 0.48, 0, SEAT_H - 0.045, 0, 0.04), seat], [B(0.07, 0.03, 0.16, 0, SEAT_H - 0.1, -0.26, 0.008), dark], [B(0.07, 0.4, 0.03, 0, SEAT_H + 0.08, -0.34, 0.008), dark],
     [rounded(0.46, 0.48, 0.08, 0.04).rotateX(-0.15).translate(0, SEAT_H + 0.38, BACK_Z - 0.04), seat],
+    ...provider ? markParts(provider).map(([geometry, c]) => [geometry.rotateY(Math.PI).translate(0, 0.07, -0.041).rotateX(-0.15).translate(0, SEAT_H + 0.38, BACK_Z - 0.04), c]) : [],
   ];
   for (let i = 0; i < 5; i++) {
     const a = i / 5 * Math.PI * 2 + Math.PI;
@@ -89,11 +99,21 @@ const chairParts = seat => {
   return parts;
 };
 
+// Plan mode's clipboard, flat on the desk left of the keyboard, clip away from the sitter: a ticked list on the paper.
+const clipboard = () => {
+  const item = piece('clipboard', () => [
+    [B(0.17, 0.008, 0.23, 0, 0.004, 0, 0.004), '#b5835a'], [B(0.15, 0.002, 0.19, 0, 0.009, -0.012, 0), '#ffffff'], [B(0.07, 0.014, 0.03, 0, 0.013, 0.1, 0.005), '#9aa1ab'],
+    ...[0, 1, 2, 3].flatMap(i => [[B(0.016, 0.001, 0.016, -0.05, 0.0105, 0.055 - i * 0.04, 0), i < 2 ? '#4fa84a' : '#c9cfdb'], [B(0.08, 0.001, 0.006, 0.01, 0.0105, 0.055 - i * 0.04, 0), '#3a4352']]),
+  ], 0.005);
+  item.position.set(0.24, DESK_H, -0.03); item.rotation.y = 0.25;
+  return item;
+};
+
 // The desk, its tower, its bin and its chair in one shared geometry; userData.solids are the desk and the chair as boxes in the
 // desk's frame (what blocks walking and throws). What's on the desk stays apart, to be picked up.
-function deskGeometry(width, color, helper) {
+function deskGeometry(width, color, helper, provider) {
   const at = (parts, x, z) => parts.map(([geometry, c]) => [geometry.translate(x, 0, z), c]);
-  const top = paint(deskParts(width)), chair = paint(at(chairParts(color), 0, CHAIR_Z)), parts = [top, chair];
+  const top = paint(deskParts(width)), chair = paint(at(chairParts(color, provider), 0, CHAIR_Z)), parts = [top, chair];
   if (!helper) parts.push(paint(at(towerParts(), ...TOWER)), paint(at(binParts('#8a8f99'), ...BIN)));
   const geometry = mergeGeometries(parts);
   geometry.userData.solids = [top, chair].map(g => (g.computeBoundingBox(), g.boundingBox));
@@ -101,11 +121,11 @@ function deskGeometry(width, color, helper) {
 }
 
 // One desk in its own frame: the sitter faces +z from the chair at -z; the monitor is at the far (+z) edge facing them.
-// A helper's desk is the same, narrower and bare, and scaled down. `notes` post-its are stuck to the monitor.
+// A helper's desk is the same, narrower and bare, unmarked, and scaled down. `notes` post-its are stuck to the monitor.
 const monitorPiece = (notes, pair) => piece(`monitor${notes}${pair ? 'pair' : ''}`, () => [...monitorParts(), ...monitorNoteParts(notes), ...(pair ? sideMonitorParts() : [])]);
-function createDesk(color, width = DESK_W, helper = false, notes = 0) {
-  const group = new THREE.Group(), key = `desk${width}${color}${helper ? 'helper' : ''}`;
-  const geometry = once(key, () => deskGeometry(width, color, helper)), monitor = monitorPiece(notes, false);
+function createDesk(color, width = DESK_W, helper = false, notes = 0, provider = '') {
+  const group = new THREE.Group(), key = `desk${width}${color}${helper ? 'helper' : provider}`;
+  const geometry = once(key, () => deskGeometry(width, color, helper, !helper && provider)), monitor = monitorPiece(notes, false);
   group.add(mesh(geometry, painted(), 0.008), monitor, piece('keyboard', keyboardParts, 0.005));
   // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change, and screens.js shows
   // it where `screen` is. That's the monitor's (which sits at the desk's origin), as is where a second one's glass would be.
@@ -121,6 +141,7 @@ function createDesk(color, width = DESK_W, helper = false, notes = 0) {
   if (helper) return desk;
   desk.led = new THREE.Mesh(once('led', () => new THREE.SphereGeometry(0.012, 8, 6)), new THREE.MeshBasicMaterial({ color: leds.off })); desk.led.position.set(TOWER[0], 0.39, TOWER[1] - 0.205); group.add(desk.led);
   desk.cups = new THREE.Group(); desk.cups.position.y = DESK_H; group.add(desk.cups);
+  desk.clipboard = clipboard(); desk.clipboard.visible = false; group.add(desk.clipboard);
   desk.slack = { show: null, wary: false, busted: 0, calm: 0 }; // slack.js: something silly on the screen now and then
   desk.helpers = [];
   return desk;
@@ -134,8 +155,17 @@ function drawScreen(g, w, h, monitor = null, tone = 'off') {
   g.fillStyle = background; g.fillRect(0, 0, w, h);
   if (!monitor) return;
   g.fillStyle = accent; g.fillRect(0, 0, w, 34);
-  g.fillStyle = background; g.font = 'bold 20px ui-monospace, monospace'; g.textBaseline = 'middle';
-  g.fillText(clip(g, monitor.title, w - 20), 10, 18);
+  // The plan as a row of boxes before the title (the post-its cover the bar's right end): filled when done, a dot in the one
+  // under way.
+  const steps = monitor.plan || [], box = Math.min(14, (150 - 4 * steps.length) / steps.length), list = steps.length && steps.length * (box + 4) + 6;
+  g.fillStyle = g.strokeStyle = background;
+  steps.forEach((step, i) => {
+    const x = 10 + i * (box + 4), y = 17 - box / 2;
+    if (step === 'done') g.fillRect(x, y, box, box);
+    else { g.lineWidth = 2; g.strokeRect(x + 1, y + 1, box - 2, box - 2); if (step === 'active') g.fillRect(x + box / 4, y + box / 4, box / 2, box / 2); }
+  });
+  g.font = 'bold 20px ui-monospace, monospace'; g.textBaseline = 'middle';
+  g.fillText(clip(g, monitor.title, w - 20 - list), 10 + list, 18);
   g.font = '17px ui-monospace, monospace'; g.textBaseline = 'top';
   monitor.lines.forEach(({ text, kind }, i) => {
     g.fillStyle = kind === 'user' ? '#ffffff' : kind === 'tool' ? accent : '#c9cfdb';
@@ -210,14 +240,14 @@ export function createRoom(scene, renderer) {
       for (const [id, place] of layout.desks) {
         let desk = desks.get(id);
         if (!desk) {
-          desk = createDesk(teams[podColors.get(place.podKey)][1], DESK_W, false, statuses.get(id)?.identity?.notes); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group);
+          desk = createDesk(teams[podColors.get(place.podKey)][1], DESK_W, false, statuses.get(id)?.identity?.notes, statuses.get(id)?.provider); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group);
           desk.glass = screens.add(desk.screen, desk.screenTexture, 0.54, 0.32); showShot(desk, shots.get(id));
         }
         desk.group.position.set(place.x, 0, place.z); desk.group.rotation.y = place.rotation; desk.monitor.userData.monitor = id;
         const status = statuses.get(id);
         redraw(desk, status);
         if (desk.led.material.userData.tone !== status?.screen) { desk.led.material.userData.tone = status?.screen; desk.led.material.color.set(leds[status?.screen] || leds.off); }
-        setCups(desk, status?.cups || 0);
+        setCups(desk, status?.cups || 0); desk.clipboard.visible = status?.mode === 'plan';
         // One tiny desk per helper on show.
         while (desk.helpers.length > place.subagents.length) removeDesk(desk.helpers.pop());
         place.subagents.forEach((kid, i) => {

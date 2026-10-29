@@ -98,3 +98,10 @@ test('habits are per character and varied', () => {
   const people = Array.from({ length: 60 }, (_, i) => identity(`s${i}`).habits);
   for (const kind of ['typing', 'thinking', 'sleeping', 'finish']) assert.ok(new Set(people.map(p => p[kind])).size > 1, kind);
 });
+test('bypass and plan modes, the agent and the plan reach the office', () => {
+  const at = permissionMode => officeStatus({ status: 'working', permissionMode, provider: 'codex', requests: [] });
+  assert.deepEqual(['bypassPermissions', 'plan', 'acceptEdits', undefined].map(mode => at(mode).mode), ['bypass', 'plan', '', '']);
+  assert.equal(at('plan').provider, 'codex');
+  assert.equal(officeStatus({ status: 'offline', permissionMode: 'bypassPermissions', requests: [] }).mode, 'bypass', 'an offline one keeps its shades');
+  assert.deepEqual(monitorLines({ title: 'x', plan: [{ step: 'a', status: 'done' }, { step: 'b', status: 'active' }] }).plan, ['done', 'active']);
+});

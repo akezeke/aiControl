@@ -14,6 +14,8 @@ const STYLES = [
 ];
 const HATS = ['beanie', 'cap', 'headphones'], TRIMS = ['#ff5d8f', '#3a86ff', '#8338ec', '#06d6a0', '#ffbe0b'], CLASH = { eggplant: '#8338ec', banana: '#ffbe0b', lemon: '#ffbe0b' };
 const MAX_TEXT = 48;
+// Permission modes the office shows: bypass wears sunglasses, plan keeps a clipboard on the desk.
+const MODES = { bypassPermissions: 'bypass', plan: 'plan' };
 
 const looks = {
   working: ['typing', 'smile', '⌨️', 'green'],
@@ -36,7 +38,8 @@ const oneLine = text => {
 // and 'compacting' while it squeezes its context down to a summary. `since` is when a session needing you started waiting.
 export function officeStatus(session, now = Date.now()) {
   const activity = session.status === 'working' && ['thinking', 'compacting'].includes(session.activity) ? session.activity : '', look = looks[activity || session.status];
-  if (!look) return { pose: 'still', expression: 'neutral', bubble: null, screen: 'off', wear: 0, cups: 0 };
+  const mode = MODES[session.permissionMode] || '', provider = session.provider;
+  if (!look) return { pose: 'still', expression: 'neutral', bubble: null, screen: 'off', mode, provider, wear: 0, cups: 0 };
   const [pose, expression, icon, screen] = look, request = session.requests?.[0]?.title;
   const text = activity ? { thinking: 'Thinking', compacting: 'Compacting' }[activity] : {
     working: session.detail || 'Working',
@@ -49,7 +52,7 @@ export function officeStatus(session, now = Date.now()) {
   const talks = !session.parentId || session.status === 'working' || screen === 'amber';
   const shown = !activity && session.status === 'working' ? toolIcon(session.detail) : icon;
   const since = screen === 'amber' ? session.requests?.[0]?.createdAt || session.updatedAt || now : undefined;
-  return { pose, expression, screen, since, bubble: talks ? { icon: shown, text: oneLine(text), highlight: screen === 'amber' } : null, ...tiredness(session, now) };
+  return { pose, expression, screen, since, mode, provider, bubble: talks ? { icon: shown, text: oneLine(text), highlight: screen === 'amber' } : null, ...tiredness(session, now) };
 }
 
 // Minutes since the latest prompt (or the oldest message still in view), up to now while working, else to the last message.
@@ -87,13 +90,14 @@ export function identity(id) {
   };
 }
 
-// What the session's monitor shows: its title and last few message lines, newest at the bottom.
+// What the session's monitor shows: its title, its plan's steps (done | active | pending) if it has one, and its last few
+// message lines, newest at the bottom.
 export function monitorLines(session, count = 6) {
   const lines = (session.messages || []).slice(-count).map(message => ({
     kind: message.tool ? 'tool' : message.role === 'user' ? 'user' : 'assistant',
     text: oneLine(message.text).replace(/[`*_#>]/g, ''),
   }));
-  return { title: session.title || session.project || 'Session', lines };
+  return { title: session.title || session.project || 'Session', lines, ...session.plan?.length && { plan: session.plan.map(step => step.status) } };
 }
 
 export function isTypingTarget(element) {
