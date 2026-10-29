@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
-import { fail } from './requests.mjs';
+import { fail, slashCommand } from './requests.mjs';
 import { codexMessage, messageLimit, recentMessages, textContent, planSteps } from './messages.mjs';
 import { UsagePoller, codexUsageWindows } from './usage.mjs';
 
@@ -262,6 +262,9 @@ export class CodexAdapter {
     this.requireMessaging(threadId);
     if (typeof body?.text !== 'string' || !body.text.trim() || body.text.length > 12_000) throw fail('Enter a message of 1–12,000 characters.');
     if (!['send', 'queue'].includes(body.mode) || !/^[a-f0-9-]{36}$/i.test(body.clientMessageId || '')) throw fail('Invalid message submission.');
+    // The app server takes text only: /clear here would reach the model as a message and clear nothing.
+    const command = slashCommand(body.text);
+    if (command) throw fail(`${command} only works in Codex’s own terminal; from here it would be sent to Codex as a message.`);
     const key = `${threadId}:${body.clientMessageId}`, fingerprint = JSON.stringify([body.mode, body.text]);
     const previous = this.submissions.get(key);
     if (previous) {

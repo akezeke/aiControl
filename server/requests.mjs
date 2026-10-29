@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 export const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+// A leading /command (/clear, /model x), not a path such as /home/me/app.
+export const slashCommand = text => /^\s*(\/[a-z][\w-]*)(?=\s|$)/i.exec(text)?.[1] || '';
 
 export function validateAnswers(questions, answers) {
   if (!answers || typeof answers !== 'object' || Array.isArray(answers)) throw fail('Answer every question.');

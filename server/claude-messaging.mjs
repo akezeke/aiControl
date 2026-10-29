@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { lstat, realpath, readFile, readdir } from 'node:fs/promises';
 import { dirname, basename, normalize } from 'node:path';
-import { fail } from './requests.mjs';
+import { fail, slashCommand } from './requests.mjs';
 
 const runTmux = (args, input) => new Promise((resolve, reject) => {
   const child = execFile('tmux', args, { timeout: 3000 }, (error, stdout) => error ? reject(error) : resolve(stdout));
@@ -141,6 +141,9 @@ export class ClaudeMessaging {
       if (pane) return this.type(pane, body);
     } else if (!await this.alive(record.pid, record.procStart)) throw fail('Claude is no longer running. Refresh before sending.', 409);
     if (!await this.inboxAvailable(record)) throw fail('Claude has no tmux pane or inbox to receive messages.', 409);
+    // The inbox delivers text as a message from another session, so a /command would not run.
+    const command = slashCommand(body.text);
+    if (command) throw fail(`${command} only works typed into Claude’s terminal; run Claude in tmux to send it from here.`, 409);
     return this.post(record, body);
   }
   // Enter or Escape on an open dialog would pick one of its options, so keys go only to a quiet prompt.

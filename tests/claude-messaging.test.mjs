@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeMessaging, spawnAgent, updateCodex } from '../server/claude-messaging.mjs';
 import { ClaudeAdapter } from '../server/claude.mjs';
-import { RequestStore } from '../server/requests.mjs';
+import { RequestStore, slashCommand } from '../server/requests.mjs';
 
 const record = { pid: 123, procStart: '456', sessionId: '11111111-2222-3333-4444-555555555555', peerProtocol: 1, messagingSocketPath: '/run/user/1000/cc-socks/123.sock' };
 const body = { text: 'Continue with **this**.\nKeep the settings.', mode: 'send', clientMessageId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' };
@@ -46,6 +46,14 @@ test('double clicks share a submission, but reusing its ID with other text is re
   assert.deepEqual(results[0], results[1]);
   assert.equal(frames.length, 1);
   await assert.rejects(adapter.send(record, { ...body, text: 'Other' }), e => e.status === 409);
+});
+
+test('slash commands that a path would only look like are told apart, and the inbox refuses real ones', async () => {
+  assert.deepEqual(['/clear', ' /model gpt-x', '/compact\n', '/home/me/app is broken', 'fix /clear later', '/'].map(slashCommand), ['/clear', '/model', '/compact', '', '', '']);
+  const { adapter, frames } = fixture();
+  await assert.rejects(adapter.send(record, { ...body, text: '/clear' }), e => e.status === 409 && /terminal/.test(e.message));
+  assert.equal(frames.length, 0);
+  assert.equal((await adapter.send(record, { ...body, text: '/home/me/app is broken' })).status, 'submitted');
 });
 
 test('Claude rejects unsafe inbox paths, wrong owners, open permissions and stale processes', async () => {
