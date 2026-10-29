@@ -4,7 +4,15 @@ const palettes = {
   apple: ['#d62828', '#7cb518', '#f2c14e'], pear: ['#b5c934', '#e0b73f'], banana: ['#f7d23e'], orange: ['#f28c28'],
   lemon: ['#f9e04b'], eggplant: ['#5b2a86', '#7a3ea8'], strawberry: ['#e63946'],
 };
-const ACCESSORIES = ['glasses', 'tie', 'none'], PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books'];
+const PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books'];
+// Accessories come in slots, one pick or none each, so glasses go with a tie but never two hats; a style keeps an outfit
+// together. A banana's tip has no room for a hat or headphones. `trim` colours the bow, flower, scarf, hat, headphones and earrings.
+const STYLES = [
+  { lashes: ['lashes', 'lashes', ''], lips: ['lipstick', '', ''], ears: ['earrings', ''], head: ['bow', 'flower', 'bow', 'headphones', '', ''], neck: ['pearls', 'pearls', 'scarf', '', ''], eyes: ['glasses', '', ''] },
+  { lips: ['moustache', '', '', ''], head: ['cap', 'beanie', 'headphones', '', '', ''], neck: ['tie', 'tie', 'scarf', '', ''], eyes: ['glasses', '', ''] },
+  { head: ['beanie', 'cap', 'headphones', '', '', '', ''], neck: ['scarf', '', '', '', ''], eyes: ['glasses', '', ''] },
+];
+const HATS = ['beanie', 'cap', 'headphones'], TRIMS = ['#ff5d8f', '#3a86ff', '#8338ec', '#06d6a0', '#ffbe0b'], CLASH = { eggplant: '#8338ec', banana: '#ffbe0b', lemon: '#ffbe0b' };
 const MAX_TEXT = 48;
 
 const looks = {
@@ -68,9 +76,10 @@ function hash(text) {
 }
 export function identity(id) {
   const pick = (list, salt) => list[hash(`${salt}:${id}`) % list.length];
-  const fruit = pick(FRUITS, 'fruit');
+  const fruit = pick(FRUITS, 'fruit'), style = pick(STYLES, 'style');
+  const accessories = Object.entries(style).map(([slot, list]) => pick(list, slot)).filter(item => item && !(fruit === 'banana' && HATS.includes(item)));
   return {
-    fruit, color: pick(palettes[fruit], 'color'), accessory: pick(ACCESSORIES, 'accessory'),
+    fruit, color: pick(palettes[fruit], 'color'), accessories, trim: pick(TRIMS.filter(trim => trim !== CLASH[fruit]), 'trim'),
     props: PROPS.filter(prop => hash(`${prop}:${id}`) % 3 === 0).slice(0, 3), notes: Math.min(3, hash(`notes:${id}`) % 5), // post-its on the monitor
   };
 }

@@ -50,7 +50,8 @@ function smooth(points, count = 28) {
   return curve.getPoints(count).map(p => new THREE.Vector2(Math.max(0, p.x), p.y));
 }
 
-// Each body: geometry plus a `surface(y)` → { x, r } (centre offset and radius at height y) so the face and clothes sit on it.
+// Each body: geometry plus a `surface(y)` → { x, r } (centre offset and radius at height y) so the face and clothes sit on it;
+// `height` is the top of the axis (an apple's dimple), `top` the highest point.
 const bodies = new Map();
 function bodyShape(fruit) {
   if (bodies.has(fruit)) return bodies.get(fruit);
@@ -87,7 +88,7 @@ function bodyShape(fruit) {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3)); geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); geometry.setIndex(index);
     geometry.computeVertexNormals(); shareNormals(geometry);
     const spine = bananaSpine.getSpacedPoints(60);
-    shape = { geometry, height: 0.86, surface: y => { const found = spine.findIndex(p => p.y >= y), t = found < 0 ? 60 : found; return { x: spine[t].x, r: bananaRadius(t / 60) }; } };
+    shape = { geometry, height: 0.86, top: 0.9, surface: y => { const found = spine.findIndex(p => p.y >= y), t = found < 0 ? 60 : found; return { x: spine[t].x, r: bananaRadius(t / 60) }; } };
   } else {
     const points = smooth(profiles[fruit]);
     const geometry = new THREE.LatheGeometry(points, 40);
@@ -95,7 +96,7 @@ function bodyShape(fruit) {
       for (let i = 1; i < points.length; i++) if (points[i].y >= y && points[i - 1].y <= y) { const a = points[i - 1], b = points[i], k = (y - a.y) / ((b.y - a.y) || 1); return { x: 0, r: a.x + (b.x - a.x) * k }; }
       return { x: 0, r: 0.05 };
     };
-    shape = { geometry, height: points.at(-1).y, surface };
+    shape = { geometry, height: points.at(-1).y, top: Math.max(...points.map(point => point.y)), surface };
   }
   bodies.set(fruit, shape);
   return shape;
@@ -266,7 +267,7 @@ function stemGeometry(fruit, h) {
   return geometry;
 }
 
-export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
+export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }, { scale = 1 } = {}) {
   const shape = bodyShape(fruit), ink = toonMaterial(INK), limbMaterial = toonMaterial(LIMB), own = [];
   const group = new THREE.Group(), body = new THREE.Group();
   group.add(body); group.scale.setScalar(scale);
@@ -278,7 +279,8 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   // Where something sits on the front of the body: `angle` around the vertical, `y` up the body, `out` off the skin.
   const onSkin = (angle, y, out = 0.004) => { const { x, r } = shape.surface(y); return V(x + Math.sin(angle) * (r + out), y, Math.cos(angle) * (r + out)); };
 
-  const stem = stemGeometry(fruit, h);
+  const has = new Set(accessories), hat = fruit !== 'banana' && (has.has('beanie') || has.has('cap'));
+  const stem = !hat && stemGeometry(fruit, h);
   if (stem) body.add(withOutline(new THREE.Mesh(stem, painted()), 0.008));
 
   // Face: small black eyes, brows and a mouth, a little above the middle of the body like in the concept art.
@@ -288,17 +290,23 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   const outward = at => V(2 * at.x - shape.surface(at.y).x, at.y, 2 * at.z);
   // Both eyes are one mesh pivoting on the body's axis: turning it slides them around the skin, squashing it closes them.
   const centre = shape.surface(faceY);
-  const eyeGeometry = mergeGeometries([-1, 1].map(side => { const at = onSkin(side * spread, faceY, -0.004); return baked(new THREE.SphereGeometry(0.042, 14, 10).scale(0.72, 1.12, 0.45), at, outward(at)); })).translate(-centre.x, -faceY, 0);
+  // Lashes flick out from the top outer edge of each eye; they're part of the eyes, so they blink and look along.
+  const lashes = has.has('lashes') ? [-1, 1].flatMap(side => [0.35, 0.8, 1.2].map(a => {
+    const rim = (k, lift) => onSkin(side * (spread + Math.cos(a) * 0.03 * k / centre.r), faceY + Math.sin(a) * 0.047 * k + lift, 0.002);
+    return arc([rim(1, 0), rim(1.35, 0.004), rim(1.6, 0.016)], 0.0045);
+  })) : [];
+  const eyeGeometry = mergeGeometries([...[-1, 1].map(side => { const at = onSkin(side * spread, faceY, -0.004); return baked(new THREE.SphereGeometry(0.042, 14, 10).scale(0.72, 1.12, 0.45), at, outward(at)); }), ...lashes]).translate(-centre.x, -faceY, 0);
   const eyes = new THREE.Mesh(eyeGeometry, ink); own.push(eyeGeometry); face.add(eyes);
   const placeEyes = (dx = 0, dy = 0) => { const { x, r } = shape.surface(faceY + dy), out = r - centre.r; eyes.position.set(x + Math.sin(dx) * out, faceY + dy, Math.cos(dx) * out); eyes.rotation.y = dx; };
   placeEyes();
   // Brows, mouth and bags are one painted mesh, rebuilt when the expression or the wear changes.
   const lines = new THREE.Mesh(new THREE.BufferGeometry(), painted()); face.add(lines);
   let expression = [], bags = [];
+  const lips = has.has('lipstick') && '#c2185b';
   const redraw = () => { lines.geometry.dispose(); lines.geometry = paint([...expression, ...bags]); };
   const setExpression = name => {
     expression = [];
-    const line = (points, radius) => expression.push([arc(points, radius), INK]);
+    const line = (points, radius, color = INK) => expression.push([arc(points, radius), color]);
     const browY = faceY + 0.085, mouthY = faceY - 0.085, s = spread;
     // Each brow: inner/outer heights; mouth: corner and middle heights (middle below corners = smile).
     const shapes = {
@@ -326,11 +334,15 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
       stroke(0.03); stroke(-0.03);
     }
     if (name === 'asleep') {
-      for (const side of [-1, 1]) line([onSkin(side * s - 0.05, faceY), onSkin(side * s, faceY - 0.022), onSkin(side * s + 0.05, faceY)], 0.007);
-      const at = onSkin(0, mouthY, 0); expression.push([baked(new THREE.TorusGeometry(0.016, 0.006, 6, 14), at, outward(at)), INK]);
+      for (const side of [-1, 1]) {
+        line([onSkin(side * s - 0.05, faceY), onSkin(side * s, faceY - 0.022), onSkin(side * s + 0.05, faceY)], 0.007);
+        // Lashes hang from the outer half of a closed lid.
+        if (has.has('lashes')) for (const k of [0.4, 0.8]) { const y = faceY - 0.044 * (0.25 - k * k / 4); line([onSkin(side * (s + 0.05 * k), y), onSkin(side * (s + 0.05 * k + 0.015), y - 0.018)], 0.004); }
+      }
+      const at = onSkin(0, mouthY, 0); expression.push([baked(new THREE.TorusGeometry(0.016, lips ? 0.008 : 0.006, 6, 14), at, outward(at)), lips || INK]);
     } else if (shapes.mouth) {
       const [corner, middle] = shapes.mouth, half = shapes.width / 2 / Math.max(0.15, shape.surface(mouthY).r), { shift = 0, slant = 0 } = shapes;
-      line([onSkin(shift - half, mouthY + corner - slant), onSkin(shift, mouthY + middle * 2), onSkin(shift + half, mouthY + corner + slant)], 0.007);
+      line([onSkin(shift - half, mouthY + corner - slant), onSkin(shift, mouthY + middle * 2), onSkin(shift + half, mouthY + corner + slant)], lips ? 0.01 : 0.007, lips || INK);
     }
     redraw();
   };
@@ -359,8 +371,8 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
     eyes.scale.y = Math.max(0.1, blink * droop);
   };
 
-  // Accessories.
-  if (accessory === 'glasses') {
+  // Accessories (status.js picks them, at most one per slot).
+  if (has.has('glasses')) {
     // Frames and lenses: two meshes.
     const frames = [], lenses = [], lens = new THREE.MeshBasicMaterial({ color: '#dff3ff', transparent: true, opacity: 0.25 });
     for (const side of [-1, 1]) {
@@ -371,9 +383,11 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
     frames.push(arc([onSkin(-spread + 0.07, faceY + 0.01, 0.032), onSkin(0, faceY + 0.025, 0.036), onSkin(spread - 0.07, faceY + 0.01, 0.032)], 0.006));
     const frame = mergeGeometries(frames), glass = mergeGeometries(lenses); own.push(frame, glass, lens);
     face.add(new THREE.Mesh(frame, toonMaterial('#7a4b3a')), new THREE.Mesh(glass, lens));
-  } else if (accessory === 'tie') {
+  }
+  const collarY = faceY - 0.14;
+  if (has.has('tie')) {
     // Collar, blade and knot: one mesh and its outline.
-    const collarY = faceY - 0.14, { x, r } = shape.surface(collarY), tieMaterial = toonMaterial('#ffffff', { map: stripes() });
+    const { x, r } = shape.surface(collarY), tieMaterial = toonMaterial('#ffffff', { map: stripes() });
     const collar = new THREE.TorusGeometry(r + 0.008, 0.014, 6, 40).rotateX(Math.PI / 2).translate(x, collarY, 0);
     const blade = new THREE.ExtrudeGeometry(new THREE.Shape([new THREE.Vector2(-0.03, 0), new THREE.Vector2(0.03, 0), new THREE.Vector2(0.045, -0.15), new THREE.Vector2(0, -0.19), new THREE.Vector2(-0.045, -0.15)]), { depth: 0.012, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 2 });
     blade.attributes.uv.array.forEach((v, i, a) => { a[i] = v * 8; });
@@ -384,6 +398,68 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
     const tie = mergeGeometries([collar, blade, knot].map(g => g.index ? g.toNonIndexed() : g)); own.push(tie, tieMaterial);
     body.add(withOutline(new THREE.Mesh(tie, tieMaterial), 0.006));
   }
+  // The rest are painted, all in one mesh and its outline.
+  const worn = [], dark = new THREE.Color(trim).multiplyScalar(0.7).getStyle(), GOLD = '#f2c14e';
+  const around = (geometry, angle) => { const x = shape.surface(collarY).x; return geometry.translate(-x, 0, 0).rotateY(angle).translate(x, 0, 0); };
+  // Hats: a shell over the top of the head from just above the brows, the stem left off.
+  const brim = faceY + 0.155, crown = (lift, puff = 0) => {
+    const top = shape.top, rows = Array.from({ length: 7 }, (_, i) => { const y = brim + (top - brim) * i / 6; return [shape.surface(y).r + lift + puff * (i / 6) ** 2, y + puff * (i / 6) ** 3]; });
+    return new THREE.LatheGeometry(smooth([...rows, [(shape.surface(top).r + lift) * 0.55, top + lift * 0.9 + puff * 1.2], [0, top + lift + puff * 1.3]], 18), 28);
+  };
+  const ring = (radius, tube, y) => new THREE.TorusGeometry(radius, tube, 8, 32).rotateX(Math.PI / 2).translate(shape.surface(y).x, y, 0);
+  if (hat && has.has('beanie')) {
+    // A beanie: slouchy on top, a deep folded cuff and a bobble.
+    const cuff = new THREE.CylinderGeometry(shape.surface(brim + 0.05).r + 0.035, shape.surface(brim).r + 0.035, 0.07, 28, 1, true).translate(0, brim + 0.025, 0);
+    worn.push([crown(0.022, 0.05), trim], [cuff, dark], [ring(shape.surface(brim).r + 0.035, 0.012, brim - 0.01), dark], [new THREE.SphereGeometry(0.065, 12, 8).translate(0, shape.top + 0.1, 0), '#f4f1ea']);
+  } else if (hat) {
+    // A cap, its peak tipped down a little.
+    const peak = new THREE.CylinderGeometry(1, 1, 0.014, 20, 1, false, -Math.PI / 2, Math.PI).scale(shape.surface(brim).r + 0.12, 1, (shape.surface(brim).r + 0.12) * 0.8);
+    worn.push([crown(0.014), trim], [ring(shape.surface(brim).r + 0.012, 0.012, brim), dark], [baked(peak, V(0, brim + 0.004, 0), [0.16, 0, 0]), dark], [new THREE.SphereGeometry(0.018, 8, 6).translate(0, shape.top + 0.014, 0), dark]);
+  }
+  // Up on one side of the head: a bow (left) or a flower (right).
+  const hairY = Math.min(shape.top - 0.05, faceY + 0.17), clip = (geometry, angle) => { const at = onSkin(angle, hairY, 0.02); return baked(geometry, at, outward(at)); };
+  if (has.has('bow')) {
+    const lobe = side => new THREE.SphereGeometry(0.06, 12, 8).scale(1, 0.7, 0.4).translate(side * 0.058, 0, 0).rotateZ(side * 0.25);
+    worn.push([clip(mergeGeometries([lobe(1), lobe(-1)]).rotateZ(0.35), 0.75), trim], [clip(new THREE.SphereGeometry(0.026, 10, 8).scale(1, 1, 0.7), 0.75), dark]);
+  }
+  if (has.has('flower')) {
+    const petals = mergeGeometries(Array.from({ length: 5 }, (_, i) => new THREE.SphereGeometry(0.032, 10, 6).scale(1, 0.6, 0.35).translate(0.036, 0, 0).rotateZ(i / 5 * Math.PI * 2)));
+    worn.push([clip(petals, -0.8), trim], [clip(new THREE.SphereGeometry(0.022, 10, 8).scale(1, 1, 0.6).translate(0, 0, 0.01), -0.8), '#ffd23f']);
+  }
+  // Headphones: a band over the top, behind the stem, and a cup over each side.
+  if (has.has('headphones')) {
+    const side = (y, k, out) => { const { x, r } = shape.surface(y); return V(x + k * (r + out), y, -0.04); }, heights = [faceY + 0.05, (faceY + shape.top) / 2, shape.top - 0.03];
+    const band = [...heights.map(y => side(y, 1, 0.03)), V(shape.surface(shape.top).x, shape.top + 0.045, -0.04), ...[...heights].reverse().map(y => side(y, -1, 0.03))];
+    worn.push([new THREE.TubeGeometry(new THREE.CatmullRomCurve3(band), 32, 0.013, 6), '#2b2d42']);
+    for (const k of [-1, 1]) {
+      const at = side(faceY, k, 0.012); at.z = 0;
+      worn.push([new THREE.CylinderGeometry(0.058, 0.058, 0.045, 16).rotateZ(Math.PI / 2).translate(at.x + k * 0.012, at.y, 0), trim], [new THREE.CylinderGeometry(0.04, 0.04, 0.02, 14).rotateZ(Math.PI / 2).translate(at.x + k * 0.04, at.y, 0), '#2b2d42']);
+    }
+  }
+  // Earrings: a gold stud and a drop, where ears would be.
+  if (has.has('earrings')) for (const k of [-1, 1]) {
+    const stud = onSkin(k * 1.25, faceY - 0.025, 0.006), drop = onSkin(k * 1.25, faceY - 0.075, 0.026);
+    worn.push([new THREE.SphereGeometry(0.012, 8, 6).translate(...stud.toArray()), GOLD], [arc([stud, stud.clone().lerp(drop, 0.5).add(V(0, 0, 0.004)), drop], 0.004), GOLD], [new THREE.SphereGeometry(0.022, 10, 8).scale(0.85, 1.15, 0.85).translate(drop.x, drop.y - 0.012, drop.z), trim]);
+  }
+  // Pearls: a string of beads hanging lowest at the front.
+  if (has.has('pearls')) for (let i = 0; i <= 14; i++) {
+    const a = (i / 14 - 0.5) * 2.6, at = onSkin(a, collarY + 0.012 - 0.03 * Math.cos(a / 2.6 * Math.PI), 0.012);
+    worn.push([new THREE.SphereGeometry(0.017, 8, 6).translate(...at.toArray()), '#f6f1e7']);
+  }
+  // A scarf: a thick ring round the neck, two ends hanging down the front to one side, following the skin.
+  if (has.has('scarf')) {
+    worn.push([ring(shape.surface(collarY).r + 0.016, 0.032, collarY), trim]);
+    for (const [angle, length, shade] of [[0.36, 0.17, trim], [0.52, 0.14, dark]]) {
+      const top = onSkin(0, collarY - 0.02, 0.03), bottom = onSkin(0, collarY - 0.02 - length, 0.03);
+      worn.push([around(baked(new THREE.BoxGeometry(0.075, length, 0.022).translate(0, -length / 2, 0), top, [Math.atan2(top.z - bottom.z, top.y - bottom.y), 0, 0]), angle), shade]);
+    }
+  }
+  // A moustache: two plump curls between the eyes and the mouth.
+  if (has.has('moustache')) for (const k of [-1, 1]) {
+    const at = onSkin(k * 0.09, faceY - 0.05, 0.004), tip = a => onSkin(k * a, faceY - 0.06 + (a - 0.16) * 0.3, 0.006);
+    worn.push([baked(new THREE.SphereGeometry(0.04, 12, 8).scale(1.25, 0.55, 0.5).rotateZ(k * 0.25), at, outward(at)), '#4a3426'], [arc([tip(0.15), tip(0.21), onSkin(k * 0.22, faceY - 0.025, 0.006)], 0.009), '#4a3426']);
+  }
+  if (worn.length) { const geometry = paint(worn); own.push(geometry); body.add(withOutline(new THREE.Mesh(geometry, painted()), 0.006)); }
 
   // Limbs. Anchors start inside the body so no join ever shows. Facing +z, the left side is +x.
   const shoulderY = h * (fruit === 'banana' ? 0.42 : 0.4), hipY = Math.min(0.06, h * 0.1);

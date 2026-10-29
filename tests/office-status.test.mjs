@@ -24,6 +24,13 @@ test('identity is deterministic and varied', () => {
   const fruits = new Set(Array.from({ length: 50 }, (_, i) => identity(`s${i}`).fruit));
   assert.ok(fruits.size >= 5 && [...fruits].every(f => FRUITS.includes(f)));
 });
+test('accessories combine, one per slot', () => {
+  const people = Array.from({ length: 300 }, (_, i) => identity(`s${i}`)), hats = ['beanie', 'cap', 'headphones', 'bow', 'flower'];
+  assert.ok(people.some(p => p.accessories.includes('glasses') && p.accessories.includes('tie')));
+  assert.ok(people.some(p => p.accessories.includes('lashes')) && people.some(p => !p.accessories.length));
+  assert.ok(people.every(p => p.accessories.filter(a => hats.includes(a)).length <= 1 && !(p.accessories.includes('tie') && p.accessories.includes('pearls'))));
+  assert.ok(people.every(p => p.fruit !== 'banana' || !p.accessories.some(a => ['beanie', 'cap', 'headphones'].includes(a))));
+});
 test('typing targets are recognized', () => {
   assert.equal(isTypingTarget({ tagName: 'TEXTAREA', closest: () => null }), true);
   assert.equal(isTypingTarget({ tagName: 'CANVAS', isContentEditable: false, closest: () => null }), false);
