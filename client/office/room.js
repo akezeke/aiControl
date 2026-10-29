@@ -465,10 +465,12 @@ export function createRoom(scene, renderer) {
     // Switched off, the lamps go grey and their glow goes out (black adds nothing).
     const ceilingPlane = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), dims(new THREE.MeshBasicMaterial({ map: tiles, color: '#dfe2e7', transparent: true }), 0.3));
     ceilingPlane.rotation.x = Math.PI / 2; ceilingPlane.position.set(width / 2, WALL_H, depth / 2); ceiling.add(ceilingPlane);
-    const lampMaterial = dims(new THREE.MeshBasicMaterial({ color: '#fff8e2', transparent: true }), 0.45), glowMaterial = dims(new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0);
+    const lampMaterial = dims(new THREE.MeshBasicMaterial({ color: '#fff8e2', transparent: true, vertexColors: true }), 0.45), glowMaterial = dims(new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, vertexColors: true }), 0);
+    let last = 2; // the row nearest the door
     for (let x = 2; x < width - 1; x += 4) for (let z = 2; z < depth - 1; z += 4) {
-      const lamp = new THREE.Mesh(once('lamp', () => new THREE.CylinderGeometry(0.35, 0.4, 0.06, 24)), lampMaterial); lamp.position.set(x, WALL_H - 0.03, z); ceiling.add(lamp);
-      const glow = new THREE.Mesh(once('glow', () => new THREE.PlaneGeometry(2.4, 2.4).rotateX(Math.PI / 2)), glowMaterial); glow.position.set(x, WALL_H - 0.005, z); ceiling.add(glow);
+      last = z;
+      const lamp = new THREE.Mesh(once('lamp', () => white(new THREE.CylinderGeometry(0.35, 0.4, 0.06, 24))), lampMaterial); lamp.position.set(x, WALL_H - 0.03, z); ceiling.add(lamp);
+      const glow = new THREE.Mesh(once('glow', () => white(new THREE.PlaneGeometry(2.4, 2.4).rotateX(Math.PI / 2))), glowMaterial); glow.position.set(x, WALL_H - 0.005, z); ceiling.add(glow);
     }
     room.fadeables.ceiling = ceiling;
     // The lamps' light: a few point lights on a coarse grid (each one costs every lit pixel, so not one per lamp).
@@ -478,6 +480,17 @@ export function createRoom(scene, renderer) {
     }
     // What stands still goes into a few merged meshes; the windows move with the view, so they stay.
     bake(shell, [ceiling]); bake(ceiling);
+    // Start-up (lights.js): a row of lamps, counted from the door, stays grey and its glow out until it comes on.
+    const lamps = ceiling.children.filter(node => node.material === lampMaterial || node.material === glowMaterial);
+    for (const node of lamps) if (node.geometry === shared.lamp || node.geometry === shared.glow) node.geometry = node.geometry.clone();
+    lights.startUp(Math.round((last - 2) / 4) + 1, lit => {
+      if (lit) for (const material of [lampMaterial, glowMaterial]) material.color.copy(material.userData.lit.value);
+      for (const node of lamps) {
+        const { position, color } = node.geometry.attributes, off = node.material === lampMaterial ? 0.17 : 0;
+        for (let i = 0; i < position.count; i++) color.setXYZ(i, ...Array(3).fill(!lit || lit[Math.round((last - position.getZ(i)) / 4)] ? 1 : off));
+        color.needsUpdate = true;
+      }
+    });
     for (const w of [back, front, left, right]) bake(w, [windows]);
   }
 
@@ -487,6 +500,9 @@ export function createRoom(scene, renderer) {
 // Merges the plain meshes under `group` (no userData, nothing below them but an outline; plain groups are looked into) into one
 // mesh per material and outline: far fewer draw calls for things that never move. Collider boxes are taken first; a merged
 // mesh is picked by the boxes of what went into it.
+// All-white vertex colours, for a material that tints parts of a mesh.
+const white = geometry => geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(geometry.attributes.position.count * 3).fill(1), 3));
+
 function bake(group, keep = []) {
   group.updateMatrixWorld(true);
   const toGroup = group.matrixWorld.clone().invert(), buckets = new Map(), sharedGeometry = new Set(Object.values(shared));
