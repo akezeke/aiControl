@@ -3,13 +3,14 @@
 // Coordinates come straight from layout.js: the room spans x 0..width, z 0..depth, the door is on the front wall (z = depth).
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { toonMaterial } from './toon.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { toonMaterial, withOutline } from './toon.js';
 import { createLights, dims } from './lights.js';
 import { createSlacking } from './slack.js';
 import { createWindows } from './windows.js';
 import { DESK_W, DESK_D } from './layout.js';
 import {
-  WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
+  WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
   counter, mugShelf, waterCooler, bookshelf, printer, filingCabinet, coatRack, extinguisher, glowTexture, floorShadow,
 } from './furniture.js';
 
@@ -46,6 +47,7 @@ const keyboardParts = () => [
   [B(0.42, 0.025, 0.14, 0, DESK_H + 0.0125, KEYS_Z, 0.012), '#e9e6df'], ...[-0.04, 0, 0.04].map(z => [B(0.38, 0.008, 0.028, 0, DESK_H + 0.026, KEYS_Z + z, 0.003), '#cfc9bd']),
   [B(0.2, 0.006, 0.18, MOUSE_X, DESK_H + 0.003, KEYS_Z, 0.003), '#3d5a80'], [new THREE.SphereGeometry(0.03, 12, 8).scale(0.8, 0.5, 1.25).translate(MOUSE_X, DESK_H + 0.016, KEYS_Z), '#e9e6df'],
 ];
+const TOWER = [-0.5, 0.06]; // on the floor under the desk, leaving the top free
 const towerParts = () => [
   [B(0.18, 0.42, 0.4, 0, 0.21, 0, 0.02), '#2f3542'], [B(0.12, 0.014, 0.01, 0, 0.33, -0.2, 0.003), '#8a8f99'], [B(0.12, 0.014, 0.01, 0, 0.3, -0.2, 0.003), '#8a8f99'],
   ...[0.08, 0.11, 0.14].map(y => [B(0.1, 0.006, 0.006, 0, y, -0.2, 0), '#4a5160']), [C(0.018, 0.018, 0.012, 0, 0, 0, 12).rotateX(Math.PI / 2).translate(0, 0.24, -0.2), '#8a8f99'],
@@ -64,21 +66,34 @@ const chairParts = seat => {
   return parts;
 };
 
+// The desk, its tower and its chair in one shared geometry; userData.solids are the desk and the chair as boxes in the desk's
+// frame (what blocks walking and throws). What's on the desk stays apart, to be picked up.
+function deskGeometry(width, color, helper) {
+  const at = (parts, x, z) => parts.map(([geometry, c]) => [geometry.translate(x, 0, z), c]);
+  const top = paint(deskParts(width)), chair = paint(at(chairParts(color), 0, CHAIR_Z)), parts = [top, chair];
+  if (!helper) parts.push(paint(at(towerParts(), ...TOWER)));
+  const geometry = mergeGeometries(parts);
+  geometry.userData.solids = [top, chair].map(g => (g.computeBoundingBox(), g.boundingBox));
+  return geometry;
+}
+
 // One desk in its own frame: the sitter faces +z from the chair at -z; the monitor is at the far (+z) edge facing them.
 // A helper's desk is the same, narrower and bare, and scaled down.
 function createDesk(color, width = DESK_W, helper = false) {
-  const group = new THREE.Group();
-  group.add(piece(`desk${width}`, () => deskParts(width)), piece('monitor', monitorParts), piece('keyboard', keyboardParts, 0.005));
+  const group = new THREE.Group(), key = `desk${width}${color}${helper ? 'helper' : ''}`;
+  const geometry = once(key, () => deskGeometry(width, color, helper)), monitor = piece('monitor', monitorParts);
+  group.add(mesh(geometry, painted(), 0.008), monitor, piece('keyboard', keyboardParts, 0.005));
   // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change.
   const screenTexture = helper ? canvasTexture(216, 128, drawScreen) : canvasTexture(432, 256, drawScreen);
   const screen = new THREE.Mesh(once('screen', () => new THREE.PlaneGeometry(0.54, 0.32)), new THREE.MeshBasicMaterial({ map: screenTexture }));
   screen.position.set(0, DESK_H + 0.34, MONITOR_Z - 0.032); screen.rotation.y = Math.PI; group.add(screen);
-  const chair = piece(`chair${color}`, () => chairParts(color)); chair.position.z = CHAIR_Z; group.add(chair);
-  const chairShadow = floorShadow(0.72, 0.72, 0.3); chairShadow.position.z = CHAIR_Z; group.add(floorShadow(width, DESK_D * 1.05, 0.3), chairShadow);
-  const desk = { group, screen, screenTexture, chair, color };
+  const chair = new THREE.Object3D(); chair.position.z = CHAIR_Z; group.add(chair); // where the sitter sits
+  // The desk's and the chair's shadows in one.
+  const shadow = floorShadow(1, 1, 0.3), plane = shadow.geometry; group.add(shadow);
+  shadow.geometry = once(`deskShadow${width}`, () => mergeGeometries([plane.clone().scale(width, 1, DESK_D * 1.05), plane.clone().scale(0.72, 1, 0.72).translate(0, 0, CHAIR_Z)]));
+  const desk = { group, screen, screenTexture, chair, color, monitor, solids: geometry.userData.solids };
   if (helper) return desk;
-  const tower = piece('tower', towerParts); tower.position.set(-0.5, 0, 0.06); group.add(tower); // on the floor under the desk, leaving the top free
-  desk.led = new THREE.Mesh(once('led', () => new THREE.SphereGeometry(0.012, 8, 6)), new THREE.MeshBasicMaterial({ color: leds.off })); desk.led.position.set(0, 0.39, -0.205); tower.add(desk.led);
+  desk.led = new THREE.Mesh(once('led', () => new THREE.SphereGeometry(0.012, 8, 6)), new THREE.MeshBasicMaterial({ color: leds.off })); desk.led.position.set(TOWER[0], 0.39, TOWER[1] - 0.205); group.add(desk.led);
   desk.cups = new THREE.Group(); desk.cups.position.y = DESK_H; group.add(desk.cups);
   desk.slack = { show: null, wary: false, busted: 0, calm: 0 }; // slack.js: something silly on the screen now and then
   desk.helpers = [];
@@ -118,10 +133,13 @@ function signTexture(name) {
 }
 
 // A sign that can hire wears a blue + badge on its corner, lit from inside like the sign's face, so both stay bright with the
-// lights off. Shared by every sign.
+// lights off. Shared by every sign; its rim samples the plain blue in the texture's corner, so it's one draw.
 let badgeLook;
-const badgeMaterials = () => badgeLook ??= [new THREE.MeshBasicMaterial({ color: '#2f7cf6', userData: { shared: true } }), ...Array(2).fill(new THREE.MeshBasicMaterial({ userData: { shared: true },
-  map: canvasTexture(64, 64, (g, w) => { g.fillStyle = '#2f7cf6'; g.fillRect(0, 0, w, w); g.fillStyle = '#ffffff'; g.fillRect(w * 0.44, w * 0.22, w * 0.12, w * 0.56); g.fillRect(w * 0.22, w * 0.44, w * 0.56, w * 0.12); }) }))];
+const badgeMaterial = () => badgeLook ??= new THREE.MeshBasicMaterial({ userData: { shared: true },
+  map: canvasTexture(64, 64, (g, w) => { g.fillStyle = '#2f7cf6'; g.fillRect(0, 0, w, w); g.fillStyle = '#ffffff'; g.fillRect(w * 0.44, w * 0.22, w * 0.12, w * 0.56); g.fillRect(w * 0.22, w * 0.44, w * 0.56, w * 0.12); }) });
+const badgeGeometry = () => { const g = new THREE.CylinderGeometry(0.12, 0.12, 0.07, 24); for (let i = 0; i < 50; i++) g.attributes.uv.setXY(i, 0.05, 0.05); g.clearGroups(); return g.rotateX(Math.PI / 2); };
+// The board's edges in one group and its two faces in another (a box's groups run +x, -x, +y, -y, +z, -z).
+const boardGeometry = () => { const g = rounded(1.6, 0.4, 0.05, 0.03), [, , , , front, back] = g.groups; g.clearGroups(); g.addGroup(0, front.start, 0); g.addGroup(front.start, front.count + back.count, 1); return g; };
 
 export function createRoom(scene) {
   const root = new THREE.Group(); scene.add(root);
@@ -166,7 +184,8 @@ export function createRoom(scene) {
         });
         desk.group.updateMatrixWorld(true);
         // The desk, its monitor (inside the desk's footprint, so only balls notice it), the chair and any helpers' desks.
-        for (const part of [desk.group.children[0], desk.group.children[1], desk.chair, ...desk.helpers.map(helper => helper.group)]) solid.push(new THREE.Box3().setFromObject(part));
+        const [top, seat] = desk.solids.map(box => box.clone().applyMatrix4(desk.group.matrixWorld));
+        solid.push(top, new THREE.Box3().setFromObject(desk.monitor), seat, ...desk.helpers.map(helper => new THREE.Box3().setFromObject(helper.group)));
       }
       for (const [id, desk] of desks) if (!layout.desks.has(id)) { removeDesk(desk); desks.delete(id); }
       const podKeys = new Set();
@@ -208,11 +227,12 @@ export function createRoom(scene) {
 
   function createSign(pod) {
     const group = new THREE.Group(), texture = signTexture(pod.name), y = 2.35;
-    const board = new THREE.Mesh(once('sign', () => rounded(1.6, 0.4, 0.05, 0.03)), [null, null, null, null, null, null].map((_, i) => i === 4 || i === 5 ? new THREE.MeshBasicMaterial({ map: texture }) : toonMaterial('#2f3542')));
+    const board = new THREE.Mesh(once('sign', boardGeometry), [toonMaterial('#2f3542'), new THREE.MeshBasicMaterial({ map: texture })]);
     board.position.y = y; group.add(board);
     // The badge is a child of the board, so it tilts with it in the overview; a coin, thick enough to show on both faces.
-    const badge = new THREE.Mesh(once('signBadge', () => new THREE.CylinderGeometry(0.12, 0.12, 0.07, 24).rotateX(Math.PI / 2)), badgeMaterials()); badge.position.set(0.8, 0.2, 0); board.add(badge);
-    for (const x of [-0.6, 0.6]) { const cord = new THREE.Mesh(once('cord', () => new THREE.CylinderGeometry(0.008, 0.008, WALL_H - y - 0.2, 6)), toonMaterial('#2f3542')); cord.position.set(x, (WALL_H + y + 0.2) / 2, 0); group.add(cord); }
+    const badge = new THREE.Mesh(once('signBadge', badgeGeometry), badgeMaterial()); badge.position.set(0.8, 0.2, 0); board.add(badge);
+    const cords = new THREE.Mesh(once('cords', () => mergeGeometries([-0.6, 0.6].map(x => new THREE.CylinderGeometry(0.008, 0.008, WALL_H - y - 0.2, 6).translate(x, 0, 0)))), toonMaterial('#2f3542'));
+    cords.position.y = (WALL_H + y + 0.2) / 2; group.add(cords);
     const rug = new THREE.Mesh(once('rug', () => new RoundedBoxGeometry(1, 0.012, 1, 2, 0.005)), toonMaterial(teams[podColors.get(pod.key)][0])); rug.position.y = 0.006; group.add(rug);
     return { group, board, badge, texture, rug, waiting: null };
   }
@@ -264,7 +284,7 @@ export function createRoom(scene) {
 
     // Windows on the back wall (windows.js), with posters and plants between them.
     const count = Math.max(1, Math.floor(width / 4)), xs = Array.from({ length: count }, (_, i) => -width / 2 + (i + 0.5) * width / count);
-    back.add(createWindows(xs));
+    const windows = createWindows(xs); back.add(windows);
     for (const [i, x] of xs.entries()) {
       if (i) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
     }
@@ -331,9 +351,56 @@ export function createRoom(scene) {
     for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
       const light = dims(new THREE.PointLight('#ffecd0', 6, 0, 1.5), 0); light.position.set((i + 0.5) * width / cols, WALL_H - 0.35, (j + 0.5) * depth / rows); shell.add(light);
     }
+    // What stands still goes into a few merged meshes; the windows move with the view, so they stay.
+    bake(shell, [ceiling]); bake(ceiling);
+    for (const w of [back, front, left, right]) bake(w, [windows]);
   }
 
   return room;
+}
+
+// Merges the plain meshes under `group` (no userData, nothing below them but an outline; plain groups are looked into) into one
+// mesh per material and outline: far fewer draw calls for things that never move. Collider boxes are taken first; a merged
+// mesh is picked by the boxes of what went into it.
+function bake(group, keep = []) {
+  group.updateMatrixWorld(true);
+  const toGroup = group.matrixWorld.clone().invert(), buckets = new Map(), sharedGeometry = new Set(Object.values(shared));
+  const visit = node => {
+    if (keep.includes(node) || !node.visible || Object.keys(node.userData).length) return;
+    if (node.constructor === THREE.Group) node.children.forEach(visit);
+    if (node.constructor !== THREE.Mesh || Array.isArray(node.material) || node.children.some(child => !child.userData.outline)) return;
+    const key = `${node.material.uuid}:${node.children[0]?.material.userData.thickness || 0}`;
+    (buckets.get(key) || buckets.set(key, []).get(key)).push(node);
+  };
+  group.children.forEach(visit);
+  for (const [key, nodes] of buckets) {
+    if (nodes.length < 2) continue;
+    const thickness = Number(key.split(':')[1]), boxes = [];
+    const geometries = nodes.map(node => {
+      const matrix = toGroup.clone().multiply(node.matrixWorld), g = node.geometry.index ? node.geometry.toNonIndexed() : node.geometry.clone();
+      g.applyMatrix4(matrix);
+      if (thickness) g.attributes.outlineNormal.applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(matrix)); else g.deleteAttribute('outlineNormal');
+      return g;
+    });
+    const geometry = mergeGeometries(geometries); if (!geometry) continue;
+    for (const node of nodes) {
+      if (node.raycast === THREE.Mesh.prototype.raycast) boxes.push(new THREE.Box3().setFromObject(node).applyMatrix4(toGroup));
+      const parent = node.parent; node.removeFromParent();
+      if (!sharedGeometry.has(node.geometry)) node.geometry.dispose();
+      if (parent !== group && parent.constructor === THREE.Group && !parent.children.length) parent.removeFromParent();
+    }
+    const merged = mesh(geometry, nodes[0].material, thickness); group.add(merged);
+    const ray = new THREE.Ray(), point = new THREE.Vector3(), inverse = new THREE.Matrix4();
+    merged.raycast = (raycaster, hits) => {
+      ray.copy(raycaster.ray).applyMatrix4(inverse.copy(merged.matrixWorld).invert());
+      for (const box of boxes) {
+        if (!ray.intersectBox(box, point)) continue;
+        point.applyMatrix4(merged.matrixWorld);
+        const distance = raycaster.ray.origin.distanceTo(point);
+        if (distance >= raycaster.near && distance <= raycaster.far) hits.push({ distance, point: point.clone(), object: merged });
+      }
+    };
+  }
 }
 
 // Removes a subtree and frees what only it uses; shared geometries stay for the next desk and are freed with the scene on unmount.
