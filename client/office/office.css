@@ -1,8 +1,8 @@
-:root[data-theme-choice=office]:not([data-office-fallback]) .main-content { max-width: none; padding: 0; height: 100dvh; }
-:root[data-theme-choice=office]:not([data-office-fallback]) .main-content > :not(#office) { display: none; }
+:root[data-theme-choice=office]:not([data-office-fallback], [data-office-list]) .main-content { max-width: none; padding: 0; height: 100dvh; }
+:root[data-theme-choice=office]:not([data-office-fallback], [data-office-list]) .main-content > :not(#office) { display: none; }
 #office { position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: #f6e7c8; touch-action: none; }
 #office > canvas { display: block; width: 100%; height: 100%; }
-@media (max-width: 640px) { :root[data-theme-choice=office]:not([data-office-fallback]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
+@media (max-width: 640px) { :root[data-theme-choice=office]:not([data-office-fallback], [data-office-list]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
 
 .office-bubbles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .office-bubble { position: absolute; left: 0; top: 0; transform-origin: 50% 100%; pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 340px; padding: 9px 16px; border: 3px solid #1b1a1f; border-radius: 22px; background: #fffdf7; color: #1b1a1f; font: 700 18px/1.2 system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; cursor: pointer; white-space: nowrap; }
@@ -58,13 +58,13 @@
 
 /* Talking: a narrower panel and no dimming, so the character stays in view beside it. */
 @media (min-width: 641px) {
-  :root[data-theme-choice=office]:not([data-office-fallback]) .detail-panel { width: min(100%, max(520px, 44vw)); }
-  :root[data-theme-choice=office]:not([data-office-fallback]) .panel-backdrop { background: transparent; backdrop-filter: none; }
+  :root[data-theme-choice=office]:not([data-office-fallback], [data-office-list]) .detail-panel { width: min(100%, max(520px, 44vw)); }
+  :root[data-theme-choice=office]:not([data-office-fallback], [data-office-list]) .panel-backdrop { background: transparent; backdrop-filter: none; }
 }
 body.panel-open .office-hint { display: none; }
 /* It fades in gently as the view settles on whoever you're talking to. */
 @media (prefers-reduced-motion: no-preference) {
-  :root[data-theme-choice=office]:not([data-office-fallback]) .detail-panel { animation: office-panel-in .4s ease; }
+  :root[data-theme-choice=office]:not([data-office-fallback], [data-office-list]) .detail-panel { animation: office-panel-in .4s ease; }
 }
 @keyframes office-panel-in { from { opacity: 0; transform: translateX(12px); } }
 

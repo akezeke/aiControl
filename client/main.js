@@ -70,6 +70,7 @@ const icons = {
   sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4Z"/><path d="M15.5 9a4 4 0 0 1 0 6m2.5-8.5a7.5 7.5 0 0 1 0 11"/>',
   next: '<path d="m6 5 7 7-7 7m7-14 7 7-7 7"/>',
   exit: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m5-12 4 4-4 4m4-4H9"/>',
+  office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
   const span = document.createElement('span'); span.className = 'icon'; span.setAttribute('aria-hidden', 'true');
@@ -89,7 +90,8 @@ function uuid() {
 function chooseTheme(id) {
   applyTheme(id);
   for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
-  syncOffice();
+  // Picking the Office opens its scene, even if its list was showing last.
+  if (id === 'office' && officeList) setOfficeList(false); else syncOffice();
 }
 function themeMenu() {
   const menu = el('details', 'theme-menu');
@@ -197,7 +199,7 @@ function showWorkspace() {
   shell.append(aside);
   const content = el('div', 'workspace');
   const topbar = el('header', 'topbar');
-  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; topActions.append(live, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
+  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; const officeButton = button('Office', 'quiet-button office-button', () => setOfficeList(false), 'office'); officeButton.title = 'Back to the office'; topActions.append(live, officeButton, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
   // Desktop has no top bar: its controls sit at the bottom of the sidebar.
   const wide = matchMedia('(min-width: 641px)'), placeActions = () => (wide.matches ? aside : topbar).append(topActions);
   wide.onchange = placeActions; placeActions();
@@ -240,13 +242,19 @@ async function refresh() {
 }
 
 // The Office theme swaps the list for a 3D scene, downloaded only once it is chosen.
-let office = null, officeModule = null, listTheme = savedTheme() === 'office' ? 'modern-light' : savedTheme();
+// Its ☰ shows the list in the same paper look (the scene is unmounted meanwhile) and 🏢 goes back; the choice is remembered.
+const officeViewKey = 'ai-control-office-view';
+let office = null, officeModule = null, officeList = (() => { try { return localStorage.getItem(officeViewKey) === 'list'; } catch { return false; } })();
+function setOfficeList(list) {
+  officeList = list; try { localStorage.setItem(officeViewKey, list ? 'list' : 'scene'); } catch { /* per-tab only */ }
+  syncOffice(); renderData();
+  if (list) document.querySelector('.office-button')?.focus();
+}
 function syncOffice() {
-  const root = document.documentElement, main = document.querySelector('.main-content');
-  if (root.dataset.themeChoice !== 'office' || !main) {
-    if (root.dataset.themeChoice && root.dataset.themeChoice !== 'office') listTheme = root.dataset.themeChoice;
-    office?.unmount(); office = null; document.querySelector('#office')?.remove(); root.removeAttribute('data-office-fallback'); return;
-  }
+  const root = document.documentElement, main = document.querySelector('.main-content'), chosen = root.dataset.themeChoice === 'office';
+  root.toggleAttribute('data-office-list', chosen && officeList);
+  if (!chosen) root.removeAttribute('data-office-fallback');
+  if (!chosen || officeList || !main) { office?.unmount(); office = null; document.querySelector('#office')?.remove(); return; }
   // Any failure (download, no WebGL2, renderer refused) shows the list once and stays that way for this theme choice.
   const fallBack = message => { root.setAttribute('data-office-fallback', ''); document.querySelector('#office')?.remove(); toast(message); };
   // An office bug must not take the session list down with it.
@@ -257,7 +265,7 @@ function syncOffice() {
   if (!officeModule.webglAvailable()) { fallBack('Office needs WebGL 2; showing the list'); return; }
   const box = el('div'); box.id = 'office'; main.append(box);
   try {
-    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread, describe: sessionFacts, spawn: spawnAgent });
+    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => setOfficeList(true), isUnread: unread, describe: sessionFacts, spawn: spawnAgent });
     if (state.snapshot) office.update(state.snapshot, { error: state.error });
   } catch (error) { console.error(error); office?.unmount(); office = null; fallBack('Office could not start; showing the list'); }
 }
@@ -601,7 +609,7 @@ function renderSessionRequests(requests, session) {
       // Claude takes a reason with a denial; Enter in the field denies with it.
       const reason = request.denyMessage && el('input', 'deny-reason');
       const decide = value => respond(request, { decision: value, ...(value === 'decline' && reason?.value.trim() ? { message: reason.value.trim() } : {}) }, box, error);
-      for (const action of request.actions) { const b = button(action.label, action.value === 'accept' ? 'primary' : 'secondary', () => decide(action.value)); b.title = action.label; b.disabled = !!state.error || request.sending; actions.append(b); }
+      for (const action of request.actions) { const b = button(action.label, action.value === 'accept' ? 'primary' : 'secondary', () => decide(action.value)); b.title = action.label; b.dataset.decision = action.value; b.disabled = !!state.error || request.sending; actions.append(b); }
       box.append(error, actions);
       if (reason) { reason.type = 'text'; reason.maxLength = 2000; reason.placeholder = 'Deny with a reason…'; reason.setAttribute('aria-label', 'Reason for denying'); reason.disabled = !!state.error || request.sending; reason.onkeydown = event => { if (event.key === 'Enter' && reason.value.trim()) { event.preventDefault(); decide('decline'); } }; box.append(reason); }
     } else box.append(el('p', 'muted', request.note || 'Answer this request in the original client.'));

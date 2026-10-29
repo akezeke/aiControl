@@ -52,3 +52,21 @@
   --steel: linear-gradient(115deg, #7b8070, #5d6354 42%, #6a7060 70%, #555b4c);
   --bevel-hi: #a7ab8d; --bevel-lo: #1b2114;
 }
+
+/* OFFICE: paper pinned to a corkboard, inked like the scene's speech bubbles. */
+:root[data-theme=office] {
+  color-scheme: light;
+  --hand: 'Comic Neue', 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive;
+  --display: var(--hand);
+  --bg: #c4935f; --panel: #fffef8; --panel-2: #f3eedf; --sunken: #fbf8ef;
+  --text: #1b1a1f; --text-2: #3a3742; --text-3: #5c5866;
+  --line: #e4dccb; --line-2: #cfc4ad;
+  --accent: #2b59c3; --accent-2: #1f46a0; --accent-ink: #fff; --accent-soft: #dfe8fb;
+  --ok: #2f7d1f; --ok-soft: #e3f7d3; --warn: #9a4a00; --warn-soft: #fff3c2; --warn-line: #e5c14d; --danger: #c41f35; --danger-soft: #ffe1e6;
+  --codex: #1b1a1f; --claude: #d97757; --claude-soft: #fdeee6;
+  --radius: 4px; --radius-sm: 6px;
+  --shadow: 1px 2px 0 #0002, 2px 5px 10px #0003;
+  --shadow-lg: 2px 3px 0 #0002, 6px 14px 30px #0005;
+  --focus: #2b59c3;
+  --ink: #1b1a1f; --postit: #ffe066; --go: #b9f18c; --stop: #ff9fb2; --sky: #8fd3ff;
+}
