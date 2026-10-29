@@ -48,7 +48,7 @@ test('a working session that is thinking gets its own pose and bubble', () => {
 });
 test('a session compacting its context says so', () => {
   const s = officeStatus({ status: 'working', activity: 'compacting', detail: 'Compacting context', requests: [] });
-  assert.deepEqual([s.pose, s.bubble.icon, s.bubble.text], ['thinking', '🗜️', 'Compacting']);
+  assert.deepEqual([s.pose, s.expression, s.bubble.icon, s.bubble.text], ['squeezing', 'squeezed', '🗜️', 'Compacting']);
 });
 test('wear follows context fill and long turns; cups follow the turn', () => {
   const now = 1_000_000_000, at = minutes => now - minutes * 60_000;

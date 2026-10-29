@@ -37,6 +37,12 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
     // Leaning back, hand at the chin, the other on the desk, tapping a finger.
     case 'thinking': return { ...seated(-0.1, wave(1.2) * 0.006), limbs: {
       leftHand: V(0.24, DESK_H + 0.03, KEYS - 0.08), rightHand: V(-0.09, SEAT_H + h * 0.46 + Math.max(0, wave(3)) * 0.012, 0.33), ...feetUnder } };
+    // Compacting: hunched forward hugging itself, eyes screwed shut (fruit.js), shivering hard enough to see across the room.
+    case 'squeezing': {
+      const shiver = wave(31) * 0.06 + s(t * 47 + seed * 3) * 0.03, waist = fruit.surface(h * 0.45), base = seated(0.12, Math.abs(wave(19)) * 0.01);
+      const hand = side => V(waist.x + side * (waist.r + 0.03), SEAT_H + h * 0.45, 0.04);
+      return { ...base, x: wave(37) * 0.02, body: { ...base.body, tilt: shiver }, limbs: { leftHand: hand(1), rightHand: hand(-1), ...feetUnder } };
+    }
     case 'waving': return { ...standing(Math.abs(wave(6)) * 0.06), limbs: {
       leftHand: V(0.36 - wave(9) * 0.06, LEG + h + 0.22, 0.08), rightHand: V(-0.36 + wave(9) * 0.06, LEG + h + 0.22, 0.08), ...feetStand } };
     case 'raising': return { ...standing(Math.abs(wave(3)) * 0.02, -0.12), limbs: {
@@ -172,7 +178,7 @@ export class Cast {
       const talking = this.facingYou === c.id && !STANDING.has(c.pose), busy = ['typing', 'thinking', 'sleeping'].includes(c.pose), slack = c.anchor.slack;
       const pose = talking ? 'listening' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted' : c.pose;
       const since = this.time - c.startled, startled = since < STARTLED;
-      const face = startled ? 'frown' : talking && c.expression === 'asleep' ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : c.expression;
+      const face = startled ? 'frown' : talking && ['asleep', 'squeezed'].includes(c.expression) ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : c.expression;
       if (c.shown !== pose) { if (c.shown) c.changed = this.time; c.shown = pose; }
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
       fruit.buzz(t);

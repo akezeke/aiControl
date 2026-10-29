@@ -10,7 +10,7 @@ const MAX_TEXT = 48;
 const looks = {
   working: ['typing', 'smile', '⌨️', 'green'],
   thinking: ['thinking', 'thinking', '💭', 'green'],
-  compacting: ['thinking', 'thinking', '🗜️', 'green'],
+  compacting: ['squeezing', 'squeezed', '🗜️', 'green'],
   permission: ['waving', 'worried', '✋', 'amber'],
   question: ['raising', 'curious', '❓', 'amber'],
   idle: ['sleeping', 'asleep', '💤', 'dark'],

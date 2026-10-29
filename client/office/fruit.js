@@ -312,12 +312,19 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
       // One brow up, a small flat mouth pushed to one side and slanted: "hmm".
       thinking: { brows: [-0.01, 0.004], raise: 0.03, mouth: [0, 0], width: 0.06, shift: 0.1, slant: 0.012 },
       asleep: { brows: [0, 0], mouth: null, width: 0 },
+      // Compacting: brows pulled down hard, a tight wide grimace.
+      squeezed: { brows: [-0.03, 0.012], mouth: [-0.01, 0], width: 0.13 },
     }[name] || {};
     for (const side of [-1, 1]) {
       const [inner, outer] = shapes.brows || [0, 0], raise = side === 1 ? shapes.raise || 0 : 0;
       line([onSkin(side * (s - 0.07), browY + inner + raise), onSkin(side * s, browY + 0.012 + (inner + outer) / 2 + raise), onSkin(side * (s + 0.07), browY + outer + raise)], 0.006);
     }
-    eyes.visible = name !== 'asleep';
+    eyes.visible = name !== 'asleep' && name !== 'squeezed';
+    // Screwed shut: > < , each from two straight strokes so the point stays sharp.
+    if (name === 'squeezed') for (const side of [-1, 1]) {
+      const tip = onSkin(side * (s - 0.04), faceY), stroke = dy => { const end = [side * (s + 0.045), faceY + dy]; line([onSkin(...end), onSkin(side * (s + 0.0025), faceY + dy / 2), tip], 0.009); };
+      stroke(0.03); stroke(-0.03);
+    }
     if (name === 'asleep') {
       for (const side of [-1, 1]) line([onSkin(side * s - 0.05, faceY), onSkin(side * s, faceY - 0.022), onSkin(side * s + 0.05, faceY)], 0.007);
       const at = onSkin(0, mouthY, 0); expression.push([baked(new THREE.TorusGeometry(0.016, 0.006, 6, 14), at, outward(at)), INK]);
