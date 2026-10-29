@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClaudeMessaging, spawnAgent } from '../server/claude-messaging.mjs';
+import { ClaudeMessaging, spawnAgent, updateCodex } from '../server/claude-messaging.mjs';
 import { ClaudeAdapter } from '../server/claude.mjs';
 import { RequestStore } from '../server/requests.mjs';
 
@@ -193,6 +193,21 @@ test('a failed Enter after pasting is unconfirmed and never retyped', async () =
   assert.equal(calls.filter(args => args[0] === 'paste-buffer').length, 1);
 });
 
+test('a new Codex takes its update prompt’s Update now and starts again; a started Codex or a trust question is left alone', async () => {
+  const run = screens => {
+    const calls = []; let at = 0;
+    return { calls, tmux: async args => { if (args[0] === 'capture-pane') return screens[at]; calls.push(args.slice(3)); at++; return ''; } };
+  };
+  const update = run(['Update available · 0.164.0 → 0.165.0\n› 1. Update now (runs `npm install -g @openai/codex`)\n  2. Skip', 'Updating Codex…\n🎉 Update ran successfully! Please restart Codex.\n$ ', '› Ask Codex to do anything']);
+  assert.equal(await updateCodex('%9', { tmux: update.tmux, pollMs: 1 }), true);
+  assert.deepEqual(update.calls, [['Enter'], ['codex', 'Enter']]);
+  for (const screen of ['› Ask Codex to do anything', '› 1. Trust and continue\n  2. Quit', 'Update available\n  1. Update now\n› 2. Skip']) {
+    const other = run([screen]);
+    assert.equal(await updateCodex('%9', { tmux: other.tmux, pollMs: 1, startMs: 20 }), false);
+    assert.deepEqual(other.calls, []);
+  }
+});
+
 test('new agents open in the tmux session working in the project, never the server’s own', async () => {
   const run = panes => { const calls = []; return { calls, tmux: async args => { calls.push(args); return args[0] === 'list-panes' ? panes : '%42\n'; } }; };
   const shared = run('aiControl\t/w/aiControl\nwork\t/w/app\nwork\t/w/aiControl\n');
@@ -201,7 +216,7 @@ test('new agents open in the tmux session working in the project, never the serv
   const fresh = run('aiControl\t/w/aiControl\n');
   assert.equal((await spawnAgent('/w/aiControl', 'codex', { tmux: fresh.tmux })).session, 'aiControl-agents');
   assert.equal(fresh.calls[1][0], 'new-session');
-  assert.deepEqual(fresh.calls[2].slice(3), ['codex -c check_for_update_on_startup=false', 'Enter']);
+  assert.deepEqual(fresh.calls[2].slice(3), ['codex', 'Enter']);
   assert.equal((await spawnAgent('/w/my.app', 'codex', { tmux: run('').tmux })).session, 'my_app');
   await assert.rejects(spawnAgent('/w/app', 'sh', { tmux: run('').tmux }), /Unknown agent/);
   const personal = run('');
