@@ -67,7 +67,7 @@ export function identity(id) {
   const fruit = pick(FRUITS, 'fruit');
   return {
     fruit, color: pick(palettes[fruit], 'color'), accessory: pick(ACCESSORIES, 'accessory'),
-    props: PROPS.filter(prop => hash(`${prop}:${id}`) % 3 === 0).slice(0, 3),
+    props: PROPS.filter(prop => hash(`${prop}:${id}`) % 3 === 0).slice(0, 3), notes: Math.min(3, hash(`notes:${id}`) % 5), // post-its on the monitor
   };
 }
 

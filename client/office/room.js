@@ -48,6 +48,20 @@ const keyboardParts = () => [
   [B(0.2, 0.006, 0.18, MOUSE_X, DESK_H + 0.003, KEYS_Z, 0.003), '#3d5a80'], [new THREE.SphereGeometry(0.03, 12, 8).scale(0.8, 0.5, 1.25).translate(MOUSE_X, DESK_H + 0.016, KEYS_Z), '#e9e6df'],
 ];
 const TOWER = [-0.5, 0.06]; // on the floor under the desk, leaving the top free
+const BIN = [0.46, -0.22]; // under the desk on the sitter's left, by the front edge
+// A waste bin with paper poking out of it (~600 vertices).
+const binParts = color => [
+  [C(0.12, 0.1, 0.3, 0, 0.15, 0, 16), color], [C(0.127, 0.127, 0.02, 0, 0.292, 0, 16), color], [new THREE.CircleGeometry(0.11, 16).rotateX(-Math.PI / 2).translate(0, 0.3035, 0), '#2a2d35'],
+  ...[[0.03, 0.02, 0.04], [-0.04, 0.01, 0.034], [0, -0.05, 0.036]].map(([x, z, r], i) => [new THREE.IcosahedronGeometry(r, 0).rotateY(i).translate(x, 0.3 + r * 0.4, z), '#f4f1ea']),
+];
+// Post-its facing +z, [x, y, tilt, colour, z]: a box (closed, so it gets an outline) with two scribbled lines as flat quads, 48 vertices.
+const NOTE = { yellow: '#ffe066', pink: '#ff9fb2', blue: '#8fd3ff', green: '#b9f18c' };
+const noteParts = notes => notes.flatMap(([x, y, tilt, color, z = 0]) => [
+  [B(0.075, 0.075, 0.003, 0, 0, 0, 0), color], [new THREE.PlaneGeometry(0.05, 0.005).translate(0, 0.012, 0.0025), '#3a4352'], [new THREE.PlaneGeometry(0.036, 0.005).translate(-0.007, -0.008, 0.0025), '#3a4352'],
+].map(([geometry, c]) => [geometry.rotateZ(tilt).translate(x, y, z), c]));
+// Stuck to the bezel, the first identity().notes of them, facing the sitter.
+const MONITOR_NOTES = [[0.3, 0.1, 0.12, NOTE.yellow], [-0.3, -0.08, -0.1, NOTE.pink], [0.16, 0.21, 0.08, NOTE.green]];
+const monitorNoteParts = n => noteParts(MONITOR_NOTES.slice(0, n)).map(([geometry, c]) => [geometry.rotateY(Math.PI).translate(0, DESK_H + 0.34, MONITOR_Z - 0.0345), c]);
 const towerParts = () => [
   [B(0.18, 0.42, 0.4, 0, 0.21, 0, 0.02), '#2f3542'], [B(0.12, 0.014, 0.01, 0, 0.33, -0.2, 0.003), '#8a8f99'], [B(0.12, 0.014, 0.01, 0, 0.3, -0.2, 0.003), '#8a8f99'],
   ...[0.08, 0.11, 0.14].map(y => [B(0.1, 0.006, 0.006, 0, y, -0.2, 0), '#4a5160']), [C(0.018, 0.018, 0.012, 0, 0, 0, 12).rotateX(Math.PI / 2).translate(0, 0.24, -0.2), '#8a8f99'],
@@ -66,22 +80,22 @@ const chairParts = seat => {
   return parts;
 };
 
-// The desk, its tower and its chair in one shared geometry; userData.solids are the desk and the chair as boxes in the desk's
-// frame (what blocks walking and throws). What's on the desk stays apart, to be picked up.
+// The desk, its tower, its bin and its chair in one shared geometry; userData.solids are the desk and the chair as boxes in the
+// desk's frame (what blocks walking and throws). What's on the desk stays apart, to be picked up.
 function deskGeometry(width, color, helper) {
   const at = (parts, x, z) => parts.map(([geometry, c]) => [geometry.translate(x, 0, z), c]);
   const top = paint(deskParts(width)), chair = paint(at(chairParts(color), 0, CHAIR_Z)), parts = [top, chair];
-  if (!helper) parts.push(paint(at(towerParts(), ...TOWER)));
+  if (!helper) parts.push(paint(at(towerParts(), ...TOWER)), paint(at(binParts('#8a8f99'), ...BIN)));
   const geometry = mergeGeometries(parts);
   geometry.userData.solids = [top, chair].map(g => (g.computeBoundingBox(), g.boundingBox));
   return geometry;
 }
 
 // One desk in its own frame: the sitter faces +z from the chair at -z; the monitor is at the far (+z) edge facing them.
-// A helper's desk is the same, narrower and bare, and scaled down.
-function createDesk(color, width = DESK_W, helper = false) {
+// A helper's desk is the same, narrower and bare, and scaled down. `notes` post-its are stuck to the monitor.
+function createDesk(color, width = DESK_W, helper = false, notes = 0) {
   const group = new THREE.Group(), key = `desk${width}${color}${helper ? 'helper' : ''}`;
-  const geometry = once(key, () => deskGeometry(width, color, helper)), monitor = piece('monitor', monitorParts);
+  const geometry = once(key, () => deskGeometry(width, color, helper)), monitor = piece(`monitor${notes}`, () => [...monitorParts(), ...monitorNoteParts(notes)]);
   group.add(mesh(geometry, painted(), 0.008), monitor, piece('keyboard', keyboardParts, 0.005));
   // The screen is a tiny terminal of the session's latest lines; room.sync redraws it when they change.
   const screenTexture = helper ? canvasTexture(216, 128, drawScreen) : canvasTexture(432, 256, drawScreen);
@@ -169,7 +183,7 @@ export function createRoom(scene) {
       for (const pod of layout.pods) if (!podColors.has(pod.key)) podColors.set(pod.key, podColors.size % teams.length);
       for (const [id, place] of layout.desks) {
         let desk = desks.get(id);
-        if (!desk) { desk = createDesk(teams[podColors.get(place.podKey)][1]); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group); }
+        if (!desk) { desk = createDesk(teams[podColors.get(place.podKey)][1], DESK_W, false, statuses.get(id)?.identity?.notes); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group); }
         desk.group.position.set(place.x, 0, place.z); desk.group.rotation.y = place.rotation;
         const status = statuses.get(id);
         redraw(desk, status);
@@ -282,6 +296,9 @@ export function createRoom(scene) {
       return item;
     };
     const shadowUnder = (x, z, w, d, rotation = 0) => { const s = floorShadow(w, d, 0.3); s.position.set(x, 0.016, z); s.rotation.y = rotation; shell.add(s); };
+    const bin = (color, x, z) => { place(piece(`bin${color}`, () => binParts(color)), x, z); shadowUnder(x, z, 0.34, 0.34); };
+    // Post-its, hung or placed like anything else; bake() merges them into what's around.
+    const notes = (key, list) => piece(`notes-${key}`, () => noteParts(list));
 
     // Windows on the back wall (windows.js), with posters and plants between them.
     const count = Math.max(1, Math.floor(width / 4)), xs = Array.from({ length: count }, (_, i) => -width / 2 + (i + 0.5) * width / count);
@@ -295,9 +312,11 @@ export function createRoom(scene) {
     const doorGroup = new THREE.Group(); doorGroup.position.set(door.x - width / 2, -WALL_H / 2, -WALL_T / 2 - 0.02); doorGroup.rotation.y = Math.PI; front.add(doorGroup);
     const panel = mesh(rounded(1.05, 2.15, 0.06, 0.03), toonMaterial('#e0574a')); panel.position.y = 1.075; doorGroup.add(panel);
     const knob = mesh(new THREE.SphereGeometry(0.04, 12, 8), toonMaterial('#f2c14e'), 0.006); knob.position.set(0.4, 1.05, 0.06); doorGroup.add(knob);
+    const doorNote = notes('door', [[0, 0, 0.06, NOTE.yellow]]); doorNote.position.set(-0.15, 1.5, 0.0325); doorGroup.add(doorNote);
     place(coatRack(), door.x + 0.85, depth - 0.35, 0.4);
     hang(front, extinguisher(), door.x - width / 2 - 0.75, 0.25, 0);
     hang(front, lights.createSwitch(), door.x - width / 2 - 0.72, 1.2, 0.008);
+    hang(front, notes('switch', [[0, 0, -0.08, NOTE.yellow]]), door.x - width / 2 - 0.72, 1.38, 0.004);
 
     // Boards; boards.js draws on their faces. The whiteboard is on the left wall, the clock above the door, the waiting board beside it.
     const board = (w, h, frameColor) => { const g = new THREE.Group(); const frame = mesh(rounded(w + 0.1, h + 0.1, 0.05, 0.02), toonMaterial(frameColor), 0.008); g.add(frame); const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); face.position.z = 0.03; g.add(face); g.userData.face = face; return g; };
@@ -306,6 +325,9 @@ export function createRoom(scene) {
     const clockFace = new THREE.Mesh(new THREE.CircleGeometry(0.25, 32), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); clockFace.position.z = 0.032; clock.add(clockFace); clock.userData.face = clockFace;
     hang(front, clock, door.x - width / 2, 2.6, 0.04);
     const waiting = hang(front, board(1.1, 0.8, '#3a4352'), door.x - width / 2 - 1.4, 1.5, 0.03);
+    // Post-its on the boards' frames, clear of what boards.js writes.
+    hang(left, notes('whiteboard', [[0, 0.32, 0.1, NOTE.yellow], [0.012, 0.2, -0.07, NOTE.yellow], [-0.008, -0.34, 0.05, NOTE.pink]]), 1.24, 1.65, 0.0585);
+    hang(front, notes('noticeboard', [[-0.57, 0.41, -0.15, NOTE.pink], [0.57, -0.4, 0.12, NOTE.blue], [0.585, -0.29, -0.06, NOTE.yellow]]), door.x - width / 2 - 1.4, 1.5, 0.0585);
     room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face };
 
     // Left wall: a bookshelf at the back, the coffee corner at the front, pictures where there's room.
@@ -316,11 +338,15 @@ export function createRoom(scene) {
     // E or a click on the machine fills the boss's mug (room.onCoffee, from office.js).
     room.coffeeMachine = place(coffeeMachine(), 0.32, depth - 1.6, Math.PI / 2, false); room.coffeeMachine.userData.toggle = () => room.onCoffee?.();
     hang(left, mugShelf(), along(depth - 1.6), 1.75, 0.11);
+    hang(left, notes('coffee', [[0, 0.05, 0.08, NOTE.yellow], [0.07, -0.05, -0.12, NOTE.green]]), along(depth - 0.75), 1.25, 0.004);
+    bin('#3a3d46', 0.3, depth - 0.35);
     if (depth - 3.05 > depth / 2 + 1.35) place(waterCooler(), 0.24, depth - 3.05, Math.PI / 2);
     if (depth - 3.65 > depth / 2 + 1.35) place(plant('bush'), 0.42, depth - 3.65);
 
     // Right wall: printer and filing cabinet at the back, pictures along it, the lounge in the front corner.
     place(printer(), width - 0.36, 1.25, -Math.PI / 2); place(filingCabinet(), width - 0.32, 2.05, -Math.PI / 2); shadowUnder(width - 0.35, 1.65, 0.65, 1.4);
+    place(notes('printer', [[0.16, 0.76, 0.1, NOTE.pink, 0.2235]]), width - 0.36, 1.25, -Math.PI / 2, false); // on its front
+    bin('#2e86ab', width - 0.3, 2.62);
     for (let z = 3.4, i = 2; z < depth - 3.4; z += 2.6, i++) hang(right, picture(i, 0.75, 0.95), along(z), 1.7); // from 2, so the lounge's picture 0 comes round late
 
     // Lounge: a rug, a sofa against the front wall, an armchair, a low table, a lamp and a plant.
