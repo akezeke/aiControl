@@ -114,16 +114,20 @@ export function createCard(container) {
   };
 }
 
-// A pod sign's menu: Claude or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
+// A pod sign's menu: Claude (once per account, see hire.js) or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
 export function createMenu(container, onChoose) {
   const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
-  let cwd = null;
-  const items = [['claude', '✳', 'Claude', 'Claude Code'], ['codex', '⌘', 'Codex', 'Codex']].map(([provider, mark, label, name]) => {
-    const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${name} in tmux`;
-    item.append(span(`mark ${provider}`, mark), label);
-    item.onclick = () => { const at = cwd; result.close(); if (at) onChoose(at, provider, item); };
-    menu.append(item); return item;
-  });
+  let cwd = null, items = [];
+  const build = choices => {
+    items = choices.map(choice => {
+      const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`;
+      item.append(span(`mark ${choice.provider}`, choice.provider === 'codex' ? '⌘' : '✳'), choice.label);
+      if (choice.last) item.append(span('last', 'last'));
+      item.onclick = () => { const at = cwd; result.close(); if (at) onChoose(at, choice, item); };
+      return item;
+    });
+    menu.replaceChildren(...items);
+  };
   // Keys stay in the menu: the arrows and WASD would otherwise walk or pan the camera behind it.
   menu.addEventListener('keydown', event => {
     event.stopPropagation();
@@ -137,8 +141,8 @@ export function createMenu(container, onChoose) {
     get open() { return !menu.hidden; },
     contains: node => menu.contains(node),
     // At a screen point; `focus` for the keyboard.
-    show(where, at, focus) {
-      cwd = where; menu.setAttribute('aria-label', `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
+    show(where, at, focus, choices) {
+      build(choices); cwd = where; menu.setAttribute('aria-label', `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
       if (focus) items[0].focus();
     },
     move(at) { if (!menu.hidden) placeNear(container, menu, at); },

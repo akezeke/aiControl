@@ -36,6 +36,7 @@
 .office-menu button:disabled { opacity: .5; cursor: progress; }
 .office-menu .mark { width: 16px; color: #d97757; text-align: center; }
 .office-menu .mark.codex { color: #1b1a1f; }
+.office-menu .last { margin-left: auto; padding-left: 12px; color: #8a8494; font-size: 11px; font-weight: 600; }
 @media (pointer: coarse) { .office-menu button { min-height: 44px; } }
 @media (prefers-reduced-motion: no-preference) { .office-menu { animation: office-menu-in .12s ease-out; } }
 @keyframes office-menu-in { from { opacity: 0; } }

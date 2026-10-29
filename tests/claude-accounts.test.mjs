@@ -49,6 +49,8 @@ test('Claude sessions from every account are listed, labelled and messaged throu
   assert.deepEqual(adapter.list().map(s => [s.nativeId, s.account]).sort(), [['personal-session', 'personal'], ['work-session', 'work']]);
   assert.equal(adapter.accountFor('/w/app').dir, accounts[1].dir);
   assert.equal(adapter.accountFor('/w/other').dir, accounts[0].dir);
+  assert.equal(adapter.accountFor('/w/app', 'work').dir, accounts[0].dir);
+  assert.throws(() => adapter.accountFor('/w/app', 'someone-else'), /Unknown Claude account/);
   await adapter.sendMessage('personal-session', { text: 'Hi', mode: 'send', clientMessageId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' });
   assert.deepEqual(sent, ['personal-session']);
 });

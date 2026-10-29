@@ -30,7 +30,7 @@ export async function startServer({ host, hostname, tls = null }) {
   const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: origins.map(o => new URL(o).hostname) } });
   const snapshot = () => {
     const sessions = mergeSessions([...codex.list(), ...claude.list()], store.list());
-    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label }))], features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: machineName(), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }] };
+    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label }))], features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }] };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -49,10 +49,10 @@ export async function startServer({ host, hostname, tls = null }) {
     images: id => claudeId(id) ? claude.imageList(id) : { images: [] },
     image: (id, imageId) => claudeId(id) ? claude.image(id, imageId) : Promise.reject(fail('Image not found.', 404)),
   };
-  // Only directories a live session already runs in. Claude starts under the account the project last used.
-  const spawn = ({ cwd, provider } = {}) => {
+  // Only directories a live session already runs in. Claude starts under the account asked for, or the one the project last used.
+  const spawn = ({ cwd, provider, account: label } = {}) => {
     if (![...codex.list(), ...claude.list()].some(s => s.cwd && s.cwd === cwd)) return Promise.reject(fail('Unknown project.', 404));
-    const account = provider === 'claude' ? claude.accountFor(cwd) : null;
+    const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
     return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' });
   };
   const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn });

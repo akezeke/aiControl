@@ -223,7 +223,8 @@ export class ClaudeAdapter {
   }
   list() { return [...this.sessions.values()]; }
   // New sessions in a project use the account of its latest Claude session.
-  accountFor(cwd) {
+  accountFor(cwd, label) {
+    if (label !== undefined) { const account = this.accounts.find(account => account.label === label); if (!account) throw fail('Unknown Claude account.', 400); return account; }
     const latest = this.list().filter(session => session.cwd === cwd && !session.parentId).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     return this.owners.get(latest?.nativeId) || this.accounts[0];
   }

@@ -12,6 +12,7 @@ import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown } from './message-markdown.js';
 import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
+import { hireChoices } from './hire.js';
 import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
 
 const app = document.querySelector('#app');
@@ -328,7 +329,7 @@ function renderData() {
   const sessionsById = new Map();
   for (const [cwd, list] of sorted) {
     const group = [...groups.children].find(node => node.dataset.key === cwd), header = group.firstChild;
-    const headerSignature = JSON.stringify([list[0].project, list.length, cwd]);
+    const headerSignature = JSON.stringify([list[0].project, list.length, cwd, hireChoices(state.snapshot, cwd).map(choice => choice.label)]);
     header.hidden = flat;
     if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
@@ -469,7 +470,7 @@ function renderPanel() {
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
-    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id]);
+    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireChoices(state.snapshot, session.cwd).map(choice => choice.label)]);
   if (signature !== panelSignature) {
     panelSignature = signature;
     renderSessionHeader(panel.querySelector('.chat-header'), session);
@@ -877,13 +878,13 @@ async function respond(request, payload, container, error) {
 function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
 function spawnButtons(cwd) {
   const actions = el('span', 'group-actions');
-  for (const provider of ['claude', 'codex']) { const b = button(provider === 'codex' ? 'Codex' : 'Claude', 'quiet-button spawn-button', () => spawnAgent(cwd, provider, b), 'plus'); b.title = `New ${providerName(provider)} in tmux`; actions.append(b); }
+  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
   return actions;
 }
-async function spawnAgent(cwd, provider, control) {
+async function spawnAgent(cwd, choice, control) {
   if (state.error) return;
   control.disabled = true;
-  try { const result = await api('spawn', { cwd, provider }); toast(`${providerName(provider)} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
+  try { const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account }); toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
   catch (e) { toast(e.message); }
   finally { control.disabled = false; }
 }

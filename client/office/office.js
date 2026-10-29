@@ -14,6 +14,7 @@ import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
 import { createProps, REACH } from './props.js';
 import { createScreenshots } from './screenshots.js';
+import { hireChoices } from '../hire.js';
 
 const FIRED = { pose: 'slumped', expression: 'sad', bubble: { icon: '📦', text: 'Fired', highlight: false } };
 
@@ -83,7 +84,7 @@ export function mountOffice(container, hooks) {
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   const card = createCard(container);
-  const menu = createMenu(container, (cwd, provider, item) => hooks.spawn?.(cwd, provider, item));
+  const menu = createMenu(container, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item));
   const shots = createScreenshots(container, { room, onClose: () => office.panelClosed(), onSession: id => hooks.openPanel(id) });
   // It stays by the spot on the desk you picked as the view moves, and closes once that's off the screen.
   let dismissed = false; const menuAt = new THREE.Vector3(), onScreen = new THREE.Vector3();
@@ -264,11 +265,11 @@ export function mountOffice(container, hooks) {
       const spot = standBefore(centre, normal, THREE.MathUtils.clamp(Math.max(fit, Math.abs(rise) * 1.7), 1, 3.5), room.colliders, layout?.room);
       if (spot) player.flyTo(spot, centre, null, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z)));
     },
-    // A pod's sign: let go of the mouse and offer Claude or Codex, started in the pod's folder.
+    // A pod's sign: let go of the mouse and offer Claude (per account) or Codex, started in the pod's folder.
     offerHire({ cwd, node, point }, at, focus = false) {
       player.unlock(); card.show(null);
       highlight(hovered, false); highlight(node, true); hovered = node;
-      menuAt.copy(point); menu.show(cwd, at, focus);
+      menuAt.copy(point); menu.show(cwd, at, focus, hireChoices(office.snapshot, cwd));
     },
     // main.js calls this when the session panel closes.
     panelClosed() { office.talking = null; cast.greet(null); view.focus(null); },
