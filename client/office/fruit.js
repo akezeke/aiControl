@@ -320,6 +320,8 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
       // One brow up, a small flat mouth pushed to one side and slanted: "hmm".
       thinking: { brows: [-0.01, 0.004], raise: 0.03, mouth: [0, 0], width: 0.06, shift: 0.1, slant: 0.012 },
       asleep: { brows: [0, 0], mouth: null, width: 0 },
+      // Kept waiting: brows down at the middle, a flat mouth pulled to one side.
+      annoyed: { brows: [-0.022, 0.006], mouth: [0, 0.003], width: 0.08, shift: -0.07, slant: -0.01 },
       // Compacting: brows pulled down hard, a tight wide grimace.
       squeezed: { brows: [-0.03, 0.012], mouth: [-0.01, 0], width: 0.13 },
     }[name] || {};
@@ -471,13 +473,14 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
   };
   const limbs = new Limbs(limbMaterial), hands = { leftHand: 1, rightHand: -1 }; own.push(limbs.geometry); group.add(limbs.mesh);
   const from = new THREE.Vector3(), bend = new THREE.Vector3(), heel = new THREE.Euler();
-  const setLimbs = targets => {
+  // `elbows` pushes both elbows out and up, for hands on the hips.
+  const setLimbs = (targets, elbows = 0) => {
     body.updateMatrix();
     for (const [name, to] of Object.entries(targets)) {
       from.copy(anchor[name]()).applyMatrix4(body.matrix);
       const arm = name in hands, side = arm ? hands[name] : name === 'leftFoot' ? 1 : -1;
       // Arms bow outward and down; legs bend a little forward at the knee.
-      if (arm) bend.set(side * 0.07, -0.06, 0.02); else bend.set(side * 0.02, 0, 0.06);
+      if (arm) bend.set(side * (0.07 + elbows), -0.06 + elbows * 0.6, 0.02); else bend.set(side * 0.02, 0, 0.06);
       // A foot up off the floor rests on its heel, toes up.
       limbs.set(name, from, bend, to, arm ? null : heel.set(-Math.min(1, Math.max(0, to.y - 0.1) * 2), 0, 0));
     }

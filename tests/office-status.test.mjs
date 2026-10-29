@@ -45,6 +45,11 @@ test('monitor shows the title and the last lines, one line each, marked by kind'
   assert.equal(m.lines[0].text, 'step 2');
   assert.deepEqual(monitorLines({ project: 'x' }), { title: 'x', lines: [] });
 });
+test('a session needing you says since when', () => {
+  assert.equal(officeStatus({ status: 'permission', updatedAt: 5, requests: [{ title: 'Run it', createdAt: 7 }] }).since, 7);
+  assert.equal(officeStatus({ status: 'question', updatedAt: 5, requests: [] }).since, 5);
+  assert.equal(officeStatus({ status: 'working', updatedAt: 5, requests: [] }).since, undefined);
+});
 test('a subagent that needs you speaks up', () => {
   assert.equal(officeStatus({ status: 'permission', parentId: 'p', requests: [{ title: 'Run it' }] }).bubble?.highlight, true);
 });

@@ -33,7 +33,7 @@ const oneLine = text => {
 };
 
 // `activity` is 'thinking' while the model works out its next step (Codex reasoning, or a quiet Claude transcript),
-// and 'compacting' while it squeezes its context down to a summary.
+// and 'compacting' while it squeezes its context down to a summary. `since` is when a session needing you started waiting.
 export function officeStatus(session, now = Date.now()) {
   const activity = session.status === 'working' && ['thinking', 'compacting'].includes(session.activity) ? session.activity : '', look = looks[activity || session.status];
   if (!look) return { pose: 'still', expression: 'neutral', bubble: null, screen: 'off', wear: 0, cups: 0 };
@@ -48,7 +48,8 @@ export function officeStatus(session, now = Date.now()) {
   // Helpers on a desk only chat while working, but always speak up when they need you.
   const talks = !session.parentId || session.status === 'working' || screen === 'amber';
   const shown = !activity && session.status === 'working' ? toolIcon(session.detail) : icon;
-  return { pose, expression, screen, bubble: talks ? { icon: shown, text: oneLine(text), highlight: screen === 'amber' } : null, ...tiredness(session, now) };
+  const since = screen === 'amber' ? session.requests?.[0]?.createdAt || session.updatedAt || now : undefined;
+  return { pose, expression, screen, since, bubble: talks ? { icon: shown, text: oneLine(text), highlight: screen === 'amber' } : null, ...tiredness(session, now) };
 }
 
 // Minutes since the latest prompt (or the oldest message still in view), up to now while working, else to the last message.
