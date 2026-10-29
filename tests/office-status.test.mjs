@@ -68,3 +68,12 @@ test('desk props come from a wider set', () => {
   const props = new Set(Array.from({ length: 80 }, (_, i) => identity(`s${i}`).props).flat());
   assert.ok(['frame', 'cactus', 'books'].some(prop => props.has(prop)));
 });
+
+test('a working bubble shows the running call, its icon following the tool', () => {
+  const at = detail => { const b = officeStatus({ status: 'working', detail, requests: [] }).bubble; return [b.icon, b.text]; };
+  assert.deepEqual(at('Bash · Type-check after the route change'), ['⌨️', 'Bash · Type-check after the route change']);
+  assert.deepEqual(at('Shell (exit 1) · npm test'), ['⌨️', 'Shell (exit 1) · npm test']);
+  assert.deepEqual(['Edit · office/room.js', 'Write · a.md', 'MultiEdit · b.js', 'Read · c.js', 'Grep · todo', 'Glob · **/*.js', 'Search · three.js', 'WebSearch · q', 'WebFetch · https://x.dev', 'Agent · Explore the office code', 'Task · Plan it'].map(d => at(d)[0]),
+    ['✏️', '✏️', '✏️', '📖', '🔍', '🔍', '🔍', '🔍', '🌐', '👥', '👥']);
+  assert.deepEqual(at(''), ['⌨️', 'Working']);
+});

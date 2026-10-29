@@ -4,7 +4,7 @@ import { join, basename, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { fail } from './requests.mjs';
-import { TranscriptReader, claudeSessionTitle, claudeActivity } from './messages.mjs';
+import { TranscriptReader, claudeSessionTitle, claudeActivity, turnTool } from './messages.mjs';
 import { TranscriptImages, imageLimit } from './images.mjs';
 import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
 
@@ -96,7 +96,7 @@ export class ClaudeAdapter {
           paths.set(`claude:${record.sessionId}`, transcript);
           // A parked session (handed off to a background job) keeps its last status in the registration, so it can say busy for days.
           const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux';
-          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux, fire: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
+          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: status === 'working' && !hook?.compacting && turnTool(history.messages) || hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux, fire: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
           for (const agent of await this.subagents(record, transcript, paths)) sessions.set(agent.id, agent);
         } catch { /* ignore partially written and stale registration files */ }
       }));
@@ -107,7 +107,7 @@ export class ClaudeAdapter {
           const account = this.accounts.find(account => hook.transcriptPath?.startsWith(account.projectsDir + sep));
           if (account) owners.set(id, account);
           paths.set(`claude:${id}`, hook.transcriptPath);
-          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.detail, activity: hook.compacting ? 'compacting' : claudeActivity(hook.status, step, modifiedAt), control: true, messaging: { send: false, queue: false }, ...history });
+          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.status === 'working' && !hook.compacting && turnTool(history.messages) || hook.detail, activity: hook.compacting ? 'compacting' : claudeActivity(hook.status, step, modifiedAt), control: true, messaging: { send: false, queue: false }, ...history });
         }
         else { this.hooks.delete(id); this.store.removeSession(`claude:${id}`); }
       }
@@ -141,7 +141,7 @@ export class ClaudeAdapter {
       const { activity, modifiedAt, ...messages } = history;
       paths.set(`claude:${record.sessionId}:${agentId}`, join(folder.dir, `agent-${agentId}.jsonl`));
       const workflow = folder.dir !== dir, kind = workflow ? [folder.name || 'Workflow', meta.workflowPhase].filter(Boolean).join(' · ') : meta.agentType || 'subagent';
-      return { id: `claude:${record.sessionId}:${agentId}`, nativeId: agentId, parentId: `claude:${record.sessionId}`, agentKind: workflow ? 'workflow' : 'subagent', provider: 'claude', title: meta.description || meta.agentType || 'Subagent', cwd: record.cwd, project: basename(record.cwd || 'Unknown'), status: working ? 'working' : 'idle', updatedAt: mtime, model: kind, detail: '', control: false, messaging: { send: false, queue: false }, ...messages };
+      return { id: `claude:${record.sessionId}:${agentId}`, nativeId: agentId, parentId: `claude:${record.sessionId}`, agentKind: workflow ? 'workflow' : 'subagent', provider: 'claude', title: meta.description || meta.agentType || 'Subagent', cwd: record.cwd, project: basename(record.cwd || 'Unknown'), status: working ? 'working' : 'idle', updatedAt: mtime, model: kind, detail: working ? turnTool(messages.messages) : '', control: false, messaging: { send: false, queue: false }, ...messages };
     }));
     return agents.filter(Boolean);
   }

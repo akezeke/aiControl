@@ -16,6 +16,9 @@ const looks = {
   idle: ['sleeping', 'asleep', '💤', 'dark'],
   error: ['slumped', 'frown', '⚠️', 'red'],
 };
+// A working bubble's icon follows the running call's tool: "Edit · office/room.js" gets a pencil. Shells and the rest type.
+const toolIcons = [[/^(Edit|Write|MultiEdit|NotebookEdit)\b/, '✏️'], [/^Read\b/, '📖'], [/^(Grep|Glob|Search|WebSearch|ToolSearch)\b/, '🔍'], [/^WebFetch\b/, '🌐'], [/^(Agent|Task)\b/, '👥']];
+const toolIcon = detail => toolIcons.find(([pattern]) => pattern.test(detail || ''))?.[1] || looks.working[2];
 const oneLine = text => {
   const line = String(text || '').split('\n').find(part => part.trim())?.trim() || '';
   return line.length > MAX_TEXT ? `${line.slice(0, MAX_TEXT - 1)}…` : line;
@@ -36,7 +39,8 @@ export function officeStatus(session, now = Date.now()) {
   }[session.status];
   // Helpers on a desk only chat while working, but always speak up when they need you.
   const talks = !session.parentId || session.status === 'working' || screen === 'amber';
-  return { pose, expression, screen, bubble: talks ? { icon, text: oneLine(text), highlight: screen === 'amber' } : null, ...tiredness(session, now) };
+  const shown = !activity && session.status === 'working' ? toolIcon(session.detail) : icon;
+  return { pose, expression, screen, bubble: talks ? { icon: shown, text: oneLine(text), highlight: screen === 'amber' } : null, ...tiredness(session, now) };
 }
 
 // Minutes since the latest prompt (or the oldest message still in view), up to now while working, else to the last message.

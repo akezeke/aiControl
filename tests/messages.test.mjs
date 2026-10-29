@@ -187,3 +187,12 @@ test('Claude session facts come from the newest transcript records', () => {
   assert.deepEqual(meta.plan.map(step => step.status), ['done', 'active', 'pending']);
   assert.deepEqual(meta.queuedMessages.map(entry => entry.text), ['second']);
 });
+
+test('a turn shows its latest tool call, not one from an earlier turn', async () => {
+  const { turnTool } = await import('../server/messages.mjs');
+  const tool = text => ({ role: 'assistant', text, tool: true }), prompt = { role: 'user', text: 'go' };
+  assert.equal(turnTool([prompt, tool('Read · office/room.js'), { role: 'assistant', text: 'Now the types.' }, tool('Bash · Type-check after the route change')]), 'Bash · Type-check after the route change');
+  assert.equal(turnTool([prompt, tool('Read · office/room.js'), { role: 'assistant', text: 'Hmm.' }]), 'Read · office/room.js');
+  assert.equal(turnTool([tool('Bash · old'), prompt]), '');
+  assert.equal(turnTool(), '');
+});

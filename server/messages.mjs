@@ -172,6 +172,12 @@ export function claudeStep(lines) {
 }
 // 'thinking' once a working session's model has been quiet for a while; short gaps between tool calls don't count.
 export const claudeActivity = (status, step, modifiedAt, now = Date.now()) => status === 'working' && step === 'model' && now - modifiedAt > 8000 ? 'thinking' : '';
+// The current turn's latest tool line ("Bash · Type-check after the route change"): hooks only see a call once it has finished,
+// and only its tool's name.
+export function turnTool(messages = []) {
+  for (let i = messages.length - 1; i >= 0 && messages[i].role !== 'user'; i--) if (messages[i].tool) return messages[i].text;
+  return '';
+}
 
 export function claudeTitles(lines, sessionId, previous = {}) {
   const titles = { ...previous };

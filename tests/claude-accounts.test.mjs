@@ -73,3 +73,17 @@ test('hooks are installed into every account settings file, creating its folder'
   await installHooks(false, files);
   assert.equal(log.mock.callCount(), 2);
 });
+
+test('a working session shows the tool call it is running from its transcript, not just the tool name', async t => {
+  const root = await temporary(t), [account] = claudeAccounts({ claudeDirs: [join(root, '.claude')] }, root), id = 'aaaaaaaa-1111-2222-3333-444444444444';
+  const project = join(account.projectsDir, '-w-app');
+  await mkdir(account.sessionsDir, { recursive: true }); await mkdir(project, { recursive: true });
+  await writeFile(join(account.sessionsDir, '1.json'), JSON.stringify({ pid: 1, procStart: 'live', sessionId: id, cwd: '/w/app', status: 'busy', updatedAt: 1 }));
+  const row = (uuid, type, content) => JSON.stringify({ uuid, sessionId: id, type, timestamp: '2026-10-29T10:00:00Z', message: { id: uuid, role: type, content } });
+  await writeFile(join(project, `${id}.jsonl`), [row('a', 'user', 'Fix the route'), row('b', 'assistant', [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'npx tsc --noEmit', description: 'Type-check after the route change' } }])].join('\n') + '\n');
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock', { accounts: [account], alive: async () => true, messaging: { available: async () => false, stop() {} } });
+  await mkdir(join(project, id, 'subagents'), { recursive: true });
+  await writeFile(join(project, id, 'subagents', 'agent-helper.jsonl'), [row('c', 'user', 'Look around'), row('d', 'assistant', [{ type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/w/app/office/room.js' } }])].join('\n') + '\n');
+  await adapter.refresh();
+  assert.deepEqual(adapter.list().map(s => [s.nativeId, s.detail]).sort(), [[id, 'Bash · Type-check after the route change'], ['helper', 'Read · office/room.js']]);
+});
