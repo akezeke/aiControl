@@ -68,6 +68,7 @@ const icons = {
   stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/>',
   sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4Z"/><path d="M15.5 9a4 4 0 0 1 0 6m2.5-8.5a7.5 7.5 0 0 1 0 11"/>',
   next: '<path d="m6 5 7 7-7 7m7-14 7 7-7 7"/>',
+  exit: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m5-12 4 4-4 4m4-4H9"/>',
 };
 function icon(name) {
   const span = document.createElement('span'); span.className = 'icon'; span.setAttribute('aria-hidden', 'true');
@@ -84,16 +85,17 @@ function uuid() {
   const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
+function chooseTheme(id) {
+  applyTheme(id);
+  for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
+  syncOffice();
+}
 function themeMenu() {
   const menu = el('details', 'theme-menu');
   const summary = el('summary', 'quiet-button'); summary.append(icon('theme')); summary.setAttribute('aria-label', 'Change theme'); summary.title = 'Change theme';
   const choices = el('div', 'theme-options'); choices.setAttribute('aria-label', 'Color theme');
   for (const theme of themes) {
-    const choice = button(theme.name, 'theme-choice', () => {
-      applyTheme(theme.id);
-      for (const option of document.querySelectorAll('[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === theme.id));
-      menu.open = false; summary.focus();
-    });
+    const choice = button(theme.name, 'theme-choice', () => { chooseTheme(theme.id); menu.open = false; summary.focus(); });
     choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(document.documentElement.dataset.themeChoice === theme.id));
     choice.prepend(el('i', `theme-swatch ${theme.id}`)); choices.append(choice);
   }
@@ -157,7 +159,7 @@ function showLogin(message = '') {
   disposeComposer(); liveRender.cancel();
   messageDrafts.clear();
   clearTimeout(activityTimer); activityTimer = null;
-  clearInterval(poll); state.csrf = ''; state.snapshot = null; state.selected = null; panelSignature = ''; document.body.classList.remove('panel-open');
+  clearInterval(poll); office?.unmount(); office = null; state.csrf = ''; state.snapshot = null; state.selected = null; panelSignature = ''; document.body.classList.remove('panel-open');
   app.replaceChildren(); document.documentElement.removeAttribute('data-attention'); document.documentElement.removeAttribute('data-working');
   const screen = el('main', 'login-screen');
   screen.append(themeMenu());
@@ -236,10 +238,33 @@ async function refresh() {
   } finally { loading = false; }
 }
 
+// The Office theme swaps the list for a 3D scene, downloaded only once it is chosen.
+let office = null, officeModule = null, listTheme = savedTheme() === 'office' ? 'modern-light' : savedTheme();
+function syncOffice() {
+  const root = document.documentElement, main = document.querySelector('.main-content');
+  if (root.dataset.themeChoice !== 'office' || !main) {
+    if (root.dataset.themeChoice && root.dataset.themeChoice !== 'office') listTheme = root.dataset.themeChoice;
+    office?.unmount(); office = null; document.querySelector('#office')?.remove(); root.removeAttribute('data-office-fallback'); return;
+  }
+  if (office) { if (state.snapshot) office.update(state.snapshot, { error: state.error }); return; }
+  // Any failure (download, no WebGL2, renderer refused) shows the list once and stays that way for this theme choice.
+  const fallBack = message => { root.setAttribute('data-office-fallback', ''); document.querySelector('#office')?.remove(); toast(message); };
+  if (root.hasAttribute('data-office-fallback')) return;
+  if (!officeModule) { officeModule = import('./office/office.js').then(module => { officeModule = module; syncOffice(); }, () => { officeModule = null; fallBack('Office failed to load; showing the list'); }); return; }
+  if (officeModule instanceof Promise) return;
+  if (!officeModule.webglAvailable()) { fallBack('Office needs WebGL 2; showing the list'); return; }
+  const box = el('div'); box.id = 'office'; main.append(box);
+  try {
+    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread, describe: sessionFacts, spawn: spawnAgent });
+    if (state.snapshot) office.update(state.snapshot, { error: state.error });
+  } catch (error) { console.error(error); office?.unmount(); office = null; fallBack('Office could not start; showing the list'); }
+}
+
 function renderData() {
   if (!state.snapshot || !document.querySelector('#groups')) {
     const error = document.querySelector('#error'); if (error && state.error) { error.hidden = false; error.textContent = state.error; } return;
   }
+  syncOffice();
   const { sessions, providers } = state.snapshot;
   const count = sessions.filter(needsInput).length;
   setProperty(document, 'title', `${count ? `(${count}) ` : ''}AI Control`);
@@ -315,11 +340,8 @@ function renderData() {
     syncList(group.lastChild, ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren).map(session => {
       sessionsById.set(session.id, session);
       const lastMessage = session.messages?.at(-1);
-      let detail = session.requests[0]?.title || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
-      if (session.provider === 'claude' && !session.control && needsInput(session)) detail = 'Open the original client · Hooks not connected';
-      const done = session.plan?.filter(step => step.status === 'done').length;
-      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail, last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
-        plan: session.plan?.length ? [done, session.plan.length] : null, mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), unread: unread(session) }];
+      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
+        plan: planProgress(session), mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), compacting: compacting(session), unread: unread(session) }];
     }), renderCard);
   }
   for (const card of groups.querySelectorAll('.session-card')) setProperty(card.querySelector('.session-age'), 'textContent', stateAge(sessionsById.get(card.dataset.key)));
@@ -345,6 +367,19 @@ function stateAge(session) {
 }
 const modeLabels = { plan: 'plan', acceptEdits: 'auto-edit', auto: 'auto', bypassPermissions: 'bypass' };
 const contextPercent = context => context?.window ? Math.min(100, Math.round(context.used / context.window * 100)) : null;
+const compacting = session => session.status === 'working' && session.activity === 'compacting';
+const planProgress = session => session.plan?.length ? [session.plan.filter(step => step.status === 'done').length, session.plan.length] : null;
+function cardDetail(session) {
+  if (session.provider === 'claude' && !session.control && needsInput(session)) return 'Open the original client · Hooks not connected';
+  return session.requests[0]?.title || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
+}
+// What the office's card shows for whoever is outlined: the details a list card has.
+function sessionFacts(session) {
+  const age = stateAge(session);
+  return { provider: session.provider, providerName: providerName(session.provider), title: session.title, project: session.project, branch: session.branch,
+    agent: session.parentId ? session.agentKind === 'workflow' ? 'Workflow' : 'Subagent' : '', plan: planProgress(session), mode: modeLabels[session.permissionMode] || '', context: contextPercent(session.context),
+    state: `${(statuses[session.status] || statuses.unknown)[0]}${age.startsWith('for ') ? ' ' : ' · '}${age}`, detail: cardDetail(session) };
+}
 const tokens = n => n >= 1e6 ? `${Number((n / 1e6).toFixed(1))}M` : `${Math.round(n / 1000)}k`;
 function chip(text, className, title) { const node = el('span', `chip ${className}`, text); if (title) node.title = title; return node; }
 function renderCard(session, previous) {
@@ -356,7 +391,7 @@ function renderCard(session, previous) {
   if (session.plan) { card.dataset.plan = ''; card.style.setProperty('--plan', session.plan[0] / session.plan[1]); }
   const body = el('span', 'session-body');
   const chips = [session.branch && el('span', 'branch', session.branch), session.plan && chip(`${session.plan[0]}/${session.plan[1]}`, 'plan-chip', 'Plan steps done'),
-    session.mode && chip(modeLabels[session.mode], `mode-chip ${session.mode}`, 'Permission mode'), session.context >= 80 && chip(`ctx ${session.context}%`, 'ctx-chip', 'Context window used')].filter(Boolean);
+    session.mode && chip(modeLabels[session.mode], `mode-chip ${session.mode}`, 'Permission mode'), session.compacting ? chip('compacting', 'compact-chip', 'Compacting context') : session.context >= 80 && chip(`ctx ${session.context}%`, 'ctx-chip', 'Context window used')].filter(Boolean);
   if (chips.length) { const meta = el('span', 'session-meta'); meta.append(...chips); body.append(meta); }
   const title = el('strong', 'session-title'); if (session.project) title.append(el('span', 'project-tag', session.project)); if (session.parentId) { const workflow = session.agentKind === 'workflow', tag = el('span', `subagent-tag${workflow ? ' workflow-tag' : ''}`, workflow ? 'Workflow' : 'Subagent'); tag.title = session.kind || ''; title.append(tag); } title.append(session.title); body.append(title);
   const text = document.createTextNode(session.last ? session.last[1] : session.detail);
@@ -414,7 +449,7 @@ function flipFrom(root, before) {
 let previousFocus;
 function openPanel(id) { previousFocus = document.activeElement; navigation.open(id); document.querySelector('#panel button')?.focus(); }
 function closePanel() { navigation.close(); }
-function hidePanel() { const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData(); const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
+function hidePanel() { office?.panelClosed(); const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData(); const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
 function revealPanel() { const panel = document.querySelector('#panel'); panel.hidden = false; document.querySelector('#backdrop').hidden = false; document.querySelector('.shell').setAttribute('inert', ''); document.body.classList.add('panel-open'); return panel; }
 function renderPanel() {
   const session = state.snapshot.sessions.find(s => s.id === state.selected);
@@ -433,7 +468,7 @@ function renderPanel() {
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
-    session.permissionMode, session.context, session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id]);
+    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id]);
   if (signature !== panelSignature) {
     panelSignature = signature;
     renderSessionHeader(panel.querySelector('.chat-header'), session);
@@ -458,17 +493,19 @@ function renderSessionHeader(header, session) {
   const next = nextWaiting(session.id);
   if (next) { const b = button('Next', 'quiet-button next-button', openNext, 'next'); b.title = `Next waiting (n): ${next.title}`; actions.append(b); }
   if (session.status === 'working' && session.messaging?.interrupt) { const stop = button('Stop', 'quiet-button stop-button', () => interrupt(session, stop), 'stop'); stop.title = 'Interrupt the current turn'; stop.disabled = !!state.error; actions.append(stop); }
+  if (session.status === 'idle' && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = 'End this session with /exit (refused while anything is still running)'; fire.disabled = !!state.error; actions.append(fire); }
   if (session.messaging?.effort && session.efforts?.length) actions.append(effortPicker(session));
   actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
   const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
   const metadata = el('details', 'chat-info'); metadata.open = expanded;
   const effort = pendingEffort.get(session.id) || session.effort, percent = contextPercent(session.context);
-  const summary = el('summary', '', [providerName(session.provider), session.project, session.model?.replace(/^claude-/, ''), effort].filter(Boolean).join(' · '));
+  const summary = el('summary', '', [providerName(session.provider), session.account, session.project, session.model?.replace(/^claude-/, ''), effort].filter(Boolean).join(' · '));
   if (modeLabels[session.permissionMode]) summary.append(chip(modeLabels[session.permissionMode], `mode-chip ${session.permissionMode}`, 'Permission mode'));
+  if (compacting(session)) summary.append(chip('compacting', 'compact-chip', 'Compacting context'));
   if (session.context?.used) summary.append(chip(percent != null ? `${percent}%` : tokens(session.context.used), `ctx-chip${percent >= 80 ? ' high' : ''}`, 'Context used'));
   metadata.append(summary);
   const goal = session.goal, cost = session.cost;
-  const rows = [['Folder', session.cwd], ['Model', session.model || 'Not reported'], ['Effort', effort && `${effort}${session.effortPending ? ' · from your next message' : ''}`], ['Mode', session.permissionMode],
+  const rows = [['Folder', session.cwd], ['Account', session.account], ['Model', session.model || 'Not reported'], ['Effort', effort && `${effort}${session.effortPending ? ' · from your next message' : ''}`], ['Mode', session.permissionMode],
     ['Context', session.context?.used && `${tokens(session.context.used)}${session.context.window ? ` of ${tokens(session.context.window)} (${percent}%)` : ''}`], ['Branch', session.branch],
     ['Last turn', session.lastTurnMs && duration(session.lastTurnMs)], ['Cost', cost && `$${cost.usd.toFixed(2)} · +${cost.added} −${cost.removed} lines`],
     ['Goal', goal && `${goal.objective} · ${goal.status}${goal.tokenBudget ? ` · ${tokens(goal.tokensUsed)} of ${tokens(goal.tokenBudget)} tokens` : ''}`],
@@ -500,6 +537,19 @@ function effortPicker(session) {
     } catch (error) { toast(error.message); select.value = session.efforts.includes(current) ? current : ''; select.disabled = false; }
   };
   return select;
+}
+// The first click arms it for a few seconds; the second ends the session. The server refuses if anything is still running.
+async function fireSession(session, control) {
+  if (state.error) return;
+  const label = control.querySelector('span:not(.icon)');
+  if (!control.classList.contains('armed')) {
+    control.classList.add('armed'); label.textContent = 'Sure?'; control.setAttribute('aria-label', 'Click again to fire');
+    setTimeout(() => { control.classList.remove('armed'); label.textContent = 'Fire'; control.removeAttribute('aria-label'); }, 3000);
+    return;
+  }
+  control.disabled = true;
+  try { await api(`sessions/${encodeURIComponent(session.id)}/fire`, {}); toast('Fired'); office?.fire(session.id); closePanel(); await refresh(); }
+  catch (error) { toast(error.message); control.disabled = false; }
 }
 async function interrupt(session, control) {
   if (state.error) return;
@@ -860,7 +910,7 @@ document.addEventListener('keydown', event => {
 // Single-key shortcuts outside text fields: / search, j k move between cards, n next waiting session.
 document.addEventListener('keydown', event => {
   if (!state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open]')) return;
-  if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); openNext(); return; }
+  if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); if (office && !state.selected) office.talkTo(nextWaiting().id); else openNext(); return; }
   if (state.selected) return;
   if (event.key === '/') { event.preventDefault(); document.querySelector('.search input')?.focus(); return; }
   if (event.key !== 'j' && event.key !== 'k') return;
@@ -913,7 +963,7 @@ function showThemePicker() {
     choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
   }
   dialog.append(el('h2', '', 'Pick a theme'), grid);
-  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); };
+  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncOffice(); };
   document.body.append(dialog); dialog.showModal();
 }
 if (firstVisit) showThemePicker();

@@ -405,11 +405,16 @@ export class CodexAdapter {
       if (['commandExecution', 'fileChange'].includes(p.item.type)) this.items.set(`${p.threadId}:${p.item.id}`, p.item);
       if (this.items.size > 200) this.items.delete(this.items.keys().next().value);
       const session = this.sessions.get(p.threadId);
-      if (session) { session.detail = p.item.command || p.item.text?.slice(0, 300) || p.item.type; session.updatedAt = Date.now(); }
+      if (session) {
+        const compacting = p.item.type === 'contextCompaction';
+        session.detail = compacting ? 'Compacting context' : p.item.command || p.item.text?.slice(0, 300) || p.item.type;
+        session.activity = compacting ? 'compacting' : p.item.type === 'reasoning' ? 'thinking' : ''; session.updatedAt = Date.now();
+      }
     }
     if (message.method === 'item/completed') {
       const session = this.sessions.get(p.threadId), value = p.item && codexMessage(p.item);
       if (session && value) { session.messages = recentMessages([...session.messages.filter(m => m.id !== value.id), value]); session.messagesState = 'ready'; session.updatedAt = Date.now(); }
+      if (session && p.item?.type === 'contextCompaction' && session.activity === 'compacting') { session.activity = ''; session.detail = ''; }
     }
     if (message.id != null && message.method && p.threadId) {
       const request = codexRequest(message, this.items);

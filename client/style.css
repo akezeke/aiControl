@@ -79,6 +79,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .theme-swatch.modern-light { background: radial-gradient(circle, #6366f1 0 32%, #f4f5f8 36%); }
 .theme-swatch.modern-dark { background: radial-gradient(circle, #8b8cf9 0 32%, #0b0d12 36%); }
 .theme-swatch.alien { background: radial-gradient(circle, #b6f2a2 0 35%, #031203 40%); }
+.theme-swatch.office { background: radial-gradient(circle at 40% 40%, #f28c28 0 30%, #f7d23e 34% 55%, #d62828 59%); }
 .theme-swatch.command { background: repeating-linear-gradient(135deg, #f0c94a 0 3px, #262c1f 3px 6px); }
 
 /* Login */
@@ -341,11 +342,13 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
   .panel-backdrop { animation: fade-in .18s ease-out; }
   .detail-panel { animation: panel-in .22s cubic-bezier(.2, .8, .2, 1); }
   .toast { animation: toast-in .2s ease-out; }
+  .compact-chip { animation: squeeze 1.2s ease-in-out infinite; }
   .badge.green .dot::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: currentColor; animation: ping 1.5s cubic-bezier(0, 0, .2, 1) infinite; }
 }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes panel-in { from { transform: translateX(24px); opacity: 0; } }
 @keyframes toast-in { from { transform: translate(-50%, 8px); opacity: 0; } }
+@keyframes squeeze { 50% { opacity: .45; } }
 @keyframes ping { 75%, 100% { transform: scale(2.6); opacity: 0; } }
 
 /* Rail below 1100px, hidden sidebar on phones. */
@@ -424,6 +427,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .theme-preview.modern-dark { background-image: url('/orbit-dark.webp'); }
 .theme-preview.alien { background-image: linear-gradient(#0000 60%, #031203cc), url('/alien-bg.webp'); background-position: 62% center; }
 .theme-preview.command { background-image: url('/command-bg.webp'); }
+.theme-preview.office { background: radial-gradient(circle at 30% 60%, #d62828 0 12%, transparent 13%), radial-gradient(circle at 52% 55%, #f7d23e 0 10%, transparent 11%), radial-gradient(circle at 74% 60%, #f28c28 0 12%, transparent 13%), linear-gradient(#cfe8f5 0 45%, #e9c896 45%); }
 @media (max-width: 640px) { .theme-picker-grid { grid-template-columns: 1fr 1fr; } }
 
 /* .project-tag clips (overflow), which would put its baseline at its bottom edge; middle keeps both tags centred. */
@@ -436,11 +440,13 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .plan-chip { color: var(--accent); border-color: currentColor; }
 .mode-chip.plan, .mode-chip.acceptEdits, .mode-chip.auto { color: var(--accent); }
 .mode-chip.bypassPermissions, .ctx-chip.high, .session-card .ctx-chip { color: var(--danger); border-color: currentColor; }
+.compact-chip { color: var(--accent); border-color: currentColor; }
 .agent-mark { position: relative; }
 .unread-dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--panel); }
 .panel-heading-actions select { min-height: 40px; }
 .effort-select { width: auto; padding: 0 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); font-size: 12px; cursor: pointer; }
 .stop-button { color: var(--danger); }
+.fire-button.armed { color: #fff; background: var(--danger); border-color: var(--danger); }
 .alerts-menu.alerts-on > summary { color: var(--accent); }
 .plan-info { grid-column: 2 / -1; min-width: 0; font-size: 12px; color: var(--text-2); }
 .plan-info > summary { display: flex; align-items: center; gap: 8px; min-height: 24px; cursor: pointer; }
@@ -482,7 +488,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
   .chat-header { grid-template-areas: 'back . actions' 'title title title' 'info info info'; }
   .plan-info { grid-column: 1 / -1; }
   .panel-heading-actions { gap: 4px; }
-  .panel-heading-actions > .quiet-button:is(.next-button, .stop-button) { width: 40px; padding: 0; }
-  .panel-heading-actions > .quiet-button:is(.next-button, .stop-button) > span:not(.icon) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .panel-heading-actions > .quiet-button:is(.next-button, .stop-button):not(.armed) { width: 40px; padding: 0; }
+  .panel-heading-actions > .quiet-button:is(.next-button, .stop-button):not(.armed) > span:not(.icon) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .chat-header .panel-heading-actions > .theme-menu { display: none; }
 }

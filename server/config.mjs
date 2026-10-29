@@ -1,30 +1,44 @@
 import { execFileSync } from 'node:child_process';
 import { X509Certificate } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
 export const dataDir = join(root, '.local');
-export const hookSocket = join(dataDir, 'hooks.sock');
+// Some filesystems (e.g. WSL's /mnt/c) can't hold Unix sockets, so prefer the private per-user runtime dir.
+export const hookSocket = process.env.XDG_RUNTIME_DIR ? join(process.env.XDG_RUNTIME_DIR, 'ai-control-hooks.sock') : join(dataDir, 'hooks.sock');
 export const authFile = join(dataDir, 'auth.json');
 export const settingsFile = join(dataDir, 'config.json');
 export const port = 47841;
 export function prepareData() { mkdirSync(dataDir, { recursive: true, mode: 0o700 }); }
 
-// { mode: 'tailscale' | 'local', cert?, key? }, written by scripts/setup.mjs.
+// { mode: 'tailscale' | 'local', cert?, key?, claudeDirs? }, written by scripts/setup.mjs.
 export function readSettings() {
   try { return JSON.parse(readFileSync(settingsFile, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return {}; throw e; }
 }
 
-// Claude Code config folders, one per account: $CLAUDE_CONFIG_DIR, ~/.claude and every ~/.claude-*
+// Claude Code config folders in use when none are configured: $CLAUDE_CONFIG_DIR, ~/.claude and every ~/.claude-*
 // holding settings.json or sessions/, such as ~/.claude-personal.
 export function claudeDirs(home = homedir(), configured = process.env.CLAUDE_CONFIG_DIR) {
-  const found = ['.claude', ...readdirSync(home).filter(name => name.startsWith('.claude-'))].map(name => join(home, name))
+  const names = (() => { try { return readdirSync(home); } catch { return []; } })();
+  const found = ['.claude', ...names.filter(name => name.startsWith('.claude-'))].map(name => join(home, name))
     .filter(dir => ['settings.json', 'sessions'].some(file => existsSync(join(dir, file))));
   const dirs = [configured, ...found].filter(Boolean);
   return [...new Set((dirs.length ? dirs : [join(home, '.claude')]).map(dir => resolve(dir)))];
+}
+
+// One Claude Code config folder (CLAUDE_CONFIG_DIR) per account, named anything. The label tells accounts apart
+// (~/.claude-work → work, ~/accounts/personal → personal); it is empty for ~/.claude, which a plain `claude` uses.
+export function claudeAccounts(settings = readSettings(), home = homedir()) {
+  const standard = join(home, '.claude');
+  const listed = Array.isArray(settings.claudeDirs) ? settings.claudeDirs.filter(dir => typeof dir === 'string' && dir.trim()) : [];
+  const dirs = listed.length ? listed : claudeDirs(home);
+  return [...new Set(dirs.map(dir => resolve(dir.trim().replace(/^~(?=\/|$)/, home))))].map(dir => ({
+    dir, label: dir === standard ? '' : basename(dir).replace(/^\./, '').replace(/^claude[-_.]?/i, '') || basename(dirname(dir)).replace(/^\./, ''),
+    sessionsDir: join(dir, 'sessions'), projectsDir: join(dir, 'projects'),
+  }));
 }
 
 // This machine's Tailscale IPv4 and MagicDNS name, or null when Tailscale is missing or stopped.

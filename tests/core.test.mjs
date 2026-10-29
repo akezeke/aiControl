@@ -10,7 +10,7 @@ import { createHandler } from '../server/http.mjs';
 import { codexRequest, codexStatus } from '../server/codex.mjs';
 import { claudeRequest, ClaudeAdapter } from '../server/claude.mjs';
 import { mergeHooks, hookCommand } from '../scripts/install-hooks.mjs';
-import { isTailscaleIP, claudeDirs } from '../server/config.mjs';
+import { isTailscaleIP, claudeDirs, claudeAccounts } from '../server/config.mjs';
 
 const password = 'correct horse testing battery';
 async function fixture(t) {
@@ -215,13 +215,22 @@ test('Claude discovery reads every config folder, excludes stale PIDs and uses f
   await mkdir(join(dir, '.claude-code-router'));
   assert.deepEqual(claudeDirs(dir, undefined), [work, personal]);
   assert.deepEqual(claudeDirs(join(dir, '.claude-code-router'), '/custom/'), ['/custom']);
-  const adapter = new ClaudeAdapter(new RequestStore(), join(dir, 'unused.sock'), { configDirs: [work, personal], alive: async (pid, start) => pid === 456 && start === 'live' });
+  const adapter = new ClaudeAdapter(new RequestStore(), join(dir, 'unused.sock'), { accounts: claudeAccounts({ claudeDirs: [work, personal] }, dir), alive: async (pid, start) => pid === 456 && start === 'live' });
   await adapter.refresh();
   assert.equal(adapter.list().length, 1);
   assert.equal(adapter.list()[0].title, 'Current work');
   assert.equal(adapter.list()[0].cwd, '/home/b/project');
   assert.equal(adapter.list()[0].status, 'working');
   assert.equal(adapter.list()[0].control, false);
+});
+
+test('a parked Claude session is idle, whatever its registration last said', async t => {
+  const { dir } = await fixture(t);
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(join(dir, '789.json'), JSON.stringify({ pid: 789, procStart: 'live', sessionId: 'parked', cwd: '/home/c/project', status: 'busy', parkedJobId: 'job' }));
+  const adapter = new ClaudeAdapter(new RequestStore(), join(dir, 'unused.sock'), { sessionsDir: dir, alive: async () => true });
+  await adapter.refresh();
+  assert.equal(adapter.list()[0].status, 'idle');
 });
 
 test('Tailscale address validation refuses public, LAN and wildcard interfaces', () => {

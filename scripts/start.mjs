@@ -28,8 +28,10 @@ try {
   await installHooks();
   await unlink(join(dataDir, 'server.json')).catch(() => {});
   // Backend edits restart the server; the browser picks up client edits on refresh.
-  const watch = ['server', 'scripts/server.mjs'].map(path => `--watch-path=${quote(join(root, path))}`).join(' ');
-  const command = `${quote(process.execPath)} --watch-preserve-output ${watch} ${quote(join(root, 'scripts/server.mjs'))}${local ? ' --local' : ''} 2>&1 | tee -a ${quote(join(dataDir, 'server.log'))}`;
+  // Some Node 22 releases treat the argument after each --watch flag as its value and pass it to the child
+  // if it looks like a flag, nesting a second watcher that npm stop can't end. Keep values separate and the bare flag last.
+  const watch = ['server', 'scripts/server.mjs'].map(path => `--watch-path ${quote(join(root, path))}`).join(' ');
+  const command = `${quote(process.execPath)} ${watch} --watch-preserve-output ${quote(join(root, 'scripts/server.mjs'))}${local ? ' --local' : ''} 2>&1 | tee -a ${quote(join(dataDir, 'server.log'))}`;
   execFileSync('tmux', ['new-session', '-d', '-s', session, '-c', root, '-e', `PATH=${process.env.PATH}`, command]);
   for (let i = 0; i < 100; i++) {
     await new Promise(resolve => setTimeout(resolve, 100));

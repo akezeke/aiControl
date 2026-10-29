@@ -1,14 +1,17 @@
 import { createServer } from 'node:net';
 import { readFile, readdir, chmod, unlink, lstat, stat, open } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { join, basename, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { fail } from './requests.mjs';
-import { TranscriptReader, claudeSessionTitle } from './messages.mjs';
+import { TranscriptReader, claudeSessionTitle, claudeActivity } from './messages.mjs';
+import { TranscriptImages } from './images.mjs';
 import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
 
 // Must match the PermissionRequest hook timeout in scripts/install-hooks.mjs.
 export const hookTimeoutMs = 24 * 3600_000;
+// How long a session must have been idle before it can be fired.
+const QUIET_MS = 5000;
 
 export async function processMatches(pid, start) {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
@@ -57,12 +60,13 @@ export class ClaudeAdapter {
   hooks = new Map();
   sockets = new Set();
   registrations = new Map();
+  owners = new Map();
   workflowNames = new Map();
   paths = new Map();
   stoppedAgents = new Set();
   connected = false;
   detail = 'Discovering local Claude Code sessions…';
-  constructor(store, socketPath, { configDirs = [join(homedir(), '.claude')], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.configDirs = configDirs; this.transcripts = new TranscriptReader(configDirs.map(dir => join(dir, 'projects'))); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
+  constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), accounts = [{ label: '', sessionsDir, projectsDir }], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.accounts = accounts; this.transcripts = new TranscriptReader(accounts.map(account => account.projectsDir)); this.images = new TranscriptImages(); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
   async start() {
     // The tmux/start guard prevents duplicate servers; only remove our stale socket.
     try { if ((await lstat(this.socketPath)).isSocket()) await unlink(this.socketPath); else throw new Error('Hook socket path is occupied by a file.'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -77,36 +81,39 @@ export class ClaudeAdapter {
     if (this.refreshing) return;
     this.refreshing = true;
     try {
-      const sessions = new Map(), registrations = new Map(), paths = new Map();
-      const files = (await Promise.all(this.configDirs.map(async dir => (await readdir(join(dir, 'sessions')).catch(e => { if (e.code === 'ENOENT') return []; throw e; }))
-        .filter(f => /^\d+\.json$/.test(f)).map(file => ({ dir, file }))))).flat();
-      await Promise.all(files.map(async ({ dir, file }) => {
+      const sessions = new Map(), registrations = new Map(), paths = new Map(), owners = new Map();
+      const files = (await Promise.all(this.accounts.map(async account => (await readdir(account.sessionsDir).catch(e => { if (e.code === 'ENOENT') return []; throw e; })).map(file => ({ account, file }))))).flat();
+      await Promise.all(files.filter(({ file }) => /^\d+\.json$/.test(file)).map(async ({ account, file }) => {
         try {
-          const record = JSON.parse(await readFile(join(dir, 'sessions', file), 'utf8'));
+          const record = JSON.parse(await readFile(join(account.sessionsDir, file), 'utf8'));
           if (!await this.alive(record.pid, record.procStart) || !record.sessionId) return;
           const hook = this.hooks.get(record.sessionId);
           const states = { idle: 'idle', busy: 'working', running: 'working', working: 'working', waiting: 'question', waiting_for_permission: 'permission', needs_permission: 'permission' };
-          const transcript = hook?.transcriptPath || join(dir, 'projects', (record.cwd || '').replace(/[^a-zA-Z0-9-]/g, '-'), `${record.sessionId}.jsonl`);
-          const history = await this.transcripts.read(transcript, record.sessionId);
+          const transcript = hook?.transcriptPath || join(account.projectsDir, (record.cwd || '').replace(/[^a-zA-Z0-9-]/g, '-'), `${record.sessionId}.jsonl`);
+          const { step, modifiedAt, ...history } = await this.transcripts.read(transcript, record.sessionId);
           const via = await this.messaging.available(record), canSend = !!via;
-          registrations.set(record.sessionId, { ...record, configDir: dir });
+          registrations.set(record.sessionId, { record, account }); owners.set(record.sessionId, account);
           paths.set(`claude:${record.sessionId}`, transcript);
-          const status = hook?.status || states[record.status] || 'unknown', tmux = via === 'tmux';
-          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
+          // A parked session (handed off to a background job) keeps its last status in the registration, so it can say busy for days.
+          const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux';
+          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux, fire: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
           for (const agent of await this.subagents(record, transcript, paths)) sessions.set(agent.id, agent);
         } catch { /* ignore partially written and stale registration files */ }
       }));
       for (const [id, hook] of this.hooks) {
         if (sessions.has(id)) continue;
         if (await this.alive(hook.pid, hook.procStart) || this.store.list().some(r => r.sessionId === `claude:${id}`)) {
-          const history = await this.transcripts.read(hook.transcriptPath, id);
+          const { step, modifiedAt, ...history } = await this.transcripts.read(hook.transcriptPath, id);
+          const account = this.accounts.find(account => hook.transcriptPath?.startsWith(account.projectsDir + sep));
+          if (account) owners.set(id, account);
           paths.set(`claude:${id}`, hook.transcriptPath);
-          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), status: hook.status, updatedAt: hook.updatedAt, detail: hook.detail, control: true, messaging: { send: false, queue: false }, ...history });
+          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.detail, activity: hook.compacting ? 'compacting' : claudeActivity(hook.status, step, modifiedAt), control: true, messaging: { send: false, queue: false }, ...history });
         }
         else { this.hooks.delete(id); this.store.removeSession(`claude:${id}`); }
       }
       this.sessions = sessions;
       this.registrations = registrations;
+      this.owners = owners;
       this.paths = paths;
       this.detail = 'Local messaging active. Permission and question answers use AI Control hooks.';
     } catch { this.detail = 'Could not read Claude Code session registrations.'; }
@@ -189,6 +196,10 @@ export class ClaudeAdapter {
         const previous = this.hooks.get(e.session_id);
         const state = { cwd: e.cwd, pid: envelope.pid, procStart: envelope.procStart, transcriptPath: e.transcript_path || previous?.transcriptPath, updatedAt: Date.now(), status: 'working', detail: e.tool_name || '' };
         if (e.hook_event_name === 'Stop') state.status = 'idle';
+        // Compacting lasts until the session starts again on the summary. A new, resumed or cleared session waits at its
+        // prompt, and so does one compacted by /compact; auto-compacting happens mid-turn, which carries on.
+        if (e.hook_event_name === 'PreCompact') { state.compacting = e.trigger === 'manual' ? 'manual' : 'auto'; state.detail = 'Compacting context'; }
+        if (e.hook_event_name === 'SessionStart') state.status = e.source !== 'compact' || previous?.compacting === 'manual' ? 'idle' : previous?.compacting ? 'working' : previous?.status || 'working';
         if (e.hook_event_name === 'Notification') { state.status = { permission_prompt: 'permission', idle_prompt: 'idle', elicitation_dialog: 'question' }[e.notification_type] || previous?.status || 'unknown'; state.detail = e.message || ''; }
         if (e.hook_event_name === 'SessionEnd') { this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
         const request = claudeRequest(e);
@@ -211,11 +222,16 @@ export class ClaudeAdapter {
     socket.on('close', () => { this.sockets.delete(socket); if (sourceKey) this.store.removeSource(sourceKey); });
   }
   list() { return [...this.sessions.values()]; }
+  // New sessions in a project use the account of its latest Claude session.
+  accountFor(cwd) {
+    const latest = this.list().filter(session => session.cwd === cwd && !session.parentId).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    return this.owners.get(latest?.nativeId) || this.accounts[0];
+  }
   // The live registration, re-read so keys never reach a pane that changed hands.
   async record(sessionId) {
-    const previous = this.registrations.get(sessionId);
+    const { record: previous, account } = this.registrations.get(sessionId) || {};
     if (!previous) throw fail('This Claude session is no longer available.', 409);
-    const record = JSON.parse(await readFile(join(previous.configDir, 'sessions', `${previous.pid}.json`), 'utf8').catch(() => '{}'));
+    const record = JSON.parse(await readFile(join(account.sessionsDir, `${previous.pid}.json`), 'utf8').catch(() => '{}'));
     if (record.sessionId !== sessionId || record.procStart !== previous.procStart) throw fail('This Claude session changed. Refresh before sending.', 409);
     if (this.store.list().some(request => request.sessionId === `claude:${sessionId}`)) throw fail('Answer the pending question or permission first.', 409);
     return record;
@@ -227,10 +243,42 @@ export class ClaudeAdapter {
   }
   async interrupt(sessionId) { return this.messaging.interrupt(await this.record(sessionId)); }
   async setEffort(sessionId, effort) { return this.messaging.setEffort(await this.record(sessionId), effort); }
+  // Firing ends the session with /exit, so it has to be quiet: idle by its registration and its hooks for a few seconds, not
+  // compacting, no subagent or workflow working and nothing left running from its Bash tool, background ones included.
+  // All of it is checked again with /exit typed, just before Enter.
+  async fire(sessionId) {
+    const quiet = async () => {
+      const record = await this.record(sessionId), hook = this.hooks.get(sessionId), transcript = this.paths.get(`claude:${sessionId}`);
+      if (record.status !== 'idle' || record.parkedJobId || (hook && hook.status !== 'idle') || hook?.compacting) throw fail('Claude is working. Stop it first.', 409);
+      if (Date.now() - Math.max(record.statusUpdatedAt || record.updatedAt || 0, hook?.updatedAt || 0) < QUIET_MS) throw fail('Claude only just finished. Try again in a moment.', 409);
+      if (transcript && (await this.subagents(record, transcript, new Map())).some(agent => agent.status === 'working')) throw fail('A subagent is still working.', 409);
+      const commands = await this.messaging.commands(record.pid);
+      if (commands.length) throw fail(`Still running: ${commands[0].slice(0, 60)}${commands.length > 1 ? ` (+${commands.length - 1})` : ''}. Stop it first.`, 409);
+      return record;
+    };
+    return this.messaging.fire(await quiet(), quiet);
+  }
   async history(id, limit) {
     const [sessionId, agentId] = id.slice(7).split(':');
     if (!this.paths.has(id)) throw fail('Session is no longer available.', 409);
     return this.transcripts.read(this.paths.get(id), sessionId, agentId, limit);
+  }
+  // Images seen in a session's transcript, by id; never by path.
+  async imageList(id) {
+    const { sessionId, path } = await this.transcript(id);
+    return { images: await this.images.list(path, sessionId) };
+  }
+  async image(id, imageId) {
+    const { sessionId, path } = await this.transcript(id);
+    const image = /^[a-f0-9-]{36}:\d{1,3}$/i.test(imageId) && await this.images.get(path, sessionId, imageId);
+    if (!image) throw fail('Image not found.', 404);
+    return image;
+  }
+  async transcript(id) {
+    const [sessionId, agentId] = id.slice(7).split(':');
+    const path = this.paths.has(id) && await this.transcripts.locate(this.paths.get(id), sessionId, agentId).catch(() => null);
+    if (!path) throw fail('Session is no longer available.', 409);
+    return { sessionId, path };
   }
   async stop() {
     clearInterval(this.timer);

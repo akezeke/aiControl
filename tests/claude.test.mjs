@@ -14,7 +14,7 @@ class HookSocket extends EventEmitter {
 
 test('Claude request lifecycle routes answers and removes cancelled prompts', async t => {
   const store = new RequestStore();
-  const adapter = new ClaudeAdapter(store, '/unused.sock', { configDirs: ['/does-not-exist'], alive: async () => true });
+  const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: '/does-not-exist', alive: async () => true });
   const socket = new HookSocket(); t.after(() => socket.destroy()); adapter.accept(socket);
   socket.emit('data', Buffer.from(JSON.stringify({ pid: 1, event: { session_id: 'test-session', cwd: '/work/project', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' } } }) + '\n'));
   assert.equal(store.list().length, 1);
@@ -37,9 +37,27 @@ test('malformed hook messages never create an actionable request', () => {
   assert.deepEqual(socket.output, [{}]);
 });
 
+test('a session that just started is idle until it gets a prompt, and compacting keeps its state', () => {
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock');
+  const send = (hook_event_name, extra = {}) => { const socket = new HookSocket(); adapter.accept(socket); socket.emit('data', Buffer.from(JSON.stringify({ pid: 1, event: { session_id: 'fresh', cwd: '/w', hook_event_name, ...extra } }) + '\n')); };
+  send('SessionStart', { source: 'startup' }); assert.equal(adapter.hooks.get('fresh').status, 'idle');
+  send('UserPromptSubmit'); send('SessionStart', { source: 'compact' }); assert.equal(adapter.hooks.get('fresh').status, 'working');
+  send('SessionStart', { source: 'clear' }); assert.equal(adapter.hooks.get('fresh').status, 'idle');
+});
+
+test('compacting shows as working until the summary is in, then /compact waits at the prompt and auto-compact carries on', () => {
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock');
+  const send = (hook_event_name, extra = {}) => { const socket = new HookSocket(); adapter.accept(socket); socket.emit('data', Buffer.from(JSON.stringify({ pid: 1, event: { session_id: 'squeeze', cwd: '/w', hook_event_name, ...extra } }) + '\n')); };
+  const now = () => [adapter.hooks.get('squeeze').status, adapter.hooks.get('squeeze').compacting];
+  send('Stop'); send('PreCompact', { trigger: 'manual' }); assert.deepEqual(now(), ['working', 'manual']);
+  send('SessionStart', { source: 'compact' }); assert.deepEqual(now(), ['idle', undefined]);
+  send('UserPromptSubmit'); send('PreCompact', { trigger: 'auto' }); assert.deepEqual(now(), ['working', 'auto']);
+  send('SessionStart', { source: 'compact' }); assert.deepEqual(now(), ['working', undefined]);
+});
+
 test('a parallel tool completing does not clear unrelated Claude permissions', async t => {
   const store = new RequestStore();
-  const adapter = new ClaudeAdapter(store, '/unused.sock', { configDirs: ['/does-not-exist'], alive: async () => true });
+  const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: '/does-not-exist', alive: async () => true });
   const send = (hook_event_name, command) => {
     const socket = new HookSocket(); t.after(() => socket.destroy()); adapter.accept(socket);
     socket.emit('data', Buffer.from(JSON.stringify({ pid: 1, event: { session_id: 'parallel', cwd: '/work/project', hook_event_name, tool_name: 'Bash', tool_input: { command } } }) + '\n'));
@@ -57,7 +75,7 @@ test('a parallel tool completing does not clear unrelated Claude permissions', a
 
 test('a question answered in the terminal disappears here even though its input gained answers', t => {
   const store = new RequestStore();
-  const adapter = new ClaudeAdapter(store, '/unused.sock', { configDirs: ['/does-not-exist'], alive: async () => true });
+  const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: '/does-not-exist', alive: async () => true });
   const questions = [{ question: 'Where?', options: [{ label: 'Here' }] }];
   const send = (hook_event_name, tool_input) => {
     const socket = new HookSocket(); t.after(() => socket.destroy()); adapter.accept(socket);

@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir, copyFile, rename } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { root, dataDir, prepareData, claudeDirs } from '../server/config.mjs';
+import { root, dataDir, prepareData, claudeAccounts } from '../server/config.mjs';
 import { hookTimeoutMs } from '../server/claude.mjs';
 
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
@@ -10,7 +10,7 @@ export const hookCommand = `${quote(process.execPath)} ${quote(join(root, 'scrip
 export function mergeHooks(settings, remove = false) {
   const result = structuredClone(settings);
   result.hooks ??= {};
-  const events = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'SessionEnd'];
+  const events = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'SubagentStart', 'SubagentStop', 'PreCompact', 'SessionEnd'];
   // PreToolUse is only cleaned up: it blocked the terminal while a question waited here.
   for (const name of [...events, 'PreToolUse']) {
     const current = result.hooks[name] ?? [];
@@ -21,16 +21,16 @@ export function mergeHooks(settings, remove = false) {
   return result;
 }
 
-export async function installHooks(remove = false, dirs = claudeDirs()) {
+// Every Claude account gets the hooks in its own settings.json.
+export async function installHooks(remove = false, files = claudeAccounts().map(account => join(account.dir, 'settings.json'))) {
   prepareData();
-  for (const dir of dirs) {
-    const file = join(dir, 'settings.json');
+  for (const file of [files].flat()) {
     const raw = await readFile(file, 'utf8').catch(e => { if (e.code === 'ENOENT') return '{}'; throw e; });
     const existing = JSON.parse(raw);
     const next = mergeHooks(existing, remove);
     if (JSON.stringify(existing) === JSON.stringify(next)) continue;
-    await mkdir(dir, { recursive: true, mode: 0o700 });
-    await copyFile(file, join(dataDir, `${basename(dir).replace(/^\./, '')}-settings-${Date.now()}.backup.json`)).catch(e => { if (e.code !== 'ENOENT') throw e; });
+    await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+    await copyFile(file, join(dataDir, `${basename(dirname(file)).replace(/^\./, '')}-settings-${Date.now()}.backup.json`)).catch(e => { if (e.code !== 'ENOENT') throw e; });
     const temporary = `${file}.aicontrol-${process.pid}.tmp`;
     await writeFile(temporary, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
     await rename(temporary, file);

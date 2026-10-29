@@ -99,6 +99,21 @@ test('subagent transcripts include sidechain text and one line per tool call, an
   assert.equal(agentActivity([...lines, row('d', 'user', [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]), row('e', 'assistant', [{ type: 'text', text: 'Done.' }])]), 'reply');
 });
 
+test('a main session thinks once its model has been quiet a while', async () => {
+  const { claudeStep, claudeActivity } = await import('../server/messages.mjs');
+  const row = (type, content, extra = {}) => JSON.stringify({ type, message: { role: type, content }, ...extra });
+  const prompt = row('user', 'Fix it'), tool = row('assistant', [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }]);
+  assert.equal(claudeStep([prompt]), 'model');
+  assert.equal(claudeStep([prompt, tool]), 'tool');
+  assert.equal(claudeStep([prompt, tool, row('user', [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }])]), 'model');
+  assert.equal(claudeStep([prompt, row('assistant', [{ type: 'thinking', thinking: '…' }])]), 'model');
+  assert.equal(claudeStep([prompt, row('assistant', [{ type: 'text', text: 'Done.' }]), row('user', 'caveat', { isMeta: true }), '{"type":"assis']), 'reply');
+  assert.equal(claudeActivity('working', 'model', 0, 9000), 'thinking');
+  assert.equal(claudeActivity('working', 'model', 0, 3000), '');
+  assert.equal(claudeActivity('working', 'tool', 0, 60000), '');
+  assert.equal(claudeActivity('idle', 'model', 0, 60000), '');
+});
+
 test('workflow workers show their task without the harness preface, and tool calls by description', async t => {
   const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
   const { join } = await import('node:path');
