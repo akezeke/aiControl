@@ -17,8 +17,9 @@ const WAVE_AFTER = 2 * 60_000, TAP_AFTER = 10 * 60_000;
 export const waitingPose = (since, now = Date.now()) => now - since >= TAP_AFTER ? 'impatient' : now - since >= WAVE_AFTER ? 'waving' : 'raising';
 
 // t is seconds (frozen at 0 with reduced motion), seed spreads characters out of step, fruit gives the body's height and shape,
-// wear (0..1) slows typing down and slumps a sleeper further. Facing +z, the left side is +x.
-export function poseTargets(pose, t, seed, fruit, wear = 0) {
+// wear (0..1) slows typing down and slumps a sleeper further, habit picks the character's own way of doing it (status.js).
+// Facing +z, the left side is +x.
+export function poseTargets(pose, t, seed, fruit, wear = 0, habit = '') {
   const s = Math.sin, wave = k => s(t * k + seed), clamp = THREE.MathUtils.clamp, h = fruit.height;
   const seated = (lean, bob = 0) => ({ x: 0, z: SEAT_FORWARD, turn: 0, body: { y: SEAT_H + bob, tilt: 0, lean } });
   const standing = (bounce, tilt = 0) => ({ x: 0, z: STAND_BACK, turn: 0, body: { y: LEG + bounce, tilt, lean: 0 } });
@@ -27,7 +28,14 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
   switch (pose) {
     // Quick taps, the hands out of step and wandering over the keys; every so often a pause to read, the right hand on the mouse.
     // Just caught slacking off ('busted'): sitting up straight and typing flat out, no pauses.
+    // Hunt and peck: hunched in, one finger lifted high and hopping from key to key, the other hand idle at the desk's edge.
     case 'busted': case 'typing': {
+      if (pose === 'typing' && habit === 'peck') {
+        const u = (t * 7 * (1 - wear * 0.4) + seed) / Math.PI, hop = Math.floor(u), f = u - hop, key = n => V(s(n * 12.99) * 0.1 - 0.04, 0, KEYS + s(n * 7.1) * 0.03);
+        const finger = key(hop).lerp(key(hop + 1), f * f * (3 - 2 * f)).setY(DESK_H + 0.035 + s(f * Math.PI) * 0.08), base = seated(0.2);
+        base.body.tilt = (finger.x + 0.04) * 0.3;
+        return { ...base, limbs: { leftHand: V(0.22, DESK_H + 0.03, KEYS - 0.12), rightHand: finger, ...feetUnder } };
+      }
       const eager = pose === 'busted', reading = eager ? 0 : clamp((wave(0.45) + s(t * 0.17 + seed * 2) * 0.7 - 0.85) * 3, 0, 1), typing = 1 - reading, rate = eager ? 30 : 22 * (1 - wear * 0.4);
       const tap = phase => DESK_H + 0.035 + Math.abs(s(t * rate + seed + phase)) * 0.03 * typing;
       const body = seated(eager ? 0.16 : 0.1 * typing - 0.03 * reading, Math.abs(wave(rate / 2)) * 0.005 * typing + (eager ? 0.02 : 0));
@@ -37,9 +45,17 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
         rightHand: V(-0.12 + s(t * 1.1 + seed + 2) * 0.04 + reading * (MOUSE_X + 0.12), tap(1.3) + reading * 0.01, KEYS + s(t * 0.8 + seed + 1) * 0.02),
         ...feetUnder } };
     }
-    // Leaning back, hand at the chin, the other on the desk, tapping a finger.
-    case 'thinking': return { ...seated(-0.1, wave(1.2) * 0.006), limbs: {
-      leftHand: V(0.24, DESK_H + 0.03, KEYS - 0.08), rightHand: V(-0.09, SEAT_H + h * 0.46 + Math.max(0, wave(3)) * 0.012, 0.33), ...feetUnder } };
+    // Leaning back, hand at the chin, the other on the desk, tapping a finger; or scratching the head;
+    // or leaning right back, hands behind the head, staring at the ceiling.
+    case 'thinking': {
+      const desk = V(0.24, DESK_H + 0.03, KEYS - 0.08), crown = fruit.surface(h * 0.82);
+      if (habit === 'scratch') return { ...seated(0.02, wave(1.2) * 0.006), elbows: 0.3, limbs: {
+        leftHand: desk, rightHand: V(crown.x - crown.r - 0.03, SEAT_H + h * 0.8 + wave(14) * 0.02, 0.06 + wave(9) * 0.015), ...feetUnder } };
+      if (habit === 'ceiling') return { ...seated(-0.2, wave(0.8) * 0.004), elbows: 0.4, glance: V(0.2, SEAT_H + h + 2, 0.8), limbs: {
+        leftHand: V(crown.x + crown.r * 0.5, SEAT_H + h * 0.78, -crown.r - 0.1), rightHand: V(crown.x - crown.r * 0.5, SEAT_H + h * 0.78, -crown.r - 0.1), ...feetUnder } };
+      return { ...seated(-0.1, wave(1.2) * 0.006), limbs: {
+        leftHand: desk, rightHand: V(-0.09, SEAT_H + h * 0.46 + Math.max(0, wave(3)) * 0.012, 0.33), ...feetUnder } };
+    }
     // Compacting: hunched forward hugging itself, eyes screwed shut (fruit.js), shivering hard enough to see across the room.
     case 'squeezing': {
       const shiver = wave(31) * 0.06 + s(t * 47 + seed * 3) * 0.03, waist = fruit.surface(h * 0.45), base = seated(0.12, Math.abs(wave(19)) * 0.01);
@@ -57,7 +73,7 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
       return { ...standing(tap * 0.01, 0.04), elbows: 0.18, glance: check > 0.5 ? watch : null, limbs: {
         leftHand: akimbo(1).lerp(watch, check), rightHand: akimbo(-1), leftFoot: V(0.11, 0.03, 0), rightFoot: V(-0.11, 0.03 + tap * 0.05, 0.03) } };
     }
-    // Just finished: a long stretch, arms overhead, swaying, eyes shut and mouth open in a yawn (the 'asleep' face)...
+    // Just finished (the finish habit): a long stretch, arms overhead, swaying, eyes shut and mouth open in a yawn (the 'asleep' face)...
     case 'stretching': {
       const base = seated(-0.14); base.body.tilt = wave(1.6) * 0.06;
       return { ...base, limbs: { leftHand: V(0.15, SEAT_H + h + 0.3, -0.04), rightHand: V(-0.15, SEAT_H + h + 0.3, -0.04), ...feetUnder } };
@@ -70,7 +86,13 @@ export function poseTargets(pose, t, seed, fruit, wear = 0) {
     // Sunk back against the chair, breathing slowly, head lolling to one side, arms hanging down past the seat, heels up on the desk
     // in front of the keyboard (legs down to the floor would pass through the seat).
     // Thin fruit sit further back: the widest part of the body rests on the chair back.
+    // Or dozing upright, hands folded in the lap, head to one side, feet on the floor.
     case 'sleeping': {
+      if (habit === 'lap') {
+        const base = seated(-0.08 + wave(1.3) * 0.012, wave(1.3) * 0.004 - wear * 0.02), lap = fruit.surface(h * 0.12).r + 0.05;
+        base.body.tilt = 0.14 + wear * 0.1 + wave(0.3) * 0.015;
+        return { ...base, limbs: { leftHand: V(-0.02, SEAT_H + 0.08, lap), rightHand: V(0.03, SEAT_H + 0.1, lap + 0.01), ...feetUnder } };
+      }
       const lean = -0.2 + wave(1.3) * 0.012, tilt = 0.06 + wear * 0.1 + wave(0.3) * 0.015, y = SEAT_H - 0.015 - wear * 0.02;
       const z = BACK_Z + 0.015 + fruit.surface(h * 0.45).r + h * 0.09;
       const hang = side => V(side * 0.32 + tilt * 0.3, Math.max(0.15, y + h * 0.4 - 0.3), -0.04 - h * 0.08 + wave(1.3) * 0.008);
@@ -171,12 +193,12 @@ export class Cast {
   }
 
   #character(id, scale) {
-    const fruit = createFruit(identity(id), { scale }), root = new THREE.Group();
+    const who = identity(id), fruit = createFruit(who, { scale }), root = new THREE.Group();
     root.userData.sessionId = id;
     root.add(fruit.group);
     const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial); shadow.position.y = 0.017; shadow.scale.setScalar(scale); root.add(shadow);
     const seed = [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 100;
-    return { id, fruit, root, scale, seed, current: null, changed: 0, wear: 0, blinkAt: seed / 30, blinkUntil: 0 };
+    return { id, fruit, root, scale, seed, habits: who.habits, current: null, changed: 0, wear: 0, blinkAt: seed / 30, blinkUntil: 0 };
   }
 
   #remove(id, c) {
@@ -199,7 +221,7 @@ export class Cast {
       // Whoever you're talking to stops what they're doing (a sleeper wakes up), turns in the chair and listens.
       // A working or idle sitter may be slacking off (room.js and slack.js have it), or just caught at it.
       const talking = this.facingYou === c.id && !STANDING.has(c.pose), busy = ['typing', 'thinking', 'sleeping'].includes(c.pose), slack = c.anchor.slack;
-      const finishing = this.time - c.finished < FINISHED, cheer = c.seed % 2 ? 'cheering' : 'stretching';
+      const finishing = this.time - c.finished < FINISHED, cheer = c.habits.finish;
       const pose = talking ? 'listening' : finishing ? cheer : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted' : STANDING.has(c.pose) && c.since ? waitingPose(c.since) : c.pose;
       const since = this.time - c.startled, startled = since < STARTLED;
       const face = startled ? 'frown' : talking && ['asleep', 'squeezed'].includes(c.expression) ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : pose === 'impatient' ? 'annoyed' : pose === 'stretching' ? 'asleep' : pose === 'cheering' ? 'smile' : c.expression;
@@ -207,7 +229,7 @@ export class Cast {
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
       fruit.buzz(t);
       if (c.trip && this.#walk(c, dt, t, k)) continue;
-      const target = poseTargets(pose, t, c.seed, fruit, c.wear);
+      const target = poseTargets(pose, t, c.seed, fruit, c.wear, c.habits[pose]);
       if (startled && !still && since < 0.4) target.body.y += 0.16 * Math.sin(Math.PI * since / 0.4);
       // Worn out: slouched lower and to one side (a sleeper already is; one caught slacking sits up straight).
       if (c.wear && pose !== 'sleeping' && pose !== 'busted') { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }

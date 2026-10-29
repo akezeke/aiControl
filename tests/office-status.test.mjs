@@ -94,3 +94,7 @@ test('a session asking in its reply raises its hand with the question', () => {
   const b = officeStatus({ status: 'question', asks: 'Shall I commit it?', requests: [] });
   assert.deepEqual([b.pose, b.bubble.icon, b.bubble.text], ['raising', '❓', 'Shall I commit it?']);
 });
+test('habits are per character and varied', () => {
+  const people = Array.from({ length: 60 }, (_, i) => identity(`s${i}`).habits);
+  for (const kind of ['typing', 'thinking', 'sleeping', 'finish']) assert.ok(new Set(people.map(p => p[kind])).size > 1, kind);
+});

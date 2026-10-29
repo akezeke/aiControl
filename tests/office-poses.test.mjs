@@ -31,3 +31,15 @@ test('finishing is a stretch (hands together overhead) or a cheer (arms out in a
   }
   assert.ok(cheer.limbs.leftHand.x - cheer.limbs.rightHand.x > 2 * (stretch.limbs.leftHand.x - stretch.limbs.rightHand.x), 'a cheer spreads wider');
 });
+
+test('habits: a pecker hops one finger, a thinker scratches or looks up with hands behind the head, a sleeper folds hands in the lap', () => {
+  const at = (pose, habit, t = 0.4) => poseTargets(pose, t, 1, fruit, 0, habit), frames = habit => Array.from({ length: 60 }, (_, i) => at('typing', habit, i / 30));
+  const hop = habit => Math.max(...frames(habit).map(p => p.limbs.rightHand.y)) - Math.min(...frames(habit).map(p => p.limbs.rightHand.y));
+  assert.ok(hop('peck') > 2 * hop(''), 'the pecking finger lifts higher');
+  assert.ok(at('thinking', 'scratch').limbs.rightHand.y > at('thinking', '').limbs.rightHand.y + 0.1, 'a hand up at the head');
+  const ceiling = at('thinking', 'ceiling');
+  assert.ok(ceiling.limbs.leftHand.z < 0 && ceiling.limbs.rightHand.z < 0 && ceiling.glance.y > ceiling.body.y + fruit.height, 'hands behind the head, eyes up');
+  const lap = at('sleeping', 'lap'), heels = at('sleeping', '');
+  assert.ok(lap.limbs.leftFoot.y < 0.1 && heels.limbs.leftFoot.y > 0.5, 'feet stay down');
+  assert.deepEqual(at('typing', 'touch'), at('typing', ''), 'the first habit is the plain pose');
+});

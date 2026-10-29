@@ -82,6 +82,8 @@ export function identity(id) {
   return {
     fruit, color: pick(palettes[fruit], 'color'), accessories, trim: pick(TRIMS.filter(trim => trim !== CLASH[fruit]), 'trim'),
     props: PROPS.filter(prop => hash(`${prop}:${id}`) % 3 === 0).slice(0, 3), notes: Math.min(3, hash(`notes:${id}`) % 5), // post-its on the monitor
+    // How they type, think, sleep and celebrate a finish (animation.js); the first of each is the plain one.
+    habits: { typing: pick(['touch', 'peck'], 'typing'), thinking: pick(['chin', 'scratch', 'ceiling'], 'thinking'), sleeping: pick(['heels', 'lap'], 'sleeping'), finish: pick(['stretching', 'cheering'], 'finish') },
   };
 }
 
