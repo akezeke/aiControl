@@ -14,7 +14,7 @@ class HookSocket extends EventEmitter {
 
 test('Claude request lifecycle routes answers and removes cancelled prompts', async t => {
   const store = new RequestStore();
-  const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: '/does-not-exist', alive: async () => true });
+  const adapter = new ClaudeAdapter(store, '/unused.sock', { configDirs: ['/does-not-exist'], alive: async () => true });
   const socket = new HookSocket(); t.after(() => socket.destroy()); adapter.accept(socket);
   socket.emit('data', Buffer.from(JSON.stringify({ pid: 1, event: { session_id: 'test-session', cwd: '/work/project', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' } } }) + '\n'));
   assert.equal(store.list().length, 1);
@@ -39,7 +39,7 @@ test('malformed hook messages never create an actionable request', () => {
 
 test('a parallel tool completing does not clear unrelated Claude permissions', async t => {
   const store = new RequestStore();
-  const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: '/does-not-exist', alive: async () => true });
+  const adapter = new ClaudeAdapter(store, '/unused.sock', { configDirs: ['/does-not-exist'], alive: async () => true });
   const send = (hook_event_name, command) => {
     const socket = new HookSocket(); t.after(() => socket.destroy()); adapter.accept(socket);
     socket.emit('data', Buffer.from(JSON.stringify({ pid: 1, event: { session_id: 'parallel', cwd: '/work/project', hook_event_name, tool_name: 'Bash', tool_input: { command } } }) + '\n'));
@@ -57,7 +57,7 @@ test('a parallel tool completing does not clear unrelated Claude permissions', a
 
 test('a question answered in the terminal disappears here even though its input gained answers', t => {
   const store = new RequestStore();
-  const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: '/does-not-exist', alive: async () => true });
+  const adapter = new ClaudeAdapter(store, '/unused.sock', { configDirs: ['/does-not-exist'], alive: async () => true });
   const questions = [{ question: 'Where?', options: [{ label: 'Here' }] }];
   const send = (hook_event_name, tool_input) => {
     const socket = new HookSocket(); t.after(() => socket.destroy()); adapter.accept(socket);

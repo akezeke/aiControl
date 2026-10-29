@@ -62,7 +62,7 @@ export class ClaudeAdapter {
   stoppedAgents = new Set();
   connected = false;
   detail = 'Discovering local Claude Code sessions…';
-  constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.sessionsDir = sessionsDir; this.projectsDir = projectsDir; this.transcripts = new TranscriptReader(projectsDir); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
+  constructor(store, socketPath, { configDirs = [join(homedir(), '.claude')], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.configDirs = configDirs; this.transcripts = new TranscriptReader(configDirs.map(dir => join(dir, 'projects'))); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
   async start() {
     // The tmux/start guard prevents duplicate servers; only remove our stale socket.
     try { if ((await lstat(this.socketPath)).isSocket()) await unlink(this.socketPath); else throw new Error('Hook socket path is occupied by a file.'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -78,17 +78,18 @@ export class ClaudeAdapter {
     this.refreshing = true;
     try {
       const sessions = new Map(), registrations = new Map(), paths = new Map();
-      const files = await readdir(this.sessionsDir).catch(e => { if (e.code === 'ENOENT') return []; throw e; });
-      await Promise.all(files.filter(f => /^\d+\.json$/.test(f)).map(async file => {
+      const files = (await Promise.all(this.configDirs.map(async dir => (await readdir(join(dir, 'sessions')).catch(e => { if (e.code === 'ENOENT') return []; throw e; }))
+        .filter(f => /^\d+\.json$/.test(f)).map(file => ({ dir, file }))))).flat();
+      await Promise.all(files.map(async ({ dir, file }) => {
         try {
-          const record = JSON.parse(await readFile(join(this.sessionsDir, file), 'utf8'));
+          const record = JSON.parse(await readFile(join(dir, 'sessions', file), 'utf8'));
           if (!await this.alive(record.pid, record.procStart) || !record.sessionId) return;
           const hook = this.hooks.get(record.sessionId);
           const states = { idle: 'idle', busy: 'working', running: 'working', working: 'working', waiting: 'question', waiting_for_permission: 'permission', needs_permission: 'permission' };
-          const transcript = hook?.transcriptPath || join(this.projectsDir, (record.cwd || '').replace(/[^a-zA-Z0-9-]/g, '-'), `${record.sessionId}.jsonl`);
+          const transcript = hook?.transcriptPath || join(dir, 'projects', (record.cwd || '').replace(/[^a-zA-Z0-9-]/g, '-'), `${record.sessionId}.jsonl`);
           const history = await this.transcripts.read(transcript, record.sessionId);
           const via = await this.messaging.available(record), canSend = !!via;
-          registrations.set(record.sessionId, record);
+          registrations.set(record.sessionId, { ...record, configDir: dir });
           paths.set(`claude:${record.sessionId}`, transcript);
           const status = hook?.status || states[record.status] || 'unknown', tmux = via === 'tmux';
           sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
@@ -214,7 +215,7 @@ export class ClaudeAdapter {
   async record(sessionId) {
     const previous = this.registrations.get(sessionId);
     if (!previous) throw fail('This Claude session is no longer available.', 409);
-    const record = JSON.parse(await readFile(join(this.sessionsDir, `${previous.pid}.json`), 'utf8').catch(() => '{}'));
+    const record = JSON.parse(await readFile(join(previous.configDir, 'sessions', `${previous.pid}.json`), 'utf8').catch(() => '{}'));
     if (record.sessionId !== sessionId || record.procStart !== previous.procStart) throw fail('This Claude session changed. Refresh before sending.', 409);
     if (this.store.list().some(request => request.sessionId === `claude:${sessionId}`)) throw fail('Answer the pending question or permission first.', 409);
     return record;

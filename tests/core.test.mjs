@@ -10,7 +10,7 @@ import { createHandler } from '../server/http.mjs';
 import { codexRequest, codexStatus } from '../server/codex.mjs';
 import { claudeRequest, ClaudeAdapter } from '../server/claude.mjs';
 import { mergeHooks, hookCommand } from '../scripts/install-hooks.mjs';
-import { isTailscaleIP } from '../server/config.mjs';
+import { isTailscaleIP, claudeDirs } from '../server/config.mjs';
 
 const password = 'correct horse testing battery';
 async function fixture(t) {
@@ -205,12 +205,17 @@ test('hook installation is idempotent and preserves unrelated settings/hooks', (
   assert.deepEqual(mergeHooks(merged, true), settings);
 });
 
-test('Claude discovery excludes stale PIDs and uses full paths to distinguish projects', async t => {
+test('Claude discovery reads every config folder, excludes stale PIDs and uses full paths to distinguish projects', async t => {
   const { dir } = await fixture(t);
-  const { writeFile } = await import('node:fs/promises');
-  await writeFile(join(dir, '123.json'), JSON.stringify({ pid: 123, procStart: 'old', sessionId: 'stale', cwd: '/home/a/project', status: 'idle' }));
-  await writeFile(join(dir, '456.json'), JSON.stringify({ pid: 456, procStart: 'live', sessionId: 'current', cwd: '/home/b/project', name: 'Current work', status: 'busy' }));
-  const adapter = new ClaudeAdapter(new RequestStore(), join(dir, 'unused.sock'), { sessionsDir: dir, alive: async (pid, start) => pid === 456 && start === 'live' });
+  const { writeFile, mkdir } = await import('node:fs/promises');
+  const work = join(dir, '.claude'), personal = join(dir, '.claude-personal');
+  await mkdir(join(work, 'sessions'), { recursive: true }); await mkdir(join(personal, 'sessions'), { recursive: true });
+  await writeFile(join(work, 'sessions/123.json'), JSON.stringify({ pid: 123, procStart: 'old', sessionId: 'stale', cwd: '/home/a/project', status: 'idle' }));
+  await writeFile(join(personal, 'sessions/456.json'), JSON.stringify({ pid: 456, procStart: 'live', sessionId: 'current', cwd: '/home/b/project', name: 'Current work', status: 'busy' }));
+  await mkdir(join(dir, '.claude-code-router'));
+  assert.deepEqual(claudeDirs(dir, undefined), [work, personal]);
+  assert.deepEqual(claudeDirs(join(dir, '.claude-code-router'), '/custom/'), ['/custom']);
+  const adapter = new ClaudeAdapter(new RequestStore(), join(dir, 'unused.sock'), { configDirs: [work, personal], alive: async (pid, start) => pid === 456 && start === 'live' });
   await adapter.refresh();
   assert.equal(adapter.list().length, 1);
   assert.equal(adapter.list()[0].title, 'Current work');

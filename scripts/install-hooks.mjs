@@ -1,8 +1,7 @@
 import { readFile, writeFile, mkdir, copyFile, rename } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { root, dataDir, prepareData } from '../server/config.mjs';
+import { root, dataDir, prepareData, claudeDirs } from '../server/config.mjs';
 import { hookTimeoutMs } from '../server/claude.mjs';
 
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
@@ -22,17 +21,20 @@ export function mergeHooks(settings, remove = false) {
   return result;
 }
 
-export async function installHooks(remove = false, file = join(homedir(), '.claude/settings.json')) {
+export async function installHooks(remove = false, dirs = claudeDirs()) {
   prepareData();
-  const raw = await readFile(file, 'utf8').catch(e => { if (e.code === 'ENOENT') return '{}'; throw e; });
-  const existing = JSON.parse(raw);
-  const next = mergeHooks(existing, remove);
-  if (JSON.stringify(existing) === JSON.stringify(next)) return;
-  await mkdir(join(homedir(), '.claude'), { recursive: true, mode: 0o700 });
-  await copyFile(file, join(dataDir, `claude-settings-${Date.now()}.backup.json`)).catch(e => { if (e.code !== 'ENOENT') throw e; });
-  const temporary = `${file}.aicontrol-${process.pid}.tmp`;
-  await writeFile(temporary, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
-  await rename(temporary, file);
-  console.log(remove ? 'AI Control hooks removed; other Claude settings preserved.' : 'Claude hooks connected. Existing sessions may need /hooks → review or a restart.');
+  for (const dir of dirs) {
+    const file = join(dir, 'settings.json');
+    const raw = await readFile(file, 'utf8').catch(e => { if (e.code === 'ENOENT') return '{}'; throw e; });
+    const existing = JSON.parse(raw);
+    const next = mergeHooks(existing, remove);
+    if (JSON.stringify(existing) === JSON.stringify(next)) continue;
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await copyFile(file, join(dataDir, `${basename(dir).replace(/^\./, '')}-settings-${Date.now()}.backup.json`)).catch(e => { if (e.code !== 'ENOENT') throw e; });
+    const temporary = `${file}.aicontrol-${process.pid}.tmp`;
+    await writeFile(temporary, JSON.stringify(next, null, 2) + '\n', { mode: 0o600 });
+    await rename(temporary, file);
+    console.log(remove ? `AI Control hooks removed from ${file}; other Claude settings preserved.` : `Claude hooks connected in ${file}. Existing sessions may need /hooks → review or a restart.`);
+  }
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) await installHooks(process.argv.includes('--remove'));

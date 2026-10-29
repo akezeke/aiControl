@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeMessaging, spawnAgent } from '../server/claude-messaging.mjs';
@@ -105,10 +105,11 @@ test('shutdown cancels pending connections and invalid bodies never open a socke
 
 test('Claude adapter checks the live registration and leaves waiting permissions untouched', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'aicontrol-claude-send-')); t.after(() => rm(dir, { recursive: true, force: true }));
-  const path = join(dir, `${record.pid}.json`);
+  await mkdir(join(dir, 'sessions'));
+  const path = join(dir, 'sessions', `${record.pid}.json`);
   await writeFile(path, JSON.stringify({ ...record, cwd: '/work/project', name: 'project-01', status: 'idle' }));
   const calls = [], store = new RequestStore();
-  const adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: dir, alive: async () => true, messaging: { available: async () => true, send: async (...args) => { calls.push(args); return { status: 'submitted' }; }, stop() {} } });
+  const adapter = new ClaudeAdapter(store, '/unused.sock', { configDirs: [dir], alive: async () => true, messaging: { available: async () => true, send: async (...args) => { calls.push(args); return { status: 'submitted' }; }, stop() {} } });
   await adapter.refresh();
   assert.equal(adapter.list()[0].messaging.send, true);
   assert.equal(await adapter.sendMessage(record.sessionId, body).then(r => r.status), 'submitted');

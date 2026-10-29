@@ -178,7 +178,7 @@ export function claudeSessionTitle(record, history) {
 export class TranscriptReader {
   cache = new Map();
   visibleIds = new Map();
-  constructor(projectsDir) { this.projectsDir = resolve(projectsDir); }
+  constructor(projectsDirs) { this.projectsDirs = [projectsDirs].flat().map(dir => resolve(dir)); }
   includeMessage(sessionId, id) {
     if (!this.visibleIds.has(sessionId)) this.visibleIds.set(sessionId, new Set());
     this.visibleIds.get(sessionId).add(id);
@@ -190,7 +190,7 @@ export class TranscriptReader {
     const agent = agentId !== undefined, limit = older || (agent ? agentMessageLimit : messageLimit), maxBytes = (older ? 32 : 4) * 1024 * 1024;
     try {
       const path = await realpath(file);
-      if (!path.startsWith(this.projectsDir + sep) || !(agent ? path.includes(`/${sessionId}/subagents/`) && path.endsWith(`/agent-${agentId}.jsonl`) : path.endsWith(`/${sessionId}.jsonl`))) return { messages: [], messagesState: 'unavailable' };
+      if (!this.projectsDirs.some(dir => path.startsWith(dir + sep)) || !(agent ? path.includes(`/${sessionId}/subagents/`) && path.endsWith(`/agent-${agentId}.jsonl`) : path.endsWith(`/${sessionId}.jsonl`))) return { messages: [], messagesState: 'unavailable' };
       const handle = await open(path, 'r');
       try {
         const stat = await handle.stat();

@@ -45,7 +45,7 @@ npm ci
 npm start
 ```
 
-The first run asks how to reach the dashboard (Tailscale or this computer only) and for a PIN or password. It then connects the Claude hooks in `~/.claude/settings.json` (backed up to `.local/`), starts the server in a tmux session named `aiControl` on port 47841, and prints the URL.
+The first run asks how to reach the dashboard (Tailscale or this computer only) and for a PIN or password. It then connects the Claude hooks in `settings.json` of every Claude config folder (backed up to `.local/`), starts the server in a tmux session named `aiControl` on port 47841, and prints the URL.
 
 ```sh
 npm run attach             # Open the server's tmux session
@@ -70,7 +70,7 @@ npm test
 ## How it works
 
 - **Codex:** connects to the app-server control socket (`~/.codex/app-server-control/`, or `CODEX_HOME`) and rejoins loaded threads.
-- **Claude Code:** reads running sessions from `~/.claude/sessions` and transcripts from `~/.claude/projects`. Hooks forward questions and permission requests over a local socket. Messages are pasted into the session's tmux pane, or sent to its inbox outside tmux.
+- **Claude Code:** reads running sessions and transcripts from every config folder: `~/.claude`, `CLAUDE_CONFIG_DIR`, and each `~/.claude-*` with a `settings.json` or `sessions/` (such as `~/.claude-personal`), each with its own usage row. Hooks forward questions and permission requests over a local socket. Messages are pasted into the session's tmux pane, or sent to its inbox outside tmux.
 - **Usage:** Codex's `account/rateLimits/read`, and the Claude CLI's internal OAuth usage endpoint with its existing login. Credentials never leave the backend.
 
 ## License

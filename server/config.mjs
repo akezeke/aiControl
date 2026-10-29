@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { X509Certificate } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 
 export const root = fileURLToPath(new URL('../', import.meta.url));
 export const dataDir = join(root, '.local');
@@ -15,6 +16,15 @@ export function prepareData() { mkdirSync(dataDir, { recursive: true, mode: 0o70
 // { mode: 'tailscale' | 'local', cert?, key? }, written by scripts/setup.mjs.
 export function readSettings() {
   try { return JSON.parse(readFileSync(settingsFile, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return {}; throw e; }
+}
+
+// Claude Code config folders, one per account: $CLAUDE_CONFIG_DIR, ~/.claude and every ~/.claude-*
+// holding settings.json or sessions/, such as ~/.claude-personal.
+export function claudeDirs(home = homedir(), configured = process.env.CLAUDE_CONFIG_DIR) {
+  const found = ['.claude', ...readdirSync(home).filter(name => name.startsWith('.claude-'))].map(name => join(home, name))
+    .filter(dir => ['settings.json', 'sessions'].some(file => existsSync(join(dir, file))));
+  const dirs = [configured, ...found].filter(Boolean);
+  return [...new Set((dirs.length ? dirs : [join(home, '.claude')]).map(dir => resolve(dir)))];
 }
 
 // This machine's Tailscale IPv4 and MagicDNS name, or null when Tailscale is missing or stopped.
