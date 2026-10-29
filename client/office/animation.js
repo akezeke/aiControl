@@ -11,7 +11,7 @@ const SETTLED = 0.7;    // seconds after a pose change, after which the pose is 
 // The sitter's root sits a little forward of the chair; standing, they step out behind it.
 const SEAT_FORWARD = 0.06, STAND_BACK = -0.8, STANDING = new Set(['waving', 'raising']);
 const KEYS = KEYS_Z - CHAIR_Z - SEAT_FORWARD; // the keyboard, from the sitter's root (the mouse's x is the same from either)
-const LOOK_RANGE = 4, WALK_SPEED = 2, GOODBYE = 1.2;
+const LOOK_RANGE = 4, WALK_SPEED = 2, GOODBYE = 1.2, STARTLED = 2.5;
 
 // t is seconds (frozen at 0 with reduced motion), seed spreads characters out of step, fruit gives the body's height and shape,
 // wear (0..1) slows typing down and slumps a sleeper further. Facing +z, the left side is +x.
@@ -156,7 +156,7 @@ export class Cast {
     this.characters.delete(id);
   }
 
-  // Hit by a ball or the boss's coffee: a frown and a jump.
+  // Hit by something or the boss's coffee, or their desk was: a jump, then a frown and a glare at the boss for a moment.
   startle(id) { const c = this.characters.get(id); if (c && !c.plus) c.startled = this.time; }
 
   update(dt, playerPos) {
@@ -171,23 +171,23 @@ export class Cast {
       // A working or idle sitter may be slacking off (room.js and slack.js have it), or just caught at it.
       const talking = this.facingYou === c.id && !STANDING.has(c.pose), busy = ['typing', 'thinking', 'sleeping'].includes(c.pose), slack = c.anchor.slack;
       const pose = talking ? 'listening' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted' : c.pose;
-      const startled = this.time - c.startled < 1.6;
+      const since = this.time - c.startled, startled = since < STARTLED;
       const face = startled ? 'frown' : talking && c.expression === 'asleep' ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : c.expression;
       if (c.shown !== pose) { if (c.shown) c.changed = this.time; c.shown = pose; }
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
       fruit.buzz(t);
       if (c.trip && this.#walk(c, dt, t, k)) continue;
       const target = poseTargets(pose, t, c.seed, fruit, c.wear);
-      if (startled && !still && this.time - c.startled < 0.3) target.body.y += 0.12;
+      if (startled && !still && since < 0.4) target.body.y += 0.16 * Math.sin(Math.PI * since / 0.4);
       // Worn out: slouched lower and to one side (a sleeper already is; one caught slacking sits up straight).
       if (c.wear && pose !== 'sleeping' && pose !== 'busted') { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }
       // Standing characters turn toward the boss when they want something, and anyone you're talking to turns in their chair.
-      if (playerPos && (pose === 'waving' || pose === 'raising' || this.facingYou === c.id)) {
+      if (playerPos && (pose === 'waving' || pose === 'raising' || this.facingYou === c.id || startled)) {
         const at = c.root.position, angle = Math.atan2(playerPos.x - at.x, playerPos.z - at.z) - c.anchor.facing;
         target.turn = Math.atan2(Math.sin(angle), Math.cos(angle));
       }
-      // Caught out, they snap to it.
-      const kPose = pose === 'busted' && !still ? 1 - Math.exp(-dt * 20) : k;
+      // Caught out, they snap to it; startled, they whip round.
+      const kPose = (pose === 'busted' || startled) && !still ? 1 - Math.exp(-dt * 20) : k;
       if (!c.current) c.current = clonePose(target); else blendPose(c.current, target, this.time - c.changed > SETTLED ? 1 : kPose, kPose);
       const p = c.current, facing = c.anchor.facing, x = p.x * c.scale, z = p.z * c.scale;
       c.root.position.copy(c.anchor.seat).setY(0).add(new THREE.Vector3(Math.cos(facing) * x + Math.sin(facing) * z, 0, -Math.sin(facing) * x + Math.cos(facing) * z));

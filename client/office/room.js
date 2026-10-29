@@ -11,7 +11,7 @@ import { createWindows } from './windows.js';
 import { DESK_W, DESK_D } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
-  counter, mugShelf, waterCooler, bookshelf, printer, filingCabinet, coatRack, extinguisher, glowTexture, floorShadow,
+  counter, coffeeMachine, mugShelf, waterCooler, bookshelf, printer, filingCabinet, coatRack, extinguisher, glowTexture, floorShadow,
 } from './furniture.js';
 
 export { WALL_H };
@@ -183,9 +183,10 @@ export function createRoom(scene) {
           redraw(helper, statuses.get(kid));
         });
         desk.group.updateMatrixWorld(true);
-        // The desk, its monitor (inside the desk's footprint, so only balls notice it), the chair and any helpers' desks.
+        // The desk, its monitor (inside the desk's footprint, so only thrown things notice it), the chair and any helpers' desks,
+        // each with whose it is (props.js: they mind coffee on their desk).
         const [top, seat] = desk.solids.map(box => box.clone().applyMatrix4(desk.group.matrixWorld));
-        solid.push(top, new THREE.Box3().setFromObject(desk.monitor), seat, ...desk.helpers.map(helper => new THREE.Box3().setFromObject(helper.group)));
+        for (const [box, owner] of [[top, id], [new THREE.Box3().setFromObject(desk.monitor), id], [seat, id], ...desk.helpers.map((helper, i) => [new THREE.Box3().setFromObject(helper.group), place.subagents[i]])]) solid.push(Object.assign(box, { owner }));
       }
       for (const [id, desk] of desks) if (!layout.desks.has(id)) { removeDesk(desk); desks.delete(id); }
       const podKeys = new Set();
@@ -312,7 +313,8 @@ export function createRoom(scene) {
     place(bookshelf(), 0.2, 1.45, Math.PI / 2); shadowUnder(0.25, 1.45, 0.5, 1);
     if (depth / 2 - 1.3 - 1.95 > 1.1) hang(left, picture(1, 0.8, 0.6), along((1.95 + depth / 2 - 1.3) / 2), 1.7);
     place(counter(), 0.32, depth - 1.6, Math.PI / 2); shadowUnder(0.35, depth - 1.6, 0.7, 2.1);
-    room.coffeeCorner = new THREE.Vector3(0.32, 0, depth - 1.6); // props.js fills the boss's mug here
+    // E or a click on the machine fills the boss's mug (room.onCoffee, from office.js).
+    room.coffeeMachine = place(coffeeMachine(), 0.32, depth - 1.6, Math.PI / 2, false); room.coffeeMachine.userData.toggle = () => room.onCoffee?.();
     hang(left, mugShelf(), along(depth - 1.6), 1.75, 0.11);
     if (depth - 3.05 > depth / 2 + 1.35) place(waterCooler(), 0.24, depth - 3.05, Math.PI / 2);
     if (depth - 3.65 > depth / 2 + 1.35) place(plant('bush'), 0.42, depth - 3.65);

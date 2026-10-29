@@ -19,13 +19,15 @@ function drawIcon(canvas, icon) {
 export class Bubbles {
   constructor(container, onClick) {
     this.layer = document.createElement('div'); this.layer.className = 'office-bubbles'; container.append(this.layer);
-    this.nodes = new Map(); this.onClick = onClick;
+    this.nodes = new Map(); this.onClick = onClick; this.entries = []; this.said = new Map();
   }
 
-  // entries: [{ id, bubble: { icon, text, highlight } | null, unread }]
-  sync(entries) {
-    const keep = new Set();
-    for (const { id, bubble, unread } of entries) {
+  // entries: [{ id, bubble: { icon, text, highlight } | null, unread }]; something just said (say) shows instead for a moment.
+  sync(entries = this.entries) {
+    this.entries = entries;
+    const all = new Map(entries.map(entry => [entry.id, entry])), now = performance.now(), keep = new Set();
+    for (const [id, said] of this.said) if (said.until < now) this.said.delete(id); else all.set(id, { ...all.get(id), id, bubble: said.bubble });
+    for (const { id, bubble, unread } of all.values()) {
       if (!bubble) continue;
       keep.add(id);
       let node = this.nodes.get(id);
@@ -49,6 +51,7 @@ export class Bubbles {
   // `zoomOut` (0..1) shrinks them a little as the overview rises, so a whole room of them still fits but stays readable.
   // One by the side of the screen slides back in, its tail still pointing at whoever it belongs to.
   update(camera, positionOf, zoomOut = 0) {
+    for (const said of this.said.values()) if (said.until < performance.now()) { this.sync(); break; }
     const { clientWidth: w, clientHeight: h } = this.layer, p = new THREE.Vector3();
     if (this.width !== w) { this.width = w; for (const node of this.nodes.values()) node.width = 0; } // widths change with the media queries
     for (const [id, node] of this.nodes) {
@@ -66,6 +69,9 @@ export class Bubbles {
       node.style.zIndex = String(1000 - Math.round(distance * 10));
     }
   }
+
+  // A quick word from someone (hit by a ball, say), over their own bubble for a couple of seconds.
+  say(id, icon, text, seconds = 2.5) { this.said.set(id, { bubble: { icon, text, highlight: false }, until: performance.now() + seconds * 1000 }); this.sync(); }
 
   // The session whose bubble is at a screen point (under the dot when aiming with it).
   at(x, y) { return document.elementFromPoint(x, y)?.closest('.office-bubble')?.dataset.id || null; }

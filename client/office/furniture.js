@@ -56,11 +56,13 @@ export function deskItem(kind) {
     cactus: () => [[cyl(0.05, 0.04, 0.08, 0, 0.04, 0), '#e8b07a'], [new THREE.CapsuleGeometry(0.035, 0.1, 4, 10).translate(0, 0.15, 0), '#4f9a5c'], [new THREE.CapsuleGeometry(0.018, 0.04, 4, 8).rotateZ(0.9).translate(0.045, 0.16, 0), '#4f9a5c'], [new THREE.CapsuleGeometry(0.016, 0.03, 4, 8).rotateZ(-0.9).translate(-0.042, 0.13, 0), '#4f9a5c'], [ball(0.012, 0, 0.225, 0), '#ff7aa8']],
     books: () => ['#d1495b', '#2e86ab', '#edae49'].map((color, i) => [box(0.2 - i * 0.02, 0.035, 0.14 - i * 0.01, 0, 0.018 + i * 0.036, 0, 0.004).rotateY((i - 1) * 0.2), color]),
   }[kind];
-  return make ? piece(`item-${kind}`, make, 0.006) : new THREE.Group();
+  return make ? loose(piece(`item-${kind}`, make, 0.006), kind) : new THREE.Group();
 }
+// Desk things can be picked up and thrown (props.js); `kind` says which.
+const loose = (item, kind) => { item.userData.loose = kind; return item; };
 
 // A takeaway coffee: paper cup, cardboard sleeve, lid.
-export const coffeeCup = () => piece('cup', () => [[cyl(0.04, 0.03, 0.12, 0, 0.06, 0), '#f4efe6'], [cyl(0.0385, 0.035, 0.045, 0, 0.065, 0), '#b07a4a'], [cyl(0.043, 0.043, 0.012, 0, 0.124, 0), '#ffffff'], [cyl(0.03, 0.038, 0.012, 0, 0.136, 0), '#ffffff']], 0.005);
+export const coffeeCup = () => loose(piece('cup', () => [[cyl(0.04, 0.03, 0.12, 0, 0.06, 0), '#f4efe6'], [cyl(0.0385, 0.035, 0.045, 0, 0.065, 0), '#b07a4a'], [cyl(0.043, 0.043, 0.012, 0, 0.124, 0), '#ffffff'], [cyl(0.03, 0.038, 0.012, 0, 0.136, 0), '#ffffff']], 0.005), 'cup');
 
 // Floor plants in three shapes.
 export function plant(kind = 'bush') {
@@ -157,16 +159,18 @@ export function rug(w, d, color = '#6d9dc5', border = '#f2e8cf') {
   return m;
 }
 
-// Coffee corner: a counter with a machine, mugs on a shelf above, and a water cooler.
+// Coffee corner: a counter, its machine, mugs on a shelf above, and a water cooler.
 export const counter = () => piece('counter', () => [
   [box(2, 0.86, 0.6, 0, 0.43, 0, 0.02), '#e8e1d4'], [box(2.06, 0.05, 0.66, 0, 0.885, 0.01, 0.015), '#7a5c46'],
   ...[-0.75, -0.25, 0.25, 0.75].map(x => [box(0.46, 0.7, 0.012, x, 0.42, 0.302, 0.004), '#ddd4c4']), ...[-0.55, -0.45, 0.45, 0.55].map(x => [box(0.02, 0.14, 0.02, x, 0.62, 0.315, 0.006), '#8a8f99']),
-  // Coffee machine and its cup.
-  [box(0.34, 0.44, 0.32, -0.5, 1.13, -0.04, 0.03), '#2f3542'], [box(0.36, 0.06, 0.34, -0.5, 1.37, -0.04, 0.02), '#c9ced8'], [box(0.1, 0.05, 0.08, -0.5, 1.06, 0.13, 0.01), '#c9ced8'],
-  [box(0.26, 0.02, 0.14, -0.5, 0.92, 0.12, 0.005), '#8a8f99'], [cyl(0.035, 0.03, 0.08, -0.5, 0.97, 0.13), '#f2f2f2'], [ball(0.015, -0.4, 1.22, 0.115), '#5ee08a'],
   // A kettle and a stack of cups.
   [cyl(0.08, 0.1, 0.2, 0.15, 1.01, -0.05, 16), '#d1495b'], [cyl(0.03, 0.03, 0.04, 0.15, 1.13, -0.05), '#2f3542'], ...[0, 1, 2, 3].map(i => [cyl(0.04, 0.03, 0.1, 0.55, 0.96 + i * 0.03, 0), '#f4efe6']),
 ]);
+// The coffee machine and its cup, in the counter's frame (a piece of its own, so it can be outlined); userData.spout is where it pours.
+export const coffeeMachine = () => Object.assign(piece('coffeeMachine', () => [
+  [box(0.34, 0.44, 0.32, -0.5, 1.13, -0.04, 0.03), '#2f3542'], [box(0.36, 0.06, 0.34, -0.5, 1.37, -0.04, 0.02), '#c9ced8'], [box(0.1, 0.05, 0.08, -0.5, 1.06, 0.13, 0.01), '#c9ced8'],
+  [box(0.26, 0.02, 0.14, -0.5, 0.92, 0.12, 0.005), '#8a8f99'], [cyl(0.035, 0.03, 0.08, -0.5, 0.97, 0.13), '#f2f2f2'], [ball(0.015, -0.4, 1.22, 0.115), '#5ee08a'],
+]), { userData: { spout: new THREE.Vector3(-0.5, 1.03, 0.13) } });
 export const mugShelf = () => piece('mugShelf', () => [
   [box(1.2, 0.04, 0.22, 0, 0, 0, 0.01), '#7a5c46'], ...['#e63946', '#2e86ab', '#f9e04b', '#7cb518', '#f2f2f2'].flatMap((color, i) => [[cyl(0.045, 0.04, 0.1, -0.44 + i * 0.22, 0.07, 0.01), color], [new THREE.TorusGeometry(0.03, 0.009, 6, 12).translate(-0.39 + i * 0.22, 0.07, 0.01), color]]),
 ]);

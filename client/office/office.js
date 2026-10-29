@@ -71,9 +71,13 @@ export function mountOffice(container, hooks) {
     },
   });
   const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches, container });
-  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches });
-  // A ball out of reach: walk over and pick it up.
-  const pickUp = body => { if (body.pos.distanceTo(player.position) <= REACH) props.grab(body); else player.walkTo(body.pos.clone().setY(0), () => props.grab(body), 0.7); };
+  // Whoever gets hit, or whose things do, jumps, glares and says so.
+  const onHit = (id, line) => { cast.startle(id); bubbles.say(id, '💢', line); };
+  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches, onHit });
+  // A thing out of reach: walk over (as near as the furniture lets you) and pick it up.
+  const pickUp = body => { if (body.pos.distanceTo(player.position) <= REACH) props.grab(body); else player.walkTo(body.pos.clone().setY(0), () => props.grab(body), 0.7, true); };
+  // The coffee machine: fills the mug if you're by it, else you walk over first.
+  room.onCoffee = () => { if (!props.fill()) player.walkTo(props.machineSpot, () => props.fill(), 0.3, true); };
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   const card = createCard(container);
