@@ -22,7 +22,7 @@ A self-hosted dashboard for keeping track of your local Codex and Claude Code se
 
 MU/TH/UR, EVA and Office go all in. The first two bring boot sequences, CRT scanlines, typed-out text, radar contacts that blip on status changes and close in the longer they wait, emergency lighting, hazard stripes, build bars fed by plan progress and a power bar fed by your usage limits that drops the radar to static when spent. Orbit is the calm option. Effects never block a control and switch off with reduced motion.
 
-Office swaps the list for a toon-shaded 3D office: every session is a fruit at a desk, sleeping when idle and waving when it needs you, with speech bubbles, its latest lines on the monitor and usage on the whiteboard. Walk around in first person (WASD, Shift to run, Space to jump; click to capture the mouse, or use the arrow keys, to look), Tab for the overview, and click someone to fly over and open their session.
+Office swaps the list for a toon-shaded 3D office: every session is a fruit at a desk, sleeping when idle and waving when it needs you, with speech bubbles, its latest lines on the monitor and usage on the whiteboard. Walk around in first person (WASD, Shift to run, Space to jump; click to capture the mouse, or use the arrow keys, to look), Tab for the overview, and click someone to fly over and open their session. ☰ swaps back to the list, as notes and post-its on a corkboard.
 
 ## Screenshots
 
@@ -34,6 +34,7 @@ Office swaps the list for a toon-shaded 3D office: every session is a fruit at a
 | Office | Office overview |
 | --- | --- |
 | ![Office: first person among the fruit sessions](docs/screenshots/office-first-person.webp) | ![Office: overview of the whole room](docs/screenshots/office-overview.webp) |
+| ![Office list: sessions as taped notes and post-its on a corkboard](docs/screenshots/office-list.webp) | ![Office: Claude permission request on a post-it](docs/screenshots/office-permission.webp) |
 
 | Orbit dark | First visit |
 | --- | --- |
