@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { hostname as machineName } from 'node:os';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
-import { RequestStore } from './requests.mjs';
+import { RequestStore, mergeSessions } from './requests.mjs';
 import { CodexAdapter } from './codex.mjs';
 import { ClaudeAdapter } from './claude.mjs';
 import { UsagePoller, claudeUsageReader } from './usage.mjs';
@@ -29,13 +29,7 @@ export async function startServer({ host, hostname, tls = null }) {
   const claudeUsage = accounts.map(({ dir, label }) => ({ label, poller: new UsagePoller('claude', label ? `Claude Code · ${label}` : 'Claude Code', claudeUsageReader({ credentialsFile: join(dir, '.credentials.json') })) }));
   const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: origins.map(o => new URL(o).hostname) } });
   const snapshot = () => {
-    const requests = store.list();
-    const sessions = [...codex.list(), ...claude.list()].map(session => {
-      const pending = requests.filter(r => r.sessionId === session.id);
-      return { ...session, ...(pending.length ? { status: pending[0].kind === 'question' ? 'question' : 'permission' } : {}), requests: pending };
-    });
-    // A request may arrive just before session metadata; keep it visible.
-    for (const request of requests) if (!sessions.some(s => s.id === request.sessionId)) sessions.push({ id: request.sessionId, provider: request.provider, title: 'Session connecting', project: 'Connecting', cwd: '', status: request.kind === 'question' ? 'question' : 'permission', updatedAt: request.createdAt, requests: requests.filter(r => r.sessionId === request.sessionId), control: true });
+    const sessions = mergeSessions([...codex.list(), ...claude.list()], store.list());
     return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label }))], features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: machineName(), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }] };
   };
   const messageTarget = id => {

@@ -77,3 +77,8 @@ test('a working bubble shows the running call, its icon following the tool', () 
     ['✏️', '✏️', '✏️', '📖', '🔍', '🔍', '🔍', '🔍', '🌐', '👥', '👥']);
   assert.deepEqual(at(''), ['⌨️', 'Working']);
 });
+
+test('a session asking in its reply raises its hand with the question', () => {
+  const b = officeStatus({ status: 'question', asks: 'Shall I commit it?', requests: [] });
+  assert.deepEqual([b.pose, b.bubble.icon, b.bubble.text], ['raising', '❓', 'Shall I commit it?']);
+});

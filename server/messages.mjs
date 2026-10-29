@@ -179,6 +179,15 @@ export function turnTool(messages = []) {
   return '';
 }
 
+// The question a reply ends on ("Shall I commit it?", its last line's last sentence) when nothing came after it: code blocks don't count, and a cut-off reply's end is unknown.
+export function lastQuestion(messages = []) {
+  const last = messages.findLast(m => m.role !== 'notice');
+  if (last?.role !== 'assistant' || last.tool || last.truncated) return '';
+  const line = last.text.replace(/```[\s\S]*?(```|$)/g, '').split('\n').map(l => l.trim()).filter(Boolean).at(-1) || '';
+  const plain = line.replace(/^(?:[#>]+|[-*+]|\d+\.)\s+/, '').replace(/^[*_]+|[*_]+$/g, '').trim();
+  return plain.endsWith('?') ? plain.split(/(?<=[.!?])\s+(?=[A-Z])/).at(-1).slice(0, 300) : '';
+}
+
 export function claudeTitles(lines, sessionId, previous = {}) {
   const titles = { ...previous };
   for (const line of lines) {

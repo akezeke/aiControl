@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Auth, savePassword, idleMs } from '../server/auth.mjs';
-import { RequestStore } from '../server/requests.mjs';
+import { RequestStore, mergeSessions } from '../server/requests.mjs';
 import { createHandler } from '../server/http.mjs';
 import { codexRequest, codexStatus } from '../server/codex.mjs';
 import { claudeRequest, ClaudeAdapter } from '../server/claude.mjs';
@@ -282,4 +282,22 @@ test('HTTP accepts every configured origin, such as localhost aliases', async t 
   const login = await request(handler, '/api/login', { method: 'POST', headers: { host: 'localhost:47841', origin: origin[1], 'content-type': 'application/json' }, body: { password } });
   assert.equal(login.status, 200);
   assert.doesNotMatch(login.headers['set-cookie'], /Secure/);
+});
+
+test('an idle session whose last reply asks something needs you, like a request does', () => {
+  const asking = [{ role: 'user', text: 'Fix it' }, { role: 'assistant', text: 'Fixed. Shall I commit it?' }];
+  const sessions = [
+    { id: 'a', status: 'idle', messages: asking },
+    { id: 'b', status: 'working', messages: asking },
+    { id: 'c', status: 'idle', parentId: 'a', messages: asking },
+    { id: 'd', status: 'idle', messages: asking },
+    { id: 'e', status: 'idle', messages: [{ role: 'assistant', text: 'Done.' }] },
+  ];
+  const request = { id: 'r', sessionId: 'd', kind: 'permission', provider: 'codex', createdAt: 1 };
+  const merged = Object.fromEntries(mergeSessions(sessions, [request]).map(s => [s.id, [s.status, s.asks || '']]));
+  assert.deepEqual(merged, { a: ['question', 'Shall I commit it?'], b: ['working', ''], c: ['idle', ''], d: ['permission', ''], e: ['idle', ''] });
+});
+test('a request for a session not listed yet shows a connecting session', () => {
+  const [session] = mergeSessions([], [{ id: 'r', sessionId: 'codex:x', kind: 'question', provider: 'codex', createdAt: 5 }]);
+  assert.deepEqual([session.id, session.status, session.title, session.requests.length], ['codex:x', 'question', 'Session connecting', 1]);
 });

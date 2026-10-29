@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, mkdir, symlink, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claudeMeta, claudeMessages, codexMessage, messageLimit, TranscriptReader, claudeTitles, claudeSessionTitle } from '../server/messages.mjs';
+import { claudeMeta, claudeMessages, codexMessage, messageLimit, TranscriptReader, claudeTitles, claudeSessionTitle, lastQuestion } from '../server/messages.mjs';
 
 const sessionId = '11111111-2222-3333-4444-555555555555';
 const row = (id, type, content, extra = {}) => JSON.stringify({ uuid: id, sessionId, type, timestamp: '2026-10-25T12:00:00Z', message: { role: type, content }, ...extra });
@@ -195,4 +195,19 @@ test('a turn shows its latest tool call, not one from an earlier turn', async ()
   assert.equal(turnTool([prompt, tool('Read · office/room.js'), { role: 'assistant', text: 'Hmm.' }]), 'Read · office/room.js');
   assert.equal(turnTool([tool('Bash · old'), prompt]), '');
   assert.equal(turnTool(), '');
+});
+
+test('a reply whose last line is a question is waiting on you', () => {
+  const reply = text => [{ role: 'user', text: 'Fix the door' }, { role: 'assistant', text }];
+  assert.equal(lastQuestion(reply('Fixed the hinge.\n\nShall I commit it?')), 'Shall I commit it?');
+  assert.equal(lastQuestion(reply('Done.\n\n**Want me to push it too?**')), 'Want me to push it too?');
+  assert.equal(lastQuestion(reply('Which one?\n```js\nconst a = b ? c : d;\n```')), 'Which one?');
+  assert.equal(lastQuestion([...reply('Shall I commit it?'), { role: 'notice', text: 'Away summary' }]), 'Shall I commit it?');
+  assert.equal(lastQuestion(reply('Why did it fail? The port was taken. Fixed.')), '');
+  assert.equal(lastQuestion(reply('See https://example.com/?q=1')), '');
+  assert.equal(lastQuestion(reply('Bumped it to v1.2. Does vite.config.mjs need it too?')), 'Does vite.config.mjs need it too?');
+  assert.equal(lastQuestion([...reply('Shall I run the tests?'), { role: 'assistant', text: 'Bash · npm test', tool: true }]), '');
+  assert.equal(lastQuestion([...reply('Shall I commit it?'), { role: 'user', text: 'yes' }]), '');
+  assert.equal(lastQuestion([{ role: 'assistant', text: 'Is this cut off?', truncated: true }]), '');
+  assert.equal(lastQuestion([]), '');
 });

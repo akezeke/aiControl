@@ -33,7 +33,7 @@ export function officeStatus(session, now = Date.now()) {
   const text = activity ? { thinking: 'Thinking', compacting: 'Compacting' }[activity] : {
     working: session.detail || 'Working',
     permission: request || 'Needs permission',
-    question: request || 'Has a question',
+    question: request || session.asks || 'Has a question',
     idle: '',
     error: session.detail || 'Error',
   }[session.status];

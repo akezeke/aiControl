@@ -371,8 +371,8 @@ const contextPercent = context => context?.window ? Math.min(100, Math.round(con
 const compacting = session => session.status === 'working' && session.activity === 'compacting';
 const planProgress = session => session.plan?.length ? [session.plan.filter(step => step.status === 'done').length, session.plan.length] : null;
 function cardDetail(session) {
-  if (session.provider === 'claude' && !session.control && needsInput(session)) return 'Open the original client · Hooks not connected';
-  return session.requests[0]?.title || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
+  if (session.provider === 'claude' && !session.control && needsInput(session) && !session.asks) return 'Open the original client · Hooks not connected';
+  return session.requests[0]?.title || session.asks || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
 }
 // What the office's card shows for whoever is outlined: the details a list card has.
 function sessionFacts(session) {
@@ -475,7 +475,7 @@ function renderPanel() {
     renderSessionHeader(panel.querySelector('.chat-header'), session);
   }
   const requests = panel.querySelector('.chat-requests');
-  const requestSignature = JSON.stringify([session.requests.map(({ sending, ...request }) => request), needsInput(session), !!state.error]);
+  const requestSignature = JSON.stringify([session.requests.map(({ sending, ...request }) => request), needsInput(session), !!session.asks, !!state.error]);
   if (requests.dataset.signature !== requestSignature) {
     requests.dataset.signature = requestSignature;
     renderSessionRequests(requests, session);
@@ -494,7 +494,7 @@ function renderSessionHeader(header, session) {
   const next = nextWaiting(session.id);
   if (next) { const b = button('Next', 'quiet-button next-button', openNext, 'next'); b.title = `Next waiting (n): ${next.title}`; actions.append(b); }
   if (session.status === 'working' && session.messaging?.interrupt) { const stop = button('Stop', 'quiet-button stop-button', () => interrupt(session, stop), 'stop'); stop.title = 'Interrupt the current turn'; stop.disabled = !!state.error; actions.append(stop); }
-  if (session.status === 'idle' && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = 'End this session with /exit (refused while anything is still running)'; fire.disabled = !!state.error; actions.append(fire); }
+  if ((session.status === 'idle' || session.asks) && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = 'End this session with /exit (refused while anything is still running)'; fire.disabled = !!state.error; actions.append(fire); }
   if (session.messaging?.effort && session.efforts?.length) actions.append(effortPicker(session));
   actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
   const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
@@ -606,7 +606,7 @@ function renderSessionRequests(requests, session) {
     } else box.append(el('p', 'muted', request.note || 'Answer this request in the original client.'));
     requests.append(box);
   }
-  if (!session.requests.length && needsInput(session)) {
+  if (!session.requests.length && needsInput(session) && !session.asks) {
     const note = el('div', 'chat-idle'); note.append(icon(needsInput(session) ? 'bell' : 'check'), el('p', '', needsInput(session) ? 'Waiting for input in the original client. This prompt is not connected here.' : 'No questions or permissions waiting.')); requests.append(note);
   }
   requests.hidden = !requests.children.length;
