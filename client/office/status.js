@@ -46,13 +46,13 @@ function turnMinutes(session, now) {
   if (!start) return 0;
   return Math.max(0, (session.status === 'working' ? now : messages.at(-1).timestamp) - start.timestamp) / 60_000;
 }
-// Wear (0..1, in tenths so it changes rarely) builds up as the context fills toward auto-compact, and a little over a long turn;
-// a coffee cup joins the desk at each of CUPS minutes into the turn.
+// Wear (0..1, in tenths so it changes rarely) builds up over the last stretch before auto-compact (at about 83% of the window;
+// a compaction leaves about a third), and a little over a long turn; a coffee cup joins the desk at each of CUPS minutes into the turn.
 const CUPS = [3, 10, 20, 35, 60, 90];
 export function tiredness(session, now = Date.now()) {
   const { used = 0, window } = session.context || {}, fill = used / (window || (used > 200_000 ? 1_000_000 : 200_000)), minutes = turnMinutes(session, now);
   const clamp = value => Math.min(1, Math.max(0, value));
-  const wear = Math.max(clamp((fill - 0.35) / 0.5), 0.7 * clamp(minutes / 90));
+  const wear = Math.max(clamp((fill - 0.5) / 0.33), 0.6 * clamp(minutes / 120));
   return { wear: Math.round(wear * 10) / 10, cups: CUPS.filter(at => minutes >= at).length };
 }
 

@@ -338,11 +338,11 @@ export function createFruit({ fruit, color, accessory }, { scale = 1 } = {}) {
   let droop = 1, blink = 1;
   const setWear = wear => {
     bags = [];
-    // Front-loaded, so even a mildly tired fruit looks it.
-    const age = Math.min(1, wear * 1.6);
-    colorMaterial.color.copy(fresh).lerp(ROT, age * 0.6);
-    skin.tests.value.set(wear > 0.05 ? 1 - age * 0.8 : 2, wear > 0.25 ? 1 - (wear - 0.2) * 0.75 : 2, fruit === 'banana' && wear > 0.15 ? 1 - age * 0.75 : 2); // 2: never shows
-    flies.visible = wear >= 0.7;
+    // Freckles first, then spots and rot; the flies only come when auto-compact is close.
+    const age = Math.min(1, wear * 1.2);
+    colorMaterial.color.copy(fresh).lerp(ROT, age * 0.55);
+    skin.tests.value.set(wear > 0.15 ? 1 - age * 0.8 : 2, wear > 0.45 ? 1 - (wear - 0.4) * 0.75 : 2, fruit === 'banana' && wear > 0.25 ? 1 - age * 0.75 : 2); // 2: never shows
+    flies.visible = wear >= 0.9;
     for (let level = 0; level < (wear >= 0.75 ? 2 : wear >= 0.4 ? 1 : 0); level++) for (const side of [-1, 1]) {
       const y = faceY - 0.058 - level * 0.016;
       bags.push([arc([onSkin(side * spread - bagHalf, y + 0.008), onSkin(side * spread, y - 0.006), onSkin(side * spread + bagHalf, y + 0.008)], 0.0045), '#6a5470']);

@@ -54,8 +54,9 @@ test('wear follows context fill and long turns; cups follow the turn', () => {
   const now = 1_000_000_000, at = minutes => now - minutes * 60_000;
   const turn = (minutes, extra = {}) => tiredness({ status: 'working', messages: [{ role: 'user', text: 'go', timestamp: at(minutes) }, { role: 'assistant', text: 'ok', timestamp: at(0) }], ...extra }, now);
   assert.deepEqual(turn(1), { wear: 0, cups: 0 });
-  assert.deepEqual(turn(25), { wear: 0.2, cups: 3 });
+  assert.deepEqual(turn(25), { wear: 0.1, cups: 3 });
   assert.equal(turn(200).cups, 6);
+  assert.equal(turn(1, { context: { used: 70_000 } }).wear, 0, 'what a compaction leaves is fresh');
   assert.equal(turn(1, { context: { used: 150_000 } }).wear, 0.8);
   assert.equal(turn(1, { context: { used: 300_000 } }).wear, 0, 'past 200k the window must be 1M');
   assert.equal(turn(1, { context: { used: 90_000, window: 100_000 } }).wear, 1);
