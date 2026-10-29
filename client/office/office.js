@@ -22,7 +22,7 @@ export function webglAvailable() {
 }
 
 export function mountOffice(container, hooks) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.append(renderer.domElement);
@@ -155,9 +155,13 @@ export function mountOffice(container, hooks) {
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
   };
   const observer = new ResizeObserver(resize); observer.observe(container); resize();
+  // ponytail: a fixed 30 fps budget (60–144 Hz is wasted on a dashboard left open all day); throttle further when idle if it still costs too much.
+  const frameMs = 1000 / 30, phone = globalThis.matchMedia?.('(max-width: 640px)');
   let raf = 0, last = performance.now();
   const loop = now => {
     raf = requestAnimationFrame(loop);
+    // On a phone the open panel covers the whole office.
+    if (now - last < frameMs - 1 || (phone?.matches && document.body.classList.contains('panel-open'))) return;
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     for (const fn of frames) fn(dt, now);
     renderer.render(scene, office.camera);
@@ -245,6 +249,5 @@ export function mountOffice(container, hooks) {
     },
     disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => { for (const fn of listeners) fn(); }],
   };
-  if (import.meta.env?.DEV) globalThis.__office = office; // poke at it from devtools
   return office;
 }
