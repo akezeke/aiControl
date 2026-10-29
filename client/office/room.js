@@ -371,6 +371,10 @@ export function createRoom(scene, renderer) {
     const panel = mesh(rounded(1.05, 2.15, 0.06, 0.03), toonMaterial('#e0574a')); panel.position.y = 1.075; doorGroup.add(panel);
     const knob = mesh(new THREE.SphereGeometry(0.04, 12, 8), toonMaterial('#f2c14e'), 0.006); knob.position.set(0.4, 1.05, 0.06); doorGroup.add(knob);
     const doorNote = notes('door', [[0, 0, 0.06, NOTE.yellow]]); doorNote.position.set(-0.15, 1.5, 0.0325); doorGroup.add(doorNote);
+    // A brass name plate; boards.js writes the machine's name on it.
+    const plateGroup = new THREE.Group(); plateGroup.position.set(0, 1.82, 0.036); doorGroup.add(plateGroup);
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.096), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); plate.position.z = 0.0065;
+    plateGroup.add(piece('plate', () => [[rounded(0.48, 0.13, 0.012, 0.005), '#c9a227']]), plate);
     place(coatRack(), door.x + 0.85, depth - 0.35, 0.4);
     hang(front, extinguisher(), door.x - width / 2 - 0.75, 0.25, 0);
     hang(front, lights.createSwitch(), door.x - width / 2 - 0.72, 1.2, 0.008);
@@ -386,7 +390,7 @@ export function createRoom(scene, renderer) {
     // Post-its on the boards' frames, clear of what boards.js writes.
     hang(left, notes('whiteboard', [[0, 0.32, 0.1, NOTE.yellow], [0.012, 0.2, -0.07, NOTE.yellow], [-0.008, -0.34, 0.05, NOTE.pink]]), 1.24, 1.65, 0.0585);
     hang(front, notes('noticeboard', [[-0.57, 0.41, -0.15, NOTE.pink], [0.57, -0.4, 0.12, NOTE.blue], [0.585, -0.29, -0.06, NOTE.yellow]]), door.x - width / 2 - 1.4, 1.5, 0.0585);
-    room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face };
+    room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face, plate };
 
     // Left wall: a bookshelf at the back, the coffee corner at the front, pictures where there's room.
     const along = z => depth / 2 - z;
