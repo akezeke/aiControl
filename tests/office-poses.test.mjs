@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { poseTargets, waitingPose } from '../client/office/animation.js';
+import { handGeometry, fistGeometry } from '../client/office/fruit.js';
 
 const fruit = { height: 0.5, surface: () => ({ x: 0, r: 0.22 }) };
 
@@ -42,4 +43,17 @@ test('habits: a pecker hops one finger, a thinker scratches or looks up with han
   const lap = at('sleeping', 'lap'), heels = at('sleeping', '');
   assert.ok(lap.limbs.leftFoot.y < 0.1 && heels.limbs.leftFoot.y > 0.5, 'feet stay down');
   assert.deepEqual(at('typing', 'touch'), at('typing', ''), 'the first habit is the plain pose');
+});
+
+test('neighbours: a thumbs up goes up beside the head on their side; a worried look keeps the hands on the keys', () => {
+  for (const [habit, hand, other] of [['left', 'leftHand', 'rightHand'], ['right', 'rightHand', 'leftHand']]) {
+    const p = poseTargets('thumbsup', 0.4, 1, fruit, 0, habit);
+    assert.equal(p.thumb, hand);
+    assert.ok(p.limbs[hand].y > p.body.y + fruit.height && p.limbs[other].y < p.body.y + 0.2, 'one hand up high, the other in the lap');
+    assert.ok(Math.sign(p.limbs[hand].x) === (habit === 'left' ? 1 : -1), 'on the side they turn to');
+  }
+  const worried = poseTargets('concerned', 0.4, 1, fruit), typing = poseTargets('typing', 0.4, 1, fruit);
+  assert.ok(Math.abs(worried.limbs.leftHand.z - typing.limbs.leftHand.z) < 0.05 && Math.abs(worried.limbs.leftHand.y - typing.limbs.leftHand.y) < 0.03, 'hands stay on the keys');
+  const [hand, fist] = [handGeometry(), fistGeometry()];
+  assert.ok(fist.attributes.position.count === hand.attributes.position.count && fist.index.count === hand.index.count, 'the fist swaps in for the hand in place');
 });

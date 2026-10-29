@@ -179,7 +179,7 @@ function wearable(material) {
 }
 
 // Black parts shared by every fruit.
-let hand, shoe, fly;
+let hand, fist, shoe, fly;
 const flyGeometry = () => fly ??= new THREE.SphereGeometry(0.017, 6, 4);
 export function handGeometry() {
   if (hand) return hand;
@@ -187,6 +187,14 @@ export function handGeometry() {
   for (const [x, len] of [[-0.024, 0.05], [0, 0.058], [0.024, 0.05]]) parts.push(new THREE.CapsuleGeometry(0.012, len, 4, 8).translate(x, 0, 0).rotateX(Math.PI / 2).translate(0, 0, 0.045 + len / 2 - 0.01));
   parts.push(new THREE.CapsuleGeometry(0.012, 0.03, 4, 8).rotateZ(Math.PI / 2.6).translate(-0.045, 0.012, 0.02));
   return hand = mergeGeometries(parts);
+}
+// A thumbs up: the same parts as the hand (so it can stand in for it in place), fingers curled across a fist, the thumb on top.
+export function fistGeometry() {
+  if (fist) return fist;
+  const parts = [new THREE.SphereGeometry(0.042, 14, 10).scale(0.9, 1, 1)];
+  for (const [y, len] of [[0.022, 0.05], [0, 0.058], [-0.022, 0.05]]) parts.push(new THREE.CapsuleGeometry(0.012, len, 4, 8).rotateZ(Math.PI / 2).scale(0.65, 1, 1).translate(0, y, 0.034));
+  parts.push(new THREE.CapsuleGeometry(0.012, 0.03, 4, 8).scale(1.3, 1, 1.3).translate(0, 0.062, 0.006));
+  return fist = mergeGeometries(parts);
 }
 const shoeGeometry = () => shoe ??= new THREE.SphereGeometry(0.06, 16, 10, 0, Math.PI * 2, 0, Math.PI / 1.8).scale(1, 0.75, 1.7).translate(0, -0.012, 0.035);
 
@@ -210,11 +218,12 @@ class Limbs {
     this.limbs = Object.fromEntries(names.map((name, i) => [name, { radius: LIMBS[name], tube: slots[i], end: slots[names.length + i], template: parts[names.length + i].attributes, curve: new THREE.QuadraticBezierCurve3(V(0, 0), V(0, 0), V(0, 0)), last: null }]));
   }
   // A limb's tube runs from `from`, bowed by `bend`, to `to`; a hand there points along it, a shoe is turned by `turn`.
-  set(name, from, bend, to, turn) {
-    const limb = this.limbs[name], key = [from, to, bend].map(v => `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`).join();
+  // A `fist` hand is a thumbs up instead.
+  set(name, from, bend, to, turn, fist = false) {
+    const limb = this.limbs[name], key = [from, to, bend].map(v => `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`).join() + fist;
     if (key === limb.last) return;
     limb.last = key;
-    const { curve, radius, tube, end, template } = limb, { position, normal } = this.geometry.attributes;
+    const { curve, radius, tube, end } = limb, template = fist ? fistGeometry().attributes : limb.template, { position, normal } = this.geometry.attributes;
     curve.v0.copy(from); curve.v2.copy(to); curve.v1.copy(from).add(to).multiplyScalar(0.5).add(bend);
     curve.updateArcLengths(); // getPointAt and the frames read a cached length table
     const { tangents, normals, binormals } = curve.computeFrenetFrames(TUBE, false);
@@ -472,9 +481,9 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
     rightFoot: () => V(shape.surface(hipY + 0.04).x - 0.09, hipY + 0.03, 0),
   };
   const limbs = new Limbs(limbMaterial), hands = { leftHand: 1, rightHand: -1 }; own.push(limbs.geometry); group.add(limbs.mesh);
-  const from = new THREE.Vector3(), bend = new THREE.Vector3(), heel = new THREE.Euler();
-  // `elbows` pushes both elbows out and up, for hands on the hips.
-  const setLimbs = (targets, elbows = 0) => {
+  const from = new THREE.Vector3(), bend = new THREE.Vector3(), heel = new THREE.Euler(), upright = new THREE.Euler();
+  // `elbows` pushes both elbows out and up, for hands on the hips; `thumb` names a hand held up in a thumbs up, upright.
+  const setLimbs = (targets, elbows = 0, thumb = null) => {
     body.updateMatrix();
     for (const [name, to] of Object.entries(targets)) {
       from.copy(anchor[name]()).applyMatrix4(body.matrix);
@@ -482,7 +491,8 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
       // Arms bow outward and down; legs bend a little forward at the knee.
       if (arm) bend.set(side * (0.07 + elbows), -0.06 + elbows * 0.6, 0.02); else bend.set(side * 0.02, 0, 0.06);
       // A foot up off the floor rests on its heel, toes up.
-      limbs.set(name, from, bend, to, arm ? null : heel.set(-Math.min(1, Math.max(0, to.y - 0.1) * 2), 0, 0));
+      const up = name === thumb;
+      limbs.set(name, from, bend, to, up ? upright : arm ? null : heel.set(-Math.min(1, Math.max(0, to.y - 0.1) * 2), 0, 0), up);
     }
   };
   // Hands hang a little out from the shoulders; feet sit under the hips.
