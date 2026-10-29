@@ -246,9 +246,10 @@ function syncOffice() {
     if (root.dataset.themeChoice && root.dataset.themeChoice !== 'office') listTheme = root.dataset.themeChoice;
     office?.unmount(); office = null; document.querySelector('#office')?.remove(); root.removeAttribute('data-office-fallback'); return;
   }
-  if (office) { if (state.snapshot) office.update(state.snapshot, { error: state.error }); return; }
   // Any failure (download, no WebGL2, renderer refused) shows the list once and stays that way for this theme choice.
   const fallBack = message => { root.setAttribute('data-office-fallback', ''); document.querySelector('#office')?.remove(); toast(message); };
+  // An office bug must not take the session list down with it.
+  if (office) { if (state.snapshot) try { office.update(state.snapshot, { error: state.error }); } catch (error) { console.error(error); office.unmount(); office = null; fallBack('Office stopped; showing the list'); } return; }
   if (root.hasAttribute('data-office-fallback')) return;
   if (!officeModule) { officeModule = import('./office/office.js').then(module => { officeModule = module; syncOffice(); }, () => { officeModule = null; fallBack('Office failed to load; showing the list'); }); return; }
   if (officeModule instanceof Promise) return;

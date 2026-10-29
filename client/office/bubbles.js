@@ -34,7 +34,7 @@ export class Bubbles {
         const icon = document.createElement('canvas'); icon.width = icon.height = 64; icon.className = 'icon'; icon.setAttribute('role', 'img');
         node.append(icon, document.createElement('span'), document.createElement('i'));
         node.children[1].className = 'text'; node.children[2].className = 'dot';
-        node.dataset.id = id; node.onclick = () => this.onClick(id);
+        node.dataset.id = id; node.onclick = () => { node.blur(); this.onClick(id); }; // left focused, the next Space (jump) would click it again
         this.layer.append(node); this.nodes.set(id, node);
       }
       const label = bubble.text ? `${bubble.icon} ${bubble.text}` : bubble.icon;

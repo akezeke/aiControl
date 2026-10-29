@@ -709,3 +709,6 @@
   :root[data-theme=modern] { --wallpaper: url('/orbit-light-portrait.webp'); }
   :root[data-theme=modern][data-scheme=dark] { --wallpaper: url('/orbit-dark-portrait.webp'); }
 }
+
+/* An armed Fire stays red in every theme; the themed .quiet-button rules above outrank style.css. */
+:root .fire-button.armed { color: #fff; background: var(--danger); border-color: var(--danger); }
