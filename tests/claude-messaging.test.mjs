@@ -214,10 +214,10 @@ test('new agents open in the tmux session working in the project, never the serv
   assert.deepEqual(await spawnAgent('/w/aiControl', 'claude', { tmux: shared.tmux }), { session: 'work', pane: '%42', window: '%42' });
   assert.deepEqual(shared.calls.slice(1, 3), [['new-window', '-t', '=work:', '-d', '-c', '/w/aiControl', '-n', 'claude', '-P', '-F', '#{pane_id}'], ['send-keys', '-t', '%42', 'claude', 'Enter']]);
   const fresh = run('aiControl\t/w/aiControl\n');
-  assert.equal((await spawnAgent('/w/aiControl', 'codex', { tmux: fresh.tmux })).session, 'aiControl-agents');
+  assert.equal((await spawnAgent('/w/aiControl', 'codex', { tmux: fresh.tmux, update: async () => {} })).session, 'aiControl-agents');
   assert.equal(fresh.calls[1][0], 'new-session');
   assert.deepEqual(fresh.calls[2].slice(3), ['codex', 'Enter']);
-  assert.equal((await spawnAgent('/w/my.app', 'codex', { tmux: run('').tmux })).session, 'my_app');
+  assert.equal((await spawnAgent('/w/my.app', 'codex', { tmux: run('').tmux, update: async () => {} })).session, 'my_app');
   await assert.rejects(spawnAgent('/w/app', 'sh', { tmux: run('').tmux }), /Unknown agent/);
   const personal = run('');
   await spawnAgent('/w/app', 'claude', { tmux: personal.tmux, configDir: "/home/u/.claude-it's" });
