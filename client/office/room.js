@@ -54,13 +54,14 @@ const binParts = color => [
   [C(0.12, 0.1, 0.3, 0, 0.15, 0, 16), color], [C(0.127, 0.127, 0.02, 0, 0.292, 0, 16), color], [new THREE.CircleGeometry(0.11, 16).rotateX(-Math.PI / 2).translate(0, 0.3035, 0), '#2a2d35'],
   ...[[0.03, 0.02, 0.04], [-0.04, 0.01, 0.034], [0, -0.05, 0.036]].map(([x, z, r], i) => [new THREE.IcosahedronGeometry(r, 0).rotateY(i).translate(x, 0.3 + r * 0.4, z), '#f4f1ea']),
 ];
-// Post-its facing +z, [x, y, tilt, colour, z]: a box (closed, so it gets an outline) with two scribbled lines as flat quads, 48 vertices.
+// Post-its facing +z, [x, y, tilt, colour, z]: the paper and two scribbled lines as flat quads, 18 vertices. No outline shows, as on the rugs:
+// a flat quad's hull faces away and only shows from behind, so put notes where their backs are hidden.
 const NOTE = { yellow: '#ffe066', pink: '#ff9fb2', blue: '#8fd3ff', green: '#b9f18c' };
 const noteParts = notes => notes.flatMap(([x, y, tilt, color, z = 0]) => [
-  [B(0.075, 0.075, 0.003, 0, 0, 0, 0), color], [new THREE.PlaneGeometry(0.05, 0.005).translate(0, 0.012, 0.0025), '#3a4352'], [new THREE.PlaneGeometry(0.036, 0.005).translate(-0.007, -0.008, 0.0025), '#3a4352'],
+  [new THREE.PlaneGeometry(0.075, 0.075).translate(0, 0, 0.0015), color], [new THREE.PlaneGeometry(0.05, 0.005).translate(0, 0.012, 0.0025), '#3a4352'], [new THREE.PlaneGeometry(0.036, 0.005).translate(-0.007, -0.008, 0.0025), '#3a4352'],
 ].map(([geometry, c]) => [geometry.rotateZ(tilt).translate(x, y, z), c]));
-// Stuck to the bezel, the first identity().notes of them, facing the sitter.
-const MONITOR_NOTES = [[0.3, 0.1, 0.12, NOTE.yellow], [-0.3, -0.08, -0.1, NOTE.pink], [0.16, 0.21, 0.08, NOTE.green]];
+// Stuck to the bezel, the first identity().notes of them, facing the sitter; inside its edges so the one opposite can't see their backs.
+const MONITOR_NOTES = [[0.255, 0.1, 0.12, NOTE.yellow], [-0.255, -0.09, -0.1, NOTE.pink], [0.14, 0.15, 0.08, NOTE.green]];
 const monitorNoteParts = n => noteParts(MONITOR_NOTES.slice(0, n)).map(([geometry, c]) => [geometry.rotateY(Math.PI).translate(0, DESK_H + 0.34, MONITOR_Z - 0.0345), c]);
 const towerParts = () => [
   [B(0.18, 0.42, 0.4, 0, 0.21, 0, 0.02), '#2f3542'], [B(0.12, 0.014, 0.01, 0, 0.33, -0.2, 0.003), '#8a8f99'], [B(0.12, 0.014, 0.01, 0, 0.3, -0.2, 0.003), '#8a8f99'],
