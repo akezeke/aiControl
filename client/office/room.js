@@ -102,10 +102,10 @@ function createDesk(color, width = DESK_W, helper = false, notes = 0) {
   const screen = new THREE.Mesh(once('screen', () => new THREE.PlaneGeometry(0.54, 0.32)), new THREE.MeshBasicMaterial({ map: screenTexture }));
   screen.position.set(0, DESK_H + 0.34, MONITOR_Z - 0.032); screen.rotation.y = Math.PI; group.add(screen);
   const chair = new THREE.Object3D(); chair.position.z = CHAIR_Z; group.add(chair); // where the sitter sits
-  // The desk's and the chair's shadows in one.
-  const shadow = floorShadow(1, 1, 0.3), plane = shadow.geometry; group.add(shadow);
-  shadow.geometry = once(`deskShadow${width}`, () => mergeGeometries([plane.clone().scale(width, 1, DESK_D * 1.05), plane.clone().scale(0.72, 1, 0.72).translate(0, 0, CHAIR_Z)]));
-  const desk = { group, screen, screenTexture, chair, color, monitor, solids: geometry.userData.solids };
+  // The desk's and the chair's shadows in one, in the desk's frame; room.sync draws every desk's in one mesh.
+  const plane = floorShadow(1, 1).geometry;
+  const shadow = once(`deskShadow${width}`, () => mergeGeometries([plane.clone().scale(width, 1, DESK_D * 1.05), plane.clone().scale(0.72, 1, 0.72).translate(0, 0, CHAIR_Z)]));
+  const desk = { group, screen, screenTexture, chair, color, monitor, shadow, solids: geometry.userData.solids };
   if (helper) return desk;
   desk.led = new THREE.Mesh(once('led', () => new THREE.SphereGeometry(0.012, 8, 6)), new THREE.MeshBasicMaterial({ color: leds.off })); desk.led.position.set(TOWER[0], 0.39, TOWER[1] - 0.205); group.add(desk.led);
   desk.cups = new THREE.Group(); desk.cups.position.y = DESK_H; group.add(desk.cups);
@@ -163,6 +163,7 @@ export function createRoom(scene) {
   // Back to the terminal: redrawn from the latest status even if it hasn't changed.
   const slacking = createSlacking(desk => { desk.screenKey = null; redraw(desk, desk.status); });
   const desks = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
+  const deskShadows = floorShadow(1, 1, 0.3); deskShadows.geometry = new THREE.BufferGeometry(); root.add(deskShadows);
   const room = {
     colliders: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
     deskAnchor(id) {
@@ -203,6 +204,13 @@ export function createRoom(scene) {
         for (const [box, owner] of [[top, id], [new THREE.Box3().setFromObject(desk.monitor), id], [seat, id], ...desk.helpers.map((helper, i) => [new THREE.Box3().setFromObject(helper.group), place.subagents[i]])]) solid.push(Object.assign(box, { owner }));
       }
       for (const [id, desk] of desks) if (!layout.desks.has(id)) { removeDesk(desk); desks.delete(id); }
+      // Every desk's shadow in one mesh, rebuilt when one moves, comes or goes.
+      const all = [...desks.values()].flatMap(desk => [desk, ...desk.helpers]), toRoot = root.matrixWorld.clone().invert();
+      const at = all.map(desk => toRoot.clone().multiply(desk.group.matrixWorld)), key = at.map(m => m.elements.map(v => v.toFixed(3)).join()).join(';');
+      if (deskShadows.userData.key !== key) {
+        deskShadows.userData.key = key; deskShadows.geometry.dispose();
+        deskShadows.geometry = all.length ? mergeGeometries(all.map((desk, i) => desk.shadow.clone().applyMatrix4(at[i]))) : new THREE.BufferGeometry();
+      }
       const podKeys = new Set();
       for (const pod of layout.pods) {
         podKeys.add(pod.key);
