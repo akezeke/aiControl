@@ -38,9 +38,9 @@ Office swaps the list for a toon-shaded 3D office: every session is a fruit at a
 | --- | --- |
 | ![Orbit dark: Codex command approval](docs/screenshots/orbit-dark-approval.webp) | ![Theme picker](docs/screenshots/theme-picker.webp) |
 
-| Phone: Orbit | Phone: MU/TH/UR | Phone: EVA |
-| --- | --- | --- |
-| <img src="docs/screenshots/orbit-phone-table.webp" width="260" alt="Orbit on a phone: Markdown table as cards"> | <img src="docs/screenshots/mother-phone-question.webp" width="260" alt="MU/TH/UR on a phone: answering a question"> | <img src="docs/screenshots/eva-phone.webp" width="260" alt="EVA on a phone: session overview"> |
+| Phone: Orbit | Phone: MU/TH/UR | Phone: EVA | Phone: Office |
+| --- | --- | --- | --- |
+| <img src="docs/screenshots/orbit-phone-table.webp" width="260" alt="Orbit on a phone: Markdown table as cards"> | <img src="docs/screenshots/mother-phone-question.webp" width="260" alt="MU/TH/UR on a phone: answering a question"> | <img src="docs/screenshots/eva-phone.webp" width="260" alt="EVA on a phone: session overview"> | <img src="docs/screenshots/office-phone.webp" width="260" alt="Office on a phone: sessions as fruit at their desks"> |
 
 ## Start
 
