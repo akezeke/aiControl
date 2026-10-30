@@ -832,7 +832,7 @@ function shotStrip(id, { shots: group, user }) {
   }
   return strip;
 }
-// One screenshot big; ‹ › or ←/→ step through the session's others, the picture opens full size, Esc or the backdrop closes.
+// One screenshot big; ‹ ›, ←/→ or a swipe step through the session's others, the picture opens full size, Esc or the backdrop closes.
 function showShot(id, imageId) {
   const images = shots.get(id)?.images || []; let at = Math.max(0, images.findIndex(image => image.id === imageId));
   if (!images.length) return;
@@ -851,7 +851,26 @@ function showShot(id, imageId) {
   };
   dialog.append(link, bar);
   dialog.addEventListener('keydown', event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); step(event.key === 'ArrowLeft' ? -1 : 1); } });
-  dialog.onclick = event => { if (event.target === dialog) dialog.close(); };
+  // A swipe steps; the picture follows the finger, and a second finger (pinch-zoom) calls the swipe off.
+  let from = null, swiped = false;
+  dialog.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse') return;
+    if (from) { from = null; picture.style.transform = ''; return; }
+    from = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  });
+  dialog.addEventListener('pointermove', event => { if (from?.id === event.pointerId) picture.style.transform = `translateX(${event.clientX - from.x}px)`; });
+  const release = event => {
+    if (from?.id !== event.pointerId) return;
+    const dx = event.clientX - from.x, dy = event.clientY - from.y;
+    from = null; picture.style.transform = '';
+    if (event.type === 'pointerup' && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) { swiped = true; step(dx < 0 ? 1 : -1); }
+  };
+  dialog.addEventListener('pointerup', release); dialog.addEventListener('pointercancel', release);
+  // Capture, so the click a swipe ends with neither opens the full-size link nor closes the viewer.
+  dialog.addEventListener('click', event => {
+    if (swiped) { swiped = false; event.preventDefault(); return; }
+    if (event.target === dialog) dialog.close();
+  }, true);
   dialog.onclose = () => dialog.remove();
   app.append(dialog); show(); dialog.showModal();
 }

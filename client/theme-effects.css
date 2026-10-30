@@ -839,3 +839,50 @@
 
 /* An armed Fire stays red in every theme; the themed .quiet-button rules above outrank style.css. */
 :root .fire-button.armed { color: #fff; background: var(--danger); border-color: var(--danger); }
+
+/* Screenshots, framed for each theme. Static frames; only MU/TH/UR's screen flickers, and not under reduced motion. */
+.history-shot::after, .shot-full::after { content: ''; position: absolute; pointer-events: none; }
+:root[data-theme=alien] {
+  /* An old CRT: dark bezel, a rounded screen under scanlines and a vignette, phosphor glow. */
+  .history-shot { padding: 5px; border: 1px solid #2c5a2a; border-radius: 10px; background: linear-gradient(#151b15, #070b07); box-shadow: inset 0 0 0 1px #000, 0 0 10px #7dff6a26; }
+  .history-shot img { border-radius: 12px / 16px; filter: saturate(.75) contrast(1.05); }
+  .history-shot::after { inset: 5px; border-radius: 12px / 16px; }
+  .history-shot::after, .shot-full::after { background: repeating-linear-gradient(#0000 0 2px, #0005 2px 3px), radial-gradient(ellipse at center, #0000 58%, #000b 100%); box-shadow: inset 0 0 18px #7dff6a22; }
+  .shot-viewer { padding: 16px 22px 12px; border: 2px solid #2c5a2a; border-radius: 28px; background: linear-gradient(#1b2019, #0a0d09); box-shadow: 0 0 0 7px #050705, 0 0 0 8px #2c5a2a66, 0 0 48px #7dff6a2e; color: #bdf7a8; }
+  .shot-viewer::before { content: 'MU/TH/UR 6000 · VISUAL FEED'; display: block; margin-bottom: 10px; font: 15px/1 'VT323', var(--font); letter-spacing: .3em; color: #75b864; }
+  .shot-full img { max-height: calc(100svh - 118px); border-radius: 26px / 34px; filter: saturate(.85); }
+  .shot-full::after { inset: 0; border-radius: 26px / 34px; }
+  .shot-meta { font: 18px/1 'VT323', var(--font); letter-spacing: .08em; color: #93d980; }
+  .shot-button { border-color: #2c5a2a; border-radius: 4px; background: #0a200b; color: #bdf7a8; font-family: 'VT323', var(--font); font-size: 20px; }
+}
+@media (prefers-reduced-motion: no-preference) { :root[data-theme=alien] .shot-full::after { animation: shot-flicker 5s steps(1) infinite; } }
+@keyframes shot-flicker { 0%, 96% { opacity: 1; } 97% { opacity: .75; } 98% { opacity: 1; } 99% { opacity: .85; } }
+:root[data-theme=command] {
+  /* A riveted steel recon frame under a hazard stripe. */
+  .history-shot { padding: 4px; border: 2px outset #90977a; border-radius: 0; background: var(--steel); }
+  .history-shot img { outline: 1px solid #0a0e07; }
+  .shot-viewer { padding: 0 16px 12px; border: 3px outset #90977a; border-radius: 0; color: #f2ecce;
+    background: radial-gradient(circle, #e2e5d0 0 1.5px, #2b3022 2px, #0000 2.6px) top 5px left 5px / 8px 8px no-repeat, radial-gradient(circle, #e2e5d0 0 1.5px, #2b3022 2px, #0000 2.6px) top 5px right 5px / 8px 8px no-repeat,
+      radial-gradient(circle, #e2e5d0 0 1.5px, #2b3022 2px, #0000 2.6px) bottom 5px left 5px / 8px 8px no-repeat, radial-gradient(circle, #e2e5d0 0 1.5px, #2b3022 2px, #0000 2.6px) bottom 5px right 5px / 8px 8px no-repeat, var(--steel); }
+  .shot-viewer::before { content: 'EVA ▸ RECON IMAGE'; display: block; margin: 0 -16px 12px; padding: 14px 16px 6px; font: 13px/1 var(--display); letter-spacing: .2em; color: #f0c94a; text-shadow: 0 1px 0 #000;
+    background: linear-gradient(#0000 0 10px, #1b1604cc 10px), repeating-linear-gradient(-45deg, #f0c94a 0 9px, #1b1604 9px 18px) top / 100% 10px no-repeat; }
+  .shot-full img { max-height: calc(100svh - 120px); border: 2px solid #0a0e07; border-radius: 0; box-shadow: 0 0 0 1px #8a9070; }
+  .shot-meta { font: 12px/1 var(--display); text-transform: uppercase; letter-spacing: .14em; color: #f0c94a; }
+  .shot-button { border: 2px outset #90977a; border-radius: 0; background: linear-gradient(#646e54, #3b462e); color: #f6f0cd; }
+}
+:root[data-theme=office] {
+  /* Prints on the board: white borders, a strip of tape, the thumbnails a little crooked. The viewer stays straight to stay sharp. */
+  .history-shots { padding: 10px 6px 6px; }
+  .history-shot { padding: 5px 5px 14px; border: 0; border-radius: 1px; background: #fff; box-shadow: 0 2px 5px #0003, 0 0 0 1px #0000000f; transform: rotate(-1.4deg); }
+  .history-shot:nth-child(even) { transform: rotate(1.1deg); }
+  .history-shot:hover, .history-shot:focus-visible { transform: none; box-shadow: 0 4px 10px #0003, 0 0 0 2px var(--accent); }
+  .history-shot::after { top: -6px; left: 50%; width: 36px; height: 13px; margin-left: -18px; background: #f3e9a8d0; box-shadow: 0 1px 1px #0002; transform: rotate(-3deg); }
+  .shot-viewer { padding: 14px 14px 10px; border: 0; border-radius: 2px; background: #fffef8; color: var(--text); box-shadow: 0 24px 60px #0007; overflow: visible; }
+  .shot-viewer::before { content: ''; position: absolute; top: -11px; left: 50%; width: 96px; height: 24px; margin-left: -48px; background: #f3e9a8d9; box-shadow: 0 1px 2px #0002; transform: rotate(2deg); }
+  .shot-viewer::backdrop { background: #2b1d10d0; }
+  .shot-full img { border-radius: 0; box-shadow: 0 0 0 1px #0000001a; }
+  .shot-meta { font: 700 15px/1.2 var(--hand); color: var(--text-2); }
+  .shot-button { border: 0; border-radius: 2px; background: var(--postit); color: var(--text); box-shadow: 0 1px 3px #0003; }
+  .shot-button:disabled { opacity: .45; }
+}
+

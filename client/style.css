@@ -480,12 +480,14 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* Screenshots in the history: fixed-height thumbnails, so a late load never shifts the scroll. */
 .history-shots { flex: none; display: flex; gap: 6px; max-width: 86ch; margin: 10px 32px 0 0; overflow-x: auto; }
 .history-shots.user { align-self: flex-end; margin: 10px 0 0 32px; }
-.history-shot { flex: none; height: 96px; min-width: 48px; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--sunken); cursor: zoom-in; }
+.history-shot { position: relative; flex: none; height: 96px; min-width: 48px; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--sunken); cursor: zoom-in; }
 .history-shot img { display: block; height: 100%; max-width: 200px; object-fit: cover; }
 .history-shot:hover, .history-shot:focus-visible { border-color: var(--accent); }
 .shot-viewer { width: auto; max-width: calc(100vw - 24px); max-height: calc(100svh - 24px); padding: 10px; border: 1px solid #ffffff26; border-radius: 14px; background: #0d0f14f2; color: #eef0f5; font: 13px/1.4 system-ui, sans-serif; }
 .shot-viewer::backdrop { background: #000c; }
-.shot-full { display: block; cursor: zoom-in; }
+/* Horizontal drags are swipes between screenshots, not the browser's back gesture; pinch-zoom still works. */
+.shot-viewer { touch-action: pinch-zoom; }
+.shot-full { position: relative; display: block; width: fit-content; margin-inline: auto; cursor: zoom-in; }
 .shot-full img { display: block; max-width: calc(100vw - 46px); max-height: calc(100svh - 92px); margin-inline: auto; object-fit: contain; border-radius: 6px; }
 .shot-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .shot-meta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; color: #b9bfcc; }
