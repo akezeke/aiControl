@@ -43,7 +43,7 @@ test('password hashing, private permissions, invalidation and rate limits', asyn
   assert.equal(await auth.get({ headers: { cookie: auth.cookie(next.token).split(';')[0] } }), null);
   for (let i = 0; i < 5; i++) await assert.rejects(auth.login('wrong', 'attacker'), e => e.status === 401);
   await assert.rejects(auth.login(password, 'attacker'), e => e.status === 429);
-  await assert.rejects(savePassword(file, 'short'), /12/);
+  await assert.rejects(savePassword(file, 'short'), /8–1024/);
 });
 
 test('HTTP protects session data, rejects CSRF, and logs out', async t => {

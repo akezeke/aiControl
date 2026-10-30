@@ -1,8 +1,9 @@
 import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
 import { appendFile, writeFile, rename, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
-import { hostname as machineName } from 'node:os';
+import { join, isAbsolute } from 'node:path';
+import { statSync } from 'node:fs';
+import { hostname as machineName, homedir } from 'node:os';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
 import { RequestStore, mergeSessions } from './requests.mjs';
@@ -49,9 +50,10 @@ export async function startServer({ host, hostname, tls = null }) {
     images: id => claudeId(id) ? claude.imageList(id) : { images: [] },
     image: (id, imageId) => claudeId(id) ? claude.image(id, imageId) : Promise.reject(fail('Image not found.', 404)),
   };
-  // Only directories a live session already runs in. Claude starts under the account asked for, or the one the project last used.
+  // Any existing directory (~ expands). Claude starts under the account asked for, or the one the project last used.
   const spawn = ({ cwd, provider, account: label } = {}) => {
-    if (![...codex.list(), ...claude.list()].some(s => s.cwd && s.cwd === cwd)) return Promise.reject(fail('Unknown project.', 404));
+    if (typeof cwd === 'string') cwd = cwd.trim().replace(/^~(?=\/|$)/, homedir()).replace(/(.)\/+$/, '$1');
+    if (typeof cwd !== 'string' || !isAbsolute(cwd) || !statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return Promise.reject(fail('No such folder.', 404));
     const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
     return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' });
   };

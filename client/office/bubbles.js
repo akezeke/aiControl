@@ -118,15 +118,20 @@ export function createCard(container) {
 export function createMenu(container, onChoose) {
   const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
   let cwd = null, items = [];
-  const build = choices => {
+  // Without a folder (the + button) the menu asks for one, suggesting the folders sessions run in.
+  const folder = document.createElement('input'); folder.className = 'office-folder'; folder.placeholder = '~/folder'; folder.setAttribute('aria-label', 'Folder'); folder.setAttribute('list', 'office-folders'); folder.autocomplete = 'off'; folder.spellcheck = false;
+  const folders = document.createElement('datalist'); folders.id = 'office-folders';
+  folder.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); items[0]?.click(); } });
+  const build = (choices, known) => {
     items = choices.map(choice => {
       const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`;
       item.append(span(`mark ${choice.provider}`, choice.provider === 'codex' ? '⌘' : '✳'), choice.label);
       if (choice.last) item.append(span('last', 'last'));
-      item.onclick = () => { const at = cwd; result.close(); if (at) onChoose(at, choice, item); };
+      item.onclick = () => { const at = cwd ?? folder.value.trim(); if (!at) { folder.focus(); return; } result.close(); onChoose(at, choice, item); };
       return item;
     });
-    menu.replaceChildren(...items);
+    folders.replaceChildren(...known.map(path => Object.assign(document.createElement('option'), { value: path })));
+    menu.replaceChildren(...(cwd === null ? [folder, folders] : []), ...items);
   };
   // Keys stay in the menu: the arrows and WASD would otherwise walk or pan the camera behind it.
   menu.addEventListener('keydown', event => {
@@ -140,10 +145,11 @@ export function createMenu(container, onChoose) {
   const result = {
     get open() { return !menu.hidden; },
     contains: node => menu.contains(node),
-    // At a screen point; `focus` for the keyboard.
-    show(where, at, focus, choices) {
-      build(choices); cwd = where; menu.setAttribute('aria-label', `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
-      if (focus) items[0].focus();
+    get asking() { return !menu.hidden && cwd === null; },
+    // At a screen point; `focus` for the keyboard. A null folder asks for one; `known` are the suggestions.
+    show(where, at, focus, choices, known = []) {
+      cwd = where; build(choices, known); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
+      if (where === null) { folder.value = ''; folder.focus(); } else if (focus) items[0].focus();
     },
     move(at) { if (!menu.hidden) placeNear(container, menu, at); },
     close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; },
@@ -152,11 +158,12 @@ export function createMenu(container, onChoose) {
   return result;
 }
 
-export function createOverlays(container, { onNext, onList, onOverview }) {
+export function createOverlays(container, { onNext, onList, onOverview, onNew }) {
   const bar = document.createElement('div'); bar.className = 'office-overlay'; container.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); if (onclick) b.onclick = onclick; bar.append(b); return b; };
   const waiting = button('office-waiting', '', 'Walk to the next one waiting (n)', onNext); waiting.hidden = true;
   const usage = button('office-usage', '⚡', 'Usage is near its limit; see the whiteboard'); usage.hidden = true;
+  button('office-new', '+', 'New agent in a folder', event => onNew(event.currentTarget));
   button('office-list', '☰', 'Show the list', onList);
   // Phones have no Tab.
   const eye = button('office-eye', '👁', 'Overview', () => onOverview()); eye.setAttribute('aria-pressed', 'false');

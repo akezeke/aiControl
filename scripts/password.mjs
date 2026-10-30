@@ -21,7 +21,7 @@ export function hiddenInput(label) {
 }
 export async function configurePassword() {
   prepareData();
-  const password = await hiddenInput('Dashboard PIN (4–8 digits) or password (12+ characters): ');
+  const password = await hiddenInput('Dashboard PIN (4–8 digits) or password (8+ characters): ');
   const confirmation = await hiddenInput('Repeat PIN or password: ');
   if (password !== confirmation) throw new Error('Entries do not match.');
   await savePassword(authFile, password);

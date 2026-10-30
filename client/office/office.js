@@ -89,7 +89,7 @@ export function mountOffice(container, hooks) {
   // It stays by the spot on the desk you picked as the view moves, and closes once that's off the screen.
   let dismissed = false; const menuAt = new THREE.Vector3(), onScreen = new THREE.Vector3();
   const follow = () => {
-    if (!menu.open) return;
+    if (!menu.open || menu.asking) return;
     onScreen.copy(menuAt).project(camera);
     if (onScreen.z > 1 || Math.abs(onScreen.x) > 1 || Math.abs(onScreen.y) > 1) { menu.close(); return; }
     const r = renderer.domElement.getBoundingClientRect();
@@ -110,7 +110,12 @@ export function mountOffice(container, hooks) {
   // Nothing else wants the mouse: no panel, menu or dialog up, not on the way to someone, not in the overview, the window focused.
   const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !view.overview && !office.talking && document.hasFocus();
   let wasFree = true;
-  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview) });
+  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview),
+    onNew: anchor => {
+      const r = anchor.getBoundingClientRect();
+      const known = [...new Set((office.snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort();
+      player.unlock(); menu.show(null, { clientX: r.right, clientY: r.bottom }, true, hireChoices(office.snapshot, ''), known);
+    } });
   // Tab toggles the overview and Esc closes the menu or leaves the overview (Tab only from the scene itself: on a button or
   // link it keeps moving focus). E throws what you hold or picks up the outlined thing, else talks to whoever is outlined (or
   // looks at their screen, goes to the board, flips a toggle, or opens a pod sign's menu), else to whoever is in front of you.

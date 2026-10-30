@@ -36,6 +36,8 @@
 .office-menu button:disabled { opacity: .5; cursor: progress; }
 .office-menu .mark { width: 16px; color: #d97757; text-align: center; }
 .office-menu .mark.codex { color: #1b1a1f; }
+.office-menu .office-folder { width: 220px; min-height: 36px; margin-bottom: 2px; padding: 0 10px; border: 2px solid #1b1a1f; border-radius: 8px; background: #fff; color: #1b1a1f; font: 600 14px ui-monospace, monospace; }
+.office-menu .office-folder:focus-visible { outline: 2px solid #ffd166; }
 .office-menu .last { margin-left: auto; padding-left: 12px; color: #8a8494; font-size: 11px; font-weight: 600; }
 @media (pointer: coarse) { .office-menu button { min-height: 44px; } }
 @media (prefers-reduced-motion: no-preference) { .office-menu { animation: office-menu-in .12s ease-out; } }

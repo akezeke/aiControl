@@ -853,14 +853,15 @@ function renderAccessPanel() {
   panel.classList.remove('chat-panel');
   panel.dataset.sessionId = '';
   const head = el('div', 'panel-heading'); head.append(button('Back to sessions', 'quiet-button', closePanel, 'back'), el('span', 'eyebrow', 'WORKSPACE ACCESS')); panel.append(head);
-  panel.append(el('h2', 'panel-title', 'Choose a PIN or password'), el('p', 'muted access-copy', 'Use a 4–8 digit PIN or a password with at least 12 characters.'));
+  panel.append(el('h2', 'panel-title', 'Choose a PIN or password'), el('p', 'muted access-copy', 'Use a 4–8 digit PIN or a password with at least 8 characters.'));
   const form = el('form', 'access-form');
   const fields = {};
   for (const [name, title, autocomplete] of [['current', 'Current PIN or password', 'current-password'], ['next', 'New PIN or password', 'new-password'], ['repeat', 'Repeat new PIN or password', 'new-password']]) {
     const label = el('label', '', title), input = el('input'); input.name = name; input.type = 'password'; input.required = true; input.maxLength = 1024; input.autocomplete = autocomplete;
-    if (name !== 'current') input.inputMode = 'numeric'; label.append(input); form.append(label); fields[name] = input;
+    label.append(input); form.append(label); fields[name] = input;
   }
-  const keyboard = el('label', 'keyboard-choice'); const pinMode = el('input'); pinMode.type = 'checkbox'; pinMode.checked = true; pinMode.onchange = () => { fields.next.inputMode = fields.repeat.inputMode = pinMode.checked ? 'numeric' : 'text'; }; keyboard.append(pinMode, document.createTextNode('Use the PIN number keyboard')); form.append(keyboard);
+  // The number keyboard is opt-in: on a phone it has no letters, so a password couldn't be typed.
+  const keyboard = el('label', 'keyboard-choice'); const pinMode = el('input'); pinMode.type = 'checkbox'; pinMode.onchange = () => { fields.next.inputMode = fields.repeat.inputMode = pinMode.checked ? 'numeric' : 'text'; }; keyboard.append(pinMode, document.createTextNode('Use the PIN number keyboard')); form.append(keyboard);
   const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
   const save = el('button', 'primary', 'Save and lock'); save.type = 'submit'; form.append(error, save);
   form.onsubmit = async event => {
