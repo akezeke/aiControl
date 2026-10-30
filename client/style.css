@@ -479,11 +479,10 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* History: folded tool runs, failed calls and error notices. */
 .history-older { align-self: center; margin: auto 0 4px; min-height: 34px; font-size: 12px; }
 .history-older + .recent-message { margin-top: 10px; }
-/* Screenshots in the history: fixed-height thumbnails, so a late load never shifts the scroll. */
-.history-shots { flex: none; align-self: stretch; display: flex; gap: 6px; min-width: 0; max-width: 100%; margin: 10px 0 0; padding-bottom: 4px; overflow-x: auto; }
-.history-shots.user { justify-content: safe flex-end; }
-.history-shot { position: relative; flex: none; height: 96px; min-width: 48px; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--sunken); cursor: zoom-in; }
-.history-shot img { display: block; height: 100%; max-width: 200px; object-fit: cover; }
+/* Every screenshot stays visible in a wrapping grid; reserved cells prevent late loads shifting history. */
+.history-shots { flex: none; align-self: stretch; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(128px, 100%), 1fr)); gap: 6px; min-width: 0; max-width: 100%; margin: 10px 0 0; padding-bottom: 4px; }
+.history-shot { position: relative; width: 100%; height: 96px; min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--sunken); cursor: zoom-in; }
+.history-shot img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .history-shot:hover, .history-shot:focus-visible { border-color: var(--accent); }
 .shot-viewer { width: auto; max-width: calc(100vw - 24px); max-height: calc(100svh - 24px); padding: 10px; border: 1px solid #ffffff26; border-radius: 14px; background: #0d0f14f2; color: #eef0f5; font: 13px/1.4 system-ui, sans-serif; }
 .shot-viewer::backdrop { background: #000c; }
