@@ -49,7 +49,7 @@ export function createScreens(root, renderer) {
       page.cells[cell] = screen; moved = true;
       return screen;
     },
-    remove(screen) { if (screen?.page.cells[screen.cell] === screen) { screen.page.cells[screen.cell] = null; moved = true; } },
+    remove(screen) { if (screen && screen.page.cells[screen.cell] === screen) { screen.page.cells[screen.cell] = null; moved = true; } },
     // Something may have moved (room.sync): the meshes are checked before the next frame.
     moved() { moved = true; },
     // Each frame, before it's drawn: the meshes if anything moved, then the screens drawn on since the last frame.

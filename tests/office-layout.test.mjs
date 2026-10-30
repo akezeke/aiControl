@@ -23,6 +23,15 @@ test('seats saved from an earlier page keep their slots, and anyone gone is drop
   const l = layoutOffice([s('a', 'x'), s('b', 'x')], saved);
   assert.equal(l.desks.get('b').slot, 0); assert.equal(l.desks.get('a').slot, 1); assert.equal(l.desks.has('gone'), false);
 });
+test('pods saved from an earlier page keep their cells, not lined up by name', () => {
+  const spot = (l, id) => [l.desks.get(id).x, l.desks.get(id).z];
+  // A live page: projects arrive one at a time, each taking the next free cell.
+  let page; for (let i = 1; i <= 5; i++) page = layoutOffice(['zeta', 'beta', 'alpha', 'gamma', 'delta'].slice(0, i).map(p => s(p, p)), page);
+  const saved = { desks: new Map([...page.desks.values()].map(d => [d.sessionId, { podKey: d.podKey, slot: d.slot, vacantSince: -Infinity }])), pods: page.pods.map(({ key, col, row }) => ({ key, col, row })), grid: page.grid, room: { width: 0, depth: 0 } };
+  const reloaded = layoutOffice(['alpha', 'beta', 'delta', 'gamma', 'zeta'].map(p => s(p, p)), saved);
+  for (const p of ['alpha', 'beta', 'delta', 'gamma', 'zeta']) assert.deepEqual(spot(reloaded, p), spot(page, p));
+  assert.notDeepEqual(spot(layoutOffice(['alpha', 'beta', 'delta', 'gamma', 'zeta'].map(p => s(p, p))), 'zeta'), spot(page, 'zeta')); // without them it would shuffle
+});
 test('missing project goes to Unknown', () => {
   const l = layoutOffice([{ id: 'a', status: 'idle' }]);
   assert.equal(l.pods[0].name, 'Unknown');

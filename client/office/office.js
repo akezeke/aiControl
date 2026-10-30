@@ -37,16 +37,19 @@ export function mountOffice(container, hooks) {
   const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });
   let layout;
   const fired = new Map(); // session id → when it was fired from the panel
-  // Seats outlive a reload: the first layout starts from the last one's desks (anyone gone since is dropped at once,
-  // not left to walk out), or everyone would sit in whatever order the snapshot lists them.
+  // Seats outlive a reload: the first layout starts from the last one's desks, pods' cells and grid (anyone gone since is
+  // dropped at once, not left to walk out), or pods would line up by name and everyone sit in whatever order the snapshot
+  // lists them. A desk still walking out is kept, in case they're back (a server restart lists nobody for a moment).
   const seatsKey = 'ai-control-office-seats';
   let seats = '';
   const savedSeats = () => {
-    try { return { desks: new Map(JSON.parse(localStorage.getItem(seatsKey) || '[]').map(([id, podKey, slot]) => [id, { podKey, slot, vacantSince: -Infinity }])), pods: [], room: { width: 0, depth: 0 } }; }
-    catch { return undefined; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(seatsKey) || '{}'), { desks = [], pods = [], grid } = Array.isArray(saved) ? { desks: saved } : saved; // an array: desks only, as saved before
+      return { desks: new Map(desks.map(([id, podKey, slot]) => [id, { podKey, slot, vacantSince: -Infinity }])), pods: pods.map(([key, col, row]) => ({ key, col, row })), grid, room: { width: 0, depth: 0 } };
+    } catch { return undefined; }
   };
   const saveSeats = () => {
-    const now = JSON.stringify([...layout.desks.values()].filter(desk => desk.vacantSince === undefined).map(desk => [desk.sessionId, desk.podKey, desk.slot]));
+    const now = JSON.stringify({ desks: [...layout.desks.values()].map(desk => [desk.sessionId, desk.podKey, desk.slot]), pods: layout.pods.map(pod => [pod.key, pod.col, pod.row]), grid: layout.grid });
     if (now !== seats) { seats = now; try { localStorage.setItem(seatsKey, now); } catch { /* per tab only */ } }
   };
 

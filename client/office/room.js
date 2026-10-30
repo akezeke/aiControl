@@ -31,6 +31,10 @@ const HELPER_SPOTS = [[0.56, -0.66], [-0.56, -0.66], [-0.6, -1.42]];
 const CUP_SPOTS = [[0.5, -0.34], [0.62, -0.3], [0.56, -0.2], [0.68, -0.19], [0.5, -0.1], [0.63, -0.09]];
 const ITEM_SPOTS = [[-0.6, 0.22], [-0.42, 0.3], [-0.62, -0.06]]; // the front-left corner stays free, and the back left for a second monitor
 const leds = { green: '#5ee08a', amber: '#ffb23e', dark: '#4d6fa8', red: '#ff6b6b', off: '#2a2d35' };
+// A desk pops up out of the floor for someone new and sinks back into it once someone leaving has got up (animation.js's
+// goodbye), not on a page load; with reduced motion it's just there, or gone. Seconds, but SINK_AFTER is ms; BURIED is metres.
+const RISE = 0.6, SINK = 0.8, SINK_AFTER = 1800, BURIED = 1.4;
+const hop = t => 1 + 2.7 * (t - 1) ** 3 + 1.7 * (t - 1) ** 2; // ease out with a little overshoot
 
 const B = (w, h, d, x, y, z, r = 0.01) => (r ? rounded(w, h, d, r) : new THREE.BoxGeometry(w, h, d)).translate(x, y, z);
 const C = (top, bottom, h, x, y, z, n = 14) => new THREE.CylinderGeometry(top, bottom, h, n).translate(x, y, z);
@@ -229,8 +233,8 @@ export function createRoom(scene, renderer) {
         facing: desk.group.rotation.y,
         monitor: desk.screen.getWorldPosition(new THREE.Vector3()),
         slack: desk.slack,
-        top: new THREE.Vector3(0, DESK_H, 0).applyMatrix4(desk.group.matrixWorld),
-        helpers: desk.helpers.map(helper => ({ seat: helper.chair.getWorldPosition(new THREE.Vector3()).setY(0), facing: desk.group.rotation.y, top: new THREE.Vector3(0, DESK_H, 0).applyMatrix4(helper.group.matrixWorld) })),
+        top: new THREE.Vector3(0, DESK_H, 0).applyMatrix4(desk.group.matrixWorld).setY(DESK_H), // where it'll be, risen
+        helpers: desk.helpers.map(helper => ({ seat: helper.chair.getWorldPosition(new THREE.Vector3()).setY(0), facing: desk.group.rotation.y, top: new THREE.Vector3(0, DESK_H, 0).applyMatrix4(helper.group.matrixWorld).setY(DESK_H * HELPER_SCALE) })),
       };
     },
     sync(layout, statuses) {
@@ -242,8 +246,10 @@ export function createRoom(scene, renderer) {
         if (!desk) {
           desk = createDesk(teams[podColors.get(place.podKey)][1], DESK_W, false, statuses.get(id)?.identity?.notes, statuses.get(id)?.provider); addItems(desk, statuses.get(id)?.identity?.props || []); desks.set(id, desk); root.add(desk.group);
           desk.glass = screens.add(desk.screen, desk.screenTexture, 0.54, 0.32); showShot(desk, shots.get(id));
+          desk.lift = room.synced ? 0 : 1; desk.group.position.y = (desk.lift - 1) * BURIED;
         }
-        desk.group.position.set(place.x, 0, place.z); desk.group.rotation.y = place.rotation; desk.monitor.userData.monitor = id;
+        desk.goneAt = place.vacantSince === undefined ? Infinity : place.vacantSince + SINK_AFTER;
+        desk.group.position.set(place.x, desk.group.position.y, place.z); desk.group.rotation.y = place.rotation; desk.monitor.userData.monitor = id;
         const status = statuses.get(id);
         redraw(desk, status);
         if (desk.led.material.userData.tone !== status?.screen) { desk.led.material.userData.tone = status?.screen; desk.led.material.color.set(leds[status?.screen] || leds.off); }
@@ -257,19 +263,14 @@ export function createRoom(scene, renderer) {
         });
         desk.group.updateMatrixWorld(true);
         // The desk, its monitor (inside the desk's footprint, so only thrown things notice it), the chair and any helpers' desks,
-        // each with whose it is (props.js: they mind coffee on their desk).
-        const [top, seat] = desk.solids.map(box => box.clone().applyMatrix4(desk.group.matrixWorld));
-        for (const [box, owner] of [[top, id], [new THREE.Box3().setFromObject(desk.monitor), id], [seat, id], ...desk.helpers.map((helper, i) => [new THREE.Box3().setFromObject(helper.group), place.subagents[i]])]) solid.push(Object.assign(box, { owner }));
+        // each with whose it is (props.js: they mind coffee on their desk), where they'll be once it's risen. One that's been left
+        // is on its way down.
+        const [top, seat] = desk.solids.map(box => box.clone().applyMatrix4(desk.group.matrixWorld)), risen = new THREE.Vector3(0, -desk.group.position.y, 0);
+        if (place.vacantSince === undefined) for (const [box, owner] of [[top, id], [new THREE.Box3().setFromObject(desk.monitor), id], [seat, id], ...desk.helpers.map((helper, i) => [new THREE.Box3().setFromObject(helper.group), place.subagents[i]])]) solid.push(Object.assign(box.translate(risen), { owner }));
       }
       for (const [id, desk] of desks) if (!layout.desks.has(id)) { removeDesk(desk); desks.delete(id); }
-      screens.moved();
-      // Every desk's shadow in one mesh, rebuilt when one moves, comes or goes.
-      const all = [...desks.values()].flatMap(desk => [desk, ...desk.helpers]), toRoot = root.matrixWorld.clone().invert();
-      const at = all.map(desk => toRoot.clone().multiply(desk.group.matrixWorld)), key = at.map(m => m.elements.map(v => v.toFixed(3)).join()).join(';');
-      if (deskShadows.userData.key !== key) {
-        deskShadows.userData.key = key; deskShadows.geometry.dispose();
-        deskShadows.geometry = all.length ? mergeGeometries(all.map((desk, i) => desk.shadow.clone().applyMatrix4(at[i]))) : new THREE.BufferGeometry();
-      }
+      screens.moved(); shade();
+      room.synced = true;
       const podKeys = new Set();
       for (const pod of layout.pods) {
         podKeys.add(pod.key);
@@ -278,7 +279,7 @@ export function createRoom(scene, renderer) {
         sign.group.position.set(pod.x, 0, pod.z);
         sign.rug.scale.set(pod.width + 0.6, 1, pod.depth + 0.4);
         sign.board.userData.hire = pod.cwd ? { cwd: pod.cwd, name: pod.name } : null; // clicking it starts another agent in the pod's folder
-        sign.badge.visible = !!pod.cwd;
+        sign.badge.visible = !!pod.cwd; sign.deskIds = pod.deskIds;
         const waiting = pod.deskIds.some(id => statuses.get(id)?.bubble?.highlight);
         if (sign.waiting !== waiting) { sign.waiting = waiting; sign.texture.redraw(waiting); }
       }
@@ -295,10 +296,35 @@ export function createRoom(scene, renderer) {
     },
     // Each frame: the light switch, the screens' light on the desks nearest the camera, anyone slacking off, then the screens
     // drawn on since the last frame.
-    update(dt, eye, still) { const all = [...desks.values()]; lights.update(dt, eye, still, all); slacking.update(dt, eye, still, all); screens.flush(); },
+    update(dt, eye, still) {
+      const all = [...desks.values()];
+      let moved = false;
+      for (const desk of all) {
+        const up = Date.now() < desk.goneAt ? 1 : 0;
+        if (desk.lift === up) continue;
+        const was = desk.lift === 1;
+        desk.lift = still ? up : THREE.MathUtils.clamp(desk.lift + (up ? dt / RISE : -dt / SINK), 0, 1);
+        desk.group.position.y = BURIED * (up ? hop(desk.lift) - 1 : -((1 - desk.lift) ** 2));
+        desk.group.visible = desk.lift > 0; desk.group.updateMatrixWorld(true);
+        screens.moved(); moved ||= was !== (desk.lift === 1);
+      }
+      if (moved) shade();
+      // A pod's sign and rug go with its last desk (and come with its first).
+      for (const sign of signs.values()) sign.group.visible = sign.deskIds.some(id => desks.get(id)?.lift > 0);
+      lights.update(dt, eye, still, all); slacking.update(dt, eye, still, all); screens.flush();
+    },
     dispose() { disposeTree(root); },
   };
 
+  // Every desk's shadow in one mesh, rebuilt when one moves, comes or goes; one rising or sinking has none.
+  const shade = () => {
+    const all = [...desks.values()].filter(desk => desk.lift === 1).flatMap(desk => [desk, ...desk.helpers]), toRoot = root.matrixWorld.clone().invert();
+    const at = all.map(desk => toRoot.clone().multiply(desk.group.matrixWorld)), key = at.map(m => m.elements.map(v => v.toFixed(3)).join()).join(';');
+    if (deskShadows.userData.key !== key) {
+      deskShadows.userData.key = key; deskShadows.geometry.dispose();
+      deskShadows.geometry = all.length ? mergeGeometries(all.map((desk, i) => desk.shadow.clone().applyMatrix4(at[i]))) : new THREE.BufferGeometry();
+    }
+  };
   const redraw = (desk, status) => {
     desk.glow = status?.screen; desk.status = status;
     if (desk.slack?.show) return; // slack.js has the screen
