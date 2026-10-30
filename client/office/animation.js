@@ -158,8 +158,9 @@ function plusTexture(n) {
 }
 
 export class Cast {
-  constructor(scene, { reducedMotion = () => false } = {}) {
-    this.scene = scene; this.reducedMotion = reducedMotion; this.characters = new Map(); this.time = 0;
+  // `route(from, to)`: waypoints round the furniture (path.js), or null for none.
+  constructor(scene, { reducedMotion = () => false, route = () => null } = {}) {
+    this.scene = scene; this.reducedMotion = reducedMotion; this.route = route; this.characters = new Map(); this.time = 0;
   }
 
   characterAt(id) { return this.characters.get(id)?.fruit; }
@@ -285,13 +286,17 @@ export class Cast {
     }
   }
 
-  // Moves a character along its trip (door → desk, or desk → door). Returns true while the trip owns the character.
+  // Moves a character along its trip (door → desk, or desk → door), round the desks: the way is worked out once per trip,
+  // straight there if there's none. Returns true while the trip owns the character.
   #walk(c, dt, t, k) {
     const trip = c.trip, { fruit } = c;
     if (trip.wait > 0) { trip.wait -= dt; return false; } // still waving goodbye at the desk
     if (!trip.at) trip.at = c.root.position.clone().setY(0);
-    const seat = c.anchor.seat.clone().setY(0), goal = trip.to === 'desk' ? seat : this.door, to = goal.clone().sub(trip.at), distance = to.length();
-    if (distance < 0.05) {
+    const goal = trip.to === 'desk' ? c.anchor.seat.clone().setY(0) : this.door;
+    trip.path ??= this.route(trip.at, goal) || [goal];
+    while (trip.path.length > 1 && trip.at.distanceTo(trip.path[0]) < 0.05) trip.path.shift();
+    const to = trip.path[0].clone().sub(trip.at), distance = to.length();
+    if (trip.path.length === 1 && distance < 0.05) {
       c.trip = null;
       if (trip.to === 'door') c.root.visible = false;
       return trip.to === 'door';
@@ -299,7 +304,8 @@ export class Cast {
     trip.at.addScaledVector(to.normalize(), Math.min(distance, WALK_SPEED * dt));
     const target = poseTargets('walking', t, c.seed, fruit);
     if (!c.current) c.current = clonePose(target); else blendPose(c.current, target, k);
-    c.root.position.copy(trip.at); c.root.rotation.y = Math.atan2(to.x, to.z);
+    const yaw = c.root.rotation.y, turn = Math.atan2(to.x, to.z) - yaw; // turning the corners rather than snapping round
+    c.root.position.copy(trip.at); c.root.rotation.y = yaw + Math.atan2(Math.sin(turn), Math.cos(turn)) * Math.min(1, dt * 10);
     fruit.setBody(c.current.body); fruit.setLimbs(c.current.limbs, c.current.elbows); fruit.lookAt(null);
     return true;
   }

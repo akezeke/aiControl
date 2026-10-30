@@ -192,7 +192,7 @@ export function standBefore(point, normal, distance, colliders, room) {
   }
   return null;
 }
-const free = (p, colliders, room) => (!room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS)) && !colliders.some(box => inside(p, box));
+export const free = (p, colliders, room) => (!room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS)) && !colliders.some(box => inside(p, box));
 
 // What's under a screen point: a character (by session id), a desk's monitor (userData.monitor: whose), a board on the wall
 // (userData.board), a pod's sign (userData.hire: { cwd, name }), a toggle (the light switch, the coffee machine), something to

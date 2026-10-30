@@ -14,6 +14,8 @@ import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
 import { createProps, REACH } from './props.js';
 import { createScreenshots } from './screenshots.js';
+import { createGoose, GOOSE } from './goose.js';
+import { walkGrid, gridKey, findPath } from './path.js';
 import { hireChoices } from '../hire.js';
 
 const FIRED = { pose: 'slumped', expression: 'sad', bubble: { icon: '📦', text: 'Fired', highlight: false } };
@@ -34,7 +36,12 @@ export function mountOffice(container, hooks) {
   camera.userData.canvas = renderer.domElement;
   const room = createRoom(scene, renderer);
   const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
-  const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });
+  // Ways round the furniture (path.js) for whoever walks: fruit coming and going, and the goose. The grid is worked out again
+  // only when the boxes really change (room.sync hands over a new list of them with every snapshot).
+  let grid = null;
+  const walkable = () => { const key = gridKey(room.colliders, layout.room); return grid?.key === key ? grid : grid = walkGrid(room.colliders, layout.room); };
+  const route = (from, to) => layout ? findPath(walkable(), from, to) : null;
+  const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches, route });
   let layout;
   const fired = new Map(); // session id → when it was fired from the panel
   // Seats outlive a reload: the first layout starts from the last one's desks, pods' cells and grid (anyone gone since is
@@ -77,15 +84,18 @@ export function mountOffice(container, hooks) {
     },
   });
   const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches, container });
-  // Whoever gets hit, or whose things do, jumps, glares and says so.
-  const onHit = (id, line) => { cast.startle(id); bubbles.say(id, '💢', line); };
-  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches, onHit });
+  // Whoever gets hit, or whose things do, jumps, glares and says so; the goose comes for you.
+  const onHit = (id, line) => { if (id === GOOSE) { goose.hit(); return; } cast.startle(id); bubbles.say(id, '💢', line); };
+  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches, onHit, others: () => [goose.column] });
   // A thing out of reach: walk over (as near as the furniture lets you) and pick it up.
   const pickUp = body => { if (body.pos.distanceTo(player.position) <= REACH) props.grab(body); else player.walkTo(body.pos.clone().setY(0), () => props.grab(body), 0.7, true); };
   // The coffee machine: fills the mug if you're by it, else you walk over first.
   room.onCoffee = () => { if (!props.fill()) player.walkTo(props.machineSpot, () => props.fill(), 0.3, true); };
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
+  // It lets you be in the overview and on your way to someone.
+  const goose = createGoose(scene, { props, player, walkable, bounds: () => layout?.room, busy: () => view.overview || !!player.flight || !!office.talking,
+    reducedMotion: () => !!reducedMotion?.matches, say: (icon, text) => bubbles.say(GOOSE, icon, text) });
   const card = createCard(container);
   const menu = createMenu(container, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item));
   const shots = createScreenshots(container, { room, onClose: () => office.panelClosed(), onSession: id => hooks.openPanel(id) });
@@ -173,7 +183,7 @@ export function mountOffice(container, hooks) {
     const now = free(); if (now && !wasFree) player.resume(); wasFree = now;
     // The overview has the keys and drags while it's up: you stay where you were.
     if (!view.overview) player.update(dt);
-    view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); cast.update(dt, player.position); props.update(dt); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); cast.update(dt, player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     tiltSigns();
   });
   const resize = () => {
@@ -291,7 +301,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => shots.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }

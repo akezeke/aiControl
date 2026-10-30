@@ -3,7 +3,8 @@
 // the desks (furniture.js marks it userData.loose) comes loose the first time it's picked up and stays the mesh it was. The
 // coffee is a stream of drops and the puddles they leave, one draw call each, and only while there are any.
 // Walking into a ball kicks it; E or a click picks a thing up and throws it; F (held) pours; the machine (fill) tops it up.
-// Whoever gets hit, or whose desk or things do, turns on the boss with a word or two (onHit).
+// Whoever gets hit, or whose desk or things do, turns on the boss with a word or two (onHit); `others` adds anyone else who
+// can be hit (the goose). The goose can carry a thing off in its beak (carry, drop).
 // With reduced motion a kick or a throw lands at once, and pouring leaves its puddle without the stream.
 import * as THREE from 'three';
 import { WALL_H, canvasTexture } from './furniture.js';
@@ -62,7 +63,7 @@ function crumpled(radius) {
   return [geometry, toonMaterial('#f4f1ea')];
 }
 
-export function createProps(scene, { room, cast, camera, player, view, bounds, reducedMotion, onHit }) {
+export function createProps(scene, { room, cast, camera, player, view, bounds, reducedMotion, onHit, others = () => [] }) {
   const root = new THREE.Group(); scene.add(root);
   const bodies = [], matrix = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1);
   const near = new THREE.Vector3(), normal = new THREE.Vector3(), axis = new THREE.Vector3(), q = new THREE.Quaternion(), tilt = new THREE.Quaternion();
@@ -86,7 +87,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
 
   // The characters as columns: where, how wide, how tall. Someone hit, or whose things are, says so (once a moment).
   let people = [];
-  const gather = () => { people = []; for (const [id, c] of cast.characters) if (!c.plus && c.root.visible) { const top = cast.positionOf(id); if (top) people.push({ id, x: top.x, z: top.z, r: 0.24 * c.scale, top: top.y - 0.08 }); } };
+  const gather = () => { people = []; for (const [id, c] of cast.characters) if (!c.plus && c.root.visible) { const top = cast.positionOf(id); if (top) people.push({ id, x: top.x, z: top.z, r: 0.24 * c.scale, top: top.y - 0.08 }); } people.push(...others()); };
   const minded = new Map(); // who and why → when they last said so, so a stream of coffee is one complaint
   const hit = (id, now, cause, line) => {
     const key = `${id}:${cause}`;
@@ -224,7 +225,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     grab(b) {
       if (holding || b.held || b.pos.distanceTo(player.position) > REACH) return;
       if (!b.free) free(b);
-      holding = b; b.held = true; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0);
+      holding = b; b.held = true; b.carried = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0);
       b.grip.setFromAxisAngle(UP, -player.yaw).multiply(b.turn);
       if (aimed === b) props.aim(null);
     },
@@ -247,6 +248,15 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     fill() { if (!byMachine()) return false; filling = level < 1; return true; },
     // Where to stand to use the machine: in front of the counter.
     get machineSpot() { const machine = room.coffeeMachine; return machine && machine.localToWorld(new THREE.Vector3(machine.userData.spout.x, 0, 0.8)); },
+    // What could be carried off: anything lying still, on the floor or a desk, that nobody has.
+    loose() {
+      const out = bodies.filter(b => b.rest && !b.held && !b.carried);
+      scene.traverse(node => { if (node.userData.loose && !node.userData.body?.free) { const b = thing(node); if (b) out.push(b); } });
+      return out;
+    },
+    // Carried, a thing goes where `at()` says (a beak) until it's dropped, or you take it (b.held).
+    carry(b, at) { if (b.held) return false; if (!b.free) free(b); b.carried = at; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); return true; },
+    drop(b) { b.carried = null; b.grace = 0.3; b.hits.clear(); },
 
     update(dt) {
       const size = bounds(); if (!size) return;
@@ -264,6 +274,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       camera.updateMatrixWorld();
       for (const b of bodies) {
         if (b.held) { b.pos.copy(HOLD).applyMatrix4(camera.matrixWorld); b.turn.setFromAxisAngle(UP, player.yaw).multiply(b.grip); show(b); continue; }
+        if (b.carried) { b.pos.copy(b.carried()); show(b); continue; }
         if (!Number.isFinite(b.pos.x + b.pos.y + b.pos.z)) { if (b.obj) b.pos.set(w / 2, 1, d / 2); else spawn(b, w, d); }
         // You walk into it: a kick if you're moving and it's at your feet, else it's nudged aside.
         const feet = player.position.y - EYE, r = BODY + b.kind.radius, bottom = b.pos.y - b.kind.low;
@@ -283,7 +294,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       }
       // Things knock into each other, the heavier pushing the lighter more.
       for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
-        const a = bodies[i], b = bodies[j]; if (a.held || b.held) continue;
+        const a = bodies[i], b = bodies[j]; if (a.held || b.held || a.carried || b.carried) continue;
         normal.subVectors(b.pos, a.pos); const gap = normal.length(), r = a.kind.radius + b.kind.radius;
         if (gap >= r || gap < 1e-6) continue;
         normal.divideScalar(gap);
