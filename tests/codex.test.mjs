@@ -216,7 +216,7 @@ test('sending to idle Codex preserves settings, deduplicates retries and refuses
   await assert.rejects(adapter.sendMessage('live-thread', { ...body, text: 'Different task' }), error => error.status === 409);
   await assert.rejects(adapter.sendMessage('unloaded-thread', message('Hi')), error => error.status === 409);
   await assert.rejects(adapter.sendMessage('live-thread', message('   ')), /Enter a message/);
-  await assert.rejects(adapter.sendMessage('live-thread', message('/clear')), /only works in Codex’s own terminal/);
+  await assert.rejects(adapter.sendMessage('live-thread', message('/model')), /only works in Codex’s own terminal/);
   assert.equal(server.turns.length, 1);
   await assert.rejects(adapter.sendMessage('live-thread', message('x'.repeat(12_001))), /12,000/);
 });

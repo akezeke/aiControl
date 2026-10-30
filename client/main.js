@@ -674,7 +674,11 @@ function renderComposer(session) {
       try {
         const result = await api(`sessions/${encodeURIComponent(session.id)}/messages`, draft.submission);
         draft.text = ''; draft.revision = (draft.revision || 0) + 1; draft.submission = null;
-        toast(result.status === 'submitted' ? 'Sent via inbox (not tmux)' : result.status === 'steered' ? 'Sent into the current work' : 'Sent');
+        if (result.status === 'cleared' && result.session && state.snapshot) {
+          state.snapshot.sessions = [...state.snapshot.sessions.filter(item => item.id !== result.session.id), result.session];
+          if (state.selected === session.id) navigation.open(result.sessionId, { replace: true });
+        }
+        toast(result.status === 'cleared' ? 'New Codex chat' : result.status === 'submitted' ? 'Sent via inbox (not tmux)' : result.status === 'steered' ? 'Sent into the current work' : 'Sent');
         if (state.selected === session.id) document.querySelector('#recent-messages')?.historyScroll?.jumpToLatest();
         await refresh();
       } catch (error) { draft.error = error.message; }

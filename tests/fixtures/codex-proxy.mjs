@@ -5,7 +5,7 @@ import { connectCodexSocket } from '../../server/codex.mjs';
 
 // Real HTTP upgrade + masked WebSocket frames, on in-memory streams instead of a host socket.
 export function mockCodexServer({ status = 'active', question = true, items, rateLimits = { rateLimits: { limitId: 'codex', primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1900000000 }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 1900500000 } } } } = {}) {
-  const fixture = { messages: [], handshakes: 0, queue: [], turns: [], steers: [], rateLimits, currentTurnId: status === 'active' ? 'original' : null };
+  const fixture = { messages: [], handshakes: 0, queue: [], turns: [], steers: [], startedThreads: [], settings: { approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: { type: 'workspaceWrite', writableRoots: [], networkAccess: false }, reasoningEffort: 'medium' }, rateLimits, currentTurnId: status === 'active' ? 'original' : null };
   const pairs = [], servers = [];
   const thread = { id: 'live-thread', cwd: '/work/project', name: 'Protocol fixture', status: { type: status, activeFlags: [] }, updatedAt: Date.now() / 1000, model: 'test-model' };
   fixture.thread = thread;
@@ -23,15 +23,22 @@ export function mockCodexServer({ status = 'active', question = true, items, rat
         const send = value => ws.send(JSON.stringify(value)); fixture.send = send;
         ws.on('message', bytes => {
           const message = JSON.parse(bytes); fixture.messages.push(message);
+          const thread = fixture.startedThreads.find(thread => thread.id === message.params?.threadId) || fixture.thread;
           if (fixture.ignoreMethod && fixture.ignoreMethod === message.method) return;
           if (message.method === 'initialize') send({ id: message.id, result: {} });
           if (message.method === 'account/rateLimits/read') send({ id: message.id, ...(fixture.usageError ? { error: fixture.usageError } : { result: fixture.rateLimits }) });
-          if (message.method === 'thread/loaded/list') send({ id: message.id, result: { data: [thread.id], nextCursor: null } });
+          if (message.method === 'thread/loaded/list') send({ id: message.id, result: { data: [fixture.thread.id, ...fixture.startedThreads.map(thread => thread.id)], nextCursor: null } });
+          if (message.method === 'thread/start') {
+            if (fixture.startError) { send({ id: message.id, error: fixture.startError }); return; }
+            const next = { ...thread, id: `new-thread-${fixture.startedThreads.length + 1}`, name: '', preview: '', status: { type: 'idle', activeFlags: [] }, cwd: message.params.cwd, model: message.params.model, reasoningEffort: message.params.config?.model_reasoning_effort };
+            fixture.startedThreads.push(next); fixture.beforeThreadStartReply?.();
+            send({ id: message.id, result: { ...fixture.settings, cwd: next.cwd, model: next.model, reasoningEffort: next.reasoningEffort, thread: next } });
+          }
           if (message.method === 'thread/resume' || message.method === 'thread/read') {
             if (message.params.threadId !== thread.id) throw new Error('Resumed an unloaded thread');
             // A new thread writes its rollout on the first turn; until then only resume fails.
             if (message.method === 'thread/resume' && fixture.noRollout) { send({ id: message.id, error: { code: -32600, message: `no rollout found for thread id ${thread.id}` } }); return; }
-            send({ id: message.id, result: { thread } });
+            send({ id: message.id, result: { ...fixture.settings, cwd: thread.cwd, model: thread.model, modelProvider: 'openai', thread } });
             if (message.method === 'thread/resume' && question) send({ id: 97, method: 'item/tool/requestUserInput', params: { threadId: thread.id, questions: [{ id: 'choice', question: 'Continue?', isOther: false, options: [{ label: 'Yes' }] }] } });
           }
           if (message.method === 'thread/queue/list') send({ id: message.id, result: { data: fixture.queue, nextCursor: null } });
@@ -69,7 +76,7 @@ export function mockCodexServer({ status = 'active', question = true, items, rat
             send({ method: 'thread/status/changed', params: { threadId: thread.id, status: thread.status } });
           }
           if (message.method === 'thread/items/list') {
-            const history = items ?? [
+            const history = fixture.startedThreads.includes(thread) ? [] : items ?? [
             { item: { type: 'agentMessage', id: 'reply', text: 'The latest reply.' } },
             { item: { type: 'reasoning', id: 'private', content: ['Do not show this'] } },
             { item: { type: 'userMessage', id: 'prompt', content: [{ type: 'text', text: 'The earlier user message.' }] } },

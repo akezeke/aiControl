@@ -279,20 +279,69 @@ export class CodexAdapter {
     this.requireMessaging(threadId);
     if (typeof body?.text !== 'string' || !body.text.trim() || body.text.length > 12_000) throw fail('Enter a message of 1–12,000 characters.');
     if (!['send', 'queue'].includes(body.mode) || !/^[a-f0-9-]{36}$/i.test(body.clientMessageId || '')) throw fail('Invalid message submission.');
-    // The app server takes text only: /clear here would reach the model as a message and clear nothing.
     const command = slashCommand(body.text);
-    if (command) throw fail(`${command} only works in Codex’s own terminal; from here it would be sent to Codex as a message.`);
+    const clear = command.toLowerCase() === '/clear';
+    if (clear && (body.text.trim().toLowerCase() !== '/clear' || body.mode !== 'send')) throw fail('Send /clear by itself; it cannot be queued.');
+    if (command && !clear) throw fail(`${command} only works in Codex’s own terminal; from here it would be sent to Codex as a message.`);
     const key = `${threadId}:${body.clientMessageId}`, fingerprint = JSON.stringify([body.mode, body.text]);
     const previous = this.submissions.get(key);
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw fail('This message ID was already used.', 409);
       return previous.promise;
     }
-    const promise = this.deliverMessage(threadId, body);
+    const promise = clear ? this.clearChat(threadId) : this.deliverMessage(threadId, body);
     this.submissions.set(key, { fingerprint, promise });
     promise.catch(error => { if (error.status !== 504) this.submissions.delete(key); });
     if (this.submissions.size > 1000) this.submissions.delete(this.submissions.keys().next().value);
     return promise;
+  }
+  // Like the CLI's /clear, create a new conversation and retain the old history. The dashboard
+  // switches to the returned session; other clients remain attached to their original thread.
+  async clearChat(threadId) {
+    if (this.sendingMessages.has(threadId) || this.startingQueue.has(threadId)) throw fail('Another message is being sent. Wait for it to finish.', 409);
+    this.sendingMessages.add(threadId);
+    let submitted = false;
+    try {
+      const session = this.requireMessaging(threadId);
+      const { thread } = await this.rpc('thread/read', { threadId, includeTurns: false });
+      if (thread.parentThreadId || thread.canAcceptDirectInput === false) throw fail('Use /clear in the parent session.', 409);
+      if (codexStatus(thread.status) !== 'idle' || this.store.list().some(r => r.sessionId === session.id)) throw fail('Stop the current work before using /clear.', 409);
+      if (this.fresh.has(threadId) && !thread.preview && !session.messages.length) return { status: 'cleared', sessionId: session.id, session: this.list().find(s => s.id === session.id) };
+      await this.refreshQueue(threadId);
+      if (!session.queueAvailable || session.queuedMessages.length) throw fail('Clear the queued messages before using /clear.', 409);
+      const settings = await this.rpc('thread/resume', { threadId, excludeTurns: true });
+      this.requireMessaging(threadId);
+      const effort = session.nextEffort || settings.reasoningEffort || session.effort;
+      const config = effort ? { model_reasoning_effort: effort } : {};
+      const permissions = settings.activePermissionProfile?.id;
+      const sandbox = { readOnly: 'read-only', workspaceWrite: 'workspace-write', dangerFullAccess: 'danger-full-access' }[settings.sandbox?.type];
+      if (!permissions && !sandbox) throw fail('This session’s permissions cannot be carried over here. Use /clear in its original client.', 409);
+      if (!permissions && settings.sandbox.type === 'workspaceWrite') config.sandbox_workspace_write = {
+        writable_roots: settings.sandbox.writableRoots || [], network_access: !!settings.sandbox.networkAccess,
+        exclude_slash_tmp: !!settings.sandbox.excludeSlashTmp, exclude_tmpdir_env_var: !!settings.sandbox.excludeTmpdirEnvVar,
+      };
+      submitted = true;
+      const result = await this.rpc('thread/start', {
+        cwd: settings.cwd || thread.cwd, model: settings.model || thread.model, modelProvider: settings.modelProvider || thread.modelProvider,
+        approvalPolicy: settings.approvalPolicy, approvalsReviewer: settings.approvalsReviewer,
+        ...(permissions ? { permissions } : { sandbox }), config,
+        ...(settings.runtimeWorkspaceRoots?.length ? { runtimeWorkspaceRoots: settings.runtimeWorkspaceRoots } : {}),
+        ...(settings.serviceTier ? { serviceTier: settings.serviceTier } : {}),
+        ...(thread.projectId ? { projectId: thread.projectId } : {}),
+        ephemeral: !!thread.ephemeral, historyMode: 'paginated', sessionStartSource: 'clear',
+      });
+      if (!result.thread?.id) throw fail('Codex did not confirm the new chat.', 502);
+      this.upsert({ ...result.thread, model: result.model || result.thread.model, reasoningEffort: result.reasoningEffort || effort });
+      const next = this.sessions.get(result.thread.id);
+      next.messagesState = 'empty';
+      this.fresh.add(result.thread.id);
+      return { status: 'cleared', sessionId: next.id, session: this.list().find(s => s.id === next.id) };
+    } catch (error) {
+      // A lost acknowledgement may already have created a chat. Deduplication keeps retries from
+      // creating another one, just as it prevents a normal message from being submitted twice.
+      if (submitted && error.rpcCode == null) throw fail('The new chat could not be confirmed. Check the session list before trying /clear again.', 504);
+      throw error;
+    } finally { this.sendingMessages.delete(threadId); }
   }
   async deliverMessage(threadId, body) {
     const input = [{ type: 'text', text: body.text, text_elements: [] }];
