@@ -371,6 +371,8 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
   .topbar { gap: 6px; padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
   .topbar > .brand { display: flex; font-size: 15px; }
   .topbar > .brand .brand-mark { width: 28px; height: 28px; }
+  /* Phones keep only the mark: the name and five buttons don't fit 360px. */
+  @media (max-width: 420px) { .topbar > .brand .brand-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
   .top-actions { gap: 6px; }
   .live-label { margin: 0 4px 0 0; }
   :root .top-actions > .live-label:not(.disconnected) { font-size: 0; gap: 0; letter-spacing: 0; }
