@@ -1,6 +1,6 @@
-import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { claudeCredentials } from './claude-credentials.mjs';
 
 export const usageRefreshMs = 5 * 60_000;
 const unavailable = detail => Object.assign(new Error(detail), { usageDetail: detail });
@@ -38,10 +38,10 @@ export function claudeUsageWindows(data) {
 
 // Credentials stay on the server. Read the current CLI token on every refresh;
 // let Claude Code own token renewal so we never race its refresh-token rotation.
-export function claudeUsageReader({ credentialsFile = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), '.credentials.json'), fetchUsage = fetch, now = Date.now } = {}) {
+export function claudeUsageReader({ credentialsFile = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), '.credentials.json'), readCredentials = claudeCredentials, fetchUsage = fetch, now = Date.now } = {}) {
   return async signal => {
     let auth;
-    try { auth = JSON.parse(await readFile(credentialsFile, 'utf8')).claudeAiOauth; }
+    try { auth = (await readCredentials(credentialsFile)).claudeAiOauth; }
     catch { throw unavailable('Sign in to Claude Code on this computer to see usage.'); }
     if (typeof auth?.accessToken !== 'string' || !auth.accessToken) throw unavailable('Sign in to Claude Code on this computer to see usage.');
     if (typeof auth.expiresAt === 'number' && auth.expiresAt <= now()) throw unavailable('Claude login expired. Open Claude Code to renew it.');

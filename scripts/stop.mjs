@@ -2,10 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { dataDir, root } from '../server/config.mjs';
+import { processCommand as command, parentPid } from '../server/processes.mjs';
 
 const serverPath = join(root, 'scripts/server.mjs');
-const command = pid => readFile(`/proc/${pid}/cmdline`, 'utf8').catch(() => '');
-const parentPid = async pid => Number((await readFile(`/proc/${pid}/stat`, 'utf8')).split(') ')[1].split(' ')[1]);
 // A watcher whose server crashed has no server.json; ending the tmux session stops it.
 function endSession() { try { execFileSync('tmux', ['kill-session', '-t', '=aiControl'], { stdio: 'ignore' }); return true; } catch { return false; } }
 

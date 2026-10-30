@@ -59,7 +59,9 @@ Office swaps the list for a toon-shaded 3D office: every session is a fruit at a
 
 ## Start
 
-Requires Linux, Node 22.12+, `tmux` and `ss`. Tailscale is optional.
+Requires macOS or Linux, Node 22.12+ and `tmux` (plus `ss` on Linux). Tailscale is optional.
+
+On a Mac, install the prerequisites with [Homebrew](https://brew.sh): `brew install node tmux`.
 
 ```sh
 npm ci
@@ -67,6 +69,8 @@ npm start
 ```
 
 The first run asks how to reach the dashboard (Tailscale or this computer only) and for a PIN or password. It then connects the Claude hooks in `~/.claude/settings.json` (backed up to `.local/`), starts the server in a tmux session named `aiControl` on port 47841, and prints the URL.
+
+On macOS, the Tailscale app is detected automatically. Claude usage reads its existing [Keychain login](https://code.claude.com/docs/en/authentication#credential-management); macOS may ask for Keychain access. For certificate commands, use the [Tailscale Mac CLI](https://tailscale.com/docs/reference/tailscale-cli?tab=macos).
 
 ```sh
 npm run attach             # Open the server's tmux session

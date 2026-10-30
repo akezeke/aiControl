@@ -27,7 +27,8 @@ export async function setup() {
       if (!/^n/i.test(await rl.question('Reach AI Control from your other Tailscale devices? [Y/n] '))) {
         settings = { mode: 'tailscale' };
         const found = [dataDir, root].map(dir => join(dir, `${self.hostname}.crt`)).find(existsSync);
-        if (!found) console.log(`For HTTPS, create a certificate (see README), then enter its path:\n  tailscale cert --cert-file .local/${self.hostname}.crt --key-file .local/${self.hostname}.key ${self.hostname}`);
+        const cli = self.command === 'tailscale' ? 'tailscale' : `TAILSCALE_BE_CLI=1 '${self.command.replaceAll("'", "'\\''")}'`;
+        if (!found) console.log(`For HTTPS, create a certificate (see README), then enter its path:\n  ${cli} cert --cert-file .local/${self.hostname}.crt --key-file .local/${self.hostname}.key ${self.hostname}`);
         const answer = (await rl.question(found ? `Certificate [${found}], or "http" for none: ` : 'Certificate .crt path, blank for HTTP (Tailscale still encrypts traffic): ')).trim();
         const cert = answer === 'http' ? '' : answer || found;
         if (cert) {

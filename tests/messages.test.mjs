@@ -95,6 +95,19 @@ test('transcript reader handles partial lines, cache updates and rejects escaped
   assert.equal((await reader.read(outside, '../../etc/passwd')).messagesState, 'unavailable');
 });
 
+test('transcript roots work through filesystem aliases without permitting symlink escapes', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'aicontrol-alias-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const projects = join(dir, 'projects'), alias = join(dir, 'alias');
+  await mkdir(projects); await symlink(projects, alias);
+  const file = join(alias, `${sessionId}.jsonl`), reader = new TranscriptReader(alias);
+  await writeFile(file, row('one', 'user', 'Hello through an alias') + '\n');
+  assert.deepEqual((await reader.read(file, sessionId)).messages.map(message => message.text), ['Hello through an alias']);
+  const outside = join(dir, `${sessionId}.jsonl`);
+  await writeFile(outside, row('private', 'user', 'outside') + '\n');
+  await rm(file); await symlink(outside, file);
+  assert.equal((await reader.read(file, sessionId)).messagesState, 'unavailable');
+});
+
 test('subagent transcripts include sidechain text and one line per tool call, and report activity', async () => {
   const { agentActivity } = await import('../server/messages.mjs');
   const sessionId = '11111111-2222-3333-4444-555555555555';

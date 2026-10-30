@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { X509Certificate } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 
@@ -9,7 +9,8 @@ export const root = fileURLToPath(new URL('../', import.meta.url));
 export const dataDir = join(root, '.local');
 // Some filesystems (e.g. WSL's /mnt/c) can't hold Unix sockets, so prefer the private per-user runtime dir. A Claude
 // started without XDG_RUNTIME_DIR (cron, sudo -u) must still find the server's socket, so fall back to its usual place.
-const runtimeDir = process.env.XDG_RUNTIME_DIR || [`/run/user/${process.getuid?.()}`].find(dir => existsSync(dir));
+// macOS's per-user temp directory also keeps the socket below its 104-byte Unix socket path limit.
+const runtimeDir = process.env.XDG_RUNTIME_DIR || (process.platform === 'darwin' ? tmpdir() : [`/run/user/${process.getuid?.()}`].find(dir => existsSync(dir)));
 export const hookSocket = runtimeDir ? join(runtimeDir, 'ai-control-hooks.sock') : join(dataDir, 'hooks.sock');
 export const authFile = join(dataDir, 'auth.json');
 export const settingsFile = join(dataDir, 'config.json');
@@ -44,12 +45,16 @@ export function claudeAccounts(settings = readSettings(), home = homedir()) {
 }
 
 // This machine's Tailscale IPv4 and MagicDNS name, or null when Tailscale is missing or stopped.
-export function tailscaleSelf() {
-  try {
-    const status = JSON.parse(execFileSync('tailscale', ['status', '--json'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }));
-    const ip = status.Self?.TailscaleIPs?.find(address => address.includes('.'));
-    return status.BackendState === 'Running' && ip ? { ip, hostname: status.Self.DNSName?.replace(/\.$/, '') || ip } : null;
-  } catch { return null; }
+export function tailscaleSelf({ platform = process.platform, home = homedir(), exec = execFileSync } = {}) {
+  const commands = ['tailscale', ...platform === 'darwin' ? ['/Applications/Tailscale.app/Contents/MacOS/Tailscale', join(home, 'Applications/Tailscale.app/Contents/MacOS/Tailscale')] : []];
+  for (const command of commands) {
+    try {
+      const status = JSON.parse(exec(command, ['status', '--json'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, TAILSCALE_BE_CLI: '1' } }));
+      const ip = status.Self?.TailscaleIPs?.find(address => address.includes('.'));
+      return status.BackendState === 'Running' && ip ? { ip, hostname: status.Self.DNSName?.replace(/\.$/, '') || ip, command } : null;
+    } catch (error) { if (error.code !== 'ENOENT') return null; }
+  }
+  return null;
 }
 
 export function checkCert(pem, hostname) {

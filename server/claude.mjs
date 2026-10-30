@@ -7,20 +7,13 @@ import { fail } from './requests.mjs';
 import { TranscriptReader, claudeSessionTitle, claudeActivity, turnTool } from './messages.mjs';
 import { TranscriptImages, imageLimit } from './images.mjs';
 import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
+import { processMatches } from './processes.mjs';
+export { processMatches } from './processes.mjs';
 
 // Must match the PermissionRequest hook timeout in scripts/install-hooks.mjs.
 export const hookTimeoutMs = 24 * 3600_000;
 // How long a session must have been idle before it can be fired.
 const QUIET_MS = 5000;
-
-export async function processMatches(pid, start) {
-  if (!Number.isSafeInteger(pid) || pid < 1) return false;
-  try {
-    const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-    return fields[0] !== 'Z' && (!start || fields[19] === String(start));
-  } catch { return false; }
-}
 
 // Claude's own "don't ask again" option: one button applying every suggested permission update.
 function suggestionLabel(suggestions) {

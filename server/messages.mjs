@@ -229,7 +229,10 @@ export class TranscriptReader {
     if (!file || !/^[a-f0-9-]{16,64}$/i.test(sessionId) || (agentId !== undefined && !/^[a-z0-9]{1,64}$/i.test(agentId))) return null;
     const path = await realpath(file);
     const own = agentId !== undefined ? path.includes(`/${sessionId}/subagents/`) && path.endsWith(`/agent-${agentId}.jsonl`) : path.endsWith(`/${sessionId}.jsonl`);
-    return own && this.projectsDirs.some(dir => path.startsWith(dir + sep)) ? path : null;
+    if (!own) return null;
+    // Compare canonical roots too: macOS aliases /var and /tmp under /private, and accounts may use symlinked folders.
+    const roots = await Promise.all(this.projectsDirs.map(dir => realpath(dir).catch(() => null)));
+    return roots.some(dir => dir && path.startsWith(dir + sep)) ? path : null;
   }
   // `older` asks for a longer history than the snapshot carries; those reads skip the cache.
   async read(file, sessionId, agentId, older) {

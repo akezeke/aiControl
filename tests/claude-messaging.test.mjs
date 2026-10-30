@@ -75,6 +75,20 @@ test('a process that exits while connecting cannot receive the message', async (
   assert.equal(frames.length, 0);
 });
 
+test('macOS inboxes allow the system /tmp alias while rejecting redirected sockets and directories', async () => {
+  const canonical = async path => path.replace(/^\/tmp\//, '/private/tmp/');
+  for (const path of ['/tmp/cc-socks/123.sock', '/tmp/cc-socks-1000/123.sock', '/private/tmp/cc-socks/123.sock', '/private/tmp/cc-socks-1000/123.sock']) {
+    const macRecord = { ...record, procStart: 'Fri Oct  9 08:04:02 2026', messagingSocketPath: path };
+    const { adapter, frames } = fixture({ platform: 'darwin', canonical });
+    assert.equal(await adapter.available(macRecord), 'inbox');
+    assert.equal((await adapter.send(macRecord, body)).status, 'submitted');
+    assert.equal(frames.length, 1);
+    assert.equal(await fixture({ platform: 'darwin', canonical: async () => '/private/tmp/other/123.sock' }).adapter.available(macRecord), '');
+    assert.equal(await fixture({ platform: 'darwin', canonical, stat: async () => ({ uid: 1000, mode: 0o777, isSocket: () => true, isDirectory: () => true }) }).adapter.available(macRecord), '');
+  }
+  assert.equal(await fixture({ platform: 'darwin', canonical }).adapter.available({ ...record, messagingSocketPath: '/private/tmp/cc-socks-999/123.sock' }), '');
+});
+
 test('delivery failures after writing remain unconfirmed and cannot be automatically replayed', async () => {
   let writes = 0;
   const { adapter } = fixture({ openSocket() {

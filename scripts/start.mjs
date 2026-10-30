@@ -6,6 +6,7 @@ import { root, dataDir, authFile, settingsFile, prepareData } from '../server/co
 import { configurePassword } from './password.mjs';
 import { setup } from './setup.mjs';
 import { installHooks } from './install-hooks.mjs';
+import { processCommand } from '../server/processes.mjs';
 
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
 const session = 'aiControl';
@@ -13,11 +14,12 @@ const local = process.argv.includes('--local');
 function running() { try { execFileSync('tmux', ['has-session', '-t', `=${session}`], { stdio: 'ignore' }); return true; } catch { return false; } }
 
 try {
-  execFileSync('tmux', ['-V'], { stdio: 'ignore' });
+  try { execFileSync('tmux', ['-V'], { stdio: 'ignore' }); }
+  catch { throw new Error(`tmux is required. ${process.platform === 'darwin' ? 'Install it with brew install tmux.' : 'Install tmux with your package manager.'}`); }
   if (running()) {
     const status = JSON.parse(await readFile(join(dataDir, 'server.json'), 'utf8').catch(() => '{}'));
     if (!status.pid || !status.url) throw new Error("The tmux session 'aiControl' exists, but no running server has reported ready. Use npm run attach to inspect it.");
-    const cmd = await readFile(`/proc/${status.pid}/cmdline`, 'utf8').catch(() => '');
+    const cmd = await processCommand(status.pid);
     if (!cmd.includes(join(root, 'scripts/server.mjs'))) throw new Error("The tmux session 'aiControl' has stale server information. Inspect it with npm run attach.");
     console.log(`AI Control is already running: ${status.url}.\nAttach: npm run attach`);
     process.exit(0);
@@ -30,8 +32,10 @@ try {
   // Backend edits restart the server; the browser picks up client edits on refresh.
   // Some Node 22 releases treat the argument after each --watch flag as its value and pass it to the child
   // if it looks like a flag, nesting a second watcher that npm stop can't end. Keep values separate and the bare flag last.
-  const watch = ['server', 'scripts/server.mjs'].map(path => `--watch-path ${quote(join(root, path))}`).join(' ');
-  const command = `${quote(process.execPath)} ${watch} --watch-preserve-output ${quote(join(root, 'scripts/server.mjs'))}${local ? ' --local' : ''} 2>&1 | tee -a ${quote(join(dataDir, 'server.log'))}`;
+  // Node 22 supports explicit watch paths on macOS, but Linux needs its imported-module watcher.
+  const watchPaths = process.platform !== 'linux' || Number(process.versions.node.split('.')[0]) >= 24;
+  const watch = watchPaths ? ['server', 'scripts/server.mjs'].map(path => `--watch-path ${quote(join(root, path))}`).join(' ') : '';
+  const command = `${quote(process.execPath)} ${watch} --watch-preserve-output ${watchPaths ? '' : '--watch '}${quote(join(root, 'scripts/server.mjs'))}${local ? ' --local' : ''} 2>&1 | tee -a ${quote(join(dataDir, 'server.log'))}`;
   execFileSync('tmux', ['new-session', '-d', '-s', session, '-c', root, '-e', `PATH=${process.env.PATH}`, command]);
   for (let i = 0; i < 100; i++) {
     await new Promise(resolve => setTimeout(resolve, 100));

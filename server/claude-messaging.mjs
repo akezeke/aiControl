@@ -1,19 +1,16 @@
 import { connect } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { lstat, realpath, readFile, readdir } from 'node:fs/promises';
+import { lstat, realpath } from 'node:fs/promises';
 import { dirname, basename, normalize } from 'node:path';
 import { fail, slashCommand } from './requests.mjs';
+import { parentPid, listProcesses } from './processes.mjs';
 
 const runTmux = (args, input) => new Promise((resolve, reject) => {
   const child = execFile('tmux', args, { timeout: 3000 }, (error, stdout) => error ? reject(error) : resolve(stdout));
   child.stdin.on('error', () => {}); // tmux exits without reading stdin for most commands
   child.stdin.end(input);
 });
-async function parentPid(pid) {
-  const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-  return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
-}
 // A new agent gets a window in the tmux session already working in this project, else in a session
 // named after it. The command is typed into a shell, so an error or exit stays readable there.
 // configDir starts Claude under another account (CLAUDE_CONFIG_DIR); empty means the default ~/.claude.
@@ -50,16 +47,6 @@ export async function updateCodex(pane, { tmux = runTmux, pollMs = 1000, startMs
   }
   return false;
 }
-// Every process, with its parent and command line.
-async function listProcesses() {
-  const all = await Promise.all((await readdir('/proc').catch(() => [])).filter(name => /^\d+$/.test(name)).map(async pid => {
-    try {
-      const [stat, cmdline] = await Promise.all([readFile(`/proc/${pid}/stat`, 'utf8'), readFile(`/proc/${pid}/cmdline`, 'utf8')]);
-      return { pid: Number(pid), ppid: Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]), args: cmdline.replaceAll('\0', ' ').trim() };
-    } catch { return null; } // gone meanwhile
-  }));
-  return all.filter(Boolean);
-}
 // A captured screen's rows without what's drawn dim (SGR 2), which is how Claude draws its placeholder ('Try "…"').
 // Attributes run on from row to row; the colour codes' arguments (38;5;n, 38;2;r;g;b) are skipped, not read as codes.
 function undimmedRows(screen) {
@@ -87,8 +74,8 @@ export class ClaudeMessaging {
   submissions = new Map();
   sockets = new Set();
   typing = Promise.resolve();
-  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000, exitMs = 15_000, processes = listProcesses, signal = (pid, name) => process.kill(pid, name) } = {}) {
-    Object.assign(this, { alive, openSocket, stat, canonical, uid, timeoutMs, tmux, parent, pollMs, settleMs, exitMs, processes, signal });
+  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), platform = process.platform, timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000, exitMs = 15_000, processes = listProcesses, signal = (pid, name) => process.kill(pid, name) } = {}) {
+    Object.assign(this, { alive, openSocket, stat, canonical, uid, platform, timeoutMs, tmux, parent, pollMs, settleMs, exitMs, processes, signal });
   }
   async available(record) {
     if (tmuxPaneId(record)) return 'tmux';
@@ -99,9 +86,12 @@ export class ClaudeMessaging {
     if (record.peerProtocol !== 1 || !Number.isSafeInteger(record.pid) || record.pid < 1 || !record.procStart || typeof path !== 'string' || normalize(path) !== path || basename(path) !== `${record.pid}.sock`) return false;
     const parent = dirname(path);
     const allowed = [`/run/user/${this.uid}/cc-socks`, '/tmp/cc-socks', `/tmp/cc-socks-${this.uid}`];
+    if (this.platform === 'darwin') allowed.push('/private/tmp/cc-socks', `/private/tmp/cc-socks-${this.uid}`);
     if (!allowed.includes(parent)) return false;
     try {
-      if (await this.canonical(path) !== path) return false;
+      // /tmp itself is a system symlink on macOS; no socket or account-directory symlinks are allowed.
+      const expected = this.platform === 'darwin' ? path.replace(/^\/tmp\//, '/private/tmp/') : path;
+      if (await this.canonical(path) !== expected) return false;
       const [socket, directory] = await Promise.all([this.stat(path), this.stat(parent)]);
       return socket.isSocket() && directory.isDirectory() && socket.uid === this.uid && directory.uid === this.uid && !(socket.mode & 0o077) && !(directory.mode & 0o077);
     } catch { return false; }
