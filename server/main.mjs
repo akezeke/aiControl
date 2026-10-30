@@ -46,9 +46,8 @@ export async function startServer({ host, hostname, tls = null }) {
     fire: id => claudeId(id) ? claude.fire(claudeId(id)) : Promise.reject(fail('Only Claude sessions can be fired for now.', 409)),
     effort: (id, body) => claudeId(id) ? claude.setEffort(claudeId(id), body?.effort) : codex.setEffort(messageTarget(id), body?.effort),
     history: (id, limit) => claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
-    // Only Claude transcripts are scanned; Codex history comes from its app server a page at a time.
-    images: id => claudeId(id) ? claude.imageList(id) : { images: [] },
-    image: (id, imageId) => claudeId(id) ? claude.image(id, imageId) : Promise.reject(fail('Image not found.', 404)),
+    images: id => claudeId(id) ? claude.imageList(id) : codex.imageList(messageTarget(id)),
+    image: (id, imageId) => claudeId(id) ? claude.image(id, imageId) : codex.image(messageTarget(id), imageId),
   };
   // Any existing directory (~ expands). Claude starts under the account asked for, or the one the project last used.
   const spawn = ({ cwd, provider, account: label } = {}) => {

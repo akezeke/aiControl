@@ -28,11 +28,10 @@ const statValues = new Map();
 const previousStatuses = new Map();
 // Older history fetched for an open panel: session id → { limit, messages, more }.
 const older = new Map();
-// Screenshots a Claude session and its subagents looked at (server/images.mjs), listed again while its panel is open and it changes.
+// Screenshots a session looked at, listed again while its panel is open and it changes.
 const shots = new Map(); // session id → { images, changed, fetched }
 const shotUrl = (id, imageId) => `/api/sessions/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`;
 function sessionShots(session) {
-  if (session.provider !== 'claude') return [];
   let entry = shots.get(session.id);
   if (!entry) shots.set(session.id, entry = { images: [], changed: null, fetched: 0 });
   if (entry.changed !== session.updatedAt && Date.now() - entry.fetched > 10_000) {
@@ -885,7 +884,12 @@ function mergeHistory(earlier = [], recent) {
 async function loadOlder(id) {
   const current = older.get(id), limit = Math.min(200, (current?.limit || 20) + 40);
   older.set(id, { messages: [], more: true, ...current, loading: true }); renderPanel();
-  try { const result = await api(`sessions/${encodeURIComponent(id)}/history?limit=${limit}`); older.set(id, { limit, messages: result.messages, more: result.more && limit < 200 }); }
+  try {
+    const result = await api(`sessions/${encodeURIComponent(id)}/history?limit=${limit}`);
+    older.set(id, { limit, messages: result.messages, more: result.more && limit < 200 });
+    // Codex discovers images as history pages load, even when the session itself has not changed.
+    const images = shots.get(id); if (images) { images.changed = null; images.fetched = 0; }
+  }
   catch (error) { toast(error.message); if (current) older.set(id, current); else older.delete(id); }
   if (state.selected === id && state.snapshot) renderPanel();
 }

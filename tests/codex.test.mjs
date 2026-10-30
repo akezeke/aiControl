@@ -5,6 +5,9 @@ import { messageLimit } from '../server/messages.mjs';
 import { RequestStore } from '../server/requests.mjs';
 import { mockCodexServer } from './fixtures/codex-proxy.mjs';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 test('Codex uses a real WebSocket handshake, reads messages and delivers a confirmed answer', async t => {
   const store = new RequestStore();
@@ -88,6 +91,51 @@ test('smaller history pages still find the most recent messages across tool resu
   const pages = server.messages.filter(m => m.method === 'thread/items/list');
   assert.equal(pages.length, Math.ceil((4 * (messageLimit - 1) + 1) / 10));
   assert.ok(pages.every(m => m.params.limit === 10));
+});
+
+test('Codex history and completed image tools populate the gallery without putting image data in snapshots', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'ai-control-codex-gallery-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const path = join(dir, 'screen.png'); await writeFile(path, png);
+  const { adapter, server } = await connected(t, { items: [
+    { completedAtMs: 200, item: { type: 'imageView', id: 'view-image', path } },
+    { completedAtMs: 100, item: { type: 'userMessage', id: 'prompt', content: [{ type: 'text', text: 'Check this' }, { type: 'image', url: `data:image/png;base64,${png.toString('base64')}` }] } },
+  ] });
+  const { images } = await adapter.imageList('live-thread');
+  assert.deepEqual(images.map(image => [image.at, image.tool]), [[100, false], [200, true]]);
+  assert.deepEqual(await adapter.image('live-thread', images[1].id), { type: 'image/png', data: png });
+  assert.ok(!JSON.stringify(adapter.list()).includes(png.toString('base64')));
+  assert.ok(!JSON.stringify(images).includes(dir));
+  await adapter.refresh();
+  assert.deepEqual((await adapter.imageList('live-thread')).images, images);
+  adapter.receive({ method: 'item/completed', params: { threadId: 'live-thread', item: {
+    type: 'dynamicToolCall', id: 'live-image', tool: 'exec', status: 'completed', completedAtMs: 300,
+    contentItems: [{ type: 'inputImage', imageUrl: `data:image/png;base64,${png.toString('base64')}` }],
+  } } });
+  const live = (await adapter.imageList('live-thread')).images;
+  assert.equal(live.length, 3); assert.equal(live[2].at, 300);
+  assert.deepEqual((await adapter.image('live-thread', live[2].id)).data, png);
+  await assert.rejects(adapter.imageList('unloaded'), { status: 409 });
+  await assert.rejects(adapter.image('unloaded', images[0].id), { status: 409 });
+  await assert.rejects(adapter.image('live-thread', path), { status: 404 });
+  await assert.rejects(adapter.image('live-thread', '../screen.png'), { status: 404 });
+  server.disconnect();
+  await until(() => !adapter.connected, 'Disconnect not detected');
+  assert.equal(adapter.images.retainedBytes, 0);
+});
+
+test('loading older Codex history also makes its image tools available', async t => {
+  const data = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
+  const { adapter } = await connected(t, { items: [
+    ...Array.from({ length: 30 }, (_, i) => ({ completedAtMs: 100 - i, item: { id: `message-${i}`, type: 'agentMessage', text: `Reply ${i}` } })),
+    { completedAtMs: 1, item: { id: 'old-image', type: 'mcpToolCall', result: { content: [{ type: 'image', data }] } } },
+  ] });
+  assert.deepEqual((await adapter.imageList('live-thread')).images, []);
+  await adapter.history('live-thread', 40);
+  const { images } = await adapter.imageList('live-thread');
+  assert.equal(images.length, 1);
+  assert.equal(images[0].at, 1);
 });
 
 test('a dropped connection rejoins loaded sessions and restores pending questions', async t => {

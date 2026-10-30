@@ -5,7 +5,7 @@ import { open } from 'node:fs/promises';
 // path ever comes from a request. Images are full size; the client scales them down.
 const marker = '"type":"image"';
 export const imageLimit = 40;
-const maxBytes = 10 * 1024 * 1024;
+export const maxImageBytes = 10 * 1024 * 1024;
 
 // The bytes decide the type, not the transcript's media_type; anything else (SVG, say) is never served.
 export function imageType(bytes) {
@@ -25,7 +25,7 @@ export function lineImages(line, sessionId) {
   const at = Date.parse(row.timestamp) || null;
   return blocks.flatMap(([block, tool], n) => {
     const data = block.source?.type === 'base64' && typeof block.source.data === 'string' ? block.source.data : '';
-    const type = data && data.length * 0.75 <= maxBytes && imageType(Buffer.from(data.slice(0, 24), 'base64'));
+    const type = data && data.length * 0.75 <= maxImageBytes && imageType(Buffer.from(data.slice(0, 24), 'base64'));
     return type ? [{ id: `${row.uuid}:${n}`, type, at, tool, data }] : [];
   });
 }

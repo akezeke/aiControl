@@ -256,7 +256,7 @@ export function mountOffice(container, hooks) {
       // The fired slump at their desks, then trudge out carrying a box.
       for (const [id, at] of fired) if (Date.now() - at > VACANT_MS + 10_000) fired.delete(id); else office.statuses.set(id, { ...office.statuses.get(id), ...FIRED });
       room.sync(layout, office.statuses);
-      shots.sync(snapshot.sessions.filter(session => session.provider === 'claude' && !session.parentId && layout.desks.has(session.id)));
+      shots.sync(snapshot.sessions.filter(session => !session.parentId && layout.desks.has(session.id)));
       for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
       signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });
       cast.sync(layout, snapshot.sessions, room, office.statuses);
