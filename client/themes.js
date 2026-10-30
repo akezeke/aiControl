@@ -6,7 +6,7 @@ export const themes = [
   { id: 'alien', name: 'MU/TH/UR', color: '#030703' },
   { id: 'command', name: 'EVA', color: '#62685a' },
   // The office replaces the list with a 3D scene; the chrome around it is paper pinned to a corkboard.
-  { id: 'office', scheme: 'light', name: 'Office', color: '#c4935f' },
+  { id: 'office', scheme: 'light', name: 'Office', color: '#dcc6a3' },
 ];
 const storageKey = 'ai-control-theme';
 export function hasSavedTheme() { try { return themes.some(theme => theme.id === localStorage.getItem(storageKey)); } catch { return true; } }
