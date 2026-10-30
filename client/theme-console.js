@@ -28,11 +28,12 @@ function summary(sessions) {
     alien: `CREW ${sessions.length} · ACTIVE ${working} · AWAITING INPUT ${waiting}`,
     command: waiting ? `${waiting} awaiting orders · ${working} units active` : working ? `${working} units active` : 'All units standing by',
     simpsons: waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you · ${working} working` : working ? `${working} working · Doughnuts later` : 'All quiet in Springfield',
+    heroes: waiting ? `${waiting} awaiting orders · ${working} on a quest` : working ? `${working} on a quest` : 'The realm is at peace',
   };
 }
 const flashes = {
-  ready: title => ({ modern: `Done · ${title}`, alien: `TASK COMPLETE · ${title}`, command: `Unit ready · ${title}`, simpsons: `Woo-hoo! Done · ${title}` }),
-  input: title => ({ modern: `Needs you · ${title}`, alien: `INPUT REQUIRED · ${title}`, command: `Orders required · ${title}`, simpsons: `Needs you · ${title}` }),
+  ready: title => ({ modern: `Done · ${title}`, alien: `TASK COMPLETE · ${title}`, command: `Unit ready · ${title}`, simpsons: `Woo-hoo! Done · ${title}`, heroes: `Quest complete · ${title}` }),
+  input: title => ({ modern: `Needs you · ${title}`, alien: `INPUT REQUIRED · ${title}`, command: `Orders required · ${title}`, simpsons: `Needs you · ${title}`, heroes: `Orders required · ${title}` }),
 };
 function setLine(line, texts, flash) {
   const key = JSON.stringify(texts);

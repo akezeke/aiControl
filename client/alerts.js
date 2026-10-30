@@ -41,6 +41,8 @@ const sounds = {
   simpsons: kind => { const notes = kind === 'input' ? [783.99, 1046.5, 783.99] : [523.25, 783.99, 1046.5]; notes.forEach((note, i) => tone(note, i * .1, .22, 'triangle', .055)); },
   alien: kind => { for (let i = 0; i < (kind === 'input' ? 7 : 3); i++) tone(i % 2 ? 1480 : 1760, i * .065, .04, 'square', .025); },
   command: kind => speak({ input: 'Orders required', ready: 'Unit ready', on: 'EVA online' }[kind]) || tone(440, 0, .2, 'sawtooth', .04),
+  // A short, original lute-like arpeggio. As with every theme, sound stays opt-in.
+  heroes: kind => { const notes = kind === 'input' ? [392, 493.88, 587.33, 783.99] : [523.25, 659.25, 783.99]; notes.forEach((note, i) => { tone(note, i * .11, .48, 'triangle', .065); tone(note * 2, i * .11, .16, 'sine', .015); }); },
 };
 export function playSound(kind) {
   try { audio?.resume(); (sounds[document.documentElement.dataset.theme] || sounds.modern)(kind); } catch { /* audio unavailable */ }

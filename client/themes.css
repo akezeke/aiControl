@@ -53,6 +53,23 @@
   --bevel-hi: #a4afa0; --bevel-lo: #141c17;
 }
 
+/* HEROES: blue stone, gold fittings and parchment from a 2D fantasy strategy screen. */
+:root[data-theme=heroes] {
+  color-scheme: dark;
+  --font: Tahoma, Verdana, 'Segoe UI', sans-serif;
+  --display: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  --bg: #0d1629; --panel: #172749; --panel-2: #24395c; --sunken: #0d1a32;
+  --text: #fff0cb; --text-2: #d4d5cd; --text-3: #b1bbc7;
+  --line: #52617a; --line-2: #a58c50;
+  --accent: #efd080; --accent-2: #ffe6a2; --accent-ink: #261c0b; --accent-soft: #384160;
+  --ok: #a9d77d; --ok-soft: #203c2b; --warn: #ffd878; --warn-soft: #3d301d; --warn-line: #b99850; --danger: #ffaaa0; --danger-soft: #482a33;
+  --codex: #d2e9ff; --claude: #ffd485; --claude-soft: #4c3031;
+  --radius: 0px; --radius-sm: 0px;
+  --shadow: inset 1px 1px #8293b028, inset -1px -1px #030912aa, 2px 3px 0 #0008;
+  --shadow-lg: 0 0 0 1px #100f14, 0 0 0 3px #9c7a3e, 5px 7px 0 #0009, 0 20px 50px #0009;
+  --focus: #ffdf8b;
+}
+
 /* OFFICE: paper pinned to a corkboard, inked like the scene's speech bubbles. */
 :root[data-theme=office] {
   color-scheme: light;

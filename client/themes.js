@@ -8,6 +8,7 @@ export const themes = [
   { id: 'alien', name: 'MU/TH/UR', color: '#030703' },
   { id: 'command', name: 'EVA', color: '#62685a' },
   { id: 'simpsons', scheme: 'light', name: 'Springfield', color: '#86cbed' },
+  { id: 'heroes', scheme: 'dark', name: 'Heroes', color: '#172749' },
   // The office replaces the list with a 3D scene; the chrome around it is paper pinned to a corkboard.
   { id: 'office', scheme: 'light', name: 'Office', color: '#dcc6a3' },
 ];
@@ -39,17 +40,21 @@ const bootLines = ['INTERFACE 2037 ............ READY', 'MU/TH/UR 6000 MAINFRAME
 // EVA's start: riveted blast doors with the emblem split across the seam slide apart.
 export function bootSequence(force = false) {
   const theme = document.documentElement.dataset.theme;
-  if (!['alien', 'command'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const previousOverlays = document.querySelectorAll('.boot, .eva-boot, .heroes-boot');
+  if (!['alien', 'command', 'heroes'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) { previousOverlays.forEach(overlay => overlay.remove()); return; }
   try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
-  document.querySelector('.boot, .eva-boot')?.remove();
-  const overlay = document.createElement('div'); overlay.className = theme === 'alien' ? 'boot' : 'eva-boot'; overlay.setAttribute('aria-hidden', 'true');
+  previousOverlays.forEach(overlay => overlay.remove());
+  const overlay = document.createElement('div'); overlay.className = { alien: 'boot', command: 'eva-boot', heroes: 'heroes-boot' }[theme]; overlay.setAttribute('aria-hidden', 'true');
   if (theme === 'alien') bootLines.forEach((line, i) => { const p = document.createElement('p'); p.textContent = line; p.style.setProperty('--i', i); overlay.append(p); });
-  else {
+  else if (theme === 'command') {
     for (const side of ['left', 'right']) { const door = document.createElement('div'); door.className = `eva-door ${side}`; overlay.append(door); }
     const status = document.createElement('p'); status.textContent = 'EVA ▸ COMMAND LINK ONLINE'; overlay.append(status);
   }
+  else { const crest = document.createElement('div'); crest.className = 'heroes-seal'; overlay.append(crest); }
   overlay.onclick = () => overlay.remove();
   // Pseudo-element animations (EVA's seam flash) also report the overlay as target; wait for its own exit.
   overlay.addEventListener('animationend', event => { if (event.target === overlay && !event.pseudoElement) overlay.remove(); });
   document.body.append(overlay);
+  // Also clean up if reduced motion is enabled while an entrance is playing.
+  setTimeout(() => overlay.remove(), 6000);
 }

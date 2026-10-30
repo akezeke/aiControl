@@ -1,0 +1,238 @@
+/* A 1990s town screen: pixel scenery and sprites, blue stone, hard gold bevels.
+   Text remains native and readable. All decoration is CSS/SVG; no render loop. */
+.theme-swatch.heroes { border-radius: 0; border: 2px ridge #dfba66; background: #244e89; box-shadow: inset 0 0 0 2px #162b51; }
+.theme-preview.heroes { background-image: url('/heroes-bg.webp'); background-position: 85% center; image-rendering: pixelated; border: 4px ridge #c3a05b; border-radius: 0; }
+
+:root[data-theme=heroes] {
+  --gold: #b39758;
+  --stone: linear-gradient(110deg, #14234420, #080f2366), url('/heroes-stone.svg');
+  --ornate: url('/heroes-ornate-frame.webp');
+  --bevel: inset 1px 1px #f8df9b, inset -1px -1px #584026, 0 0 0 1px #0b1020, 2px 3px 0 #0007;
+  --scroll-track: #0d192e; --scroll-thumb: #a88b4c;
+
+  .brand-variant.heroes { display: flex; }
+  .brand-variant.heroes .brand-mark { width: 32px; height: 40px; padding: 0; border-radius: 0; background: url('/heroes-crest.svg') center / contain no-repeat; box-shadow: none; image-rendering: pixelated; }
+  .brand-variant.heroes .brand-mark i { display: none; }
+  .brand-variant.heroes .brand-name { font: 700 24px/1 var(--display); font-variant: small-caps; letter-spacing: .07em; color: #ffe5a1; text-shadow: 2px 2px #080e22; }
+  .status-text.heroes { display: block; }
+  .shell::before, .login-screen::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(90deg, #07102466, #07102422 65%, #07102408), url('/heroes-bg.webp') center / cover no-repeat; image-rendering: pixelated; }
+  .shell::after { content: ''; position: fixed; inset: 0; z-index: 6; pointer-events: none; border: 3px solid; border-color: #e3bf72 #615032 #372b20 #a88b4c; box-shadow: inset 0 0 0 1px #101321; }
+  .main-content { max-width: 1060px; margin-inline: 0; padding: 22px 28px 32px; }
+  .page-heading { align-items: center; min-height: 62px; margin-bottom: 12px; }
+  .page-heading h1 { padding: 8px 40px 12px; font-size: 30px; font-weight: 700; letter-spacing: .04em; color: #fff0c4; text-shadow: 2px 2px #101728, -1px -1px #463b24; background: var(--stone); border: 3px solid transparent; border-image: var(--ornate) 34% / 30px stretch; }
+  .machine-label { padding: 3px 8px; color: #efe0b9; border: 1px solid #a08a56; background: #101b32e8; }
+  .status-line { width: fit-content; max-width: 100%; padding: 3px 0; margin: 0; font-size: 11px; color: #ffedbc; text-shadow: 1px 1px #080f20, -1px -1px #080f20, 0 0 5px #080f20; }
+  .status-line::before { content: ''; flex: none; width: 12px; height: 12px; background: linear-gradient(135deg, #f0f8bf 25%, #a9ca6f 25% 60%, #4c783b 60%); border: 2px solid #e6d48c; clip-path: polygon(25% 0, 75% 0, 75% 25%, 100% 25%, 100% 75%, 75% 75%, 75% 100%, 25% 100%, 25% 75%, 0 75%, 0 25%, 25% 25%); }
+  .status-line.flash::before { background: var(--warn); border-color: #ffe8a1; }
+
+  /* A narrow castle panel. Never transform the sidebar: its menu uses fixed positioning. */
+  .sidebar { padding: 7px 2px 8px; background: var(--stone); border: 14px solid transparent; border-image: var(--ornate) 34% / 45px stretch; box-shadow: 4px 0 0 #0a1020, 8px 0 16px #0007; }
+  .sidebar .brand { justify-content: center; gap: 9px; margin: 0 0 9px; padding-bottom: 18px; background: url('/heroes-flourish.svg') center bottom / 160px 24px no-repeat; }
+  .sidebar .brand-variant.heroes { flex-direction: column; gap: 2px; }
+  .sidebar .brand-mark { width: 38px; height: 48px; }
+  .sidebar .brand-name { font-size: 28px; letter-spacing: .1em; }
+  .sidebar-label { margin: 10px 7px 5px; padding-top: 8px; color: #dcc486; font: 700 11px/1.4 var(--display); letter-spacing: .14em; text-shadow: 1px 1px #000; background: url('/heroes-flourish.svg') right top / 95px 14px no-repeat; }
+  .main-nav, .project-nav { gap: 4px; }
+  .nav-item { border: 1px solid transparent; min-height: 36px; padding: 7px 9px; }
+  .nav-item:hover { border-color: #7c8ca4; background: #2b4369; }
+  .nav-item.active { color: #ffedbe; border-color: #af9357; background: linear-gradient(#365581, #233a63); box-shadow: inset 1px 1px #8aa6cf70, inset -1px -1px #091526; }
+  .nav-count { border-radius: 0; background: #101b31; border: 1px solid #6d7690; color: #dfcfaa; padding: 0 5px; }
+  .nav-item.active .nav-count { background: #14243e; border-color: #b39758; color: #ffe2a1; }
+  .sidebar > .top-actions { border-color: #8a764b; }
+
+  /* The map is decorative terrain; every flag is an actual session, with native tooltips. */
+  .theme-console { display: block; min-width: 0; margin-bottom: 4px; padding: 7px 5px 6px; border: 6px solid transparent; border-image: var(--ornate) 34% / 27px stretch; background: #101d33; box-shadow: 3px 4px #0006; }
+  .console-lamps, .console-vector, .console-sweep, .console-signal { display: none; }
+  .console-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 5px 6px; color: #f5d88e; font: 700 12px/1.2 var(--display); }
+  .console-count { font: 17px/1 'VT323', var(--mono); color: #ffe2a1; }
+  .console-screen { position: relative; height: 138px; isolation: isolate; overflow: hidden; background: #8b8c53 url('/heroes-map.svg') center / 100% 100%; image-rendering: pixelated; box-shadow: inset 0 0 0 1px #282d26; }
+  .console-contacts { position: absolute; inset: 0; }
+  .console-contact { position: absolute; width: 24px; height: 26px; padding: 0; border: 0; background: none; color: #d5e3f2; transform: translate(-50%, -50%); }
+  .console-contact::before { content: ''; position: absolute; left: 5px; top: 3px; width: 2px; height: 19px; background: #fff2bb; box-shadow: 1px 1px #352c24; }
+  .console-contact::after { content: ''; position: absolute; top: 4px; left: 7px; width: 13px; height: 10px; background: currentColor; border: 1px solid #292a20; box-shadow: inset 0 2px #ffffff40, inset 0 -2px #0003, 1px 1px #0006; clip-path: polygon(0 0, 100% 0, 100% 30%, 76% 30%, 76% 70%, 100% 70%, 100% 100%, 0 100%); }
+  .console-contact[data-status=working] { color: #8ad06b; }
+  .console-contact:is([data-status=question], [data-status=permission]) { color: #ffcf56; }
+  .console-contact:is([data-status=offline], [data-status=error]) { color: #e57865; }
+  .console-contact:is(:hover, :focus-visible, [data-tracked]) { z-index: 1; outline: 1px solid #fff0b8; outline-offset: 0; background: #182a4670; }
+  .console-readout { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 6px 4px 2px; }
+  .console-track-label { color: #eed28f; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+  .console-track-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--text-2); }
+  .console-readout:is([data-status=error], [data-status=offline]) .console-track-label { color: var(--danger); }
+  .console-empty { position: absolute; inset: 0; display: grid; place-items: center; background: #111b2de6; color: #ffe6a2; font: 14px var(--display); }
+  .theme-console[data-disconnected=true] .console-contacts { opacity: .3; }
+
+  /* Gold buttons depress one pixel; blue controls keep their familiar labels. */
+  :is(.primary, .secondary, .quiet-button, .stat, .effort-select, .shot-button) { border: 2px solid transparent; border-image: var(--ornate) 34% / 10px stretch; border-radius: 0; box-shadow: inset 1px 1px #afc4e14d, inset -1px -1px #040b1bb3, 1px 2px #0006; background: linear-gradient(#2f4a74, #1a2d50); color: #f3dfae; }
+  :is(.secondary, .quiet-button, .stat, .shot-button):hover:not(:disabled) { border-color: #ffe4a0; background: linear-gradient(#3f608e, #253f68); color: #fff1c5; }
+  .primary, .stat.selected { border-color: #d9b66b; background: linear-gradient(#ebd18d 0 10%, #c5a15a 10% 90%, #997339 90%); box-shadow: var(--bevel); color: #241b11; text-shadow: 0 1px #f8dfa280; }
+  .primary:hover:not(:disabled), .stat.selected:hover { background: #eed18b; color: #241b11; }
+  .stat.selected .stat-number { color: #241b11; }
+  .stop-button { color: var(--danger); }
+  .fire-button.armed { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+  :is(.theme-options, .filter-options) { background: var(--stone); border: 3px ridge #c0a267; border-radius: 0; }
+  .theme-choice[aria-pressed=true], .tab.active { background: #314a6f; color: #ffe2a1; box-shadow: inset 0 0 0 1px #9e8554; }
+  .theme-choice:hover, .tab:hover { background: #293f62; }
+  :is(.search, .login-form input, .access-form input:not([type=checkbox]), .message-form textarea, .custom-answer input, .deny-reason) { background: #0b1930; border: 2px solid; border-color: #0a1020 #7d7c69 #7d7c69 #0a1020; border-radius: 0; box-shadow: inset 1px 1px #0005; }
+  :is(.search:focus-within, .login-form input:focus, .access-form input:focus, .message-form textarea:focus, .custom-answer input:focus, .deny-reason:focus) { border-color: #dfbf76; box-shadow: inset 1px 1px #0005, 0 0 0 1px #0b162b; }
+  .search { background: #13223deF; }
+
+  /* Native progress retains the exact used value and accessible name. The glass reservoir
+     and carved end caps are decoration; labels and reset times remain visible at every width. */
+  .usage-accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 6px 18px; padding: 13px 17px; border: 5px solid transparent; border-image: var(--ornate) 34% / 33px stretch; background: var(--stone); box-shadow: 2px 3px #0008; }
+  .usage-account { padding: 2px 0; gap: 10px; }
+  .usage-account + .usage-account { border: 0; }
+  .usage-logo { position: relative; flex-basis: 31px; height: 40px; padding-top: 17px; color: #fff2c9; font-size: 13px; text-shadow: 1px 1px #000, -1px -1px #000; background: url('/heroes-crest.svg') center / 31px 39px no-repeat; }
+  .usage-logo.claude { color: #ffe6a2; font-size: 16px; }
+  .usage-windows { gap: 15px; padding-block: 1px; }
+  .usage-window, .usage-window.usage-wide { position: relative; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 0 6px; flex: 1 0 130px; min-width: 130px; padding: 0 1px 5px; line-height: 19px; }
+  .usage-label { grid-column: 1; grid-row: 1; color: #d9c28c; font: 700 11px/19px var(--display); }
+  .usage-percent { grid-column: 2; grid-row: 1; justify-self: end; color: #fff0bf; }
+  .usage-reset { grid-column: 3; grid-row: 1; font-size: 10px; }
+  .usage-meter { grid-column: 1 / -1; grid-row: 2; width: calc(100% - 20px); margin: 2px 10px; height: 17px; border: 2px solid; border-color: #806a3d #d5ae5d #e1c180 #7e693e; border-radius: 0; color: var(--mana-fill, #5fb1f4); background: #091329; box-shadow: 0 1px #080c18, 0 -1px #080c18, inset 0 2px #0009; }
+  .usage-account:has(.usage-logo.claude) { --mana-fill: #da905a; }
+  .usage-window::before, .usage-window::after { content: ''; position: absolute; z-index: 1; bottom: 0; width: 20px; height: 29px; background: url('/heroes-vial-cap.svg') center / 20px 29px no-repeat; pointer-events: none; image-rendering: pixelated; }
+  .usage-window::before { left: -1px; }
+  .usage-window::after { right: -1px; scale: -1 1; }
+  .usage-meter::-webkit-progress-bar { background: repeating-linear-gradient(90deg, #09172b 0 8px, #3e527b 8px 9px, #111b30 9px 12px); border-radius: 0; box-shadow: inset 0 2px #0008, inset 0 -2px #7892b62e; }
+  .usage-meter::-webkit-progress-value { background: repeating-linear-gradient(90deg, transparent 0 8px, #f5f5e450 8px 9px, #07172b99 9px 12px), linear-gradient(#e7f8ffb3 0 2px, #ffffff1a 2px 4px, transparent 4px 8px, #101b3580 8px 11px, #060d25b3 11px), currentColor; border-radius: 0; box-shadow: inset 0 1px #dbf1ff; }
+  .usage-meter::-moz-progress-bar { background: repeating-linear-gradient(90deg, transparent 0 8px, #f5f5e450 8px 9px, #07172b99 9px 12px), linear-gradient(#e7f8ffb3 0 2px, transparent 2px 8px, #101b3580 8px), currentColor; border-radius: 0; }
+  .plan-meter { height: 7px; border-radius: 0; color: #86b1e5; background: #0b1529; }
+  .plan-meter::-webkit-progress-bar { background: #0b1529; }
+  .plan-meter::-webkit-progress-value { background: repeating-linear-gradient(90deg, transparent 0 6px, #0004 6px 7px), currentColor; }
+  .plan-meter::-moz-progress-bar { background: currentColor; }
+  .usage-high .usage-meter, .usage-pace .usage-meter { color: var(--warn); }
+  .usage-full .usage-meter { color: var(--danger); }
+
+  /* Compact hero rows, heraldic portraits and parchment project ribbons. */
+  .group-heading { min-height: 41px; margin: 0 0 4px; padding: 7px 24px; border: 8px solid transparent; border-width: 0 18px; border-image: url('/heroes-scroll.svg') 0 18 fill / 0 18px stretch; background: none; box-shadow: none; }
+  .group-title h2 { color: #302717; font-size: 15px; font-weight: 700; text-shadow: 0 1px #ffe7ae80; }
+  .group-title > .icon { color: #574526; }
+  .group-count { border: 1px solid #917343; border-radius: 0; padding: 0 5px; color: #3a2e19; background: #f3dda06b; }
+  .project-path { color: #514329; font-size: 10px; }
+  .spawn-button { min-height: 24px; padding: 3px 6px; }
+  .session-list { --stack-gap: 7px; }
+  .session-card { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 15px; min-height: 86px; padding: 11px 24px; border: 3px solid transparent; border-image: var(--ornate) 34% / 29px stretch; background: var(--stone); box-shadow: inset 0 0 0 4px #0b1427, 2px 3px #0008; }
+  .session-card::after { content: none; }
+  .session-card:hover { background: linear-gradient(#3b56812b, #3b56812b), var(--stone); box-shadow: inset 0 0 0 4px #172b45, 2px 3px #0008; }
+  .session-card.needs-input { border-color: transparent; box-shadow: inset 0 0 0 4px #534c31, 2px 3px #0008; }
+  .agent-mark { isolation: isolate; align-items: end; justify-items: end; width: 50px; height: 50px; padding: 0 2px; border: 0; border-radius: 0; background: url('/heroes-portraits.webp') left center / 200% 100% no-repeat; image-rendering: pixelated; color: #e1edff; font-size: 12px; text-shadow: 1px 1px #000, -1px -1px #000, 1px -1px #000, -1px 1px #000; }
+  .agent-mark::before { content: ''; position: absolute; inset: -4px; z-index: -1; border: 3px solid transparent; border-image: var(--ornate) 34% / 13px stretch; background: none; pointer-events: none; }
+  .agent-mark.claude { color: #ffe3a0; font-size: 17px; background: url('/heroes-portraits.webp') right center / 200% 100% no-repeat; }
+  .unread-dot { border-radius: 0; background: #ffe29a; box-shadow: 1px 1px #10182b; border: 1px solid #fff1c2; }
+  .session-card.subagent .agent-mark { width: 32px; height: 32px; border-radius: 0; font-size: 12px; }
+  .session-card.subagent { grid-template-columns: 34px minmax(0, 1fr) auto; min-height: 64px; padding-inline: 24px; border-image-width: 22px; }
+  .badge { border: 1px solid #8a97ab66; border-radius: 0; box-shadow: inset 0 1px #ffffff0a; }
+  .badge.amber { border-color: #c5a15d; }
+  .badge.green { border-color: #739365; }
+  .badge.red { border-color: #b9766e; }
+  .dot { border-radius: 0; box-shadow: 1px 1px #0005; }
+  .chip, .project-tag, .subagent-tag { border-radius: 0; }
+  .project-tag { color: #ffe3a1; background: #34476a; }
+  .empty, .integrations { padding: 12px; background: #12223ef2; border: 1px solid #9f8854; box-shadow: 2px 3px #0006; }
+  .empty { padding: 30px 16px; }
+  .integrations { margin-top: 18px; }
+
+  /* The session opens like a spellbook: blue bindings, parchment leaves, blue composer. */
+  .detail-panel { border-left: 7px ridge #b99c5e; background: var(--stone); box-shadow: -4px 0 #101321, -14px 0 32px #0008; }
+  .chat-header { background: var(--stone); border-bottom: 4px ridge #b99c5e; }
+  .panel-title { color: #ffe4a1; }
+  .history-viewport {
+    color-scheme: light;
+    --bg: #dfcda5; --panel: #f0e1bc; --panel-2: #dfcda5; --sunken: #dac79f;
+    --text: #2d291e; --text-2: #4e4634; --text-3: #625840;
+    --line: #bbaa7c; --line-2: #978253;
+    --accent: #345378; --accent-soft: #cbd5d0; --ok: #345b27; --ok-soft: #d4dfb4; --danger: #9b322e; --danger-soft: #f0c5ab;
+    background: repeating-linear-gradient(0deg, #48331a05 0 1px, transparent 1px 3px), radial-gradient(ellipse at 50% 30%, #f1e4c3, #d3bc8f);
+    color: var(--text);
+  }
+  .recent-message { border-radius: 0; border-color: #b7a477; box-shadow: 1px 2px #71542d26; }
+  .recent-message.user { border: 1px solid #98a797; border-radius: 0; background: #d5ddd0; box-shadow: 1px 2px #45594d26; }
+  .recent-message.tool { background: none; box-shadow: none; border-color: #a89770; }
+  .history-shot { border: 3px ridge #b79755; border-radius: 0; background: #24304a; box-shadow: 1px 2px #47332160; }
+  .history-latest.quiet-button { border-radius: 0; color: #ffe6a2; }
+  .chat-requests, .message-composer { border-top: 4px ridge #b99c5e; background: var(--stone); }
+  .request-box { padding: 18px 22px; border: 4px solid transparent; border-image: var(--ornate) 34% / 29px stretch; background: var(--stone); box-shadow: inset 0 0 0 3px #0e182b; }
+  .request-title { color: #ffe2a1; }
+  .shot-viewer { padding: 18px; border: 8px solid transparent; border-image: var(--ornate) 34% / 35px stretch; border-radius: 0; background: var(--stone); color: var(--text); }
+  .shot-full img { border-radius: 0; }
+  .shot-meta { color: var(--text-2); }
+  .toast { border: 3px ridge #c7a969; border-radius: 0; background: #192c4c; color: #ffe6a2; box-shadow: 3px 4px #0008; }
+
+  .login-screen { isolation: isolate; background: transparent; }
+  .login-card { width: min(100%, 400px); gap: 22px; padding: 36px; border: 8px solid transparent; border-image: var(--ornate) 34% / 60px stretch; border-radius: 0; background: var(--stone); box-shadow: 5px 7px #0008, 0 16px 50px #0008; }
+  .login-display { display: flex; flex-direction: column; align-items: center; gap: 14px; align-self: stretch; padding: 8px 0 24px; background: url('/heroes-flourish.svg') center bottom / 200px 30px no-repeat; }
+  .login-card .brand-mark { display: none; }
+  .login-card .brand-name { font-size: 32px; }
+  .login-symbol { order: -1; width: 64px; height: 80px; border-radius: 0; background: url('/heroes-crest.svg') center / contain no-repeat; image-rendering: pixelated; }
+  .login-symbol .icon { display: none; }
+  .login-form input { text-align: center; letter-spacing: .12em; }
+  .login-form label { color: #f3d99b; }
+  .login-card:has(.form-error:not(:empty)) { border-image: none; border-color: #bb7661; }
+  .access-console { display: block; padding: 24px; border: 6px solid transparent; border-image: var(--ornate) 34% / 36px stretch; background: var(--stone); }
+  .access-console .panel-title { margin-top: 0; }
+}
+
+/* Entrances and status changes use stepped movement; the page never waits for them. */
+.heroes-boot { position: fixed; inset: 0; z-index: 90; pointer-events: none; display: grid; place-items: center; background: #0b15299c; animation: heroes-reveal .9s steps(8, end) both; }
+.heroes-seal { width: 96px; height: 120px; background: url('/heroes-crest.svg') center / contain no-repeat; image-rendering: pixelated; }
+@keyframes heroes-reveal { 0%, 20% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes heroes-flag { 50% { clip-path: polygon(0 0, 76% 0, 76% 20%, 100% 20%, 100% 80%, 76% 80%, 76% 100%, 0 100%); } }
+@keyframes heroes-spark { 0%, 65%, 100% { opacity: .35; } 75%, 90% { opacity: 1; } }
+@keyframes heroes-contact { 50% { background-color: #ffeb9d99; } }
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme=heroes] {
+    .console-contact[data-status=working]::after { animation: heroes-flag 1.5s steps(1, end) infinite; }
+    .console-contact.blip { animation: heroes-contact .6s steps(2, end) 2; }
+    .session-card.needs-input .agent-mark::after { content: ''; position: absolute; top: 0; right: 0; width: 3px; height: 3px; background: #fff1bd; box-shadow: 0 -3px #fff1bd, 0 3px #fff1bd, -3px 0 #fff1bd, 3px 0 #fff1bd; pointer-events: none; animation: heroes-spark 3s steps(1, end) infinite; animation-delay: var(--since-load, 0s); }
+  }
+}
+@media (prefers-reduced-motion: reduce) { .heroes-boot { display: none; } }
+@media (forced-colors: none) {
+  :root[data-theme=heroes], :root[data-theme=heroes] * { scrollbar-color: var(--scroll-thumb) var(--scroll-track); scrollbar-width: thin; }
+}
+@media (forced-colors: active) {
+  :root[data-theme=heroes] :is(input, textarea):focus-visible { outline: 2px solid Highlight; }
+  :root[data-theme=heroes] .console-contact { border: 1px solid ButtonText; }
+}
+@media (min-width: 901px) {
+  :root[data-theme=heroes] { --sidebar-w: 250px; }
+}
+@media (min-width: 641px) and (max-width: 900px) {
+  :root[data-theme=heroes] {
+    .theme-console { display: none; }
+    .sidebar { padding: 12px 3px; border-width: 4px; border-image-width: 17px; }
+    .sidebar .brand { padding-bottom: 12px; background-size: 46px 7px; }
+    .nav-item { width: 44px; padding: 0; }
+    .main-content { padding-inline: 20px; }
+  }
+}
+@media (max-width: 640px) {
+  :root[data-theme=heroes] {
+    .shell::before, .login-screen::before { background-position: 78% center; }
+    .shell::after { border-width: 2px; }
+    .topbar { background: var(--stone); border-bottom: 4px ridge #b99c5e; backdrop-filter: none; }
+    .topbar > .brand .brand-mark { height: 35px; }
+    .brand-variant.heroes .brand-name { font-size: 20px; }
+    .main-content { padding: 12px max(10px, env(safe-area-inset-right)) 24px max(10px, env(safe-area-inset-left)); }
+    .status-line { font-size: 10px; margin-bottom: 10px; }
+    .stat { padding: 5px 8px; }
+    .session-card { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 9px; padding: 11px 16px; border-image-width: 22px; }
+    .agent-mark { width: 32px; height: 38px; }
+    .group-heading { padding-inline: 2px; border-inline-width: 13px; border-image-width: 0 13px; gap: 6px; }
+    .group-title { gap: 5px; }
+    .group-title h2 { font-size: 14px; }
+    .session-card.subagent { grid-template-columns: 26px minmax(0, 1fr) auto; padding-inline: 16px; }
+    .session-card.subagent .agent-mark { width: 24px; height: 28px; }
+    .detail-panel { border-left: 0; }
+    .login-card { padding: 30px 22px; border-image-width: 48px; }
+    .usage-accounts { padding: 10px 9px; gap: 8px; border-image-width: 26px; }
+    .usage-account { gap: 6px; padding-inline: 0; }
+    .usage-windows { gap: 8px; }
+    .usage-logo { flex-basis: 22px; background-size: 22px 30px; }
+    .usage-window, .usage-window.usage-wide { flex-basis: 105px; min-width: 105px; gap: 0 3px; }
+    .usage-window::before, .usage-window::after { width: 16px; background-size: 16px 27px; }
+    .usage-meter { margin-inline: 8px; width: calc(100% - 16px); }
+    .usage-tag { flex-basis: 4ch; font-size: 10px; }
+    .request-box { padding: 16px; border-image-width: 24px; }
+  }
+}

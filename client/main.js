@@ -4,6 +4,7 @@ import './theme-effects.css';
 import './alien-visitor.css';
 import './theme-access.css';
 import './simpsons.css';
+import './heroes.css';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
@@ -152,7 +153,7 @@ function alertsMenu() {
   return menu;
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
-const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield' };
+const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {
