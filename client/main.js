@@ -1,6 +1,8 @@
 import './style.css';
 import './themes.css';
 import './theme-effects.css';
+import './alien-visitor.css';
+import './theme-access.css';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
@@ -186,7 +188,7 @@ function showLogin(message = '') {
   screen.append(themeMenu());
   const card = el('section', 'login-card');
   const symbol = el('div', 'login-symbol'); symbol.append(icon('lock'));
-  card.append(brand(), symbol);
+  const display = el('div', 'login-display'); display.append(brand(), symbol); card.append(display);
   const form = el('form', 'login-form');
   const input = el('input'); input.id = 'password'; input.type = 'password'; input.autocomplete = 'current-password'; input.required = true; input.placeholder = 'Enter your password'; input.maxLength = 1024; input.setAttribute('aria-label', 'PIN or password');
   const error = el('p', 'form-error', message); error.setAttribute('role', 'alert');
@@ -236,7 +238,7 @@ function showWorkspace() {
   const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu); main.append(toolbar);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
-  content.append(main); shell.append(content); app.append(shell);
+  const screen = el('div', 'main-screen'); screen.append(main); content.append(screen); shell.append(content); app.append(shell);
   const backdrop = el('div', 'panel-backdrop'); backdrop.id = 'backdrop'; backdrop.hidden = true; backdrop.onclick = closePanel;
   const panel = el('section', 'detail-panel'); panel.id = 'panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-label', 'Session details');
   app.append(backdrop, panel);
@@ -925,7 +927,8 @@ function renderAccessPanel() {
   panel.classList.remove('chat-panel');
   panel.dataset.sessionId = '';
   const head = el('div', 'panel-heading'); head.append(button('Back to sessions', 'quiet-button', closePanel, 'back'), el('span', 'eyebrow', 'WORKSPACE ACCESS')); panel.append(head);
-  panel.append(el('h2', 'panel-title', 'Choose a PIN or password'), el('p', 'muted access-copy', 'Use a 4–8 digit PIN or a password with at least 8 characters.'));
+  const access = el('div', 'access-console');
+  access.append(el('h2', 'panel-title', 'Choose a PIN or password'), el('p', 'muted access-copy', 'Use a 4–8 digit PIN or a password with at least 8 characters.')); panel.append(access);
   const form = el('form', 'access-form');
   const fields = {};
   for (const [name, title, autocomplete] of [['current', 'Current PIN or password', 'current-password'], ['next', 'New PIN or password', 'new-password'], ['repeat', 'Repeat new PIN or password', 'new-password']]) {
@@ -943,7 +946,7 @@ function renderAccessPanel() {
     try { await api('password', { current: fields.current.value, next: fields.next.value }); navigation.reset(); showLogin(); }
     catch (e) { error.textContent = e.message; save.disabled = false; }
   };
-  panel.append(form); fields.current.focus();
+  access.append(form); fields.current.focus();
   api('auth').then(data => { if (fields.current.isConnected) fields.current.inputMode = data.kind === 'pin' ? 'numeric' : 'text'; }).catch(() => {});
 }
 

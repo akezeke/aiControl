@@ -1,0 +1,62 @@
+/* Access uses the same physical console language as the workspace. The form and validation
+   stay native; lamps are decoration, and errors always remain text. */
+:root:is([data-theme=alien], [data-theme=command]) {
+  .login-card { position: relative; width: min(100%, 360px); gap: 18px; padding: 22px; }
+  .login-display { position: relative; display: flex; flex-direction: column; align-items: center; align-self: stretch; gap: 16px; padding: 24px 12px 30px; }
+  .login-display::after { content: ''; position: absolute; bottom: 11px; left: calc(50% - 22px); width: 44px; height: 4px; background: repeating-linear-gradient(90deg, var(--ok) 0 10px, transparent 10px 17px); box-shadow: 0 2px 4px #0008; }
+  .login-card:has(.form-error:not(:empty)) .login-display::after { background: repeating-linear-gradient(90deg, var(--danger) 0 10px, transparent 10px 17px); }
+  .login-form input { min-height: 50px; text-align: center; font-family: var(--mono); font-size: 18px; letter-spacing: .14em; }
+  .login-form input::placeholder { font-size: 13px; letter-spacing: .08em; }
+  .login-form .primary { min-height: 46px; }
+  :is(.login-form, .access-form) .form-error:not(:empty) { padding: 8px 10px; border-left: 3px solid var(--danger); background: var(--danger-soft); color: var(--danger); font: 12px/1.5 var(--font); letter-spacing: 0; }
+  .detail-panel:has(.access-form) { width: min(100%, 540px); padding: max(20px, env(safe-area-inset-top)) 20px 28px; }
+  .detail-panel:has(.access-form) .panel-heading { margin-bottom: 18px; }
+  .access-console { display: block; padding: 20px; }
+  .access-console .panel-title { margin-top: 0; font-size: 21px; }
+  .access-copy { font-size: 12px; line-height: 1.6; }
+  .access-form { max-width: none; gap: 16px; }
+  .access-form > label:not(.keyboard-choice) { font: 11px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .access-form input:not([type=checkbox]) { margin-top: 3px; letter-spacing: .08em; }
+  .access-form .keyboard-choice { font-size: 12px; }
+}
+
+:root[data-theme=alien] {
+  .login-card { border: 3px solid; border-color: #d7d6bd #626d57 #535f48 #b8baa1; outline: 1px solid #1a2416; border-radius: 12px; background: var(--screw) 6px 6px / 8px 8px no-repeat, var(--screw) right 6px top 6px / 8px 8px no-repeat, var(--screw) 6px calc(100% - 6px) / 8px 8px no-repeat, var(--screw) right 6px bottom 6px / 8px 8px no-repeat, repeating-linear-gradient(0deg, #ffffff0a 0 1px, transparent 1px 4px), var(--housing); box-shadow: inset 0 0 0 2px #272f2066, 0 7px 0 #293222, 0 9px 0 #0c1208, 0 30px 80px #000c; }
+  .login-display { border: 4px solid; border-color: #303c26 #677357 #a3b18b #48573a; border-radius: 24px / 18px; background: repeating-linear-gradient(0deg, #bdf7a809 0 1px, transparent 1px 3px), radial-gradient(ellipse, #102a0d, #030902 75%); box-shadow: inset 0 0 32px #000, inset 0 1px 3px #bdf7a826, 0 0 0 2px #080e06; }
+  .login-card .brand-variant.alien .brand-name { font-size: 19px; letter-spacing: .12em; }
+  .login-symbol { width: 106px; height: 66px; background: #c5eeb1; }
+  .login-form input { border: 2px inset #75845d; border-radius: 3px; background: #070f05; box-shadow: inset 0 3px 8px #000; }
+  .login-form input:focus { border-color: #b9e09c; box-shadow: inset 0 3px 8px #000, 0 0 0 2px #35472a; }
+  .login-form .primary, .access-form .primary { border: 1px solid #c6dbb1; border-bottom: 4px solid #3c512d; border-radius: 4px; background: linear-gradient(#e2f1ce, #abc98c 85%, #8eab71); color: #15250b; box-shadow: inset 0 1px #fff9, 0 2px 3px #0008; }
+  :is(.login-form, .access-form) .primary:active { border-bottom-width: 2px; translate: 0 2px; }
+  .detail-panel:has(.access-form) { background: var(--screw) 6px 6px / 8px 8px no-repeat, repeating-linear-gradient(0deg, #ffffff08 0 1px, transparent 1px 4px), var(--housing); border-left: 4px ridge #a9ad93; box-shadow: -5px 0 #202a1a, -20px 0 40px #000b; }
+  .detail-panel:has(.access-form) .panel-heading .eyebrow { color: #2d3923; text-shadow: 0 1px #e8e8c780; letter-spacing: .14em; }
+  .detail-panel:has(.access-form) .panel-heading .quiet-button { background: var(--key); border: 1px outset #717b60; border-bottom-width: 3px; border-radius: 3px; }
+  .access-console { border: 4px solid; border-color: #35432b #718361 #a8b890 #4b5c3d; border-radius: 20px / 16px; background: radial-gradient(ellipse at 50% 20%, #0e200a, #030902); box-shadow: inset 0 0 28px #000, 0 0 0 2px #17220f; }
+  .access-console .panel-title { padding-bottom: 12px; border-bottom: 1px solid #38592a; }
+  .access-form input:not([type=checkbox]) { border: 1px solid #426633; background: #020701; box-shadow: inset 0 2px 5px #000; }
+}
+
+:root[data-theme=command] {
+  .login-card { border: 4px outset #9aa78d; border-radius: 2px; background: var(--rivets), repeating-linear-gradient(0deg, #00000010 0 1px, transparent 1px 4px), var(--steel); box-shadow: inset 0 0 0 2px #1a291b, 0 7px 0 #1d2a20, 0 8px 0 #68765f, 0 30px 70px #000c; }
+  .login-card::before { content: ''; position: absolute; top: -4px; left: 14px; right: 14px; height: 5px; background: var(--hazard); border: 1px solid #252f1c; }
+  .login-display { border: 3px inset #7e8b6f; background: linear-gradient(90deg, transparent 49.7%, #a8ea5c12 50%, transparent 50.3%), repeating-linear-gradient(0deg, #a8ea5c09 0 1px, transparent 1px 20px), repeating-linear-gradient(90deg, #a8ea5c09 0 1px, transparent 1px 20px), radial-gradient(ellipse, #1d321e, #080f0a); box-shadow: inset 0 0 30px #000, 0 1px #cad3b533; }
+  .login-card .brand-name { font-size: 30px; letter-spacing: .16em; }
+  .login-symbol { width: 88px; height: 88px; filter: drop-shadow(0 3px 0 #000b) drop-shadow(0 0 12px #e2be3e33); }
+  .login-form input { border: 3px inset #879575; color: #d5efb9; box-shadow: inset 0 3px 7px #000; }
+  .login-form input:focus { border-color: #e2c569; box-shadow: inset 0 3px 7px #000, 0 0 0 1px #e2c56955; }
+  .detail-panel:has(.access-form) { background: var(--rivets), var(--steel); border-left: 5px ridge #a0ab90; }
+  .detail-panel:has(.access-form) .panel-heading .eyebrow { color: #eee4b7; font-family: var(--stencil); letter-spacing: .1em; text-shadow: 1px 1px #101b12; }
+  .access-console { border: 3px inset #8c987a; background: repeating-linear-gradient(-45deg, #c4a33b 0 6px, #172116 6px 12px) top / 100% 5px no-repeat, radial-gradient(ellipse at 50% 0, #25351e, #101c13); box-shadow: inset 0 0 0 1px #070e08, inset 0 0 30px #0007; }
+  .access-console .panel-title { padding-bottom: 12px; border-bottom: 2px ridge #78835e; }
+  .access-form input:not([type=checkbox]) { border: 2px inset #7e8a69; background: #080f09; box-shadow: inset 0 3px 6px #000; }
+}
+
+@media (max-width: 480px) {
+  :root:is([data-theme=alien], [data-theme=command]) {
+    .login-card { padding: 18px; }
+    .detail-panel:has(.access-form) { padding: max(14px, env(safe-area-inset-top)) 12px 24px; }
+    .access-console { padding: 16px 12px; }
+    .access-console .panel-title { font-size: 19px; }
+  }
+}

@@ -41,6 +41,18 @@ function setLine(line, texts, flash) {
   line.classList.remove('flash'); if (flash) { void line.offsetWidth; line.classList.add('flash'); }
 }
 
+// Inspecting a contact never changes selection or steals focus. The persistent footer makes
+// tiny radar targets identifiable before opening them, with the same feedback for keyboard users.
+function inspectContact(console, id) {
+  console.inspected = id;
+  const session = console.sessions.find(session => session.id === id);
+  for (const [key, button] of console.buttons) button.toggleAttribute('data-tracked', key === session?.id);
+  console.readout.dataset.status = console.disconnected ? 'offline' : session?.status || '';
+  console.trackLabel.textContent = console.disconnected ? 'LINK LOST' : session ? labels[session.status] || 'Unknown' : 'CONTACTS';
+  console.trackName.textContent = console.disconnected ? 'Reconnecting…' : session ? session.title || session.id : `${console.sessions.length} tracked`;
+  console.trackName.title = session?.title || '';
+}
+
 export function renderThemeConsole(container, sessions, { disconnected = false, onSelect } = {}) {
   if (!container) return;
   let console = consoles.get(container);
@@ -48,11 +60,12 @@ export function renderThemeConsole(container, sessions, { disconnected = false, 
     const lamps = element('div', 'console-lamps'); lamps.setAttribute('aria-hidden', 'true');
     for (let i = 0; i < 12; i++) lamps.append(element('i'));
     const heading = element('div', 'console-heading');
-    const count = element('span', 'console-count'); heading.append(element('span', '', 'Sessions'), count);
+    const count = element('span', 'console-count'); heading.append(element('span', 'console-label', 'Sessions'), count);
     const screen = element('div', 'console-screen');
     screen.setAttribute('role', 'group'); screen.setAttribute('aria-label', 'Session map');
     const vector = element('div', 'console-vector'); vector.setAttribute('aria-hidden', 'true');
-    vector.innerHTML = '<svg viewBox="0 0 200 140" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="currentColor" stroke-width="1"><path d="M73 18H127L154 45V95L127 122H73L46 95V45Z M80 34H120L138 52V88L120 106H80L62 88V52Z M86 48H114L124 58V82L114 92H86L76 82V58Z"/><path d="M100 8V34M100 106V132M32 70H62M138 70H168M12 22H36V46M164 94V118H188"/><path d="M72 70H128M100 44V96" stroke-dasharray="2 4"/></g></svg>';
+    // Decorative terrain only; every interactive marker still corresponds to a real session.
+    vector.innerHTML = '<svg viewBox="0 0 200 140" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg"><g fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-width=".7"><path d="M0 14L30 9 48 24 38 43 59 66 42 80 45 104 20 120 0 116Z M200 24L180 32 162 26 139 46 147 67 127 91 141 117 168 125 174 140H200Z"/><path d="M0 24L27 19 35 28 28 44 47 64 32 80 34 100 15 108 0 106 M200 38L181 44 165 37 151 49 158 70 139 92 150 107 178 114 186 140 M0 36L17 29 21 46 35 63 22 79 23 94 0 99 M200 53L177 56 169 72 153 94 181 102 199 126"/></g><g stroke="currentColor" stroke-opacity=".35" stroke-width="1"><path d="M60 0V24L80 43V72L105 96V140 M65 0V22L85 41V70L110 94V140"/><path d="M0 88H60L88 62H138L160 83H200" stroke-dasharray="3 3"/><path d="M14 8H6V16 M186 8H194V16 M6 124V132H14 M186 132H194V124"/></g><g stroke="currentColor" stroke-width="1"><path d="M83 52H116V87H83Z M78 47H88 M78 47V57 M111 47H121V57 M78 82V92H88 M111 92H121V82"/></g></svg>';
     const sweep = element('div', 'console-sweep'); sweep.setAttribute('aria-hidden', 'true');
     const contacts = element('div', 'console-contacts');
     const empty = element('span', 'console-empty');
@@ -60,11 +73,18 @@ export function renderThemeConsole(container, sessions, { disconnected = false, 
     const power = element('div', 'console-power'); power.setAttribute('aria-hidden', 'true');
     power.append(element('span', 'power-label', 'PWR'));
     for (const [provider, mark] of [['codex', '⌘'], ['claude', '✳']]) { const bar = element('span', 'power-bar'); bar.dataset.provider = provider; bar.append(element('i'), element('b', '', mark)); power.append(bar); }
-    screen.append(vector, sweep, contacts, empty); container.append(lamps, heading, power, screen);
-    console = { count, contacts, empty, buttons: new Map(), flashUntil: 0 }; consoles.set(container, console);
+    const readout = element('div', 'console-readout');
+    const signal = element('span', 'console-signal'); signal.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 9; i++) { const bar = element('i'); bar.style.setProperty('--signal-height', `${[3, 7, 12, 5, 17, 9, 14, 6, 3][i]}px`); bar.style.setProperty('--signal-delay', `${i * -140}ms`); signal.append(bar); }
+    const trackLabel = element('span', 'console-track-label'), trackName = element('span', 'console-track-name');
+    readout.append(signal, trackLabel, trackName);
+    screen.append(vector, sweep, contacts, empty); container.append(lamps, heading, power, screen, readout);
+    console = { count, contacts, empty, readout, trackLabel, trackName, sessions: [], buttons: new Map(), flashUntil: 0 }; consoles.set(container, console);
     renderPower();
   }
   container.dataset.disconnected = String(disconnected);
+  console.sessions = sessions; console.disconnected = disconnected;
+  container.toggleAttribute('data-active', !disconnected && sessions.some(session => session.status === 'working'));
   console.count.textContent = String(sessions.length).padStart(3, '0');
   console.empty.textContent = disconnected ? 'NO SIGNAL' : sessions.length ? '' : 'NO SESSIONS';
   console.empty.hidden = !disconnected && sessions.length > 0;
@@ -78,6 +98,9 @@ export function renderThemeConsole(container, sessions, { disconnected = false, 
     if (!button) {
       button = element('button', 'console-contact'); button.type = 'button';
       console.buttons.set(session.id, button); console.contacts.append(button);
+      button.onpointerenter = button.onfocus = () => inspectContact(console, session.id);
+      button.onpointerleave = () => { if (container.ownerDocument.activeElement !== button) inspectContact(console, null); };
+      button.onblur = () => inspectContact(console, null);
     }
     const label = `${session.title || session.id} · ${labels[session.status] || 'Unknown'}`;
     button.title = label; button.setAttribute('aria-label', label);
@@ -93,6 +116,7 @@ export function renderThemeConsole(container, sessions, { disconnected = false, 
     button.style.left = `${x}%`; button.style.top = `${y}%`;
     button.onclick = () => onSelect?.(session.id);
   }
+  inspectContact(console, console.inspected);
   const line = container.ownerDocument.getElementById('status-line');
   if (!line) return;
   if (flash) { console.flashUntil = Date.now() + 6000; setLine(line, flash, true); }

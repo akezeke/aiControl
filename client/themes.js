@@ -1,3 +1,5 @@
+import { setAlienAmbienceEnabled } from './alien-ambience.js';
+
 // `look` picks the CSS theme; Orbit's `scheme` is fixed, or follows the system when absent.
 export const themes = [
   { id: 'modern', name: 'Orbit auto', color: '#f4f5f8', dark: '#0b0d12' },
@@ -18,6 +20,7 @@ export function applyTheme(id) {
   const theme = themes.find(theme => theme.id === id) || themes.find(theme => theme.id === 'alien');
   const root = document.documentElement, previous = root.dataset.theme, look = theme.look || theme.id;
   root.dataset.theme = look; root.dataset.themeChoice = theme.id;
+  setAlienAmbienceEnabled(look === 'alien');
   const scheme = () => {
     const dark = theme.scheme ? theme.scheme === 'dark' : !!theme.dark && !!systemDark?.matches;
     root.dataset.scheme = dark ? 'dark' : 'light';

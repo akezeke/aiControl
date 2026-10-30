@@ -1,0 +1,31 @@
+/* Small enough to be a peripheral detail. This layer can never intercept a control. */
+.alien-visitor-stage, .alien-visitor { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme=alien] .alien-visitor-stage { display: block; position: fixed; inset: 0; z-index: 98; overflow: hidden; pointer-events: none; user-select: none; }
+  :root[data-theme=alien] .alien-visitor {
+    display: block; position: absolute; left: -96px; top: var(--visitor-y);
+    width: 72px; height: 45px; pointer-events: none; user-select: none;
+    opacity: .62; filter: drop-shadow(0 1px 2px #0009);
+    animation: visitor-cross 6s linear both;
+  }
+  .alien-visitor svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  :root[data-theme=alien] .alien-visitor[data-direction=left] { animation-name: visitor-cross-left; }
+  .alien-visitor[data-direction=left] svg { transform: scaleX(-1); }
+  :root[data-theme=alien] .alien-visitor[data-kind=peek] { left: -72px; --peek-shift: 40px; animation: visitor-peek 4.8s ease-in-out both; }
+  :root[data-theme=alien] .alien-visitor[data-kind=peek][data-direction=left] { left: auto; right: -72px; --peek-shift: -40px; }
+  .visitor-far { opacity: .55; }
+  .visitor-tail { transform-origin: 45px 33px; animation: visitor-tail .6s ease-in-out infinite alternate; }
+  .visitor-leg { transform-origin: 48px 35px; animation: visitor-stride .24s ease-in-out infinite alternate; }
+  .visitor-arm { transform-origin: 60px 25px; animation: visitor-stride .24s -.24s ease-in-out infinite alternate-reverse; }
+  .visitor-leg.back { animation-direction: alternate-reverse; }
+  .visitor-arm.back { animation-direction: alternate; }
+  .visitor-body { animation: visitor-body .24s ease-in-out infinite alternate; }
+  .alien-visitor[data-kind=peek] :is(.visitor-leg, .visitor-arm, .visitor-body) { animation: none; }
+  .alien-visitor[data-kind=peek] .visitor-tail { animation-duration: 1.2s; }
+}
+@keyframes visitor-cross { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(calc(100vw + 192px), 0, 0); } }
+@keyframes visitor-cross-left { from { transform: translate3d(calc(100vw + 192px), 0, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes visitor-peek { 0%, 100% { transform: translateX(0); } 22%, 65% { transform: translateX(var(--peek-shift)); } 45% { transform: translateX(calc(var(--peek-shift) * .85)); } }
+@keyframes visitor-tail { from { transform: rotate(-7deg); } to { transform: rotate(9deg); } }
+@keyframes visitor-stride { from { transform: rotate(-22deg); } to { transform: rotate(23deg); } }
+@keyframes visitor-body { from { transform: translateY(-.8px); } to { transform: translateY(.8px); } }

@@ -86,6 +86,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .login-screen { position: relative; min-height: 100svh; display: grid; place-items: center; padding: max(64px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); background: radial-gradient(70% 55% at 50% 38%, var(--accent-soft), transparent 70%), var(--bg); }
 .login-screen > .theme-menu { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; }
 .login-card { width: min(100%, 360px); display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 30px 26px 26px; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow-lg); }
+.login-display, .access-console { display: contents; }
 .login-card .brand { font-size: 20px; }
 .login-symbol { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--accent-soft); color: var(--accent); }
 .login-symbol .icon { width: 24px; height: 24px; }
@@ -132,6 +133,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .live-label.disconnected { color: var(--warn); }
 .live-label.disconnected::before { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 .main-content { max-width: 1180px; margin: 0 auto; padding: 20px 24px 32px; }
+.main-screen { display: contents; }
 .page-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .page-heading h1 { font: 700 22px/1.2 var(--display); letter-spacing: -.02em; }
 .machine-label { font: 12px var(--mono); color: var(--text-3); }
@@ -478,8 +480,8 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .history-older { align-self: center; margin: auto 0 4px; min-height: 34px; font-size: 12px; }
 .history-older + .recent-message { margin-top: 10px; }
 /* Screenshots in the history: fixed-height thumbnails, so a late load never shifts the scroll. */
-.history-shots { flex: none; display: flex; gap: 6px; max-width: 86ch; margin: 10px 32px 0 0; overflow-x: auto; }
-.history-shots.user { align-self: flex-end; margin: 10px 0 0 32px; }
+.history-shots { flex: none; align-self: stretch; display: flex; gap: 6px; min-width: 0; max-width: 100%; margin: 10px 0 0; padding-bottom: 4px; overflow-x: auto; }
+.history-shots.user { justify-content: safe flex-end; }
 .history-shot { position: relative; flex: none; height: 96px; min-width: 48px; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--sunken); cursor: zoom-in; }
 .history-shot img { display: block; height: 100%; max-width: 200px; object-fit: cover; }
 .history-shot:hover, .history-shot:focus-visible { border-color: var(--accent); }

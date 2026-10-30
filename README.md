@@ -20,7 +20,7 @@ A self-hosted dashboard for keeping track of your local Codex and Claude Code se
 
 ## More is more
 
-MU/TH/UR, EVA and Office go all in. The first two bring boot sequences, CRT scanlines, typed-out text, radar contacts that blip on status changes and close in the longer they wait, emergency lighting, hazard stripes, build bars fed by plan progress and a power bar fed by your usage limits that drops the radar to static when spent. Orbit is the calm option. Effects never block a control and switch off with reduced motion. Screenshots in a session's history get framed to match (a CRT bezel, a riveted recon frame, taped prints) without anything covering the picture itself.
+MU/TH/UR has a physical control panel and curved CRT glass: the frame stays put while sessions scroll inside, with faint interference and a tiny, occasional stowaway. EVA has a steel production sidebar, tactical radar, plan progress and usage-fed power meters. Both have boot sequences, status-sensitive radar contacts, themed scrollbars and screenshot frames. Motion switches off with reduced motion; the stowaway and interference also pause while typing. Orbit is the calm option.
 
 Office swaps the list for a toon-shaded 3D office: every session is a fruit at a desk, sleeping when idle and waving when it needs you, with speech bubbles, its latest lines on the monitor and usage on the whiteboard. Walk around in first person (WASD, Shift to run, Space to jump; click to capture the mouse, or use the arrow keys, to look), Tab for the overview, and click someone to fly over and open their session. ☰ swaps back to the list, as notes and post-its on a corkboard.
 
@@ -28,7 +28,8 @@ Office swaps the list for a toon-shaded 3D office: every session is a fruit at a
 
 | MU/TH/UR | EVA |
 | --- | --- |
-| ![MU/TH/UR: session overview with radar](docs/screenshots/mother-overview.webp) | ![EVA: session overview with globe radar and power bar](docs/screenshots/eva-overview.webp) |
+| ![MU/TH/UR: session overview with radar](docs/screenshots/mother-overview.webp) | ![EVA: session overview with tactical radar and power bar](docs/screenshots/eva-overview.webp) |
+| ![MU/TH/UR: physical access terminal](docs/screenshots/mother-unlock.webp) | ![EVA: steel access console](docs/screenshots/eva-unlock.webp) |
 | ![MU/TH/UR: subagent history with tool calls](docs/screenshots/mother-subagent.webp) | ![EVA: Claude permission request](docs/screenshots/eva-permission.webp) |
 
 | Office | Office overview |
