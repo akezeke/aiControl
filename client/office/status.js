@@ -1,7 +1,7 @@
 // What a session looks like in the office: its pose, face, speech bubble and monitor, and its fixed fruit identity. Pure.
 export const FRUITS = ['apple', 'pear', 'banana', 'orange', 'lemon', 'eggplant', 'strawberry'];
 const palettes = {
-  apple: ['#d62828', '#7cb518', '#f2c14e'], pear: ['#b5c934', '#e0b73f'], banana: ['#f7d23e'], orange: ['#f28c28'],
+  apple: ['#d62828', '#b81d24', '#f2c14e'], pear: ['#b5c934', '#e0b73f'], banana: ['#f7d23e'], orange: ['#f28c28'],
   lemon: ['#f9e04b'], eggplant: ['#5b2a86', '#7a3ea8'], strawberry: ['#e63946'],
 };
 const PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books'];

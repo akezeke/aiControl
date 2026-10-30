@@ -25,7 +25,8 @@ const profiles = {
   pear: [[0, 0], [0.19, 0.015], [0.3, 0.12], [0.31, 0.27], [0.24, 0.42], [0.16, 0.55], [0.12, 0.66], [0.06, 0.72], [0, 0.73]],
   orange: Array.from({ length: 13 }, (_, i) => { const a = -Math.PI / 2 + Math.PI * i / 12; return [Math.max(0, Math.cos(a) * 0.34), 0.34 + Math.sin(a) * 0.34]; }),
   lemon: [[0, -0.02], [0.05, 0.01], [0.17, 0.07], [0.26, 0.2], [0.28, 0.33], [0.25, 0.46], [0.15, 0.58], [0.05, 0.64], [0, 0.67]],
-  eggplant: [[0, 0], [0.2, 0.02], [0.31, 0.14], [0.31, 0.3], [0.24, 0.46], [0.17, 0.6], [0.13, 0.72], [0.06, 0.78], [0, 0.79]],
+  // Long and slim, heaviest low down, so it never reads as a purple pear.
+  eggplant: [[0, 0], [0.14, 0.015], [0.22, 0.08], [0.245, 0.2], [0.235, 0.34], [0.21, 0.5], [0.175, 0.66], [0.13, 0.8], [0.08, 0.9], [0, 0.93]],
   strawberry: [[0, 0], [0.06, 0.02], [0.16, 0.13], [0.26, 0.3], [0.31, 0.45], [0.28, 0.55], [0.14, 0.6], [0, 0.6]],
   // The boss only.
   pineapple: [[0, 0], [0.18, 0.02], [0.29, 0.14], [0.32, 0.32], [0.3, 0.5], [0.22, 0.64], [0.1, 0.69], [0, 0.7]],
@@ -264,9 +265,14 @@ function stemGeometry(fruit, h) {
       parts.push([baked(new THREE.ConeGeometry(0.04, tall, 6).translate(0, tall / 2, 0), V(Math.cos(a) * 0.04, h - 0.02, Math.sin(a) * 0.04), [Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45]), green]);
     }
   } else if (fruit === 'orange') parts.push([new THREE.SphereGeometry(0.03, 10, 6).scale(1, 0.4, 1).translate(0, h, 0), green]);
-  else if (fruit === 'eggplant' || fruit === 'strawberry') {
-    for (let i = 0; i < 6; i++) parts.push([baked(new THREE.SphereGeometry(0.075, 10, 6).scale(1, 0.15, 0.45).translate(0.06, 0, 0), V(0, h - (fruit === 'eggplant' ? 0.035 : 0.01)), [0, i / 6 * Math.PI * 2, -0.35]), green]);
-    parts.push([new THREE.CylinderGeometry(0.018, 0.025, 0.09, 8).translate(0, h + 0.03, 0), fruit === 'eggplant' ? green : '#3f7d22']);
+  else if (fruit === 'eggplant') {
+    // A big cap whose leaves droop down the shoulders.
+    for (let i = 0; i < 6; i++) parts.push([baked(new THREE.SphereGeometry(0.13, 10, 6).scale(1, 0.18, 0.5).translate(0.1, 0, 0), V(0, h - 0.05), [0, i / 6 * Math.PI * 2 + 0.5, -0.45]), green]);
+    parts.push([baked(new THREE.SphereGeometry(0.085, 12, 8).scale(1, 0.45, 1), V(0, h - 0.02)), green]);
+    parts.push([arc([V(0, h), V(0.01, h + 0.08), V(0.045, h + 0.13)], 0.022), green]);
+  } else if (fruit === 'strawberry') {
+    for (let i = 0; i < 6; i++) parts.push([baked(new THREE.SphereGeometry(0.075, 10, 6).scale(1, 0.15, 0.45).translate(0.06, 0, 0), V(0, h - 0.01), [0, i / 6 * Math.PI * 2, -0.35]), green]);
+    parts.push([new THREE.CylinderGeometry(0.018, 0.025, 0.09, 8).translate(0, h + 0.03, 0), '#3f7d22']);
   } else if (fruit === 'banana') {
     parts.push([new THREE.CylinderGeometry(0.02, 0.028, 0.07, 8).translate(0, 0.03, 0).translate(...bananaSpine.getPoint(1).toArray()), brown]);
     parts.push([new THREE.SphereGeometry(0.03, 8, 6).translate(...bananaSpine.getPoint(0).toArray()), brown]);
