@@ -516,7 +516,8 @@
 /* OFFICE: a corkboard with a lined notepad down the side. Cards are taped paper with a soft shadow; ink and
    a hard shadow go only on what you press (buttons, the active tab, chips), like the scene's bubbles. */
 :root[data-theme=office] {
-  --cork: radial-gradient(#b07f4c 1px, transparent 1.5px) 0 0 / 9px 9px, radial-gradient(#d3a774 1px, transparent 1.5px) 4px 6px / 13px 13px, var(--bg);
+  /* Pale cork: faint specks on three offset grids so no pattern shows, under a soft light from the top. */
+  --cork: radial-gradient(ellipse at 50% 0, #fff6 0, transparent 70%) fixed, radial-gradient(#a0784a40 0.8px, transparent 1.3px) 0 0 / 11px 11px, radial-gradient(#a0784a2a 1px, transparent 1.6px) 5px 7px / 17px 17px, radial-gradient(#fff8 0.8px, transparent 1.3px) 3px 2px / 23px 23px, var(--bg);
   --lined: repeating-linear-gradient(#fbf8ef 0 19px, #c9d8ef 19px 20px);
   --press: 0 2px 0 var(--ink);
   --stack-gap: 12px;
