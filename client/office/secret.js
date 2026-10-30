@@ -140,7 +140,8 @@ function buildRoom() {
   ceiling.position.set(w / 2, WALL_H, mid); group.add(ceiling);
   // Deep purple walls; the office's coral wall gets a purple lining this side, the doorway cut out of it.
   const purple = toonMaterial('#4a3380');
-  group.userData.walls = [[w + 2 * WALL_T, WALL_T, w / 2, -back - WALL_T / 2], [w + 2 * WALL_T, WALL_T, w / 2, front + WALL_T / 2], [WALL_T, long + 2 * WALL_T, w + WALL_T / 2, mid]].map(([sx, sz, x, z]) => {
+  // The end and far walls start where the office's wall stops (x = 0): any further in and their ends would share its face and flicker.
+  group.userData.walls = [[w + WALL_T, WALL_T, (w + WALL_T) / 2, -back - WALL_T / 2], [w + WALL_T, WALL_T, (w + WALL_T) / 2, front + WALL_T / 2], [WALL_T, long + 2 * WALL_T, w + WALL_T / 2, mid]].map(([sx, sz, x, z]) => {
     const wall = new THREE.Mesh(new THREE.BoxGeometry(sx, WALL_H, sz), purple); wall.position.set(x, WALL_H / 2, z); group.add(wall); return wall;
   });
   const outline = new THREE.Shape().moveTo(-front, 0).lineTo(-DOOR.w / 2, 0).lineTo(-DOOR.w / 2, DOOR.h).lineTo(DOOR.w / 2, DOOR.h).lineTo(DOOR.w / 2, 0).lineTo(back, 0).lineTo(back, WALL_H).lineTo(-front, WALL_H);
