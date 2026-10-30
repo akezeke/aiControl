@@ -477,6 +477,20 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* History: folded tool runs, failed calls and error notices. */
 .history-older { align-self: center; margin: auto 0 4px; min-height: 34px; font-size: 12px; }
 .history-older + .recent-message { margin-top: 10px; }
+/* Screenshots in the history: fixed-height thumbnails, so a late load never shifts the scroll. */
+.history-shots { flex: none; display: flex; gap: 6px; max-width: 86ch; margin: 10px 32px 0 0; overflow-x: auto; }
+.history-shots.user { align-self: flex-end; margin: 10px 0 0 32px; }
+.history-shot { flex: none; height: 96px; min-width: 48px; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--sunken); cursor: zoom-in; }
+.history-shot img { display: block; height: 100%; max-width: 200px; object-fit: cover; }
+.history-shot:hover, .history-shot:focus-visible { border-color: var(--accent); }
+.shot-viewer { width: auto; max-width: calc(100vw - 24px); max-height: calc(100svh - 24px); padding: 10px; border: 1px solid #ffffff26; border-radius: 14px; background: #0d0f14f2; color: #eef0f5; font: 13px/1.4 system-ui, sans-serif; }
+.shot-viewer::backdrop { background: #000c; }
+.shot-full { display: block; cursor: zoom-in; }
+.shot-full img { display: block; max-width: calc(100vw - 46px); max-height: calc(100svh - 92px); margin-inline: auto; object-fit: contain; border-radius: 6px; }
+.shot-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.shot-meta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; color: #b9bfcc; }
+.shot-button { min-width: 36px; height: 32px; padding: 0 10px; border: 1px solid #ffffff2e; border-radius: 8px; background: #ffffff14; color: inherit; font: inherit; font-size: 16px; cursor: pointer; }
+.shot-button:disabled { opacity: .35; cursor: default; }
 .tool-run { flex: none; margin: 10px 32px 0 10px; padding-left: 12px; border-left: 2px solid var(--line); }
 .tool-run > summary { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--text-3); cursor: pointer; }
 .tool-run > summary::before { content: '▸'; font-size: 10px; transition: transform .15s; }

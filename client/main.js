@@ -4,6 +4,7 @@ import './theme-effects.css';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
+import { placeShots } from './history-shots.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects } from './session-order.js';
 import { messagingUnavailableReason } from './messaging-status.js';
@@ -25,6 +26,23 @@ const statValues = new Map();
 const previousStatuses = new Map();
 // Older history fetched for an open panel: session id → { limit, messages, more }.
 const older = new Map();
+// Screenshots a Claude session and its subagents looked at (server/images.mjs), listed again while its panel is open and it changes.
+const shots = new Map(); // session id → { images, changed, fetched }
+const shotUrl = (id, imageId) => `/api/sessions/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`;
+function sessionShots(session) {
+  if (session.provider !== 'claude') return [];
+  let entry = shots.get(session.id);
+  if (!entry) shots.set(session.id, entry = { images: [], changed: null, fetched: 0 });
+  if (entry.changed !== session.updatedAt && Date.now() - entry.fetched > 10_000) {
+    entry.changed = session.updatedAt; entry.fetched = Date.now();
+    api(`sessions/${encodeURIComponent(session.id)}/images`).then(({ images = [] }) => {
+      if (JSON.stringify(images) === JSON.stringify(entry.images)) return;
+      entry.images = images;
+      if (state.selected === session.id && state.snapshot) renderPanel();
+    }, () => {});
+  }
+  return entry.images;
+}
 // Effort chosen here for Claude, shown until its transcript reports it.
 const pendingEffort = new Map();
 // When each session was last opened, so finished work you haven't looked at gets a dot.
@@ -160,7 +178,7 @@ async function api(path, body, options = {}) {
 function showLogin(message = '') {
   disposeHistory();
   disposeComposer(); liveRender.cancel();
-  messageDrafts.clear();
+  messageDrafts.clear(); shots.clear();
   clearTimeout(activityTimer); activityTimer = null;
   clearInterval(poll); office?.unmount(); office = null; state.csrf = ''; state.snapshot = null; state.selected = null; panelSignature = ''; document.body.classList.remove('panel-open');
   app.replaceChildren(); document.documentElement.removeAttribute('data-attention'); document.documentElement.removeAttribute('data-working');
@@ -772,9 +790,9 @@ function renderRecentMessages(session, savedPosition) {
     delete region.dataset.signature;
   }
   const flow = region.historyScroll;
-  const extra = older.get(session.id), messages = mergeHistory(extra?.messages, session.messages || []);
+  const extra = older.get(session.id), messages = mergeHistory(extra?.messages, session.messages || []), images = sessionShots(session);
   const moreAvailable = extra ? extra.more : (session.messages || []).filter(m => !m.tool).length >= 20;
-  const signature = JSON.stringify([messages, session.messagesState, moreAvailable, !!extra?.loading]);
+  const signature = JSON.stringify([messages, images, session.messagesState, moreAvailable, !!extra?.loading]);
   if (region.dataset.signature === signature) { if (savedPosition) flow.restore(savedPosition); return; }
   const saved = savedPosition || flow.capture();
   const content = region.querySelector('.history-content');
@@ -793,16 +811,49 @@ function renderRecentMessages(session, savedPosition) {
     const run = entries.at(-1);
     if (message.tool && Array.isArray(run) && run[0].tool) run.push(message); else entries.push(message.tool ? [message] : message);
   }
-  for (const entry of entries.flatMap(item => Array.isArray(item) && (item.length < 3 || session.parentId) ? item : [item])) {
-    const id = Array.isArray(entry) ? `run:${entry[0].id}` : entry.id, previous = existing.get(id), entrySignature = JSON.stringify(entry);
+  for (const entry of placeShots(entries.flatMap(item => Array.isArray(item) && (item.length < 3 || session.parentId) ? item : [item]), images)) {
+    const id = entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id, previous = existing.get(id), entrySignature = JSON.stringify(entry);
     if (previous?.dataset.signature === entrySignature) { children.push(previous); continue; }
-    const node = Array.isArray(entry) ? toolRun(entry, !!previous?.open) : messageNode(entry, session, previous);
+    const node = entry.shots ? shotStrip(session.id, entry) : Array.isArray(entry) ? toolRun(entry, !!previous?.open) : messageNode(entry, session, previous);
     node.dataset.messageId = id; node.dataset.signature = entrySignature; children.push(node);
   }
   // Keep unchanged messages mounted so expanded text and keyboard focus survive polling.
   for (const node of [...content.children]) if (!children.includes(node)) node.remove();
   children.forEach((node, index) => { if (content.children[index] !== node) content.insertBefore(node, content.children[index] || null); });
   flow.restore(saved);
+}
+function shotStrip(id, { shots: group, user }) {
+  const strip = el('div', `history-shots${user ? ' user' : ''}`);
+  for (const image of group) {
+    const thumb = el('button', 'history-shot'); thumb.type = 'button'; thumb.setAttribute('aria-label', 'Screenshot');
+    thumb.title = [image.agent, image.at && new Date(image.at).toLocaleString()].filter(Boolean).join(' · ');
+    const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = shotUrl(id, image.id);
+    thumb.append(img); thumb.onclick = () => showShot(id, image.id); strip.append(thumb);
+  }
+  return strip;
+}
+// One screenshot big; ‹ › or ←/→ step through the session's others, the picture opens full size, Esc or the backdrop closes.
+function showShot(id, imageId) {
+  const images = shots.get(id)?.images || []; let at = Math.max(0, images.findIndex(image => image.id === imageId));
+  if (!images.length) return;
+  const dialog = el('dialog', 'shot-viewer'); dialog.setAttribute('aria-label', 'Screenshot');
+  const link = el('a', 'shot-full'); link.target = '_blank'; link.rel = 'noopener'; link.title = 'Full size';
+  const picture = el('img'); picture.alt = ''; link.append(picture);
+  const bar = el('div', 'shot-bar'), meta = el('span', 'shot-meta');
+  const control = (text, label, action) => { const b = el('button', 'shot-button', text); b.type = 'button'; b.setAttribute('aria-label', label); b.title = label; b.onclick = action; return b; };
+  const step = by => { at = Math.max(0, Math.min(images.length - 1, at + by)); show(); };
+  const prev = control('‹', 'Previous (←)', () => step(-1)), next = control('›', 'Next (→)', () => step(1));
+  bar.append(prev, meta, next, control('✕', 'Close (Esc)', () => dialog.close()));
+  const show = () => {
+    const image = images[at]; picture.src = link.href = shotUrl(id, image.id);
+    meta.textContent = [`${at + 1}/${images.length}`, image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
+    prev.disabled = at === 0; next.disabled = at === images.length - 1;
+  };
+  dialog.append(link, bar);
+  dialog.addEventListener('keydown', event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); step(event.key === 'ArrowLeft' ? -1 : 1); } });
+  dialog.onclick = event => { if (event.target === dialog) dialog.close(); };
+  dialog.onclose = () => dialog.remove();
+  app.append(dialog); show(); dialog.showModal();
 }
 // Older pages end where the live window starts, so polling keeps the newest part current.
 function mergeHistory(earlier = [], recent) {
