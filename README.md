@@ -20,7 +20,7 @@ A self-hosted dashboard for keeping track of your local Codex and Claude Code se
 
 ## More is more
 
-MU/TH/UR, EVA and Office go all in. The first two bring boot sequences, CRT scanlines, typed-out text, radar contacts that blip on status changes and close in the longer they wait, emergency lighting, hazard stripes, build bars fed by plan progress and a power bar fed by your usage limits that drops the radar to static when spent. Orbit is the calm option. Effects never block a control and switch off with reduced motion.
+MU/TH/UR, EVA and Office go all in. The first two bring boot sequences, CRT scanlines, typed-out text, radar contacts that blip on status changes and close in the longer they wait, emergency lighting, hazard stripes, build bars fed by plan progress and a power bar fed by your usage limits that drops the radar to static when spent. Orbit is the calm option. Effects never block a control and switch off with reduced motion. Screenshots in a session's history get framed to match (a CRT bezel, a riveted recon frame, taped prints) without anything covering the picture itself.
 
 Office swaps the list for a toon-shaded 3D office: every session is a fruit at a desk, sleeping when idle and waving when it needs you, with speech bubbles, its latest lines on the monitor and usage on the whiteboard. Walk around in first person (WASD, Shift to run, Space to jump; click to capture the mouse, or use the arrow keys, to look), Tab for the overview, and click someone to fly over and open their session. ☰ swaps back to the list, as notes and post-its on a corkboard.
 
@@ -35,6 +35,10 @@ Office swaps the list for a toon-shaded 3D office: every session is a fruit at a
 | --- | --- |
 | ![Office: first person among the fruit sessions](docs/screenshots/office-first-person.webp) | ![Office: overview of the whole room](docs/screenshots/office-overview.webp) |
 | ![Office list: sessions as taped notes and post-its on a corkboard](docs/screenshots/office-list.webp) | ![Office: Claude permission request on a post-it](docs/screenshots/office-permission.webp) |
+
+| Screenshots in the history | Screenshot viewer |
+| --- | --- |
+| ![Office list: the screenshots a session looked at, as taped prints between its messages](docs/screenshots/office-history-shots.webp) | ![MU/TH/UR: a screenshot large on the CRT viewer, ‹ › and swipe to step](docs/screenshots/mother-shot-viewer.webp) |
 
 | Orbit dark | First visit |
 | --- | --- |
