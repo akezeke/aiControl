@@ -367,7 +367,7 @@ function renderData() {
     header.hidden = flat;
     if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
-      const title = el('div', 'group-title'); title.append(icon('folder'), el('h2', '', list[0].project), el('span', 'group-count', list.length));
+      const title = el('div', 'group-title'); title.append(el('h2', '', list[0].project), el('span', 'group-count', list.length));
       header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')), spawnButtons(cwd));
     }
     // Subagents sit directly under their parent; orphans keep their own place.

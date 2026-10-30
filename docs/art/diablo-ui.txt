@@ -2,6 +2,7 @@ Assets: client/public/diablo-frame.webp, client/public/diablo-ornament.webp, cli
 Generated using the built-in imagegen tool with transparent backgrounds.
 Frame normalized to 1024x1024 with nearest-neighbor scaling; both saved as WebP at quality 94. CSS slices the frame at 256px.
 Portrait is the central skull cropped from the ornament, reduced to 192px for compact controls.
+diablo-trim.webp is the central upper molding cropped from the normalized frame; diablo-trim-vertical.webp rotates that strip for vertical dividers.
 
 Final frame prompt:
 Use case: stylized-concept

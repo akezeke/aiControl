@@ -6,6 +6,7 @@ client/public/diablo-bg.webp — diablo-bg.txt
 client/public/diablo-frame.webp — diablo-ui.txt
 client/public/diablo-ornament.webp — diablo-ui.txt
 client/public/diablo-portrait.webp — diablo-ui.txt
+client/public/diablo-trim.webp, client/public/diablo-trim-vertical.webp — diablo-ui.txt
 client/public/diablo-gore.webp — diablo-blood.txt
 client/public/providers/{orbit-light,orbit-dark,alien,command,diablo,heroes,office,simpsons}-{codex,claude}.webp — provider-icons.txt
 client/public/heroes-theme.webp — heroes-theme.txt
