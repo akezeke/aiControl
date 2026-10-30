@@ -27,10 +27,17 @@ test('pods saved from an earlier page keep their cells, not lined up by name', (
   const spot = (l, id) => [l.desks.get(id).x, l.desks.get(id).z];
   // A live page: projects arrive one at a time, each taking the next free cell.
   let page; for (let i = 1; i <= 5; i++) page = layoutOffice(['zeta', 'beta', 'alpha', 'gamma', 'delta'].slice(0, i).map(p => s(p, p)), page);
-  const saved = { desks: new Map([...page.desks.values()].map(d => [d.sessionId, { podKey: d.podKey, slot: d.slot, vacantSince: -Infinity }])), pods: page.pods.map(({ key, col, row }) => ({ key, col, row })), grid: page.grid, room: { width: 0, depth: 0 } };
+  const saved = { saved: true, desks: new Map([...page.desks.values()].map(d => [d.sessionId, { podKey: d.podKey, slot: d.slot, vacantSince: -Infinity }])), pods: page.pods.map(({ key, col, row }) => ({ key, col, row })), room: { width: 0, depth: 0 } };
   const reloaded = layoutOffice(['alpha', 'beta', 'delta', 'gamma', 'zeta'].map(p => s(p, p)), saved);
   for (const p of ['alpha', 'beta', 'delta', 'gamma', 'zeta']) assert.deepEqual(spot(reloaded, p), spot(page, p));
   assert.notDeepEqual(spot(layoutOffice(['alpha', 'beta', 'delta', 'gamma', 'zeta'].map(p => s(p, p))), 'zeta'), spot(page, 'zeta')); // without them it would shuffle
+});
+test('a reload closes up the columns and rows pods have left, keeping their order', () => {
+  const saved = { saved: true, desks: new Map(), pods: [{ key: '/p/a', col: 0, row: 0 }, { key: '/p/gone', col: 1, row: 0 }, { key: '/p/c', col: 2, row: 0 }, { key: '/p/d', col: 2, row: 2 }], room: { width: 0, depth: 0 } };
+  const l = layoutOffice([s('a1', 'a'), s('c1', 'c'), s('d1', 'd')], saved), cell = key => { const pod = l.pods.find(p => p.key === key); return [pod.col, pod.row]; };
+  assert.deepEqual([cell('/p/a'), cell('/p/c'), cell('/p/d')], [[0, 0], [1, 0], [1, 1]]);
+  assert.equal(l.grid.cols, 2);
+  assert.ok(l.room.width < layoutOffice([s('a1', 'a'), s('c1', 'c'), s('d1', 'd')], { ...saved, saved: false, grid: { cols: 3, cellW: 0 } }).room.width);
 });
 test('missing project goes to Unknown', () => {
   const l = layoutOffice([{ id: 'a', status: 'idle' }]);

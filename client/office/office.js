@@ -46,19 +46,20 @@ export function mountOffice(container, hooks) {
   const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches, route });
   let layout;
   const fired = new Map(); // session id → when it was fired from the panel
-  // Seats outlive a reload: the first layout starts from the last one's desks, pods' cells and grid (anyone gone since is
-  // dropped at once, not left to walk out), or pods would line up by name and everyone sit in whatever order the snapshot
-  // lists them. A desk still walking out is kept, in case they're back (a server restart lists nobody for a moment).
+  // Seats outlive a reload: the first layout starts from the last one's desks and pods' cells (anyone gone since is dropped at
+  // once, not left to walk out; layout.js closes up what they leave empty), or pods would line up by name and everyone sit in
+  // whatever order the snapshot lists them. A desk still walking out is kept, in case they're back (a server restart lists
+  // nobody for a moment).
   const seatsKey = 'ai-control-office-seats';
   let seats = '';
   const savedSeats = () => {
     try {
-      const saved = JSON.parse(localStorage.getItem(seatsKey) || '{}'), { desks = [], pods = [], grid } = Array.isArray(saved) ? { desks: saved } : saved; // an array: desks only, as saved before
-      return { desks: new Map(desks.map(([id, podKey, slot]) => [id, { podKey, slot, vacantSince: -Infinity }])), pods: pods.map(([key, col, row]) => ({ key, col, row })), grid, room: { width: 0, depth: 0 } };
+      const saved = JSON.parse(localStorage.getItem(seatsKey) || '{}'), { desks = [], pods = [] } = Array.isArray(saved) ? { desks: saved } : saved; // an array: desks only, as saved before
+      return { saved: true, desks: new Map(desks.map(([id, podKey, slot]) => [id, { podKey, slot, vacantSince: -Infinity }])), pods: pods.map(([key, col, row]) => ({ key, col, row })), room: { width: 0, depth: 0 } };
     } catch { return undefined; }
   };
   const saveSeats = () => {
-    const now = JSON.stringify({ desks: [...layout.desks.values()].map(desk => [desk.sessionId, desk.podKey, desk.slot]), pods: layout.pods.map(pod => [pod.key, pod.col, pod.row]), grid: layout.grid });
+    const now = JSON.stringify({ desks: [...layout.desks.values()].map(desk => [desk.sessionId, desk.podKey, desk.slot]), pods: layout.pods.map(pod => [pod.key, pod.col, pod.row]) });
     if (now !== seats) { seats = now; try { localStorage.setItem(seatsKey, now); } catch { /* per tab only */ } }
   };
 
@@ -218,7 +219,9 @@ export function mountOffice(container, hooks) {
     if (!view.overview && !playing) player.update(dt);
     // What you hold drops at the secret room's door (things in hand only know the office).
     if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
-    view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); room.secret.update(dt, player.position, !!reducedMotion?.matches, view.amount); cast.update(dt, player.position); goose.update(dt); props.update(dt); const away = room.secret.inside(player.position); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); // the office's bubbles don't show through the secret room's walls boards.tick(); follow(); hover(dt);
+    // In the secret room the office's bubbles don't show through its walls.
+    const away = room.secret.inside(player.position);
+    view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); room.secret.update(dt, player.position, !!reducedMotion?.matches, view.amount); cast.update(dt, player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     tiltSigns();
   });
   const resize = () => {
