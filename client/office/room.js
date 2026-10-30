@@ -9,6 +9,7 @@ import { createLights, dims } from './lights.js';
 import { createSlacking } from './slack.js';
 import { createWindows } from './windows.js';
 import { createScreens, SCREEN_W, SCREEN_H } from './screens.js';
+import { createSecret, DOOR } from './secret.js';
 import { DESK_W, DESK_D } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
@@ -212,6 +213,13 @@ const badgeGeometry = () => { const g = new THREE.CylinderGeometry(0.12, 0.12, 0
 // The board's edges in one group and its two faces in another (a box's groups run +x, -x, +y, -y, +z, -z).
 const boardGeometry = () => { const g = rounded(1.6, 0.4, 0.05, 0.03), [, , , , front, back] = g.groups; g.clearGroups(); g.addGroup(0, front.start, 0); g.addGroup(front.start, front.count + back.count, 1); return g; };
 
+// A wall `w` long, centred and WALL_T thick like a box, with a doorway cut out of its foot at `door` along it.
+const notched = (w, door) => {
+  const [a, b, top, foot] = [door - DOOR.w / 2, door + DOOR.w / 2, DOOR.h - WALL_H / 2, -WALL_H / 2];
+  const shape = new THREE.Shape().moveTo(-w / 2, foot).lineTo(a, foot).lineTo(a, top).lineTo(b, top).lineTo(b, foot).lineTo(w / 2, foot).lineTo(w / 2, -foot).lineTo(-w / 2, -foot);
+  return new THREE.ExtrudeGeometry(shape, { depth: WALL_T, bevelEnabled: false }).translate(0, 0, -WALL_T / 2);
+};
+
 export function createRoom(scene, renderer) {
   const root = new THREE.Group(); scene.add(root);
   // Every screen, on shared textures (screens.js); `shots`: each session's newest screenshot, for its second monitor.
@@ -224,6 +232,8 @@ export function createRoom(scene, renderer) {
   const desks = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
   const deskShadows = floorShadow(1, 1, 0.3); deskShadows.geometry = new THREE.BufferGeometry(); root.add(deskShadows);
   const room = {
+    // The secret room behind the lounge's bookshelf; pressing its right book calls room.onSecret (office.js walks you over).
+    secret: createSecret({ onPress: () => room.onSecret?.() }),
     colliders: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
     deskAnchor(id) {
       const desk = desks.get(id); if (!desk) return null;
@@ -386,19 +396,24 @@ export function createRoom(scene, renderer) {
     // Walls, each with the inward normal used to fade the ones between the overview camera and the room.
     // What hangs on a wall is its child, so it hides with the wall. Side walls' local x runs toward -z: x = depth / 2 - z.
     room.fadeables.walls = []; room.wallColliders = [];
-    const wall = (w, x, z, rotation, normal, color = '#eef1f5') => {
-      const m = mesh(new THREE.BoxGeometry(w, WALL_H, WALL_T), toonMaterial(color, { transparent: true }), 0);
-      m.position.set(x, WALL_H / 2, z); m.rotation.y = rotation; shell.add(m);
-      const trim = mesh(new THREE.BoxGeometry(w, 0.14, WALL_T + 0.04), toonMaterial('#3a4352'), 0); trim.position.y = -WALL_H / 2 + 0.07; m.add(trim);
+    // `door`: where along it (its local x) a doorway is cut, DOOR.w wide and DOOR.h high; the trim and what blocks walking stop
+    // either side of it.
+    const wall = (w, x, z, rotation, normal, color = '#eef1f5', door) => {
+      const spans = door === undefined ? [[-w / 2, w / 2]] : [[-w / 2, door - DOOR.w / 2], [door + DOOR.w / 2, w / 2]];
+      const m = mesh(door === undefined ? new THREE.BoxGeometry(w, WALL_H, WALL_T) : notched(w, door), toonMaterial(color, { transparent: true }), 0);
+      m.position.set(x, WALL_H / 2, z); m.rotation.y = rotation; shell.add(m); m.updateMatrixWorld();
+      const trim = mesh(mergeGeometries(spans.map(([a, b]) => new THREE.BoxGeometry(b - a, 0.14, WALL_T + 0.04).translate((a + b) / 2, 0, 0))), toonMaterial('#3a4352'), 0); trim.position.y = -WALL_H / 2 + 0.07; m.add(trim);
       room.fadeables.walls.push({ mesh: m, normal });
-      room.wallColliders.push(new THREE.Box3().setFromObject(m));
+      for (const [a, b] of spans) room.wallColliders.push(new THREE.Box3(new THREE.Vector3(a, -WALL_H / 2, -WALL_T / 2), new THREE.Vector3(b, WALL_H / 2, WALL_T / 2)).applyMatrix4(m.matrixWorld));
       return m;
     };
     // Two accent walls: teal behind the windows, coral on the right.
     const back = wall(width + WALL_T * 2, width / 2, -WALL_T / 2, 0, new THREE.Vector3(0, 0, 1), '#3fa39b');
     const front = wall(width + WALL_T * 2, width / 2, depth + WALL_T / 2, 0, new THREE.Vector3(0, 0, -1));
     const left = wall(depth, -WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(1, 0, 0));
-    const right = wall(depth, width + WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(-1, 0, 0), '#ee8a6c');
+    // The right wall has the secret room's doorway in it, behind the lounge's tall bookshelf (secret.js).
+    const right = wall(depth, width + WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(-1, 0, 0), '#ee8a6c', DOOR.back - depth / 2);
+    room.wallColliders.push(...room.secret.build({ width, depth, shell }));
     // Hangs `item` on a wall at world height y; `along` is the wall's local x. Back and left walls face +z locally, front and right -z.
     const hang = (on, item, along, y, out = 0.02) => { const flip = on === front || on === right; item.position.set(along, y - WALL_H / 2, (WALL_T / 2 + out) * (flip ? -1 : 1)); if (flip) item.rotation.y = Math.PI; on.add(item); return item; };
 
@@ -470,7 +485,8 @@ export function createRoom(scene, renderer) {
     place(printer(), width - 0.36, 1.25, -Math.PI / 2); place(filingCabinet(), width - 0.32, 2.05, -Math.PI / 2); shadowUnder(width - 0.35, 1.65, 0.65, 1.4);
     place(notes('printer', [[0.16, 0.76, 0.1, NOTE.pink, 0.2235]]), width - 0.36, 1.25, -Math.PI / 2, false); // on its front
     bin('#2e86ab', width - 0.3, 2.62);
-    for (let z = 3.4, i = 2; z < depth - 3.4; z += 2.6, i++) hang(right, picture(i, 0.75, 0.95), along(z), 1.7); // from 2, so the lounge's picture 0 comes round late
+    // From 2, so the lounge's picture 0 comes round late; clear of where the secret shelf slides to.
+    for (let z = 3.4, i = 2; z < depth - DOOR.back - 2.95; z += 2.6, i++) hang(right, picture(i, 0.75, 0.95), along(z), 1.7);
 
     // Lounge: a rug, a sofa against the front wall, an armchair, a low table, a lamp and a plant.
     const lx = width - 2.1;

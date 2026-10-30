@@ -66,7 +66,7 @@ export function mountOffice(container, hooks) {
   const under = at => { const id = bubbles.at(at.clientX, at.clientY); return id ? { kind: 'character', id } : pick(at, renderer.domElement, camera, scene); };
   const player = new Player(renderer.domElement, {
     colliders: () => room.colliders,
-    room: () => layout?.room,
+    room: () => layout && room.secret.bounds(layout.room), // the secret room's beside the office
     // In first person, a mouse click that isn't on someone (or a board, a pod's sign or a ball) captures the mouse; captured, a
     // click on the floor walks there. With a ball in hand a click throws it that way. A press that closes the sign's menu does nothing else.
     onPick: (at, mouse) => {
@@ -91,6 +91,8 @@ export function mountOffice(container, hooks) {
   const pickUp = body => { if (body.pos.distanceTo(player.position) <= REACH) props.grab(body); else player.walkTo(body.pos.clone().setY(0), () => props.grab(body), 0.7, true); };
   // The coffee machine: fills the mug if you're by it, else you walk over first.
   room.onCoffee = () => { if (!props.fill()) player.walkTo(props.machineSpot, () => props.fill(), 0.3, true); };
+  // The secret shelf's right book: pressed from where you stand if you can reach it, else you walk over first.
+  room.onSecret = () => { const spot = room.secret.spot; if (player.position.clone().setY(0).distanceTo(spot) < 1.6) room.secret.toggle(); else player.walkTo(spot, () => room.secret.toggle(), 0.3, true); };
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
@@ -183,7 +185,9 @@ export function mountOffice(container, hooks) {
     const now = free(); if (now && !wasFree) player.resume(); wasFree = now;
     // The overview has the keys and drags while it's up: you stay where you were.
     if (!view.overview) player.update(dt);
-    view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); cast.update(dt, player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    // What you hold drops at the secret room's door (things in hand only know the office).
+    if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
+    view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); room.secret.update(dt, player.position, !!reducedMotion?.matches, view.amount); cast.update(dt, player.position); goose.update(dt); props.update(dt); const away = room.secret.inside(player.position); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); // the office's bubbles don't show through the secret room's walls boards.tick(); follow(); hover(dt);
     tiltSigns();
   });
   const resize = () => {
