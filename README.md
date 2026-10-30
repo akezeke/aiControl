@@ -30,9 +30,9 @@ Office swaps the list for a toon-shaded 3D office: every session is a fruit at a
 | --- | --- |
 | ![Sanctuary: carved skull frames, bloody selections and usage orbs](docs/screenshots/diablo-overview.webp) | ![Sanctuary on a phone: red and blue usage orbs](docs/screenshots/diablo-phone.webp) |
 
-| Heroes | Heroes: spellbook history |
+| Heroes | Heroes: illuminated chat |
 | --- | --- |
-| ![Heroes: pixel castle and session map](docs/screenshots/heroes-overview.webp) | ![Heroes: parchment history and permission request](docs/screenshots/heroes-permission.webp) |
+| ![Heroes: pixel castle and session map](docs/screenshots/heroes-overview.webp) | ![Heroes: illuminated messages, writing scroll and wax-seal Send button](docs/screenshots/heroes-chat.webp) |
 
 | MU/TH/UR | EVA |
 | --- | --- |

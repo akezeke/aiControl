@@ -7,6 +7,7 @@
   --gold: #b39758;
   --stone: linear-gradient(110deg, #14234420, #080f2366), url('/heroes-stone.svg');
   --ornate: url('/heroes-ornate-frame.webp');
+  --parchment: url('/heroes-parchment.webp');
   --bevel: inset 1px 1px #f8df9b, inset -1px -1px #584026, 0 0 0 1px #0b1020, 2px 3px 0 #0007;
   --scroll-track: #0d192e; --scroll-thumb: #a88b4c;
 
@@ -72,9 +73,9 @@
   :is(.theme-options, .filter-options) { background: var(--stone); border: 3px ridge #c0a267; border-radius: 0; }
   .theme-choice[aria-pressed=true], .tab.active { background: #314a6f; color: #ffe2a1; box-shadow: inset 0 0 0 1px #9e8554; }
   .theme-choice:hover, .tab:hover { background: #293f62; }
-  :is(.search, .login-form input, .access-form input:not([type=checkbox]), .message-form textarea, .custom-answer input, .deny-reason) { background: #0b1930; border: 2px solid; border-color: #0a1020 #7d7c69 #7d7c69 #0a1020; border-radius: 0; box-shadow: inset 1px 1px #0005; }
-  :is(.search:focus-within, .login-form input:focus, .access-form input:focus, .message-form textarea:focus, .custom-answer input:focus, .deny-reason:focus) { border-color: #dfbf76; box-shadow: inset 1px 1px #0005, 0 0 0 1px #0b162b; }
-  .search { background: #13223deF; }
+  :is(.search, .login-form input, .access-form input:not([type=checkbox]), .message-form textarea, .custom-answer input, .deny-reason) { padding: 12px 20px; background: #0b1930; border: 4px solid transparent; border-image: var(--ornate) 34% / 19px stretch; border-radius: 0; box-shadow: inset 0 0 0 3px #0b1427; }
+  :is(.search:focus-within, .login-form input:focus, .access-form input:focus, .message-form textarea:focus, .custom-answer input:focus, .deny-reason:focus) { outline: 2px solid var(--focus); outline-offset: 1px; box-shadow: none; }
+  .search { padding: 0 18px; background: #13223def; }
 
   /* Native progress retains the exact used value and accessible name. The glass reservoir
      and carved end caps are decoration; labels and reset times remain visible at every width. */
@@ -132,25 +133,58 @@
   .empty { padding: 30px 16px; }
   .integrations { margin-top: 18px; }
 
-  /* The session opens like a spellbook: blue bindings, parchment leaves, blue composer. */
-  .detail-panel { border-left: 7px ridge #b99c5e; background: var(--stone); box-shadow: -4px 0 #101321, -14px 0 32px #0008; }
-  .chat-header { background: var(--stone); border-bottom: 4px ridge #b99c5e; }
+  /* A bound correspondence book: illuminated folios on blue cloth. Keep the frame in
+     the scroll container's gutters, and leave native text selection and textarea resizing intact. */
+  .detail-panel { border-left: 0; background: var(--stone); box-shadow: -4px 0 #101321, -14px 0 32px #0008; }
+  .chat-header { padding-bottom: 12px; background: var(--stone); border: 4px solid transparent; border-image: var(--ornate) 34% / 25px stretch; }
   .panel-title { color: #ffe4a1; }
+  .recent-messages::before, .recent-messages::after { content: ''; position: absolute; top: 0; bottom: 0; z-index: 1; width: 12px; background: url('/heroes-binding.svg') left top / 12px 32px repeat-y; pointer-events: none; image-rendering: pixelated; }
+  .recent-messages::before { left: 0; }
+  .recent-messages::after { right: 0; scale: -1 1; }
   .history-viewport {
     color-scheme: light;
     --bg: #dfcda5; --panel: #f0e1bc; --panel-2: #dfcda5; --sunken: #dac79f;
     --text: #2d291e; --text-2: #4e4634; --text-3: #625840;
     --line: #bbaa7c; --line-2: #978253;
     --accent: #345378; --accent-soft: #cbd5d0; --ok: #345b27; --ok-soft: #d4dfb4; --danger: #9b322e; --danger-soft: #f0c5ab;
-    background: repeating-linear-gradient(0deg, #48331a05 0 1px, transparent 1px 3px), radial-gradient(ellipse at 50% 30%, #f1e4c3, #d3bc8f);
+    padding-inline: max(22px, env(safe-area-inset-left)) max(22px, env(safe-area-inset-right));
+    background: linear-gradient(#07102170, #07102170), url('/heroes-stone.svg');
     color: var(--text);
   }
-  .recent-message { border-radius: 0; border-color: #b7a477; box-shadow: 1px 2px #71542d26; }
-  .recent-message.user { border: 1px solid #98a797; border-radius: 0; background: #d5ddd0; box-shadow: 1px 2px #45594d26; }
-  .recent-message.tool { background: none; box-shadow: none; border-color: #a89770; }
-  .history-shot { border: 3px ridge #b79755; border-radius: 0; background: #24304a; box-shadow: 1px 2px #47332160; }
+  .history-content { padding-block: 12px 20px; }
+  .recent-message:not(.tool):not(.notice) { position: relative; padding: 14px 26px 16px; border: 5px solid transparent; border-image: var(--parchment) 24% fill / 30px stretch; border-radius: 0; background: none; box-shadow: none; }
+  .recent-message.user .message-meta strong { color: #345378; }
+  .recent-message.user .message-meta::before { content: ''; flex: none; width: 20px; height: 20px; background: url('/heroes-seal.svg') center / contain no-repeat; image-rendering: pixelated; }
+  .recent-message.user .message-meta { justify-content: start; gap: 6px; }
+  .recent-message.user .message-meta time { margin-left: auto; }
+  .message-text pre, .request-code, .request-details pre { padding: 10px 16px; border: 3px solid transparent; border-image: var(--ornate) 34% / 14px stretch; border-radius: 0; }
+  .message-text pre { background: #ddc79c; }
+  .message-text blockquote { padding-left: 20px; border: 0; background: url('/heroes-binding.svg') left top / 8px 22px repeat-y; }
+  .message-text hr { height: 18px; border: 0; background: url('/heroes-flourish.svg') center / 144px 22px no-repeat; }
+  .history-empty, .history-content > .recent-message.notice { --text-3: #c3c9ce; --danger: #ffaaa0; }
+  .recent-message.tool { padding-left: 18px; border: 0; background: url('/heroes-binding.svg') left top / 7px 19px repeat-y; box-shadow: none; }
+  .recent-message.tool .tool-call { color: #c9c9b8; }
+  .recent-message.tool .tool-call::before { color: #ecd38d; }
+  .recent-message.tool.failed .tool-call { color: #ffaaa0; }
+  .recent-message.tool.failed .tool-call::before { color: #ffaaa0; }
+  .tool-run { padding-left: 0; border: 0; }
+  .tool-run > summary { padding: 6px 16px; border: 3px solid transparent; border-image: var(--parchment) 24% fill / 18px stretch; --danger: #9b322e; color: #4e4634; }
+  .tool-run > summary .tool-call { color: #625840; }
+  .tool-run > .recent-message.tool { margin: 0 8px; padding-left: 15px; }
+  .history-shot { padding: 5px; border: 3px solid transparent; border-image: var(--ornate) 34% / 20px stretch; border-radius: 0; background: #101b32; box-shadow: none; }
   .history-latest.quiet-button { border-radius: 0; color: #ffe6a2; }
-  .chat-requests, .message-composer { border-top: 4px ridge #b99c5e; background: var(--stone); }
+  .chat-requests, .message-composer { padding-top: 15px; border: 0; background: url('/heroes-flourish.svg') center top / 160px 20px no-repeat, var(--stone); }
+  .message-form .composer-row textarea { min-height: 90px; padding: 16px 28px; color-scheme: light; color: #30291e; caret-color: #345378; background: none; border: 5px solid transparent; border-image: var(--parchment) 24% fill / 30px stretch; box-shadow: none; }
+  .message-form textarea::placeholder { color: #6c5d42; }
+  .composer-row { gap: 9px; align-items: center; }
+  .composer-row .primary { align-self: center; width: 72px; min-height: 72px; padding: 12px 8px; border: 0; background: url('/heroes-seal.svg') center / contain no-repeat; color: #fff0bf; box-shadow: none; text-shadow: 1px 1px #3b1922; font: 700 15px var(--display); }
+  .composer-row .primary:hover:not(:disabled) { background: url('/heroes-seal.svg') center / contain no-repeat; color: #fff8dc; filter: brightness(1.15); }
+  .composer-row .primary:disabled { padding-inline: 0; font-size: 12px; opacity: .65; }
+  .composer-row .primary:active:not(:disabled) { filter: brightness(.9); }
+  .queued-message { padding: 7px 16px; background: #12223d; border: 3px solid transparent; border-image: var(--ornate) 34% / 16px stretch; }
+  .answer-option { padding: 10px 16px; border: 3px solid transparent; border-image: var(--ornate) 34% / 16px stretch; background: #14243e; }
+  .answer-option:has(input:checked) { background: #354b68; border-color: transparent; box-shadow: none; }
+  .answer-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
   .request-box { padding: 18px 22px; border: 4px solid transparent; border-image: var(--ornate) 34% / 29px stretch; background: var(--stone); box-shadow: inset 0 0 0 3px #0e182b; }
   .request-title { color: #ffe2a1; }
   .shot-viewer { padding: 18px; border: 8px solid transparent; border-image: var(--ornate) 34% / 35px stretch; border-radius: 0; background: var(--stone); color: var(--text); }
@@ -234,5 +268,14 @@
     .usage-meter { margin-inline: 8px; width: calc(100% - 16px); }
     .usage-tag { flex-basis: 4ch; font-size: 10px; }
     .request-box { padding: 16px; border-image-width: 24px; }
+    .history-viewport { padding-inline: max(15px, env(safe-area-inset-left)) max(15px, env(safe-area-inset-right)); }
+    .recent-messages::before, .recent-messages::after { width: 8px; background-size: 8px 22px; }
+    .recent-message:not(.tool):not(.notice) { padding: 12px 18px 14px; border-image-width: 24px; margin-right: 6px; }
+    .recent-message.user:not(.notice) { margin-left: 6px; margin-right: 0; }
+    .tool-run { margin-inline: 0; }
+    .tool-run > summary { gap: 5px; padding-inline: 10px; }
+    .message-form .composer-row textarea { padding: 14px 20px; border-image-width: 24px; }
+    .composer-row { gap: 5px; }
+    .composer-row .primary { width: 60px; min-height: 60px; font-size: 14px; }
   }
 }
