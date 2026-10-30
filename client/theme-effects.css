@@ -181,7 +181,7 @@
   .session-card.needs-input { border-color: var(--line); box-shadow: inset 3px 0 var(--warn); background: linear-gradient(90deg, #2a1c06, transparent 70%); }
   .session-card.needs-input::after { --accent: var(--warn); }
   .session-card[data-status=working] { box-shadow: inset 2px 0 #83ca6b; }
-  .session-card[data-status=working] .session-body::after { left: 0; bottom: 0; width: 22%; height: 1px; background: linear-gradient(90deg, transparent, #bdf7a880, transparent); opacity: .7; }
+  .session-card[data-status=working] .session-body::after { left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, #bdf7a880, transparent) -30% 0 / 22% 100% no-repeat; opacity: .7; }
   .session-card[data-status=working][data-plan] .session-body::after { width: calc(var(--plan) * 100%); background: repeating-linear-gradient(90deg, #bdf7a8 0 4px, transparent 4px 6px); }
   .session-card.subagent::before { border-style: dashed; border-radius: 0; }
   .session-card.subagent:has(+ .subagent)::before { background-image: repeating-linear-gradient(90deg, var(--line-2) 0 3px, transparent 3px 5px); }
@@ -406,8 +406,9 @@
       repeating-linear-gradient(90deg, #a8ea5c80 0 6px, transparent 6px 8px) 0 0 / max(0px, var(--dots) - 8px) 100% no-repeat,
       repeating-linear-gradient(90deg, #a8ea5c40 0 6px, transparent 6px 8px) 0 0 / var(--dots) 100% no-repeat;
   }
-  /* Unknown duration is a travelling activity light, never a fabricated percentage. */
-  .session-card[data-status=working]:not([data-plan]) .session-body::after { width: 22%; right: auto; background: linear-gradient(90deg, transparent, var(--ok), transparent); }
+  /* Move the light's background inside a fixed track. Translating the element leaks outside
+     the card; clipping the card itself would also cut off its subagent connectors. */
+  .session-card[data-status=working]:not([data-plan]) .session-body::after { background: linear-gradient(90deg, transparent, var(--ok), transparent) -30% 0 / 22% 100% no-repeat; filter: none; }
   --connector: #8f9672;
   .session-card.subagent { grid-template-columns: 28px minmax(0, 1fr) auto; border-width: 1px; border-style: outset; }
   .session-card.subagent::before { border-width: 0 0 3px 3px; border-radius: 0; box-shadow: 1px 1px #0008; }
@@ -736,7 +737,7 @@
 @keyframes boot-out { to { opacity: 0; transform: scale(1, .004); } }
 @keyframes build { to { --build: 360deg; } }
 @keyframes key-sheen { from { background-position: 100% 0; opacity: 1; } to { background-position: 0 0; opacity: 1; } }
-@keyframes activity-trace { 0% { transform: translateX(-100%); opacity: 0; } 15%, 85% { opacity: .8; } 100% { transform: translateX(350%); opacity: 0; } }
+@keyframes activity-trace { 0% { background-position: -30% 0; opacity: 0; } 15%, 85% { opacity: .8; } 100% { background-position: 130% 0; opacity: 0; } }
 @keyframes comm-signal { 0%, 100% { transform: scaleY(.3); } 45% { transform: scaleY(1); } 70% { transform: scaleY(.55); } }
 @keyframes ready-flash { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 @keyframes eva-flash { 0%, 24%, 50%, 74% { opacity: 1; } 25%, 49%, 75%, 99% { opacity: .35; } }
