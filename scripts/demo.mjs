@@ -100,9 +100,10 @@ const snapshot = () => {
     providers: [{ name: 'Codex', connected: true, detail: 'Demo data' }, { name: 'Claude Code', connected: true, detail: 'Demo data' }],
   };
 };
+// Screenshots the sessions "looked at": the weather app and the garden's tiles (scripts/demo-shots), two from subagents.
 const shots = {
-  'claude:7f3c2a10-5b9e-4d21-a8c4-0e6f1b2d3c4a': [['orbit-light-overview', 40], ['orbit-dark-approval', 31], ['orbit-phone-table', 22, 'Check the phone layout'], ['eva-overview', 9], ['eva-permission', 3, 'Verify the approval card']],
-  'claude:5e7a9c1b-3d5f-4a6b-8c0d-2e4f6a8b0c1d': [['office-overview', 12], ['office-first-person', 2]],
+  'claude:7f3c2a10-5b9e-4d21-a8c4-0e6f1b2d3c4a': [['weather-before', 12, 'Map the sensor pipeline'], ['weather-settings', 10, 'Draft alert rules'], ['weather-phone', 6], ['weather-alert', 2.5], ['weather-push', 1]],
+  'claude:5e7a9c1b-3d5f-4a6b-8c0d-2e4f6a8b0c1d': [['garden-seasons', 15], ['garden-winter', 2]],
 };
 const messages = {
   send: async (id, body) => { sessions.find(s => s.id === id)?.messages.push(msg('user', body.text, 0)); return { status: 'sent', clientMessageId: body.clientMessageId }; },
@@ -111,12 +112,11 @@ const messages = {
   fire: async id => { const at = sessions.findIndex(s => s.id === id); if (at >= 0) sessions.splice(at, 1); return { ok: true }; },
   effort: async (id, body) => { const s = sessions.find(s => s.id === id); if (s) s.effort = body.effort; return { ok: true }; },
   history: async id => ({ messages: [msg('user', 'An older request from earlier today.', 400), msg('assistant', 'Older reply.', 399), ...(sessions.find(s => s.id === id)?.messages || [])], more: false }),
-  // Screenshots the sessions "looked at": the repo's own, a couple from subagents. The other sessions have none.
   images: async id => ({ images: (shots[id] || []).map(([, minutes, agent], n) => ({ id: `${agent ? 'a1b2c3.' : ''}0000000${n}-0000-4000-8000-000000000000:0`, type: 'image/webp', at: ago(minutes), tool: true, ...(agent && { agent }) })) }),
   image: async (id, imageId) => {
     const shot = (shots[id] || [])[Number(/0000000(\d)/.exec(imageId)?.[1])];
     if (!shot) throw fail('Image not found.', 404);
-    return { type: 'image/webp', data: await readFile(join(root, 'docs/screenshots', `${shot[0]}.webp`)) };
+    return { type: 'image/webp', data: await readFile(join(root, 'scripts/demo-shots', `${shot[0]}.webp`)) };
   },
 };
 
