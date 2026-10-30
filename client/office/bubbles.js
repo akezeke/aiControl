@@ -158,9 +158,10 @@ export function createMenu(container, onChoose) {
   return result;
 }
 
-export function createOverlays(container, { onNext, onList, onOverview, onNew }) {
+export function createOverlays(container, { onNext, onList, onOverview, onNew, onLeave }) {
   const bar = document.createElement('div'); bar.className = 'office-overlay'; container.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); if (onclick) b.onclick = onclick; bar.append(b); return b; };
+  const leave = button('office-leave', '✕', 'Leave the game (Esc)', onLeave); leave.hidden = true;
   const waiting = button('office-waiting', '', 'Walk to the next one waiting (n)', onNext); waiting.hidden = true;
   const usage = button('office-usage', '⚡', 'Usage is near its limit; see the whiteboard'); usage.hidden = true;
   button('office-new', '+', 'New agent in a folder', event => onNew(event.currentTarget));
@@ -173,6 +174,7 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew })
     setWaiting(n) { waiting.hidden = !n; waiting.textContent = `⚠ ${n}`; },
     setUsageLow(on) { usage.hidden = !on; },
     setOverview(on) { eye.setAttribute('aria-pressed', String(on)); },
+    setPlaying(on) { leave.hidden = !on; },
     showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
     // The hint goes once you've used the overview.

@@ -1,5 +1,5 @@
-// The secret room. A tall bookshelf against the right wall, by the lounge, stands in front of a doorway: press the right book
-// (the red one with gold bands, leaning a little proud, the only one that lights up under the pointer) and the shelf slides
+// The secret room. A tall bookshelf against the right wall, a little past the lounge, stands in front of a doorway: press the
+// right book (the red one with gold bands, leaning a little proud; it doesn't light up under the pointer) and the shelf slides
 // aside. Behind it is a games room: confetti carpet, a neon sign, string lights, a disco ball whose spots sweep the walls and
 // floor, a lava lamp and beanbags, under two coloured lamps of its own that don't reach the office. It isn't drawn at all
 // until the shelf moves, nor in the overview, and the shelf slides shut by itself once you've left and walked off.
@@ -9,7 +9,7 @@ import { WALL_H, WALL_T, mesh, once, canvasTexture, glowTexture, paint, painted,
 import { toonMaterial } from './toon.js';
 
 // The doorway in the office's right wall: wide and high, its middle this far from the front wall (room.js cuts it).
-export const DOOR = { w: 1.3, h: 2.2, back: 3.1 };
+export const DOOR = { w: 1.3, h: 2.2, back: 3.8 };
 // The games room, from the doorway's middle on its far side: how far it reaches in (x), behind it (-z) and in front (+z).
 export const SECRET = { w: 6, back: 4.1, front: 3.1 };
 const SHELF = { w: 1.5, h: 2.3, d: 0.38 }, SLIDE = 1.6, MOVE = 1.4; // metres; seconds to slide open or shut
@@ -70,7 +70,7 @@ export function createSecret({ onPress }) {
   shelf.add(piece('secretShelf', shelfParts));
   // The right book tips out from its bottom front edge.
   const key = mesh(once('secretKey', () => paint([[B(KEY.w, KEY.h, SHELF.d - 0.12, 0, KEY.h / 2, -(SHELF.d - 0.12) / 2), '#8c1c13'], ...[0.06, 0.26].map(y => [B(KEY.w + 0.004, 0.018, 0.006, 0, y, 0.002), '#e8c15a'])])), painted(), 0.006);
-  key.position.set(KEY.x, keyRow(), 0.02 + (SHELF.d - 0.12) / 2 + 0.04); key.rotation.x = LEAN; key.userData.toggle = () => onPress();
+  key.position.set(KEY.x, keyRow(), 0.02 + (SHELF.d - 0.12) / 2 + 0.04); key.rotation.x = LEAN; key.userData = { toggle: () => onPress(), quiet: true }; // quiet: no outline or pointer on hover (office.js)
   shelf.add(key);
 
   const secret = {

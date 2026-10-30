@@ -1,6 +1,7 @@
 // Darts in the secret room: a board on the back wall, a chalkboard beside it keeping score and a strip of tape for the oche.
-// Stand behind the tape and you hold a dart (and the view narrows a little); click, tap or E throws it where you aim. The
-// hand sways, so a ring on the board shows where it would land right now: let go when it's on what you want.
+// Click the board (or E on it) to step up to the tape: the view is the oche's, a dart in hand, and the mouse aims; click, tap
+// or E throws. The hand sways, so a ring on the board shows where it would land right now: let go when it's on what you
+// want. Esc, ✕ or a walking key steps back (office.js runs that).
 // The game is 301 with any finish: from 301 down to exactly 0, three darts a turn; going under 0 is a bust and the turn
 // counts for nothing. Your best is the fewest darts to check out, kept per browser.
 // With reduced motion the hand is steady and a dart lands at once.
@@ -37,9 +38,9 @@ export function play(game, hit) {
 
 // In the secret room's frame. The board is a regulation one made SIZE times bigger, so it reads from the oche.
 const BOARD = { x: 2.3, y: 1.73 }, SIZE = 1.3, FACE = -SECRET.back + 0.06, OCHE = FACE + 2.37;
-const ZONE = { x: 1.3, z: 1.8 }, SWAY = 0.03, SPEED = 12, PULL = 1.6, BEST = 'ai-control-darts-best';
+const SWAY = 0.03, SPEED = 12, PULL = 1.6, BEST = 'ai-control-darts-best';
 const FLIGHTS = ['#ff4fd8', '#38f2ff', '#ffe14f'];
-const CHALK = "'Comic Neue', 'Comic Sans MS', cursive";
+export const CHALK = "'Comic Neue', 'Comic Sans MS', cursive";
 
 const B = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 // A dart along +z with its tip at the origin: point, barrel, shaft and two crossed flights.
@@ -72,7 +73,7 @@ function drawBoard(g, size) {
   for (let i = 0; i < 20; i++) { const a = (i * 18 - 9 - 90) * Math.PI / 180; g.beginPath(); g.moveTo(c + Math.cos(a) * RINGS.outer * k, c + Math.sin(a) * RINGS.outer * k); g.lineTo(c + Math.cos(a) * RINGS.doubleOut * k, c + Math.sin(a) * RINGS.doubleOut * k); g.stroke(); }
 }
 // The chalkboard: what's left big, this turn's darts, a word on how it went, darts thrown and the best.
-function drawScore(g, w, h, game, best) {
+function drawScore(g, w, h, game, best, active) {
   g.fillStyle = '#24302b'; g.fillRect(0, 0, w, h); g.fillStyle = '#f2f2ea'; g.textBaseline = 'alphabetic';
   g.font = `bold 40px ${CHALK}`; g.textAlign = 'left'; g.fillText('301', 26, 52);
   g.textAlign = 'right'; g.font = `bold 30px ${CHALK}`; g.fillText(best ? `best ${best} darts` : 'any finish', w - 24, 50);
@@ -82,16 +83,16 @@ function drawScore(g, w, h, game, best) {
   darts.forEach((label, i) => { g.fillStyle = game.turn[i] ? FLIGHTS[i] : '#8c968f'; g.fillText(label, w * (0.2 + i * 0.2), 275); });
   g.fillStyle = '#f2f2ea'; g.textAlign = 'right'; g.fillText(game.bust ? '' : `= ${game.turn.reduce((sum, hit) => sum + hit.points, 0)}`, w - 24, 275);
   g.textAlign = 'center'; g.font = `bold 40px ${CHALK}`;
-  const word = game.won ? [`Checkout! ${game.darts} darts`, '#ffe14f'] : game.bust ? ['Bust!', '#ff6b6b'] : game.darts ? [`${game.darts} darts thrown`, '#b8c2bb'] : ['Throw from the tape', '#b8c2bb'];
+  const word = game.won ? [`Checkout! ${game.darts} darts`, '#ffe14f'] : game.bust ? ['Bust!', '#ff6b6b'] : game.darts ? [`${game.darts} darts thrown`, '#b8c2bb'] : [active ? 'Aim and click' : 'Click the board to play', '#b8c2bb'];
   g.fillStyle = word[1]; g.fillText(word[0], w / 2, 345);
 }
-// What a dart just scored, floating up off the board.
-function drawCall(g, w, h, text, color) { g.clearRect(0, 0, w, h); if (!text) return; g.font = `bold 84px ${CHALK}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 12; g.strokeStyle = '#1b1a1f'; g.strokeText(text, w / 2, h / 2); g.fillStyle = color; g.fillText(text, w / 2, h / 2); }
+// What a dart just scored, floating up off the board (golf.js calls its holes with it too).
+export function drawCall(g, w, h, text, color) { g.clearRect(0, 0, w, h); if (!text) return; g.font = `bold 84px ${CHALK}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 12; g.strokeStyle = '#1b1a1f'; g.strokeText(text, w / 2, h / 2); g.fillStyle = color; g.fillText(text, w / 2, h / 2); }
 
 // `hands`: the camera's hands (camera.js), where the next dart is held; `aim()`: where you're pointing, as a direction;
-// `busy()`: the overview or a walk to someone; `zoom(on)` narrows the view at the oche.
-export function createDarts({ hands, camera, aim, busy, zoom }) {
-  let game = newGame(), best = null, room = null, zoned = false, flight = null, pullAt = 0, time = 0, still = false, shown = false;
+// `onPlay(darts)`: the board was clicked.
+export function createDarts({ hands, camera, aim, onPlay }) {
+  let game = newGame(), best = null, room = null, active = false, flight = null, pullAt = 0, time = 0, still = false;
   try { best = Number(localStorage.getItem(BEST)) || null; } catch {}
   const held = dart(0); held.position.set(-0.11, -0.11, -0.4); held.rotation.set(0.12, 0.08, 0); held.visible = false; hands.add(held);
   let board, stuck, sight, chalk, call;
@@ -104,12 +105,21 @@ export function createDarts({ hands, camera, aim, busy, zoom }) {
     return p.x > 0.1 && p.x < SECRET.w - 0.1 && p.y > 0.1 && p.y < 2.9 ? p : null;
   };
   const darts = {
-    // Holding a dart: at the oche, nothing in the air, the last turn's darts pulled out.
-    get ready() { return zoned && !flight && !(game.over && time < pullAt) && !busy(); },
+    // Holding a dart: playing, nothing in the air, the last turn's darts pulled out.
+    get ready() { return active && !flight && !(game.over && time < pullAt); },
+    // Playing: office.js steps you up to the oche and back.
+    enter() { active = true; chalk.redraw(); },
+    leave() { active = false; chalk.redraw(); },
+    // Where you stand to play (on the floor, in world space) and which way you face; the view while playing.
+    stand() { const p = room.localToWorld(new THREE.Vector3(BOARD.x, 0, OCHE + 0.35)); return { x: p.x, z: p.z, yaw: Math.PI }; },
+    pose() { return { from: room.localToWorld(new THREE.Vector3(BOARD.x, 1.6, OCHE + 0.25)), look: room.localToWorld(new THREE.Vector3(BOARD.x, BOARD.y, FACE)), fov: 38, hands: true }; },
+    click(direction) { return darts.throw(direction); },
     // The secret room's group: board, chalkboard and tape go in it (secret.js calls this when it builds the room).
     build(group) {
       room = group;
-      const backing = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 40).rotateX(Math.PI / 2), toonMaterial('#2b2730'));
+      // The board and its chalkboard: click either to play (outlined under the pointer).
+      const set = new THREE.Group(); set.userData.toggle = () => onPlay(darts); group.add(set); group = set;
+      const backing = mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 40).rotateX(Math.PI / 2), toonMaterial('#2b2730'), 0.006);
       backing.position.set(BOARD.x, BOARD.y, -SECRET.back + 0.015); group.add(backing);
       const glow = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
       glow.position.set(BOARD.x, BOARD.y, -SECRET.back + 0.004); group.add(glow);
@@ -118,16 +128,16 @@ export function createDarts({ hands, camera, aim, busy, zoom }) {
       // The board's body, behind its face (stopping short of it, or the two would fight over the same depth).
       const body = new THREE.Mesh(new THREE.CylinderGeometry(RINGS.board * SIZE + 0.005, RINGS.board * SIZE + 0.005, 0.026, 48).rotateX(Math.PI / 2), toonMaterial('#1b1a1f'));
       body.position.set(BOARD.x, BOARD.y, FACE - 0.016); group.add(body);
-      const frame = new THREE.Mesh(B(0.86, 0.66, 0.03, 0, 0, 0), toonMaterial('#7a4e2d')); frame.position.set(BOARD.x + 1.1, 1.62, -SECRET.back + 0.015); group.add(frame);
-      chalk = canvasTexture(512, 384, (g, w, h) => drawScore(g, w, h, game, best));
+      const frame = mesh(B(0.86, 0.66, 0.03, 0, 0, 0), toonMaterial('#7a4e2d'), 0.006); frame.position.set(BOARD.x + 1.1, 1.62, -SECRET.back + 0.015); group.add(frame);
+      chalk = canvasTexture(512, 384, (g, w, h) => drawScore(g, w, h, game, best, active));
       const slate = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.6), new THREE.MeshBasicMaterial({ map: chalk })); slate.position.set(BOARD.x + 1.1, 1.62, -SECRET.back + 0.032); group.add(slate);
       document.fonts?.load(`bold 40px 'Comic Neue'`).then(() => chalk.redraw()).catch(() => {});
-      const tape = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.05).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffd23f' })); tape.position.set(BOARD.x, 0.014, OCHE); group.add(tape);
-      stuck = FLIGHTS.map((_, i) => { const m = dart(i); m.visible = false; group.add(m); return m; });
+      const tape = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.05).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffd23f' })); tape.position.set(BOARD.x, 0.014, OCHE); room.add(tape);
+      stuck = FLIGHTS.map((_, i) => { const m = dart(i); m.visible = false; room.add(m); return m; });
       // Where it would land: a white ring with a dark edge, so it shows on cream and black alike.
-      sight = new THREE.Mesh(new THREE.RingGeometry(0.011, 0.017, 24), new THREE.MeshBasicMaterial({ color: '#ffffff', depthTest: false })); sight.renderOrder = 2; sight.visible = false; group.add(sight);
+      sight = new THREE.Mesh(new THREE.RingGeometry(0.011, 0.017, 24), new THREE.MeshBasicMaterial({ color: '#ffffff', depthTest: false })); sight.renderOrder = 2; sight.visible = false; room.add(sight);
       const edge = new THREE.Mesh(new THREE.RingGeometry(0.017, 0.021, 24), new THREE.MeshBasicMaterial({ color: '#1b1a1f', depthTest: false })); edge.renderOrder = 2; sight.add(edge);
-      call = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTexture(256, 128, drawCall), transparent: true, depthTest: false })); call.scale.set(0.36, 0.18, 1); call.renderOrder = 3; call.visible = false; group.add(call);
+      call = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTexture(256, 128, drawCall), transparent: true, depthTest: false })); call.scale.set(0.36, 0.18, 1); call.renderOrder = 3; call.visible = false; room.add(call);
     },
     // Throws the dart in hand along `direction` (where you aim if not given). False if it wouldn't reach the back wall.
     throw(direction = aim()) {
@@ -143,12 +153,9 @@ export function createDarts({ hands, camera, aim, busy, zoom }) {
       m.visible = true; if (still) land();
       return true;
     },
-    update(dt, at, reduced, visible) {
-      time += dt; still = reduced; shown = visible;
+    update(dt, at, reduced) {
+      time += dt; still = reduced;
       if (!room) return;
-      const p = room.worldToLocal(local.copy(at));
-      const now = shown && Math.abs(p.x - BOARD.x) < ZONE.x && p.z > OCHE - 0.05 && p.z < OCHE + ZONE.z;
-      if (now !== zoned) { zoned = now; zoom(zoned); }
       if (game.over && time >= pullAt && stuck.some(m => m.visible) && !flight) for (const m of stuck) m.visible = false; // pulled out
       if (still) sway.set(0, 0); else sway.set(SWAY * (Math.sin(time * 1.1) + 0.5 * Math.sin(time * 2.9 + 1)) / 1.5, SWAY * (Math.sin(time * 1.5 + 2) + 0.5 * Math.sin(time * 2.3)) / 1.5);
       const ready = darts.ready;
