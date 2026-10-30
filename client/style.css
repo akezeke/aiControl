@@ -56,7 +56,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* Brand */
 .brand { display: flex; align-items: center; gap: 10px; font: 700 16px/1 var(--display); letter-spacing: -.02em; white-space: nowrap; color: var(--text); }
 .brand-variant { display: none; align-items: center; gap: inherit; min-width: 0; }
-:root:is(:not([data-theme]), [data-theme=modern]) .brand-variant.modern, :root[data-theme=alien] .brand-variant.alien, :root[data-theme=command] .brand-variant.command { display: flex; }
+:root:is(:not([data-theme]), [data-theme=modern], [data-theme=office]) .brand-variant.modern, :root[data-theme=alien] .brand-variant.alien, :root[data-theme=command] .brand-variant.command { display: flex; }
 .brand-name { overflow: hidden; text-overflow: ellipsis; }
 .brand-mark { position: relative; flex: none; width: 30px; height: 30px; display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding: 8px 7px; border-radius: 9px; background: linear-gradient(140deg, #6366f1, #7c3aed 60%, #a855f7); box-shadow: 0 6px 14px -6px #6d28d9; }
 .brand-mark i { width: 4px; height: 10px; border-radius: 1px; background: #fff; }
@@ -138,9 +138,12 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .status-line { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 20px; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--accent); white-space: nowrap; }
 .status-line:empty { display: none; }
 .status-text { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-:root:is(:not([data-theme]), [data-theme=modern]) .status-text.modern, :root[data-theme=alien] .status-text.alien, :root[data-theme=command] .status-text.command { display: block; }
+:root:is(:not([data-theme]), [data-theme=modern], [data-theme=office]) .status-text.modern, :root[data-theme=alien] .status-text.alien, :root[data-theme=command] .status-text.command { display: block; }
 .status-line.flash { color: var(--warn); }
 .console-power { display: none; }
+/* Back from the Office's list to its scene. */
+.quiet-button.office-button { display: none; }
+:root[data-office-list]:not([data-office-fallback]) .quiet-button.office-button { display: inline-flex; }
 .connection-error { padding: 10px 12px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: var(--radius-sm); }
 
 /* Overview */

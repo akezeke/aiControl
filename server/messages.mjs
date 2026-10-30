@@ -87,8 +87,10 @@ export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent
   const messages = new Map(), tools = new Map();
   for (const line of lines) {
     try {
-      const row = JSON.parse(line);
+      let row = JSON.parse(line);
       if ((row.sessionId && row.sessionId !== sessionId) || (row.isSidechain && !agent) || (row.isMeta && !visibleIds.has(row.uuid))) continue;
+      // A message sent mid-turn is stored as an attachment where the turn took it in, not as a user row.
+      if (row.type === 'attachment' && row.attachment?.type === 'queued_command') row = { ...row, type: 'user', origin: row.attachment.origin, message: { content: row.attachment.prompt } };
       const time = Date.parse(row.timestamp) || null;
       if (row.type === 'system') {
         const value = systemNotices.has(row.subtype) && typeof row.content === 'string' && notice(row.uuid, row.content, time, ['error', 'warning'].includes(row.level));
@@ -111,6 +113,11 @@ export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent
   const list = [...messages.values()];
   return all ? list : agent ? list.slice(-agentMessageLimit) : recentMessages(list);
 }
+
+// Claude drops attributes such as hop-chain from a cross-session message when it removes it from the
+// queue. A miss would leave it at the front, where every later dequeue shifts it instead of the
+// message actually sent, so delivered messages would show as queued. Removal ignores them.
+const unwrapped = text => text.replace(/^<([\w-]+)[^>]*>/, '<$1>');
 
 // Session facts from the transcript tail; the newest record of each kind wins. Claude's queue is
 // replayed from its queue-operation records (harness notifications are not the user's messages).
@@ -136,7 +143,7 @@ export function claudeMeta(lines, sessionId) {
         if (row.operation === 'enqueue' && typeof row.content === 'string') queue.push({ id: row.timestamp + queue.length, text: row.content });
         else if (row.operation === 'dequeue') queue.shift();
         else if (row.operation === 'popAll') queue = [];
-        else if (row.operation === 'remove') { const index = queue.findIndex(entry => entry.text === row.content); if (index >= 0) queue.splice(index, 1); }
+        else if (row.operation === 'remove' && typeof row.content === 'string') { const index = queue.findIndex(entry => unwrapped(entry.text) === unwrapped(row.content)); if (index >= 0) queue.splice(index, 1); }
       }
     } catch { /* partial line */ }
   }
@@ -172,6 +179,21 @@ export function claudeStep(lines) {
 }
 // 'thinking' once a working session's model has been quiet for a while; short gaps between tool calls don't count.
 export const claudeActivity = (status, step, modifiedAt, now = Date.now()) => status === 'working' && step === 'model' && now - modifiedAt > 8000 ? 'thinking' : '';
+// The current turn's latest tool line ("Bash · Type-check after the route change"): hooks only see a call once it has finished,
+// and only its tool's name.
+export function turnTool(messages = []) {
+  for (let i = messages.length - 1; i >= 0 && messages[i].role !== 'user'; i--) if (messages[i].tool) return messages[i].text;
+  return '';
+}
+
+// The question a reply ends on ("Shall I commit it?", its last line's last sentence) when nothing came after it: code blocks don't count, and a cut-off reply's end is unknown.
+export function lastQuestion(messages = []) {
+  const last = messages.findLast(m => m.role !== 'notice');
+  if (last?.role !== 'assistant' || last.tool || last.truncated) return '';
+  const line = last.text.replace(/```[\s\S]*?(```|$)/g, '').split('\n').map(l => l.trim()).filter(Boolean).at(-1) || '';
+  const plain = line.replace(/^(?:[#>]+|[-*+]|\d+\.)\s+/, '').replace(/^[*_]+|[*_]+$/g, '').trim();
+  return plain.endsWith('?') ? plain.split(/(?<=[.!?])\s+(?=[A-Z])/).at(-1).slice(0, 300) : '';
+}
 
 export function claudeTitles(lines, sessionId, previous = {}) {
   const titles = { ...previous };

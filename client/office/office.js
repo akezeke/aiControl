@@ -5,7 +5,7 @@ import { layoutOffice, VACANT_MS } from './layout.js';
 import { officeStatus, identity, monitorLines } from './status.js';
 import { createRoom } from './room.js';
 import { Cast } from './animation.js';
-import { Player, pick, rayAt, officeHasKeys, sceneFocused, standNear, standBefore, EYE } from './player.js';
+import { Player, pick, rayAt, officeHasKeys, menuOpen, sceneFocused, standNear, standBefore, EYE } from './player.js';
 import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createMenu, createOverlays } from './bubbles.js';
 import { createBoards } from './boards.js';
@@ -13,6 +13,8 @@ import { highlight } from './toon.js';
 import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
 import { createProps, REACH } from './props.js';
+import { createScreenshots } from './screenshots.js';
+import { hireChoices } from '../hire.js';
 
 const FIRED = { pose: 'slumped', expression: 'sad', bubble: { icon: '📦', text: 'Fired', highlight: false } };
 
@@ -30,7 +32,7 @@ export function mountOffice(container, hooks) {
   scene.background = new THREE.Color('#f6e7c8');
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
   camera.userData.canvas = renderer.domElement;
-  const room = createRoom(scene);
+  const room = createRoom(scene, renderer);
   const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
   const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches });
   let layout;
@@ -62,6 +64,7 @@ export function mountOffice(container, hooks) {
       if (props.holding && !view.overview) { props.throw(rayAt(at, renderer.domElement, camera)); return; }
       const hit = under(at);
       if (hit?.kind === 'character') office.talkTo(hit.id);
+      else if (hit?.kind === 'monitor') office.readScreen(hit.id, hit.node, hit.point);
       else if (hit?.kind === 'board') office.readBoard(hit.node);
       else if (hit?.kind === 'hire') office.offerHire(hit, at);
       else if (hit?.kind === 'toggle') hit.node.userData.toggle();
@@ -71,43 +74,61 @@ export function mountOffice(container, hooks) {
     },
   });
   const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches, container });
-  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches });
-  // A ball out of reach: walk over and pick it up.
-  const pickUp = body => { if (body.pos.distanceTo(player.position) <= REACH) props.grab(body); else player.walkTo(body.pos.clone().setY(0), () => props.grab(body), 0.7); };
+  // Whoever gets hit, or whose things do, jumps, glares and says so.
+  const onHit = (id, line) => { cast.startle(id); bubbles.say(id, '💢', line); };
+  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches, onHit });
+  // A thing out of reach: walk over (as near as the furniture lets you) and pick it up.
+  const pickUp = body => { if (body.pos.distanceTo(player.position) <= REACH) props.grab(body); else player.walkTo(body.pos.clone().setY(0), () => props.grab(body), 0.7, true); };
+  // The coffee machine: fills the mug if you're by it, else you walk over first.
+  room.onCoffee = () => { if (!props.fill()) player.walkTo(props.machineSpot, () => props.fill(), 0.3, true); };
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   const card = createCard(container);
-  const menu = createMenu(container, (cwd, provider, item) => hooks.spawn?.(cwd, provider, item));
+  const menu = createMenu(container, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item));
+  const shots = createScreenshots(container, { room, onClose: () => office.panelClosed(), onSession: id => hooks.openPanel(id) });
   // It stays by the spot on the desk you picked as the view moves, and closes once that's off the screen.
   let dismissed = false; const menuAt = new THREE.Vector3(), onScreen = new THREE.Vector3();
   const follow = () => {
-    if (!menu.open) return;
+    if (!menu.open || menu.asking) return;
     onScreen.copy(menuAt).project(camera);
     if (onScreen.z > 1 || Math.abs(onScreen.x) > 1 || Math.abs(onScreen.y) > 1) { menu.close(); return; }
     const r = renderer.domElement.getBoundingClientRect();
     menu.move({ clientX: r.left + (onScreen.x + 1) / 2 * r.width, clientY: r.top + (1 - onScreen.y) / 2 * r.height });
   };
-  listen(document, 'pointerdown', event => { dismissed = menu.open && !menu.contains(event.target); if (dismissed) menu.close(); }, true);
-  // The overview frees the mouse to click around; leaving it with Tab captures the mouse again if it was.
-  let relock = false;
+  // The screenshots close the same way.
+  listen(document, 'pointerdown', event => {
+    const outside = [menu, shots].filter(open => open.open && !open.contains(event.target));
+    dismissed = outside.length > 0; for (const open of outside) open.close();
+  }, true);
+  // The overview frees the mouse to click around; leaving it captures the mouse again if it was (see `free`).
   const overview = on => {
     if (on === view.overview) return;
     menu.close();
-    if (on) { relock = player.locked; player.unlock(); overlays.overviewUsed(); } else if (relock) { relock = false; player.lock(); }
+    if (on) { player.unlock(); overlays.overviewUsed(); }
     view.setOverview(on); player.setOverview(on); overlays.setOverview(on);
   };
-  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview) });
+  // Nothing else wants the mouse: no panel, menu or dialog up, not on the way to someone, not in the overview, the window focused.
+  const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !view.overview && !office.talking && document.hasFocus();
+  let wasFree = true;
+  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview),
+    onNew: anchor => {
+      const r = anchor.getBoundingClientRect();
+      const known = [...new Set((office.snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort();
+      player.unlock(); menu.show(null, { clientX: r.right, clientY: r.bottom }, true, hireChoices(office.snapshot, ''), known);
+    } });
   // Tab toggles the overview and Esc closes the menu or leaves the overview (Tab only from the scene itself: on a button or
-  // link it keeps moving focus). E throws what you hold or picks up the outlined ball, else talks to whoever is outlined (or
-  // goes to the board, flips the light switch, or opens a pod sign's menu), else to whoever is in front of you. F, held, pours.
+  // link it keeps moving focus). E throws what you hold or picks up the outlined thing, else talks to whoever is outlined (or
+  // looks at their screen, goes to the board, flips a toggle, or opens a pod sign's menu), else to whoever is in front of you.
+  // F, held, pours. Moving takes the mouse back if the browser wouldn't hand it back by itself (see `free`).
   listen(document, 'keydown', event => {
     if (!officeHasKeys(event)) return;
+    if (!player.locked && player.wanted && /^(Key[WASD]|Arrow\w+|Space)$/.test(event.code) && free()) player.lock();
     if (event.key === 'Tab' && sceneFocused(renderer.domElement)) { event.preventDefault(); if (!event.repeat) overview(!view.overview); }
     else if (event.key === 'Escape' && menu.open) menu.close();
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE' && !menu.contains(event.target)) {
       event.preventDefault();
-      if (props.holding) props.throw(); else if (prop) pickUp(prop); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
+      if (props.holding) props.throw(); else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node, monitor.point); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
     }
     else if (event.code === 'KeyF' && !view.overview && !office.talking) { event.preventDefault(); if (!event.repeat) props.pour(true); }
   });
@@ -115,7 +136,7 @@ export function mountOffice(container, hooks) {
   listen(window, 'blur', () => props.pour(false));
   // Outline whatever a click (or E) would get, with its card: under the dot when aiming with it, else under the mouse
   // (the scene or a bubble, not the buttons). Ten times a second is plenty.
-  let mouse = null, hovered = null, aimed = null, board = null, hire = null, toggle = null, prop = null, dot = false, hoverIn = 0;
+  let mouse = null, hovered = null, aimed = null, monitor = null, board = null, hire = null, toggle = null, prop = null, dot = false, hoverIn = 0;
   listen(container, 'pointermove', event => {
     mouse = event.pointerType === 'mouse' && (event.target === renderer.domElement || event.target.closest?.('.office-bubble')) ? event : null;
     if (!dot) card.move(mouse);
@@ -128,11 +149,12 @@ export function mountOffice(container, hooks) {
     hoverIn = 0.1;
     if (menu.open) return; // the sign keeps its outline while its menu is up
     const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
-    aimed = hit?.kind === 'character' ? hit.id : null; board = hit?.kind === 'board' ? hit.node : null; hire = hit?.kind === 'hire' ? hit : null; toggle = hit?.kind === 'toggle' ? hit.node : null;
+    aimed = hit?.kind === 'character' ? hit.id : null; monitor = hit?.kind === 'monitor' ? hit : null; board = hit?.kind === 'board' ? hit.node : null; hire = hit?.kind === 'hire' ? hit : null; toggle = hit?.kind === 'toggle' ? hit.node : null;
     prop = hit?.kind === 'prop' && !props.holding ? hit.body : null; props.aim(prop);
-    const session = aimed && office.snapshot?.sessions.find(session => session.id === aimed);
-    card.show(session && hooks.describe?.(session) || hire && { title: 'Hire', project: hire.cwd.replace(/^\/home\/[^/]+/, '~') } || null); card.move(aiming ? player.centre : mouse);
-    const node = aimed && cast.characters.get(aimed)?.root || board || hire?.node || toggle;
+    const whose = aimed || monitor?.id, session = whose && office.snapshot?.sessions.find(session => session.id === whose), facts = session && hooks.describe?.(session);
+    const count = monitor && room.glass(monitor.node, monitor.point).side && shots.count(monitor.id); // the second monitor: the screenshots
+    card.show(facts && count ? { ...facts, detail: `${count} screenshot${count === 1 ? '' : 's'}` } : facts || hire && { title: 'Hire', project: hire.cwd.replace(/^\/home\/[^/]+/, '~') } || null); card.move(aiming ? player.centre : mouse);
+    const node = aimed && cast.characters.get(aimed)?.root || monitor?.node || board || hire?.node || toggle;
     renderer.domElement.style.cursor = (node || prop) && !aiming ? 'pointer' : view.overview ? view.overhead.dragging ? 'grabbing' : 'grab' : '';
     overlays.setAim(!!(node || prop));
     if (node === hovered) return;
@@ -144,6 +166,8 @@ export function mountOffice(container, hooks) {
   const tiltSigns = () => { for (const sign of signs) { sign.rotation.x = -PITCH * view.amount; sign.scale.setScalar(1 + 0.4 * view.amount); } };
   frames.add(dt => {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
+    // Whatever took the mouse is done with it.
+    const now = free(); if (now && !wasFree) player.resume(); wasFree = now;
     // The overview has the keys and drags while it's up: you stay where you were.
     if (!view.overview) player.update(dt);
     view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); cast.update(dt, player.position); props.update(dt); bubbles.update(camera, id => cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
@@ -181,6 +205,7 @@ export function mountOffice(container, hooks) {
       // The fired slump at their desks, then trudge out carrying a box.
       for (const [id, at] of fired) if (Date.now() - at > VACANT_MS + 10_000) fired.delete(id); else office.statuses.set(id, { ...office.statuses.get(id), ...FIRED });
       room.sync(layout, office.statuses);
+      shots.sync(snapshot.sessions.filter(session => session.provider === 'claude' && !session.parentId && layout.desks.has(session.id)));
       for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
       signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });
       cast.sync(layout, snapshot.sessions, room, office.statuses);
@@ -211,7 +236,7 @@ export function mountOffice(container, hooks) {
       const parent = office.snapshot?.sessions.find(session => session.id === id)?.parentId;
       const head = id && (cast.positionOf(id) || cast.positionOf(parent)); if (!head) return;
       const token = office.talking = {};
-      relock = false; overview(false); player.unlock(); menu.close();
+      overview(false); player.unlock(); menu.close();
       const arrive = () => {
         if (office.talking !== token) return;
         cast.greet(id); view.focus(head.clone().setY(head.y - 0.25));
@@ -220,20 +245,36 @@ export function mountOffice(container, hooks) {
       const spot = standNear(head, player.position, room.colliders, layout?.room);
       if (spot) player.flyTo(spot, head, arrive, !!reducedMotion?.matches); else player.walkTo(head.clone().setY(0), arrive, 1.1, true);
     },
+    // Look over their shoulder at their screen, then their session opens beside the scene; unlike a talk, they keep working.
+    // The second monitor (`point` on it) opens the screenshots instead.
+    readScreen(id, node, point) {
+      const token = office.talking = {};
+      overview(false); player.unlock(); menu.close();
+      const { anchor: glass, side } = room.glass(node, point), scale = glass.getWorldScale(new THREE.Vector3()).x; // helpers' desks are small
+      const centre = glass.getWorldPosition(new THREE.Vector3()), normal = new THREE.Vector3(0, 0, 1).transformDirection(glass.matrixWorld).setY(0).normalize();
+      const shoulder = centre.clone().addScaledVector(new THREE.Vector3(-normal.z, 0, normal.x), 0.45 * scale), rise = centre.y - EYE;
+      const arrive = () => {
+        if (office.talking !== token) return;
+        view.focus(centre);
+        setTimeout(() => { if (office.talking === token) { if (side) shots.show(id); else hooks.openPanel(id); } }, reducedMotion?.matches ? 0 : 400);
+      };
+      const spot = standBefore(shoulder, normal, Math.max(0.8, 1.9 * scale), room.colliders, layout?.room);
+      if (spot) player.flyTo(spot, centre, arrive, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z))); else arrive();
+    },
     // Fly over to a board on the wall and face it, back far enough to take it all in (and not crane up at the clock).
     readBoard(node) {
-      office.talking = null; relock = false; overview(false); menu.close();
+      office.talking = null; overview(false); menu.close();
       const box = new THREE.Box3().setFromObject(node), centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
       const normal = new THREE.Vector3(0, 0, 1).transformDirection(node.matrixWorld).setY(0).normalize(), tan = Math.tan(THREE.MathUtils.degToRad(view.fov / 2));
       const fit = Math.max(size.y / 2 / tan, Math.max(size.x, size.z) / 2 / (tan * camera.aspect)) * 1.25, rise = centre.y - EYE;
       const spot = standBefore(centre, normal, THREE.MathUtils.clamp(Math.max(fit, Math.abs(rise) * 1.7), 1, 3.5), room.colliders, layout?.room);
       if (spot) player.flyTo(spot, centre, null, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z)));
     },
-    // A pod's sign: let go of the mouse and offer Claude or Codex, started in the pod's folder.
+    // A pod's sign: let go of the mouse and offer Claude (per account) or Codex, started in the pod's folder.
     offerHire({ cwd, node, point }, at, focus = false) {
       player.unlock(); card.show(null);
       highlight(hovered, false); highlight(node, true); hovered = node;
-      menuAt.copy(point); menu.show(cwd, at, focus);
+      menuAt.copy(point); menu.show(cwd, at, focus, hireChoices(office.snapshot, cwd));
     },
     // main.js calls this when the session panel closes.
     panelClosed() { office.talking = null; cast.greet(null); view.focus(null); },
@@ -247,7 +288,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => shots.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }

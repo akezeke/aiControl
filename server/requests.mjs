@@ -1,8 +1,22 @@
 import { randomUUID } from 'node:crypto';
+import { lastQuestion } from './messages.mjs';
 
 export const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 // A leading /command (/clear, /model x), not a path such as /home/me/app.
 export const slashCommand = text => /^\s*(\/[a-z][\w-]*)(?=\s|$)/i.exec(text)?.[1] || '';
+
+// Sessions as the client sees them: a pending request sets the status, and so does an idle reply ending on a question
+// (`asks`; subagents answer their parent, not you). The adapters keep their own status, so sending is unaffected.
+export function mergeSessions(list, requests) {
+  const sessions = list.map(session => {
+    const pending = requests.filter(r => r.sessionId === session.id);
+    const asks = !pending.length && session.status === 'idle' && !session.parentId && lastQuestion(session.messages);
+    return { ...session, ...(pending.length ? { status: pending[0].kind === 'question' ? 'question' : 'permission' } : asks ? { status: 'question', asks } : {}), requests: pending };
+  });
+  // A request may arrive just before session metadata; keep it visible.
+  for (const request of requests) if (!sessions.some(s => s.id === request.sessionId)) sessions.push({ id: request.sessionId, provider: request.provider, title: 'Session connecting', project: 'Connecting', cwd: '', status: request.kind === 'question' ? 'question' : 'permission', updatedAt: request.createdAt, requests: requests.filter(r => r.sessionId === request.sessionId), control: true });
+  return sessions;
+}
 
 export function validateAnswers(questions, answers) {
   if (!answers || typeof answers !== 'object' || Array.isArray(answers)) throw fail('Answer every question.');

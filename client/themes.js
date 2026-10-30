@@ -5,8 +5,8 @@ export const themes = [
   { id: 'modern-dark', look: 'modern', scheme: 'dark', name: 'Orbit dark', color: '#0b0d12' },
   { id: 'alien', name: 'MU/TH/UR', color: '#030703' },
   { id: 'command', name: 'EVA', color: '#62685a' },
-  // The office replaces the list with a 3D scene; the chrome around it is Orbit light.
-  { id: 'office', look: 'modern', scheme: 'light', name: 'Office', color: '#f6e7c8' },
+  // The office replaces the list with a 3D scene; the chrome around it is paper pinned to a corkboard.
+  { id: 'office', scheme: 'light', name: 'Office', color: '#c4935f' },
 ];
 const storageKey = 'ai-control-theme';
 export function hasSavedTheme() { try { return themes.some(theme => theme.id === localStorage.getItem(storageKey)); } catch { return true; } }

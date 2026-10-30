@@ -1,6 +1,7 @@
 // You, the boss: first-person movement with WASD (Shift runs, Space jumps), arrow keys to look, collision with walls and desks.
 // With a mouse, a click captures it (pointer lock): moving looks around, a click picks what's under the dot, right-click or Esc lets go.
-// Looking with the arrow keys aims with the dot too, until the mouse moves.
+// Captured is what you want until you let go yourself: whatever else takes the mouse (a panel, a menu, the overview, another
+// window) gives it back when it's done (`wanted`, `resume`). Looking with the arrow keys aims with the dot too, until the mouse moves.
 // Touch drags the view along with the finger and taps to walk or pick someone. While the overview is up it has the keys and drags.
 import * as THREE from 'three';
 import { isTypingTarget } from './status.js';
@@ -11,10 +12,12 @@ const keys = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] };
 const turns = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
-// Keys belong to the office only when nothing else wants them: no focused input, no open panel or dialog.
+// A dialog or a toolbar menu is open (not the panel's own expanders, which stay open while it's hidden).
+export const menuOpen = () => !!document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open]');
+// Keys belong to the office only when nothing else wants them: no focused input, no open panel, dialog or menu.
 export function officeHasKeys(event) {
   return !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target) && !isTypingTarget(document.activeElement)
-    && !document.body.classList.contains('panel-open') && !document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open]');
+    && !document.body.classList.contains('panel-open') && !menuOpen();
 }
 // Nothing focused but the scene: on a button or link, Tab and Space keep their usual meaning.
 export const sceneFocused = canvas => [document.body, canvas, null].includes(document.activeElement);
@@ -23,7 +26,7 @@ export class Player {
   constructor(canvas, { colliders, room, onPick }) {
     this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08;
     this.colliders = colliders; this.room = room; this.onPick = onPick; this.held = new Set(); this.target = null;
-    this.locked = false; this.overview = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
+    this.locked = this.wanted = this.releasing = this.asking = false; this.overview = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
     this.disposers = [];
     listen(document, 'keydown', event => {
@@ -34,14 +37,20 @@ export class Player {
     });
     listen(document, 'keyup', event => { this.shift = event.shiftKey; this.held.delete(event.code); });
     listen(window, 'blur', () => { this.held.clear(); this.shift = false; });
-    listen(document, 'pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; });
+    // Let go of without our asking: Esc (you want the mouse), or the window losing focus (you'll want it back).
+    listen(document, 'pointerlockchange', () => {
+      const lost = this.locked && document.pointerLockElement !== canvas && !this.releasing;
+      this.locked = document.pointerLockElement === canvas; this.releasing = this.asking = false;
+      if (lost) setTimeout(() => { if (document.hasFocus() && !document.hidden) this.wanted = false; }, 100);
+    });
+    listen(document, 'pointerlockerror', () => { this.asking = false; });
     const look = (x, y, speed) => { this.yaw -= x * speed; this.pitch = THREE.MathUtils.clamp(this.pitch - y * speed, -1.1, 0.8); };
     // Captured: every move looks, a left click picks under the dot, a right click lets go.
     // Otherwise a drag looks around and a press that barely moves is a click on what's under it; a second finger makes it neither.
     let drag = null;
     listen(canvas, 'contextmenu', event => event.preventDefault());
     listen(canvas, 'pointerdown', event => {
-      if (this.locked) { if (event.button === 0) this.onPick(this.centre, true); else if (event.button === 2) this.unlock(); return; }
+      if (this.locked) { if (event.button === 0) this.onPick(this.centre, true); else if (event.button === 2) { this.wanted = false; this.unlock(); } return; }
       this.keyLook = false;
       if (event.button !== 0) return;
       if (drag) { drag.moved = true; return; }
@@ -65,8 +74,16 @@ export class Player {
   // You stop where you are while the overview is up.
   setOverview(on) { this.overview = on; this.held.clear(); this.target = null; this.keyLook = false; }
   // Browsers without pointer lock, or that refuse it, keep drag-to-look.
-  lock() { if (!this.locked) try { this.canvas.requestPointerLock()?.catch?.(() => {}); } catch { /* not allowed here */ } }
-  unlock() { if (this.locked) document.exitPointerLock(); }
+  lock() {
+    this.wanted = true; if (this.locked || this.asking) return;
+    this.asking = true;
+    try { this.canvas.requestPointerLock()?.catch?.(() => { this.asking = false; }); } catch { this.asking = false; /* not allowed here */ }
+  }
+  // Something else needs the mouse for now; it comes back with `resume`.
+  unlock() { if (this.locked) { this.releasing = true; document.exitPointerLock(); } }
+  // Captures the mouse again if it was captured before something else took it. Without a click or key press, browsers allow
+  // that only after the page itself let go (Chrome), so after another window it can wait for the next key.
+  resume() { if (this.wanted) this.lock(); }
   // Aiming with the dot in the middle rather than the pointer: captured, or looking with the arrow keys.
   get aiming() { return this.locked || this.keyLook; }
   get centre() { const r = this.canvas.getBoundingClientRect(); return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
@@ -163,9 +180,9 @@ export function standBefore(point, normal, distance, colliders, room) {
 }
 const free = (p, colliders, room) => (!room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS)) && !colliders.some(box => inside(p, box));
 
-// What's under a screen point: a character (by session id), a board on the wall (userData.board), a pod's sign
-// (userData.hire: { cwd, name }), the light switch (userData.toggle), a ball (userData.prop(instance) gives its body) or a
-// spot on the floor.
+// What's under a screen point: a character (by session id), a desk's monitor (userData.monitor: whose), a board on the wall
+// (userData.board), a pod's sign (userData.hire: { cwd, name }), a toggle (the light switch, the coffee machine), something to
+// pick up (userData.prop(instance) gives its body) or a spot on the floor.
 const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
 // The direction into the scene through a screen point.
 export function rayAt(event, canvas, camera) {
@@ -178,8 +195,9 @@ export function pick(event, canvas, camera, scene) {
   rayAt(event, canvas, camera);
   for (const hit of raycaster.intersectObjects(scene.children, true)) {
     let node = hit.object;
-    while (node && !node.userData.sessionId && !node.userData.board && !node.userData.hire && !node.userData.toggle) node = node.parent;
+    while (node && !node.userData.sessionId && !node.userData.monitor && !node.userData.board && !node.userData.hire && !node.userData.toggle) node = node.parent;
     if (node?.userData.sessionId) return { kind: 'character', id: node.userData.sessionId };
+    if (node?.userData.monitor) return { kind: 'monitor', id: node.userData.monitor, node, point: hit.point };
     if (node?.userData.toggle) { if (node.visible) return { kind: 'toggle', node }; continue; } // the light switch, hidden with its wall
     if (node?.userData.hire) return { kind: 'hire', node, point: hit.point, ...node.userData.hire };
     // A board on a wall that's faded out for the overview is hidden: look past it.

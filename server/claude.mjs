@@ -4,8 +4,8 @@ import { join, basename, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { fail } from './requests.mjs';
-import { TranscriptReader, claudeSessionTitle, claudeActivity } from './messages.mjs';
-import { TranscriptImages } from './images.mjs';
+import { TranscriptReader, claudeSessionTitle, claudeActivity, turnTool } from './messages.mjs';
+import { TranscriptImages, imageLimit } from './images.mjs';
 import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
 
 // Must match the PermissionRequest hook timeout in scripts/install-hooks.mjs.
@@ -66,7 +66,7 @@ export class ClaudeAdapter {
   stoppedAgents = new Set();
   connected = false;
   detail = 'Discovering local Claude Code sessions…';
-  constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), accounts = [{ label: '', sessionsDir, projectsDir }], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.accounts = accounts; this.transcripts = new TranscriptReader(accounts.map(account => account.projectsDir)); this.images = new TranscriptImages(); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
+  constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), accounts = [{ label: '', sessionsDir, projectsDir }], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.accounts = accounts; this.transcripts = new TranscriptReader(accounts.map(account => account.projectsDir)); this.images = new TranscriptImages(); this.agentTitles = new Map(); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
   async start() {
     // The tmux/start guard prevents duplicate servers; only remove our stale socket.
     try { if ((await lstat(this.socketPath)).isSocket()) await unlink(this.socketPath); else throw new Error('Hook socket path is occupied by a file.'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -96,7 +96,7 @@ export class ClaudeAdapter {
           paths.set(`claude:${record.sessionId}`, transcript);
           // A parked session (handed off to a background job) keeps its last status in the registration, so it can say busy for days.
           const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux';
-          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux, fire: tmux }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
+          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: status === 'working' && !hook?.compacting && turnTool(history.messages) || hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, interrupt: tmux, effort: tmux, fire: tmux || record.kind === 'interactive' }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
           for (const agent of await this.subagents(record, transcript, paths)) sessions.set(agent.id, agent);
         } catch { /* ignore partially written and stale registration files */ }
       }));
@@ -107,7 +107,7 @@ export class ClaudeAdapter {
           const account = this.accounts.find(account => hook.transcriptPath?.startsWith(account.projectsDir + sep));
           if (account) owners.set(id, account);
           paths.set(`claude:${id}`, hook.transcriptPath);
-          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.detail, activity: hook.compacting ? 'compacting' : claudeActivity(hook.status, step, modifiedAt), control: true, messaging: { send: false, queue: false }, ...history });
+          sessions.set(id, { id: `claude:${id}`, nativeId: id, provider: 'claude', title: claudeSessionTitle({}, history), cwd: hook.cwd, project: basename(hook.cwd || 'Unknown'), account: account?.label || '', status: hook.status, updatedAt: hook.updatedAt, detail: hook.status === 'working' && !hook.compacting && turnTool(history.messages) || hook.detail, activity: hook.compacting ? 'compacting' : claudeActivity(hook.status, step, modifiedAt), control: true, messaging: { send: false, queue: false }, ...history });
         }
         else { this.hooks.delete(id); this.store.removeSession(`claude:${id}`); }
       }
@@ -141,7 +141,7 @@ export class ClaudeAdapter {
       const { activity, modifiedAt, ...messages } = history;
       paths.set(`claude:${record.sessionId}:${agentId}`, join(folder.dir, `agent-${agentId}.jsonl`));
       const workflow = folder.dir !== dir, kind = workflow ? [folder.name || 'Workflow', meta.workflowPhase].filter(Boolean).join(' · ') : meta.agentType || 'subagent';
-      return { id: `claude:${record.sessionId}:${agentId}`, nativeId: agentId, parentId: `claude:${record.sessionId}`, agentKind: workflow ? 'workflow' : 'subagent', provider: 'claude', title: meta.description || meta.agentType || 'Subagent', cwd: record.cwd, project: basename(record.cwd || 'Unknown'), status: working ? 'working' : 'idle', updatedAt: mtime, model: kind, detail: '', control: false, messaging: { send: false, queue: false }, ...messages };
+      return { id: `claude:${record.sessionId}:${agentId}`, nativeId: agentId, parentId: `claude:${record.sessionId}`, agentKind: workflow ? 'workflow' : 'subagent', provider: 'claude', title: meta.description || meta.agentType || 'Subagent', cwd: record.cwd, project: basename(record.cwd || 'Unknown'), status: working ? 'working' : 'idle', updatedAt: mtime, model: kind, detail: working ? turnTool(messages.messages) : '', control: false, messaging: { send: false, queue: false }, ...messages };
     }));
     return agents.filter(Boolean);
   }
@@ -223,7 +223,8 @@ export class ClaudeAdapter {
   }
   list() { return [...this.sessions.values()]; }
   // New sessions in a project use the account of its latest Claude session.
-  accountFor(cwd) {
+  accountFor(cwd, label) {
+    if (label !== undefined) { const account = this.accounts.find(account => account.label === label); if (!account) throw fail('Unknown Claude account.', 400); return account; }
     const latest = this.list().filter(session => session.cwd === cwd && !session.parentId).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     return this.owners.get(latest?.nativeId) || this.accounts[0];
   }
@@ -243,9 +244,9 @@ export class ClaudeAdapter {
   }
   async interrupt(sessionId) { return this.messaging.interrupt(await this.record(sessionId)); }
   async setEffort(sessionId, effort) { return this.messaging.setEffort(await this.record(sessionId), effort); }
-  // Firing ends the session with /exit, so it has to be quiet: idle by its registration and its hooks for a few seconds, not
+  // Firing ends the session (/exit in tmux, else SIGTERM), so it has to be quiet: idle by its registration and its hooks for a few seconds, not
   // compacting, no subagent or workflow working and nothing left running from its Bash tool, background ones included.
-  // All of it is checked again with /exit typed, just before Enter.
+  // All of it is checked again just before Enter (with /exit typed) or the signal.
   async fire(sessionId) {
     const quiet = async () => {
       const record = await this.record(sessionId), hook = this.hooks.get(sessionId), transcript = this.paths.get(`claude:${sessionId}`);
@@ -264,14 +265,20 @@ export class ClaudeAdapter {
     if (!this.paths.has(id)) throw fail('Session is no longer available.', 409);
     return this.transcripts.read(this.paths.get(id), sessionId, agentId, limit);
   }
-  // Images seen in a session's transcript, by id; never by path.
+  // Images seen in a session's transcript, by id; never by path. A session's list takes in its subagents' too, finished or
+  // not (they're often the ones checking screenshots); those ids start with the agent's, and `agent` is what it was doing.
   async imageList(id) {
-    const { sessionId, path } = await this.transcript(id);
-    return { images: await this.images.list(path, sessionId) };
+    const { sessionId, agentId, path } = await this.transcript(id), own = await this.images.list(path, sessionId);
+    if (agentId !== undefined) return { images: own };
+    const agents = await Promise.all((await this.agentTranscripts(path)).map(async agent => (await this.images.list(agent.path, sessionId).catch(() => []))
+      .map(image => ({ ...image, id: `${agent.agentId}.${image.id}`, agent: agent.title }))));
+    return { images: [...own, ...agents.flat()].sort((a, b) => (a.at ?? 0) - (b.at ?? 0)).slice(-imageLimit) };
   }
   async image(id, imageId) {
-    const { sessionId, path } = await this.transcript(id);
-    const image = /^[a-f0-9-]{36}:\d{1,3}$/i.test(imageId) && await this.images.get(path, sessionId, imageId);
+    const [, agentId, own] = /^(?:([a-z0-9]{1,64})\.)?([a-f0-9-]{36}:\d{1,3})$/i.exec(imageId) || [];
+    const transcript = own && await this.transcript(id);
+    const path = agentId ? transcript && !transcript.agentId && (await this.agentTranscripts(transcript.path)).find(agent => agent.agentId === agentId)?.path : transcript?.path;
+    const image = path && await this.images.get(path, transcript.sessionId, own);
     if (!image) throw fail('Image not found.', 404);
     return image;
   }
@@ -279,7 +286,24 @@ export class ClaudeAdapter {
     const [sessionId, agentId] = id.slice(7).split(':');
     const path = this.paths.has(id) && await this.transcripts.locate(this.paths.get(id), sessionId, agentId).catch(() => null);
     if (!path) throw fail('Session is no longer available.', 409);
-    return { sessionId, path };
+    return { sessionId, agentId, path };
+  }
+  // A session's subagents' transcripts, the 50 written to last: subagents/agent-<id>.jsonl and workflow workers' in
+  // subagents/workflows/<run>/, each with its .meta.json's description.
+  async agentTranscripts(transcript) {
+    const dir = join(transcript.replace(/\.jsonl$/, ''), 'subagents');
+    const runs = (await readdir(join(dir, 'workflows')).catch(() => [])).filter(name => /^wf_[\w-]{1,64}$/.test(name));
+    const files = (await Promise.all([dir, ...runs.map(run => join(dir, 'workflows', run))].map(async folder => (await readdir(folder).catch(() => []))
+      .map(name => /^agent-([a-z0-9]{1,64})\.jsonl$/i.exec(name)?.[1]).filter(Boolean)
+      .map(async agentId => ({ agentId, path: join(folder, `agent-${agentId}.jsonl`), mtime: (await stat(join(folder, `agent-${agentId}.jsonl`)).catch(() => null))?.mtimeMs ?? 0 }))))).flat();
+    const recent = (await Promise.all(files)).sort((a, b) => b.mtime - a.mtime).slice(0, 50);
+    return Promise.all(recent.map(async agent => {
+      if (!this.agentTitles.has(agent.path)) {
+        const meta = JSON.parse(await readFile(agent.path.replace(/\.jsonl$/, '.meta.json'), 'utf8').catch(() => '{}'));
+        this.agentTitles.set(agent.path, String(meta.description || meta.agentType || 'Subagent').slice(0, 120));
+      }
+      return { ...agent, title: this.agentTitles.get(agent.path) };
+    }));
   }
   async stop() {
     clearInterval(this.timer);

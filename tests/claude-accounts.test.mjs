@@ -49,6 +49,8 @@ test('Claude sessions from every account are listed, labelled and messaged throu
   assert.deepEqual(adapter.list().map(s => [s.nativeId, s.account]).sort(), [['personal-session', 'personal'], ['work-session', 'work']]);
   assert.equal(adapter.accountFor('/w/app').dir, accounts[1].dir);
   assert.equal(adapter.accountFor('/w/other').dir, accounts[0].dir);
+  assert.equal(adapter.accountFor('/w/app', 'work').dir, accounts[0].dir);
+  assert.throws(() => adapter.accountFor('/w/app', 'someone-else'), /Unknown Claude account/);
   await adapter.sendMessage('personal-session', { text: 'Hi', mode: 'send', clientMessageId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' });
   assert.deepEqual(sent, ['personal-session']);
 });
@@ -72,4 +74,18 @@ test('hooks are installed into every account settings file, creating its folder'
   for (const file of files) assert.equal(JSON.parse(await readFile(file, 'utf8')).hooks.Stop[0].hooks[0].command, hookCommand);
   await installHooks(false, files);
   assert.equal(log.mock.callCount(), 2);
+});
+
+test('a working session shows the tool call it is running from its transcript, not just the tool name', async t => {
+  const root = await temporary(t), [account] = claudeAccounts({ claudeDirs: [join(root, '.claude')] }, root), id = 'aaaaaaaa-1111-2222-3333-444444444444';
+  const project = join(account.projectsDir, '-w-app');
+  await mkdir(account.sessionsDir, { recursive: true }); await mkdir(project, { recursive: true });
+  await writeFile(join(account.sessionsDir, '1.json'), JSON.stringify({ pid: 1, procStart: 'live', sessionId: id, cwd: '/w/app', status: 'busy', updatedAt: 1 }));
+  const row = (uuid, type, content) => JSON.stringify({ uuid, sessionId: id, type, timestamp: '2026-10-29T10:00:00Z', message: { id: uuid, role: type, content } });
+  await writeFile(join(project, `${id}.jsonl`), [row('a', 'user', 'Fix the route'), row('b', 'assistant', [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'npx tsc --noEmit', description: 'Type-check after the route change' } }])].join('\n') + '\n');
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock', { accounts: [account], alive: async () => true, messaging: { available: async () => false, stop() {} } });
+  await mkdir(join(project, id, 'subagents'), { recursive: true });
+  await writeFile(join(project, id, 'subagents', 'agent-helper.jsonl'), [row('c', 'user', 'Look around'), row('d', 'assistant', [{ type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/w/app/office/room.js' } }])].join('\n') + '\n');
+  await adapter.refresh();
+  assert.deepEqual(adapter.list().map(s => [s.nativeId, s.detail]).sort(), [[id, 'Bash · Type-check after the route change'], ['helper', 'Read · office/room.js']]);
 });

@@ -12,6 +12,7 @@ import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown } from './message-markdown.js';
 import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
+import { hireChoices } from './hire.js';
 import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
 
 const app = document.querySelector('#app');
@@ -69,6 +70,7 @@ const icons = {
   sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4Z"/><path d="M15.5 9a4 4 0 0 1 0 6m2.5-8.5a7.5 7.5 0 0 1 0 11"/>',
   next: '<path d="m6 5 7 7-7 7m7-14 7 7-7 7"/>',
   exit: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m5-12 4 4-4 4m4-4H9"/>',
+  office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
   const span = document.createElement('span'); span.className = 'icon'; span.setAttribute('aria-hidden', 'true');
@@ -88,7 +90,8 @@ function uuid() {
 function chooseTheme(id) {
   applyTheme(id);
   for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
-  syncOffice();
+  // Picking the Office opens its scene, even if its list was showing last.
+  if (id === 'office' && officeList) setOfficeList(false); else syncOffice();
 }
 function themeMenu() {
   const menu = el('details', 'theme-menu');
@@ -196,7 +199,7 @@ function showWorkspace() {
   shell.append(aside);
   const content = el('div', 'workspace');
   const topbar = el('header', 'topbar');
-  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; topActions.append(live, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
+  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; const officeButton = button('Office', 'quiet-button office-button', () => setOfficeList(false), 'office'); officeButton.title = 'Back to the office'; topActions.append(live, officeButton, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
   // Desktop has no top bar: its controls sit at the bottom of the sidebar.
   const wide = matchMedia('(min-width: 641px)'), placeActions = () => (wide.matches ? aside : topbar).append(topActions);
   wide.onchange = placeActions; placeActions();
@@ -239,13 +242,19 @@ async function refresh() {
 }
 
 // The Office theme swaps the list for a 3D scene, downloaded only once it is chosen.
-let office = null, officeModule = null, listTheme = savedTheme() === 'office' ? 'modern-light' : savedTheme();
+// Its ☰ shows the list in the same paper look (the scene is unmounted meanwhile) and 🏢 goes back; the choice is remembered.
+const officeViewKey = 'ai-control-office-view';
+let office = null, officeModule = null, officeList = (() => { try { return localStorage.getItem(officeViewKey) === 'list'; } catch { return false; } })();
+function setOfficeList(list) {
+  officeList = list; try { localStorage.setItem(officeViewKey, list ? 'list' : 'scene'); } catch { /* per-tab only */ }
+  syncOffice(); renderData();
+  if (list) document.querySelector('.office-button')?.focus();
+}
 function syncOffice() {
-  const root = document.documentElement, main = document.querySelector('.main-content');
-  if (root.dataset.themeChoice !== 'office' || !main) {
-    if (root.dataset.themeChoice && root.dataset.themeChoice !== 'office') listTheme = root.dataset.themeChoice;
-    office?.unmount(); office = null; document.querySelector('#office')?.remove(); root.removeAttribute('data-office-fallback'); return;
-  }
+  const root = document.documentElement, main = document.querySelector('.main-content'), chosen = root.dataset.themeChoice === 'office';
+  root.toggleAttribute('data-office-list', chosen && officeList);
+  if (!chosen) root.removeAttribute('data-office-fallback');
+  if (!chosen || officeList || !main) { office?.unmount(); office = null; document.querySelector('#office')?.remove(); return; }
   // Any failure (download, no WebGL2, renderer refused) shows the list once and stays that way for this theme choice.
   const fallBack = message => { root.setAttribute('data-office-fallback', ''); document.querySelector('#office')?.remove(); toast(message); };
   // An office bug must not take the session list down with it.
@@ -256,7 +265,7 @@ function syncOffice() {
   if (!officeModule.webglAvailable()) { fallBack('Office needs WebGL 2; showing the list'); return; }
   const box = el('div'); box.id = 'office'; main.append(box);
   try {
-    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => chooseTheme(listTheme), isUnread: unread, describe: sessionFacts, spawn: spawnAgent });
+    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => setOfficeList(true), isUnread: unread, describe: sessionFacts, spawn: spawnAgent });
     if (state.snapshot) office.update(state.snapshot, { error: state.error });
   } catch (error) { console.error(error); office?.unmount(); office = null; fallBack('Office could not start; showing the list'); }
 }
@@ -328,7 +337,7 @@ function renderData() {
   const sessionsById = new Map();
   for (const [cwd, list] of sorted) {
     const group = [...groups.children].find(node => node.dataset.key === cwd), header = group.firstChild;
-    const headerSignature = JSON.stringify([list[0].project, list.length, cwd]);
+    const headerSignature = JSON.stringify([list[0].project, list.length, cwd, hireChoices(state.snapshot, cwd).map(choice => choice.label)]);
     header.hidden = flat;
     if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
@@ -371,8 +380,8 @@ const contextPercent = context => context?.window ? Math.min(100, Math.round(con
 const compacting = session => session.status === 'working' && session.activity === 'compacting';
 const planProgress = session => session.plan?.length ? [session.plan.filter(step => step.status === 'done').length, session.plan.length] : null;
 function cardDetail(session) {
-  if (session.provider === 'claude' && !session.control && needsInput(session)) return 'Open the original client · Hooks not connected';
-  return session.requests[0]?.title || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
+  if (session.provider === 'claude' && !session.control && needsInput(session) && !session.asks) return 'Open the original client · Hooks not connected';
+  return session.requests[0]?.title || session.asks || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
 }
 // What the office's card shows for whoever is outlined: the details a list card has.
 function sessionFacts(session) {
@@ -469,13 +478,13 @@ function renderPanel() {
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
-    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id]);
+    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireChoices(state.snapshot, session.cwd).map(choice => choice.label)]);
   if (signature !== panelSignature) {
     panelSignature = signature;
     renderSessionHeader(panel.querySelector('.chat-header'), session);
   }
   const requests = panel.querySelector('.chat-requests');
-  const requestSignature = JSON.stringify([session.requests.map(({ sending, ...request }) => request), needsInput(session), !!state.error]);
+  const requestSignature = JSON.stringify([session.requests.map(({ sending, ...request }) => request), needsInput(session), !!session.asks, !!state.error]);
   if (requests.dataset.signature !== requestSignature) {
     requests.dataset.signature = requestSignature;
     renderSessionRequests(requests, session);
@@ -494,7 +503,7 @@ function renderSessionHeader(header, session) {
   const next = nextWaiting(session.id);
   if (next) { const b = button('Next', 'quiet-button next-button', openNext, 'next'); b.title = `Next waiting (n): ${next.title}`; actions.append(b); }
   if (session.status === 'working' && session.messaging?.interrupt) { const stop = button('Stop', 'quiet-button stop-button', () => interrupt(session, stop), 'stop'); stop.title = 'Interrupt the current turn'; stop.disabled = !!state.error; actions.append(stop); }
-  if (session.status === 'idle' && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = 'End this session with /exit (refused while anything is still running)'; fire.disabled = !!state.error; actions.append(fire); }
+  if ((session.status === 'idle' || session.asks) && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = `End this session with ${session.messaging.via === 'tmux' ? '/exit' : 'SIGTERM'} (refused while anything is still running)`; fire.disabled = !!state.error; actions.append(fire); }
   if (session.messaging?.effort && session.efforts?.length) actions.append(effortPicker(session));
   actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
   const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
@@ -600,13 +609,13 @@ function renderSessionRequests(requests, session) {
       // Claude takes a reason with a denial; Enter in the field denies with it.
       const reason = request.denyMessage && el('input', 'deny-reason');
       const decide = value => respond(request, { decision: value, ...(value === 'decline' && reason?.value.trim() ? { message: reason.value.trim() } : {}) }, box, error);
-      for (const action of request.actions) { const b = button(action.label, action.value === 'accept' ? 'primary' : 'secondary', () => decide(action.value)); b.title = action.label; b.disabled = !!state.error || request.sending; actions.append(b); }
+      for (const action of request.actions) { const b = button(action.label, action.value === 'accept' ? 'primary' : 'secondary', () => decide(action.value)); b.title = action.label; b.dataset.decision = action.value; b.disabled = !!state.error || request.sending; actions.append(b); }
       box.append(error, actions);
       if (reason) { reason.type = 'text'; reason.maxLength = 2000; reason.placeholder = 'Deny with a reason…'; reason.setAttribute('aria-label', 'Reason for denying'); reason.disabled = !!state.error || request.sending; reason.onkeydown = event => { if (event.key === 'Enter' && reason.value.trim()) { event.preventDefault(); decide('decline'); } }; box.append(reason); }
     } else box.append(el('p', 'muted', request.note || 'Answer this request in the original client.'));
     requests.append(box);
   }
-  if (!session.requests.length && needsInput(session)) {
+  if (!session.requests.length && needsInput(session) && !session.asks) {
     const note = el('div', 'chat-idle'); note.append(icon(needsInput(session) ? 'bell' : 'check'), el('p', '', needsInput(session) ? 'Waiting for input in the original client. This prompt is not connected here.' : 'No questions or permissions waiting.')); requests.append(note);
   }
   requests.hidden = !requests.children.length;
@@ -844,14 +853,15 @@ function renderAccessPanel() {
   panel.classList.remove('chat-panel');
   panel.dataset.sessionId = '';
   const head = el('div', 'panel-heading'); head.append(button('Back to sessions', 'quiet-button', closePanel, 'back'), el('span', 'eyebrow', 'WORKSPACE ACCESS')); panel.append(head);
-  panel.append(el('h2', 'panel-title', 'Choose a PIN or password'), el('p', 'muted access-copy', 'Use a 4–8 digit PIN or a password with at least 12 characters.'));
+  panel.append(el('h2', 'panel-title', 'Choose a PIN or password'), el('p', 'muted access-copy', 'Use a 4–8 digit PIN or a password with at least 8 characters.'));
   const form = el('form', 'access-form');
   const fields = {};
   for (const [name, title, autocomplete] of [['current', 'Current PIN or password', 'current-password'], ['next', 'New PIN or password', 'new-password'], ['repeat', 'Repeat new PIN or password', 'new-password']]) {
     const label = el('label', '', title), input = el('input'); input.name = name; input.type = 'password'; input.required = true; input.maxLength = 1024; input.autocomplete = autocomplete;
-    if (name !== 'current') input.inputMode = 'numeric'; label.append(input); form.append(label); fields[name] = input;
+    label.append(input); form.append(label); fields[name] = input;
   }
-  const keyboard = el('label', 'keyboard-choice'); const pinMode = el('input'); pinMode.type = 'checkbox'; pinMode.checked = true; pinMode.onchange = () => { fields.next.inputMode = fields.repeat.inputMode = pinMode.checked ? 'numeric' : 'text'; }; keyboard.append(pinMode, document.createTextNode('Use the PIN number keyboard')); form.append(keyboard);
+  // The number keyboard is opt-in: on a phone it has no letters, so a password couldn't be typed.
+  const keyboard = el('label', 'keyboard-choice'); const pinMode = el('input'); pinMode.type = 'checkbox'; pinMode.onchange = () => { fields.next.inputMode = fields.repeat.inputMode = pinMode.checked ? 'numeric' : 'text'; }; keyboard.append(pinMode, document.createTextNode('Use the PIN number keyboard')); form.append(keyboard);
   const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
   const save = el('button', 'primary', 'Save and lock'); save.type = 'submit'; form.append(error, save);
   form.onsubmit = async event => {
@@ -877,13 +887,13 @@ async function respond(request, payload, container, error) {
 function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
 function spawnButtons(cwd) {
   const actions = el('span', 'group-actions');
-  for (const provider of ['claude', 'codex']) { const b = button(provider === 'codex' ? 'Codex' : 'Claude', 'quiet-button spawn-button', () => spawnAgent(cwd, provider, b), 'plus'); b.title = `New ${providerName(provider)} in tmux`; actions.append(b); }
+  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
   return actions;
 }
-async function spawnAgent(cwd, provider, control) {
+async function spawnAgent(cwd, choice, control) {
   if (state.error) return;
   control.disabled = true;
-  try { const result = await api('spawn', { cwd, provider }); toast(`${providerName(provider)} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
+  try { const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account }); toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
   catch (e) { toast(e.message); }
   finally { control.disabled = false; }
 }

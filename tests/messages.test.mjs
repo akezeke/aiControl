@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, mkdir, symlink, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claudeMeta, claudeMessages, codexMessage, messageLimit, TranscriptReader, claudeTitles, claudeSessionTitle } from '../server/messages.mjs';
+import { claudeMeta, claudeMessages, codexMessage, messageLimit, TranscriptReader, claudeTitles, claudeSessionTitle, lastQuestion } from '../server/messages.mjs';
 
 const sessionId = '11111111-2222-3333-4444-555555555555';
 const row = (id, type, content, extra = {}) => JSON.stringify({ uuid: id, sessionId, type, timestamp: '2026-10-25T12:00:00Z', message: { role: type, content }, ...extra });
@@ -33,6 +33,18 @@ test('Claude harness rows are notices, not user prompts', () => {
     row('stop', 'user', [{ type: 'text', text: '[Request interrupted by user]' }]),
   ], sessionId);
   assert.deepEqual(messages.map(m => [m.role, m.text]), [['user', 'Fix it\nlog'], ['notice', 'Agent "Fix shadows" finished'], ['user', '/model opus'], ['notice', 'Context compacted'], ['notice', 'Interrupted']]);
+});
+
+test('Claude messages sent mid-turn appear where the turn took them in', () => {
+  const queued = (id, prompt, kind) => JSON.stringify({ uuid: id, sessionId, type: 'attachment', timestamp: '2026-10-25T12:00:00Z', attachment: { type: 'queued_command', prompt, commandMode: 'prompt', origin: { kind } } });
+  const messages = claudeMessages([
+    row('a', 'assistant', 'Shooting the phone view.'),
+    queued('q1', 'what are you working on?', 'human'),
+    queued('q2', [{ type: 'text', text: 'and the mug' }, { type: 'image', source: {} }], 'human'),
+    queued('q3', '<task-notification>\n<summary>Agent "Fix" finished</summary>\n</task-notification>', 'task-notification'),
+    row('b', 'assistant', 'The screenshots.'),
+  ], sessionId);
+  assert.deepEqual(messages.map(m => [m.role, m.text]), [['assistant', 'Shooting the phone view.'], ['user', 'what are you working on?'], ['user', '[image] and the mug'], ['notice', 'Agent "Fix" finished'], ['assistant', 'The screenshots.']]);
 });
 
 test('Claude titles prefer user names, then the latest generated title over a derived name', () => {
@@ -186,4 +198,39 @@ test('Claude session facts come from the newest transcript records', () => {
   assert.deepEqual(meta.context, { used: 1017 });
   assert.deepEqual(meta.plan.map(step => step.status), ['done', 'active', 'pending']);
   assert.deepEqual(meta.queuedMessages.map(entry => entry.text), ['second']);
+});
+
+test('a message removed with different tag attributes leaves the queue', () => {
+  const op = (operation, content) => JSON.stringify({ type: 'queue-operation', sessionId, operation, content, timestamp: 't' });
+  const meta = claudeMeta([
+    op('enqueue', '<cross-session-message from="a" hop-chain="1,2" from-name="b">\nhi\n</cross-session-message>'),
+    op('remove', '<cross-session-message from="a" from-name="b">\nhi\n</cross-session-message>'),
+    op('enqueue', 'drop it then'),
+    op('dequeue'),
+  ], sessionId);
+  assert.deepEqual(meta.queuedMessages, []);
+});
+
+test('a turn shows its latest tool call, not one from an earlier turn', async () => {
+  const { turnTool } = await import('../server/messages.mjs');
+  const tool = text => ({ role: 'assistant', text, tool: true }), prompt = { role: 'user', text: 'go' };
+  assert.equal(turnTool([prompt, tool('Read · office/room.js'), { role: 'assistant', text: 'Now the types.' }, tool('Bash · Type-check after the route change')]), 'Bash · Type-check after the route change');
+  assert.equal(turnTool([prompt, tool('Read · office/room.js'), { role: 'assistant', text: 'Hmm.' }]), 'Read · office/room.js');
+  assert.equal(turnTool([tool('Bash · old'), prompt]), '');
+  assert.equal(turnTool(), '');
+});
+
+test('a reply whose last line is a question is waiting on you', () => {
+  const reply = text => [{ role: 'user', text: 'Fix the door' }, { role: 'assistant', text }];
+  assert.equal(lastQuestion(reply('Fixed the hinge.\n\nShall I commit it?')), 'Shall I commit it?');
+  assert.equal(lastQuestion(reply('Done.\n\n**Want me to push it too?**')), 'Want me to push it too?');
+  assert.equal(lastQuestion(reply('Which one?\n```js\nconst a = b ? c : d;\n```')), 'Which one?');
+  assert.equal(lastQuestion([...reply('Shall I commit it?'), { role: 'notice', text: 'Away summary' }]), 'Shall I commit it?');
+  assert.equal(lastQuestion(reply('Why did it fail? The port was taken. Fixed.')), '');
+  assert.equal(lastQuestion(reply('See https://example.com/?q=1')), '');
+  assert.equal(lastQuestion(reply('Bumped it to v1.2. Does vite.config.mjs need it too?')), 'Does vite.config.mjs need it too?');
+  assert.equal(lastQuestion([...reply('Shall I run the tests?'), { role: 'assistant', text: 'Bash · npm test', tool: true }]), '');
+  assert.equal(lastQuestion([...reply('Shall I commit it?'), { role: 'user', text: 'yes' }]), '');
+  assert.equal(lastQuestion([{ role: 'assistant', text: 'Is this cut off?', truncated: true }]), '');
+  assert.equal(lastQuestion([]), '');
 });

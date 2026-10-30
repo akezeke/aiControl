@@ -19,13 +19,15 @@ function drawIcon(canvas, icon) {
 export class Bubbles {
   constructor(container, onClick) {
     this.layer = document.createElement('div'); this.layer.className = 'office-bubbles'; container.append(this.layer);
-    this.nodes = new Map(); this.onClick = onClick;
+    this.nodes = new Map(); this.onClick = onClick; this.entries = []; this.said = new Map();
   }
 
-  // entries: [{ id, bubble: { icon, text, highlight } | null, unread }]
-  sync(entries) {
-    const keep = new Set();
-    for (const { id, bubble, unread } of entries) {
+  // entries: [{ id, bubble: { icon, text, highlight } | null, unread }]; something just said (say) shows instead for a moment.
+  sync(entries = this.entries) {
+    this.entries = entries;
+    const all = new Map(entries.map(entry => [entry.id, entry])), now = performance.now(), keep = new Set();
+    for (const [id, said] of this.said) if (said.until < now) this.said.delete(id); else all.set(id, { ...all.get(id), id, bubble: said.bubble });
+    for (const { id, bubble, unread } of all.values()) {
       if (!bubble) continue;
       keep.add(id);
       let node = this.nodes.get(id);
@@ -49,6 +51,7 @@ export class Bubbles {
   // `zoomOut` (0..1) shrinks them a little as the overview rises, so a whole room of them still fits but stays readable.
   // One by the side of the screen slides back in, its tail still pointing at whoever it belongs to.
   update(camera, positionOf, zoomOut = 0) {
+    for (const said of this.said.values()) if (said.until < performance.now()) { this.sync(); break; }
     const { clientWidth: w, clientHeight: h } = this.layer, p = new THREE.Vector3();
     if (this.width !== w) { this.width = w; for (const node of this.nodes.values()) node.width = 0; } // widths change with the media queries
     for (const [id, node] of this.nodes) {
@@ -66,6 +69,9 @@ export class Bubbles {
       node.style.zIndex = String(1000 - Math.round(distance * 10));
     }
   }
+
+  // A quick word from someone (hit by a ball, say), over their own bubble for a couple of seconds.
+  say(id, icon, text, seconds = 2.5) { this.said.set(id, { bubble: { icon, text, highlight: false }, until: performance.now() + seconds * 1000 }); this.sync(); }
 
   // The session whose bubble is at a screen point (under the dot when aiming with it).
   at(x, y) { return document.elementFromPoint(x, y)?.closest('.office-bubble')?.dataset.id || null; }
@@ -108,16 +114,25 @@ export function createCard(container) {
   };
 }
 
-// A pod sign's menu: Claude or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
+// A pod sign's menu: Claude (once per account, see hire.js) or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
 export function createMenu(container, onChoose) {
   const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
-  let cwd = null;
-  const items = [['claude', '✳', 'Claude', 'Claude Code'], ['codex', '⌘', 'Codex', 'Codex']].map(([provider, mark, label, name]) => {
-    const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${name} in tmux`;
-    item.append(span(`mark ${provider}`, mark), label);
-    item.onclick = () => { const at = cwd; result.close(); if (at) onChoose(at, provider, item); };
-    menu.append(item); return item;
-  });
+  let cwd = null, items = [];
+  // Without a folder (the + button) the menu asks for one, suggesting the folders sessions run in.
+  const folder = document.createElement('input'); folder.className = 'office-folder'; folder.placeholder = '~/folder'; folder.setAttribute('aria-label', 'Folder'); folder.setAttribute('list', 'office-folders'); folder.autocomplete = 'off'; folder.spellcheck = false;
+  const folders = document.createElement('datalist'); folders.id = 'office-folders';
+  folder.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); items[0]?.click(); } });
+  const build = (choices, known) => {
+    items = choices.map(choice => {
+      const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`;
+      item.append(span(`mark ${choice.provider}`, choice.provider === 'codex' ? '⌘' : '✳'), choice.label);
+      if (choice.last) item.append(span('last', 'last'));
+      item.onclick = () => { const at = cwd ?? folder.value.trim(); if (!at) { folder.focus(); return; } result.close(); onChoose(at, choice, item); };
+      return item;
+    });
+    folders.replaceChildren(...known.map(path => Object.assign(document.createElement('option'), { value: path })));
+    menu.replaceChildren(...(cwd === null ? [folder, folders] : []), ...items);
+  };
   // Keys stay in the menu: the arrows and WASD would otherwise walk or pan the camera behind it.
   menu.addEventListener('keydown', event => {
     event.stopPropagation();
@@ -130,10 +145,11 @@ export function createMenu(container, onChoose) {
   const result = {
     get open() { return !menu.hidden; },
     contains: node => menu.contains(node),
-    // At a screen point; `focus` for the keyboard.
-    show(where, at, focus) {
-      cwd = where; menu.setAttribute('aria-label', `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
-      if (focus) items[0].focus();
+    get asking() { return !menu.hidden && cwd === null; },
+    // At a screen point; `focus` for the keyboard. A null folder asks for one; `known` are the suggestions.
+    show(where, at, focus, choices, known = []) {
+      cwd = where; build(choices, known); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
+      if (where === null) { folder.value = ''; folder.focus(); } else if (focus) items[0].focus();
     },
     move(at) { if (!menu.hidden) placeNear(container, menu, at); },
     close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; },
@@ -142,11 +158,12 @@ export function createMenu(container, onChoose) {
   return result;
 }
 
-export function createOverlays(container, { onNext, onList, onOverview }) {
+export function createOverlays(container, { onNext, onList, onOverview, onNew }) {
   const bar = document.createElement('div'); bar.className = 'office-overlay'; container.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); if (onclick) b.onclick = onclick; bar.append(b); return b; };
   const waiting = button('office-waiting', '', 'Walk to the next one waiting (n)', onNext); waiting.hidden = true;
   const usage = button('office-usage', '⚡', 'Usage is near its limit; see the whiteboard'); usage.hidden = true;
+  button('office-new', '+', 'New agent in a folder', event => onNew(event.currentTarget));
   button('office-list', '☰', 'Show the list', onList);
   // Phones have no Tab.
   const eye = button('office-eye', '👁', 'Overview', () => onOverview()); eye.setAttribute('aria-pressed', 'false');

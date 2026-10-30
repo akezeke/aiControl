@@ -6,6 +6,7 @@ import { toonMaterial } from './toon.js';
 
 const KEY = 'office-lights', DIM = 0.2; // the share of its brightness a dimmed board or clock keeps (pod signs stay lit)
 // The screens' light is a fixed pool of spot lights on the nearest lit desks: adding lights would recompile every material.
+const HOLD = 0.5, ROW = 0.3; // start-up: how long the room stays dark, then the time between rows of lamps
 const SCREENS = 8, SCREEN_POWER = 1.6, SCREEN_LIT = 0.3; // the share they keep while the room lights are on
 // Each screen tone's light, a whiter shade of its accent, and how bright.
 const tones = { green: ['#a4f2c2', 1], amber: ['#ffd496', 1], red: ['#ffa3a3', 1], dark: ['#aebcd8', 0.45] };
@@ -26,6 +27,8 @@ export function createLights(root, beam) {
     return { light, desk: null, on: false, level: 0, strength: 0 };
   });
   let on = true, level = -1, stale = true, assignIn = 0, rocker = null, led = null;
+  // Start-up: the room opens dark, then the lamps come on a row at a time from the door, the room brightening with each.
+  let boot = { rows: 0, t: -HOLD, key: '', show: null };
   try { on = localStorage.getItem(KEY) !== 'off'; } catch {}
 
   const apply = () => root.traverse(node => {
@@ -43,6 +46,8 @@ export function createLights(root, beam) {
     toggle() { on = !on; show(); try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch {} },
     // Something new (a rebuilt shell) may need dimming.
     refresh() { stale = true; },
+    // The room's rows of lamps and how to light them: show(lit), lit[i] for the i-th row from the door, or null for all as usual.
+    startUp(rows, show) { if (boot) Object.assign(boot, { rows, show, key: '' }); },
     // A rocker switch with a locator light that glows while the lights are off; clicking it (userData.toggle) flips them.
     createSwitch() {
       const group = new THREE.Group();
@@ -56,8 +61,14 @@ export function createLights(root, beam) {
     // Each frame: the switch's level, then the screen lights on the desks nearest `eye`.
     update(dt, eye, still, desks) {
       dt = Math.max(0, dt); // the first frame's dt can be negative (its timestamp predates the loop starting)
-      const next = +on;
-      if (next !== level || (stale && level < 1)) { level = next; apply(); }
+      if (boot?.rows) {
+        // Each row catches with one blink, like a tube; reduced motion or the switch off skips to the end.
+        boot.t += Math.min(dt, 0.05);
+        const done = still || !on || boot.t > boot.rows * ROW + 0.2;
+        const lit = Array.from({ length: boot.rows }, (_, i) => { const t = boot.t - i * ROW; return done || (t >= 0 && (t < 0.06 || t >= 0.14)); }), key = lit.join();
+        if (key !== boot.key || stale) { boot.key = key; level = done ? +on : lit.filter(Boolean).length / boot.rows; apply(); boot.show(done ? null : lit); }
+        if (done) boot = null;
+      } else if (+on !== level || (stale && level < 1)) { level = +on; apply(); }
       stale = false;
       if ((assignIn -= dt) <= 0) {
         assignIn = 0.25;

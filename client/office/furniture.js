@@ -23,17 +23,23 @@ export function canvasTexture(width, height, draw) {
   return texture;
 }
 
-// Bakes [geometry, colour] parts into one geometry with per-vertex colour.
+// Bakes [geometry, colour, cell?] parts into one geometry with per-vertex colour; a part with an atlas cell shows that
+// picture across its uvs, the rest sit on the atlas's white cell.
 export function paint(parts) {
-  return mergeGeometries(parts.map(([geometry, color]) => {
-    const g = geometry.index ? geometry.toNonIndexed() : geometry, c = new THREE.Color(color), colors = new Float32Array(g.attributes.position.count * 3);
+  return mergeGeometries(parts.map(([geometry, color, cell]) => {
+    const g = geometry.index ? geometry.toNonIndexed() : geometry, c = new THREE.Color(color), count = g.attributes.position.count, colors = new Float32Array(count * 3), uvs = new Float32Array(count * 2);
     for (let i = 0; i < colors.length; i += 3) { colors[i] = c.r; colors[i + 1] = c.g; colors[i + 2] = c.b; }
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const [u0, v0, u1, v1] = cellRect(cell ?? 0);
+    for (let i = 0; i < count; i++) {
+      uvs[i * 2] = cell == null ? (u0 + u1) / 2 : u0 + g.attributes.uv.getX(i) * (u1 - u0);
+      uvs[i * 2 + 1] = cell == null ? (v0 + v1) / 2 : v0 + g.attributes.uv.getY(i) * (v1 - v0);
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     return g;
   }));
 }
 let paintMaterial;
-export const painted = () => paintMaterial ??= Object.assign(toonMaterial('#ffffff', { vertexColors: true }), { userData: { shared: true } });
+export const painted = () => paintMaterial ??= Object.assign(toonMaterial('#ffffff', { vertexColors: true, map: atlasTexture() }), { userData: { shared: true } });
 // A shared painted piece; `parts` only runs the first time.
 export const piece = (key, parts, outline = 0.008) => mesh(once(key, () => paint(parts())), painted(), outline);
 
@@ -52,15 +58,17 @@ export function deskItem(kind) {
     mug: () => [[cyl(0.045, 0.04, 0.1, 0, 0.05, 0), '#f2f2f2'], [new THREE.TorusGeometry(0.03, 0.009, 6, 12).translate(0.05, 0.05, 0), '#f2f2f2'], [cyl(0.04, 0.04, 0.004, 0, 0.097, 0), '#5a3a22']],
     duck: () => [[ball(0.06, 0, 0.05, 0, 1, 0.85, 1.2), '#ffd93b'], [ball(0.04, 0, 0.12, -0.04), '#ffd93b'], [new THREE.ConeGeometry(0.018, 0.04, 8).rotateX(-Math.PI / 2).translate(0, 0.115, -0.085), '#ff8c1a']],
     // A family photo facing the sitter.
-    frame: () => [[box(0.15, 0.12, 0.014, 0, 0.07, 0, 0.004), '#8c6a4f'], [box(0.12, 0.09, 0.004, 0, 0.07, -0.008, 0), '#9fd3f2'], [ball(0.05, -0.02, 0.035, -0.009, 1, 0.5, 0.1), '#7cc36a'], [ball(0.014, 0.035, 0.09, -0.011, 1, 1, 0.2), '#ffd93b']].map(([g, c]) => [g.rotateX(0.2), c]),
+    frame: () => [[box(0.15, 0.12, 0.014, 0, 0.07, 0, 0.004), '#8c6a4f'], [new THREE.PlaneGeometry(0.12, 0.09).rotateY(Math.PI).translate(0, 0.07, -0.0075), '#ffffff', PHOTO]].map(([g, c, cell]) => [g.rotateX(0.2), c, cell]),
     cactus: () => [[cyl(0.05, 0.04, 0.08, 0, 0.04, 0), '#e8b07a'], [new THREE.CapsuleGeometry(0.035, 0.1, 4, 10).translate(0, 0.15, 0), '#4f9a5c'], [new THREE.CapsuleGeometry(0.018, 0.04, 4, 8).rotateZ(0.9).translate(0.045, 0.16, 0), '#4f9a5c'], [new THREE.CapsuleGeometry(0.016, 0.03, 4, 8).rotateZ(-0.9).translate(-0.042, 0.13, 0), '#4f9a5c'], [ball(0.012, 0, 0.225, 0), '#ff7aa8']],
     books: () => ['#d1495b', '#2e86ab', '#edae49'].map((color, i) => [box(0.2 - i * 0.02, 0.035, 0.14 - i * 0.01, 0, 0.018 + i * 0.036, 0, 0.004).rotateY((i - 1) * 0.2), color]),
   }[kind];
-  return make ? piece(`item-${kind}`, make, 0.006) : new THREE.Group();
+  return make ? loose(piece(`item-${kind}`, make, 0.006), kind) : new THREE.Group();
 }
+// Desk things can be picked up and thrown (props.js); `kind` says which.
+const loose = (item, kind) => { item.userData.loose = kind; return item; };
 
 // A takeaway coffee: paper cup, cardboard sleeve, lid.
-export const coffeeCup = () => piece('cup', () => [[cyl(0.04, 0.03, 0.12, 0, 0.06, 0), '#f4efe6'], [cyl(0.0385, 0.035, 0.045, 0, 0.065, 0), '#b07a4a'], [cyl(0.043, 0.043, 0.012, 0, 0.124, 0), '#ffffff'], [cyl(0.03, 0.038, 0.012, 0, 0.136, 0), '#ffffff']], 0.005);
+export const coffeeCup = () => loose(piece('cup', () => [[cyl(0.04, 0.03, 0.12, 0, 0.06, 0), '#f4efe6'], [cyl(0.0385, 0.035, 0.045, 0, 0.065, 0), '#b07a4a'], [cyl(0.043, 0.043, 0.012, 0, 0.124, 0), '#ffffff'], [cyl(0.03, 0.038, 0.012, 0, 0.136, 0), '#ffffff']], 0.005), 'cup');
 
 // Floor plants in three shapes.
 export function plant(kind = 'bush') {
@@ -116,15 +124,37 @@ const art = [
     g.strokeStyle = '#f1e9da'; g.lineWidth = 10; for (let i = -3; i <= 3; i++) { g.beginPath(); g.moveTo(w / 2, h / 2); g.lineTo(w / 2 + Math.cos(i * 0.45 + 0.4) * w, h / 2 + Math.sin(i * 0.45 + 0.4) * w); g.stroke(); }
   },
 ];
-const artMaterials = [];
-const artMaterial = i => artMaterials[i] ??= Object.assign(toonMaterial('#ffffff', { map: canvasTexture(256, 320, art[i]) }), { userData: { shared: true } });
+// The family on the desks' photos, drawn 4:3 and stretched to its cell (the photo is 4:3 again).
+const photo = (g, w, h) => {
+  g.scale(1, h / (w * 0.75)); h = w * 0.75;
+  const sky = g.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#7ec8f2'); sky.addColorStop(1, '#d8f0ff'); g.fillStyle = sky; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#ffd93b'; g.beginPath(); g.arc(w * 0.84, h * 0.2, 18, 0, 7); g.fill();
+  g.fillStyle = '#7cc36a'; g.beginPath(); g.ellipse(w / 2, h * 1.08, w * 0.8, h * 0.4, 0, 0, 7); g.fill();
+  for (const [x, y, r, color] of [[0.28, 0.58, 32, '#d62828'], [0.54, 0.54, 36, '#b5c934'], [0.76, 0.68, 22, '#f28c28']]) {
+    g.fillStyle = '#6b4423'; g.fillRect(w * x - 2, h * y - r - 9, 4, 12);
+    g.fillStyle = color; g.beginPath(); g.arc(w * x, h * y, r, 0, 7); g.fill();
+    g.fillStyle = '#1b1a1f'; for (const s of [-1, 1]) { g.beginPath(); g.arc(w * x + s * r * 0.3, h * y - r * 0.15, r * 0.1, 0, 7); g.fill(); }
+    g.strokeStyle = '#1b1a1f'; g.lineWidth = 3; g.beginPath(); g.arc(w * x, h * y, r * 0.4, 0.35, Math.PI - 0.35); g.stroke();
+  }
+};
+// The art and the photo on one canvas, the painted material's map, so a picture is just more painted geometry and costs no
+// draw call of its own. Cell 0 (at uv 0, 0) is white: what isn't a picture samples it and shows its vertex colour.
+const sheet = [(g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); }, ...art, photo], PHOTO = sheet.length - 1;
+const CELL = [256, 320], COLS = 4, SIZE = [CELL[0] * COLS, CELL[1] * Math.ceil(sheet.length / COLS)];
+// Cell k's [u0, v0, u1, v1], rows counted up from the bottom, inset a few texels so the neighbours don't bleed in.
+const cellRect = k => {
+  const x = (k % COLS) * CELL[0], y = Math.floor(k / COLS) * CELL[1], inset = 3;
+  return [(x + inset) / SIZE[0], (y + inset) / SIZE[1], (x + CELL[0] - inset) / SIZE[0], (y + CELL[1] - inset) / SIZE[1]];
+};
+let atlas;
+const atlasTexture = () => atlas ??= canvasTexture(...SIZE, g => sheet.forEach((draw, k) => {
+  g.save(); g.translate((k % COLS) * CELL[0], SIZE[1] - (Math.floor(k / COLS) + 1) * CELL[1]);
+  g.beginPath(); g.rect(0, 0, ...CELL); g.clip(); draw(g, ...CELL); g.restore();
+}));
 // A framed picture facing +z, its back on the wall.
-export function picture(i, w = 0.8, h = 1) {
-  const group = new THREE.Group();
-  group.add(mesh(rounded(w + 0.08, h + 0.08, 0.04, 0.015), toonMaterial(['#2f3542', '#8c6a4f', '#ffffff'][i % 3]), 0.008));
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), artMaterial(i % art.length)); face.position.z = 0.021; group.add(face);
-  return group;
-}
+export const picture = (i, w = 0.8, h = 1) => piece(`picture${i}:${w}x${h}`, () => [
+  [rounded(w + 0.08, h + 0.08, 0.04, 0.015), ['#2f3542', '#8c6a4f', '#ffffff'][i % 3]], [new THREE.PlaneGeometry(w, h).translate(0, 0, 0.021), '#ffffff', 1 + i % art.length],
+]);
 
 // Lounge: a sofa, an armchair and a low table, each facing +z.
 const cushion = '#e07a5f', cushionDark = '#c8664c';
@@ -157,16 +187,18 @@ export function rug(w, d, color = '#6d9dc5', border = '#f2e8cf') {
   return m;
 }
 
-// Coffee corner: a counter with a machine, mugs on a shelf above, and a water cooler.
+// Coffee corner: a counter, its machine, mugs on a shelf above, and a water cooler.
 export const counter = () => piece('counter', () => [
   [box(2, 0.86, 0.6, 0, 0.43, 0, 0.02), '#e8e1d4'], [box(2.06, 0.05, 0.66, 0, 0.885, 0.01, 0.015), '#7a5c46'],
   ...[-0.75, -0.25, 0.25, 0.75].map(x => [box(0.46, 0.7, 0.012, x, 0.42, 0.302, 0.004), '#ddd4c4']), ...[-0.55, -0.45, 0.45, 0.55].map(x => [box(0.02, 0.14, 0.02, x, 0.62, 0.315, 0.006), '#8a8f99']),
-  // Coffee machine and its cup.
-  [box(0.34, 0.44, 0.32, -0.5, 1.13, -0.04, 0.03), '#2f3542'], [box(0.36, 0.06, 0.34, -0.5, 1.37, -0.04, 0.02), '#c9ced8'], [box(0.1, 0.05, 0.08, -0.5, 1.06, 0.13, 0.01), '#c9ced8'],
-  [box(0.26, 0.02, 0.14, -0.5, 0.92, 0.12, 0.005), '#8a8f99'], [cyl(0.035, 0.03, 0.08, -0.5, 0.97, 0.13), '#f2f2f2'], [ball(0.015, -0.4, 1.22, 0.115), '#5ee08a'],
   // A kettle and a stack of cups.
   [cyl(0.08, 0.1, 0.2, 0.15, 1.01, -0.05, 16), '#d1495b'], [cyl(0.03, 0.03, 0.04, 0.15, 1.13, -0.05), '#2f3542'], ...[0, 1, 2, 3].map(i => [cyl(0.04, 0.03, 0.1, 0.55, 0.96 + i * 0.03, 0), '#f4efe6']),
 ]);
+// The coffee machine and its cup, in the counter's frame (a piece of its own, so it can be outlined); userData.spout is where it pours.
+export const coffeeMachine = () => Object.assign(piece('coffeeMachine', () => [
+  [box(0.34, 0.44, 0.32, -0.5, 1.13, -0.04, 0.03), '#2f3542'], [box(0.36, 0.06, 0.34, -0.5, 1.37, -0.04, 0.02), '#c9ced8'], [box(0.1, 0.05, 0.08, -0.5, 1.06, 0.13, 0.01), '#c9ced8'],
+  [box(0.26, 0.02, 0.14, -0.5, 0.92, 0.12, 0.005), '#8a8f99'], [cyl(0.035, 0.03, 0.08, -0.5, 0.97, 0.13), '#f2f2f2'], [ball(0.015, -0.4, 1.22, 0.115), '#5ee08a'],
+]), { userData: { spout: new THREE.Vector3(-0.5, 1.03, 0.13) } });
 export const mugShelf = () => piece('mugShelf', () => [
   [box(1.2, 0.04, 0.22, 0, 0, 0, 0.01), '#7a5c46'], ...['#e63946', '#2e86ab', '#f9e04b', '#7cb518', '#f2f2f2'].flatMap((color, i) => [[cyl(0.045, 0.04, 0.1, -0.44 + i * 0.22, 0.07, 0.01), color], [new THREE.TorusGeometry(0.03, 0.009, 6, 12).translate(-0.39 + i * 0.22, 0.07, 0.01), color]]),
 ]);

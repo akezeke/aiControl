@@ -409,8 +409,8 @@ export class CodexAdapter {
       if (this.items.size > 200) this.items.delete(this.items.keys().next().value);
       const session = this.sessions.get(p.threadId);
       if (session) {
-        const compacting = p.item.type === 'contextCompaction';
-        session.detail = compacting ? 'Compacting context' : p.item.command || p.item.text?.slice(0, 300) || p.item.type;
+        const compacting = p.item.type === 'contextCompaction', line = codexMessage(p.item);
+        session.detail = compacting ? 'Compacting context' : (line?.tool && line.text) || p.item.command || p.item.text?.slice(0, 300) || p.item.type;
         session.activity = compacting ? 'compacting' : p.item.type === 'reasoning' ? 'thinking' : ''; session.updatedAt = Date.now();
       }
     }

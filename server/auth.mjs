@@ -9,7 +9,7 @@ export const idleMs = 10 * 60_000;
 
 export async function savePassword(file, password) {
   const isPin = typeof password === 'string' && /^\d{4,8}$/.test(password);
-  if (typeof password !== 'string' || (!isPin && password.length < 12) || password.length > 1024) throw new Error('Use a 4–8 digit PIN or a password with 12–1024 characters.');
+  if (typeof password !== 'string' || (!isPin && password.length < 8) || password.length > 1024) throw new Error('Use a 4–8 digit PIN or a password with 8–1024 characters.');
   const salt = randomBytes(32).toString('hex');
   const derived = await scrypt(password, salt, 64);
   const temporary = `${file}.${randomBytes(8).toString('hex')}.tmp`;

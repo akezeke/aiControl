@@ -1,4 +1,5 @@
-// What's written on the walls: usage limits on the whiteboard, the real time on the clock, and a sticky note per waiting session.
+// What's written on the walls: usage limits and any agent the server can't reach on the whiteboard, the real time on the clock,
+// a sticky note per waiting session, the machine's name on the door, and a sign on the coffee machine while usage is used up.
 // Each is a canvas texture redrawn only when what it shows changes.
 import * as THREE from 'three';
 import { usageWindowView } from '../usage-presentation.js';
@@ -19,7 +20,14 @@ function scribble(g, x1, y1, x2, y2, seed = 1) {
   g.stroke();
 }
 
-function drawWhiteboard({ g, width: w, height: h }, usage, error, now) {
+// Cut `text` with an ellipsis to fit `width` in the current font.
+function fit(g, text, width) {
+  if (g.measureText(text).width <= width) return text;
+  while (text && g.measureText(`${text}…`).width > width) text = text.slice(0, -1);
+  return `${text}…`;
+}
+
+function drawWhiteboard({ g, width: w, height: h }, usage, providers, error, now) {
   g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h);
   g.lineCap = 'round'; g.lineJoin = 'round';
   g.fillStyle = INK.blue; g.font = `bold 52px ${MARKER}`; g.fillText('Usage', 40, 70);
@@ -28,10 +36,17 @@ function drawWhiteboard({ g, width: w, height: h }, usage, error, now) {
     g.fillStyle = INK.red; g.font = `bold 64px ${MARKER}`; g.save(); g.translate(w / 2, h / 2 + 20); g.rotate(-0.08); g.textAlign = 'center'; g.fillText('connection lost', 0, 0); g.restore();
     return;
   }
-  const accounts = (usage || []).filter(account => account.windows?.length);
+  // Agents the server can't reach, at the foot of the board: who in red, why underneath (the server's detail, less its "X disconnected:").
+  const offline = (providers || []).filter(provider => !provider.connected).slice(0, 2);
+  offline.forEach((provider, i) => {
+    const y = h - 30 - (offline.length - 1 - i) * 76;
+    g.fillStyle = INK.red; g.font = `bold 36px ${MARKER}`; g.fillText(`${provider.name} offline`, 40, y - 34);
+    g.fillStyle = INK.black; g.font = `26px ${MARKER}`; g.fillText(fit(g, String(provider.detail || '').replace(/^[^:]*disconnected:\s*/i, ''), w - 80), 40, y);
+  });
+  const accounts = (usage || []).filter(account => account.windows?.length), space = h - 120 - offline.length * 76;
   if (!accounts.length) { g.fillStyle = INK.black; g.font = `36px ${MARKER}`; g.fillText('no usage data yet', 40, 160); return; }
   // Two accounts fill the board; more (e.g. several Claude accounts) write smaller.
-  const k = Math.min(1, (h - 120) / (accounts.length * 182));
+  const k = Math.min(1, space / (accounts.length * 182));
   let y = 110 + 40 * k, slow = false;
   accounts.forEach((account, a) => {
     g.fillStyle = INK.black; g.font = `bold ${46 * k}px ${MARKER}`; g.fillText(account.name || account.provider, 40, y);
@@ -52,6 +67,40 @@ function drawWhiteboard({ g, width: w, height: h }, usage, error, now) {
     y += 20 * k;
   });
   if (slow) { g.save(); g.translate(w - 230, 70); g.rotate(-0.12); g.fillStyle = INK.red; g.font = `bold 46px ${MARKER}`; g.fillText('slow down!', 0, 0); g.restore(); }
+}
+
+// Accounts with a usage window used up, each with when it's back (the last of its full windows to reset).
+export function usedUp(usage, now = Date.now()) {
+  return (usage || []).flatMap(account => {
+    const full = (account.windows || []).filter(window => window.usedPercent >= 100 && !usageWindowView(window, now).expired);
+    if (!full.length) return [];
+    const last = full.reduce((a, b) => (b.resetsAt || 0) > (a.resetsAt || 0) ? b : a), short = usageWindowView(last, now).resetShortText;
+    return [{ provider: account.provider, back: short === '—' ? 'back soon' : short.includes(':') ? `back ${short}` : `back in ${short}` }];
+  });
+}
+
+// The coffee machine's sign: EMPTY, then the agent's mark and when it's back, one line each.
+function drawSign({ g, width: w, height: h }, empty) {
+  g.fillStyle = '#fffdf5'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#e8e2c8bb'; g.fillRect(-10, 6, 70, 22); g.fillRect(w - 60, 6, 70, 22);
+  g.lineCap = 'round'; g.fillStyle = INK.red; g.strokeStyle = INK.red; g.lineWidth = 5; g.textAlign = 'center';
+  g.font = `bold 62px ${MARKER}`; g.fillText('EMPTY', w / 2, 86); scribble(g, 34, 98, w - 34, 96);
+  empty.slice(0, 2).forEach(({ provider, back }, i) => {
+    const y = 140 + i * 44 - (empty.length > 1 ? 10 : 0);
+    g.textAlign = 'left'; g.font = `bold 34px ${MARKER}`;
+    g.fillStyle = provider === 'claude' ? '#d97757' : INK.black; g.fillText(provider === 'claude' ? '✳' : provider === 'codex' ? '⌘' : '•', 24, y);
+    g.fillStyle = INK.black; g.font = `32px ${MARKER}`; g.fillText(back, 66, y);
+  });
+  g.textAlign = 'left';
+}
+
+// The door's name plate: the machine the office is on, as large as fits.
+function drawPlate({ g, width: w, height: h }, machine) {
+  g.fillStyle = '#f4efe3'; g.fillRect(0, 0, w, h);
+  g.fillStyle = INK.black; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let size = 64; ; size -= 4) { g.font = `bold ${size}px system-ui, sans-serif`; if (size <= 24 || g.measureText(machine).width <= w - 40) break; }
+  g.fillText(fit(g, machine, w - 40), w / 2, h / 2 + 2);
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
 }
 
 function drawClock({ g, width: w, height: h }, now) {
@@ -87,19 +136,25 @@ function drawWaiting({ g, width: w, height: h }, titles) {
 }
 
 export function createBoards(room) {
-  let boards = null, faces = null, usageKey = '', waitingKey = '', minute = -1;
+  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1;
   const ensure = () => {
     // The room rebuilds its walls (and so its boards) when it resizes; repaint onto the new faces.
     if (faces === room.boards.whiteboard) return;
     faces = room.boards.whiteboard;
-    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384) };
-    usageKey = waitingKey = ''; minute = -1;
+    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), sign: paint(room.coffeeSign.userData.face, 256, 192) };
+    usageKey = waitingKey = ''; plateKey = null; minute = -1;
   };
   return {
     sync(snapshot, { error = '', waiting = [] } = {}) {
       ensure();
-      const now = Date.now(), nextUsage = JSON.stringify([snapshot.usage, !!error, Math.floor(now / 60_000)]);
-      if (nextUsage !== usageKey) { usageKey = nextUsage; drawWhiteboard(boards.whiteboard, snapshot.usage, error, now); boards.whiteboard.texture.needsUpdate = true; }
+      const now = Date.now(), nextUsage = JSON.stringify([snapshot.usage, snapshot.providers, !!error, Math.floor(now / 60_000)]);
+      if (nextUsage !== usageKey) {
+        usageKey = nextUsage; drawWhiteboard(boards.whiteboard, snapshot.usage, snapshot.providers, error, now); boards.whiteboard.texture.needsUpdate = true;
+        const empty = usedUp(snapshot.usage, now); room.coffeeSign.visible = empty.length > 0;
+        if (empty.length) { drawSign(boards.sign, empty); boards.sign.texture.needsUpdate = true; }
+      }
+      const machine = snapshot.machine || '';
+      if (machine !== plateKey) { plateKey = machine; drawPlate(boards.plate, machine); boards.plate.texture.needsUpdate = true; }
       const nextWaiting = JSON.stringify(waiting);
       if (nextWaiting !== waitingKey) { waitingKey = nextWaiting; drawWaiting(boards.waiting, waiting); boards.waiting.texture.needsUpdate = true; }
     },

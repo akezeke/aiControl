@@ -24,6 +24,13 @@ test('identity is deterministic and varied', () => {
   const fruits = new Set(Array.from({ length: 50 }, (_, i) => identity(`s${i}`).fruit));
   assert.ok(fruits.size >= 5 && [...fruits].every(f => FRUITS.includes(f)));
 });
+test('accessories combine, one per slot', () => {
+  const people = Array.from({ length: 300 }, (_, i) => identity(`s${i}`)), hats = ['beanie', 'cap', 'headphones', 'bow', 'flower'];
+  assert.ok(people.some(p => p.accessories.includes('glasses') && p.accessories.includes('tie')));
+  assert.ok(people.some(p => p.accessories.includes('lashes')) && people.some(p => !p.accessories.length));
+  assert.ok(people.every(p => p.accessories.filter(a => hats.includes(a)).length <= 1 && !(p.accessories.includes('tie') && p.accessories.includes('pearls'))));
+  assert.ok(people.every(p => p.fruit !== 'banana' || !p.accessories.some(a => ['beanie', 'cap', 'headphones'].includes(a))));
+});
 test('typing targets are recognized', () => {
   assert.equal(isTypingTarget({ tagName: 'TEXTAREA', closest: () => null }), true);
   assert.equal(isTypingTarget({ tagName: 'CANVAS', isContentEditable: false, closest: () => null }), false);
@@ -38,6 +45,11 @@ test('monitor shows the title and the last lines, one line each, marked by kind'
   assert.equal(m.lines[0].text, 'step 2');
   assert.deepEqual(monitorLines({ project: 'x' }), { title: 'x', lines: [] });
 });
+test('a session needing you says since when', () => {
+  assert.equal(officeStatus({ status: 'permission', updatedAt: 5, requests: [{ title: 'Run it', createdAt: 7 }] }).since, 7);
+  assert.equal(officeStatus({ status: 'question', updatedAt: 5, requests: [] }).since, 5);
+  assert.equal(officeStatus({ status: 'working', updatedAt: 5, requests: [] }).since, undefined);
+});
 test('a subagent that needs you speaks up', () => {
   assert.equal(officeStatus({ status: 'permission', parentId: 'p', requests: [{ title: 'Run it' }] }).bubble?.highlight, true);
 });
@@ -48,14 +60,15 @@ test('a working session that is thinking gets its own pose and bubble', () => {
 });
 test('a session compacting its context says so', () => {
   const s = officeStatus({ status: 'working', activity: 'compacting', detail: 'Compacting context', requests: [] });
-  assert.deepEqual([s.pose, s.bubble.icon, s.bubble.text], ['thinking', '🗜️', 'Compacting']);
+  assert.deepEqual([s.pose, s.expression, s.bubble.icon, s.bubble.text], ['squeezing', 'squeezed', '🗜️', 'Compacting']);
 });
 test('wear follows context fill and long turns; cups follow the turn', () => {
   const now = 1_000_000_000, at = minutes => now - minutes * 60_000;
   const turn = (minutes, extra = {}) => tiredness({ status: 'working', messages: [{ role: 'user', text: 'go', timestamp: at(minutes) }, { role: 'assistant', text: 'ok', timestamp: at(0) }], ...extra }, now);
   assert.deepEqual(turn(1), { wear: 0, cups: 0 });
-  assert.deepEqual(turn(25), { wear: 0.2, cups: 3 });
+  assert.deepEqual(turn(25), { wear: 0.1, cups: 3 });
   assert.equal(turn(200).cups, 6);
+  assert.equal(turn(1, { context: { used: 70_000 } }).wear, 0, 'what a compaction leaves is fresh');
   assert.equal(turn(1, { context: { used: 150_000 } }).wear, 0.8);
   assert.equal(turn(1, { context: { used: 300_000 } }).wear, 0, 'past 200k the window must be 1M');
   assert.equal(turn(1, { context: { used: 90_000, window: 100_000 } }).wear, 1);
@@ -66,4 +79,29 @@ test('wear follows context fill and long turns; cups follow the turn', () => {
 test('desk props come from a wider set', () => {
   const props = new Set(Array.from({ length: 80 }, (_, i) => identity(`s${i}`).props).flat());
   assert.ok(['frame', 'cactus', 'books'].some(prop => props.has(prop)));
+});
+
+test('a working bubble shows the running call, its icon following the tool', () => {
+  const at = detail => { const b = officeStatus({ status: 'working', detail, requests: [] }).bubble; return [b.icon, b.text]; };
+  assert.deepEqual(at('Bash · Type-check after the route change'), ['⌨️', 'Bash · Type-check after the route change']);
+  assert.deepEqual(at('Shell (exit 1) · npm test'), ['⌨️', 'Shell (exit 1) · npm test']);
+  assert.deepEqual(['Edit · office/room.js', 'Write · a.md', 'MultiEdit · b.js', 'Read · c.js', 'Grep · todo', 'Glob · **/*.js', 'Search · three.js', 'WebSearch · q', 'WebFetch · https://x.dev', 'Agent · Explore the office code', 'Task · Plan it'].map(d => at(d)[0]),
+    ['✏️', '✏️', '✏️', '📖', '🔍', '🔍', '🔍', '🔍', '🌐', '👥', '👥']);
+  assert.deepEqual(at(''), ['⌨️', 'Working']);
+});
+
+test('a session asking in its reply raises its hand with the question', () => {
+  const b = officeStatus({ status: 'question', asks: 'Shall I commit it?', requests: [] });
+  assert.deepEqual([b.pose, b.bubble.icon, b.bubble.text], ['raising', '❓', 'Shall I commit it?']);
+});
+test('habits are per character and varied', () => {
+  const people = Array.from({ length: 60 }, (_, i) => identity(`s${i}`).habits);
+  for (const kind of ['typing', 'thinking', 'sleeping', 'finish']) assert.ok(new Set(people.map(p => p[kind])).size > 1, kind);
+});
+test('bypass and plan modes, the agent and the plan reach the office', () => {
+  const at = permissionMode => officeStatus({ status: 'working', permissionMode, provider: 'codex', requests: [] });
+  assert.deepEqual(['bypassPermissions', 'plan', 'acceptEdits', undefined].map(mode => at(mode).mode), ['bypass', 'plan', '', '']);
+  assert.equal(at('plan').provider, 'codex');
+  assert.equal(officeStatus({ status: 'offline', permissionMode: 'bypassPermissions', requests: [] }).mode, 'bypass', 'an offline one keeps its shades');
+  assert.deepEqual(monitorLines({ title: 'x', plan: [{ step: 'a', status: 'done' }, { step: 'b', status: 'active' }] }).plan, ['done', 'active']);
 });

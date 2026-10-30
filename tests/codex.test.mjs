@@ -309,3 +309,12 @@ test('a thread compacting its context shows that until the compaction item compl
   assert.equal(adapter.list()[0].activity, '');
   assert.equal(adapter.list()[0].messages.at(-1).text, 'Context compacted');
 });
+
+test('a running item shows as a tool line, the shell wrapper and long paths trimmed', async t => {
+  const { adapter } = await connected(t, {});
+  const emit = item => adapter.socket.emit('message', Buffer.from(JSON.stringify({ method: 'item/started', params: { threadId: 'live-thread', turnId: 't', item } })));
+  emit({ type: 'commandExecution', id: 'c1', command: "/usr/bin/zsh -lc 'npm test'" });
+  assert.equal(adapter.list()[0].detail, 'Shell · npm test');
+  emit({ type: 'fileChange', id: 'f1', changes: [{ path: '/w/app/client/office/room.js' }] });
+  assert.equal(adapter.list()[0].detail, 'Edit · office/room.js');
+});

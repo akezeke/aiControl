@@ -1,11 +1,12 @@
 import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
 import { appendFile, writeFile, rename, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
-import { hostname as machineName } from 'node:os';
+import { join, isAbsolute } from 'node:path';
+import { statSync } from 'node:fs';
+import { hostname as machineName, homedir } from 'node:os';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
-import { RequestStore } from './requests.mjs';
+import { RequestStore, mergeSessions } from './requests.mjs';
 import { CodexAdapter } from './codex.mjs';
 import { ClaudeAdapter } from './claude.mjs';
 import { UsagePoller, claudeUsageReader } from './usage.mjs';
@@ -29,14 +30,8 @@ export async function startServer({ host, hostname, tls = null }) {
   const claudeUsage = accounts.map(({ dir, label }) => ({ label, poller: new UsagePoller('claude', label ? `Claude Code · ${label}` : 'Claude Code', claudeUsageReader({ credentialsFile: join(dir, '.credentials.json') })) }));
   const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: origins.map(o => new URL(o).hostname) } });
   const snapshot = () => {
-    const requests = store.list();
-    const sessions = [...codex.list(), ...claude.list()].map(session => {
-      const pending = requests.filter(r => r.sessionId === session.id);
-      return { ...session, ...(pending.length ? { status: pending[0].kind === 'question' ? 'question' : 'permission' } : {}), requests: pending };
-    });
-    // A request may arrive just before session metadata; keep it visible.
-    for (const request of requests) if (!sessions.some(s => s.id === request.sessionId)) sessions.push({ id: request.sessionId, provider: request.provider, title: 'Session connecting', project: 'Connecting', cwd: '', status: request.kind === 'question' ? 'question' : 'permission', updatedAt: request.createdAt, requests: requests.filter(r => r.sessionId === request.sessionId), control: true });
-    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label }))], features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: machineName(), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }] };
+    const sessions = mergeSessions([...codex.list(), ...claude.list()], store.list());
+    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label }))], features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }] };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -48,17 +43,18 @@ export async function startServer({ host, hostname, tls = null }) {
     send: (id, body) => claudeId(id) ? claude.sendMessage(claudeId(id), body) : codex.sendMessage(messageTarget(id), body),
     cancel: (id, queuedId) => codex.cancelQueuedMessage(messageTarget(id), queuedId),
     interrupt: id => claudeId(id) ? claude.interrupt(claudeId(id)) : codex.interrupt(messageTarget(id)),
-    fire: id => claudeId(id) ? claude.fire(claudeId(id)) : Promise.reject(fail('Only Claude sessions in tmux can be fired for now.', 409)),
+    fire: id => claudeId(id) ? claude.fire(claudeId(id)) : Promise.reject(fail('Only Claude sessions can be fired for now.', 409)),
     effort: (id, body) => claudeId(id) ? claude.setEffort(claudeId(id), body?.effort) : codex.setEffort(messageTarget(id), body?.effort),
     history: (id, limit) => claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
     // Only Claude transcripts are scanned; Codex history comes from its app server a page at a time.
     images: id => claudeId(id) ? claude.imageList(id) : { images: [] },
     image: (id, imageId) => claudeId(id) ? claude.image(id, imageId) : Promise.reject(fail('Image not found.', 404)),
   };
-  // Only directories a live session already runs in. Claude starts under the account the project last used.
-  const spawn = ({ cwd, provider } = {}) => {
-    if (![...codex.list(), ...claude.list()].some(s => s.cwd && s.cwd === cwd)) return Promise.reject(fail('Unknown project.', 404));
-    const account = provider === 'claude' ? claude.accountFor(cwd) : null;
+  // Any existing directory (~ expands). Claude starts under the account asked for, or the one the project last used.
+  const spawn = ({ cwd, provider, account: label } = {}) => {
+    if (typeof cwd === 'string') cwd = cwd.trim().replace(/^~(?=\/|$)/, homedir()).replace(/(.)\/+$/, '$1');
+    if (typeof cwd !== 'string' || !isAbsolute(cwd) || !statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return Promise.reject(fail('No such folder.', 404));
+    const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
     return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' });
   };
   const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn });

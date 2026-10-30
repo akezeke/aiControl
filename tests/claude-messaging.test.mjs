@@ -289,6 +289,23 @@ test('Fire types /exit only into an empty prompt, rechecks before Enter and wait
   await assert.rejects(stays.adapter.fire(paneRecord, async () => {}), e => e.status === 504 && /still running/.test(e.message));
 });
 
+test('Fire outside tmux sends SIGTERM to an interactive Claude after the recheck, and waits for it to go', async () => {
+  const terminal = { ...record, status: 'idle', kind: 'interactive' };
+  let calls = [];
+  const { adapter } = fixture({ pollMs: 1, alive: async () => !calls.includes('SIGTERM'), signal: (pid, name) => calls.push(pid, name) });
+  assert.deepEqual(await adapter.fire(terminal, async () => { calls.push('recheck'); }), { ok: true });
+  assert.deepEqual(calls, ['recheck', 123, 'SIGTERM']);
+
+  calls = [];
+  await assert.rejects(adapter.fire(terminal, async () => { throw new Error('busy now'); }), /busy now/);
+  await assert.rejects(adapter.fire({ ...terminal, kind: 'bg' }, async () => {}), /terminal sessions/);
+  await assert.rejects(adapter.fire({ ...terminal, status: 'busy' }, async () => {}), /working/);
+  assert.deepEqual(calls, []);
+
+  const stays = fixture({ pollMs: 1, exitMs: 20, signal() {} });
+  await assert.rejects(stays.adapter.fire(terminal, async () => {}), e => e.status === 504 && /still running/.test(e.message));
+});
+
 test('Claude adapter fires only a session that is quiet: idle a while, no subagent, no command running', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'aicontrol-claude-fire-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, `${record.pid}.json`), register = extra => writeFile(path, JSON.stringify({ ...record, cwd: '/work/project', status: 'idle', statusUpdatedAt: Date.now() - 60_000, ...extra }));
