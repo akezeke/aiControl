@@ -15,7 +15,7 @@
     "dev": "node scripts/start.mjs",
     "dev:local": "node scripts/start.mjs --local",
     "build": "vite build",
-    "test": "node --test --test-isolation=none tests/*.test.mjs",
+    "test": "node --test --experimental-test-isolation=none tests/*.test.mjs",
     "password": "node scripts/password.mjs",
     "setup": "node scripts/setup.mjs",
     "demo": "node scripts/demo.mjs",
