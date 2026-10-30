@@ -1,0 +1,232 @@
+/* Sanctuary: late-90s dungeon stone, blood and bone. Texture is static; only small
+   embers and resource highlights animate. Chat text and screenshots stay untouched. */
+:root[data-theme=diablo] {
+  color-scheme: dark;
+  --font: Tahoma, 'Segoe UI', 'Liberation Sans', sans-serif;
+  --display: 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  --pixel: 'VT323', var(--mono);
+  --bg: #100d0b; --panel: #1b1814; --panel-2: #29231c; --sunken: #0c0b09;
+  --text: #e5d6b8; --text-2: #c1b294; --text-3: #a6987e;
+  --line: #443d33; --line-2: #817460;
+  --accent: #d3ac62; --accent-2: #f0d092; --accent-ink: #1b1008; --accent-soft: #37291a;
+  --ok: #abc17d; --ok-soft: #222b18; --warn: #eabd6d; --warn-soft: #362510; --warn-line: #85612f;
+  --danger: #ff8a79; --danger-soft: #3c1713;
+  --codex: #a5bee3; --claude: #e0a38b; --claude-soft: #38201a;
+  --radius: 0px; --radius-sm: 0px; --focus: #f0d092;
+  --shadow: inset 1px 1px #a28e6220, inset -1px -1px #0009, 0 2px 0 #0008;
+  --shadow-lg: 0 0 0 2px #090706, 0 0 0 3px #6c5637, 0 18px 50px #000d;
+  --stone: linear-gradient(#100e0c66, #08060599), url('/diablo-stone.svg');
+  --carved: inset 0 0 0 1px #100c08, inset 0 0 0 3px #74604755, inset 0 0 0 4px #100c08;
+  ::selection { background: #8f211b; color: #fff0d3; }
+  :is(.main-screen, .sidebar, .session-card, .nav-item, .usage-account, .theme-console, .primary, .quiet-button, .secondary, .request-box, .answer-option, .login-card) { image-rendering: pixelated; }
+
+  .shell, .login-screen { isolation: isolate; background: transparent; }
+  :is(.shell, .login-screen)::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(#0b07052b, #0b07054d), url('/diablo-bg.webp') center / cover no-repeat; image-rendering: pixelated; }
+  .brand-variant.diablo { display: flex; gap: 8px; }
+  .brand-variant.diablo .brand-mark { width: 38px; height: 38px; padding: 0; border-radius: 0; background: url('/diablo-portrait.webp') center / contain no-repeat; box-shadow: none; image-rendering: pixelated; }
+  .brand-variant.diablo .brand-name { font: 700 20px/1 var(--display); font-variant: small-caps; letter-spacing: .04em; color: var(--accent-2); text-shadow: 0 2px #000, 0 -1px #8d492f; }
+  .sidebar { padding: 20px 8px 12px; background: url('/diablo-gore.webp') center top / 260px auto no-repeat, linear-gradient(90deg, #0005, #0000 18% 86%, #0007), var(--stone); border: 10px solid transparent; border-image: url('/diablo-frame.webp') 256 / 20px / 0 stretch; box-shadow: 8px 0 24px #000b; }
+  .sidebar .brand { margin: 0 0 18px; justify-content: center; }
+  .sidebar-label { position: relative; margin-left: 3px; display: flex; align-items: center; gap: 7px; font: 18px/1 var(--pixel); letter-spacing: .05em; color: var(--accent); }
+  .sidebar-label::before { content: ''; flex: none; width: 23px; height: 23px; background: url('/diablo-skull.svg') center / contain no-repeat; image-rendering: pixelated; }
+  .sidebar-label::after { content: ''; flex: 1; height: 7px; border-block: 1px solid #655440; background: linear-gradient(#110d0a, #6b1510); }
+  .main-nav, .project-nav { gap: 4px; }
+  .nav-item { position: relative; min-height: 40px; padding: 4px 7px; border: 6px solid transparent; border-image: url('/diablo-frame.webp') 256 / 10px / 0 stretch; background: linear-gradient(#302820, #14100c); box-shadow: var(--shadow); }
+  .nav-item:hover { border-color: #90764f; background: linear-gradient(#433321, #241a10); }
+  .nav-item.active { background: url('/diablo-gore.webp') top right / 140px auto no-repeat, linear-gradient(90deg, #6a1712, #290e0b); color: #ffe2ae; box-shadow: inset 0 0 0 1px #bf4e30, inset 0 0 16px #d6351326; text-shadow: 0 1px #000; }
+  .nav-item.active .icon { background: url('/diablo-skull.svg') center / contain no-repeat; width: 22px; height: 22px; image-rendering: pixelated; }
+  .nav-item.active .icon svg { visibility: hidden; }
+  .nav-count, .nav-item.active .nav-count, .group-count { border: 1px solid var(--line); border-radius: 0; background: #0c0907; color: var(--text-2); }
+  .topbar { background: var(--stone); border-bottom: 3px ridge #6e593c; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .live-label::before { border-radius: 0; box-shadow: 0 0 5px #abc17d55; }
+
+  /* A carved slab floats over the crypt; the application keeps its usual scrolling. */
+  .main-screen { position: relative; display: block; max-width: 1180px; margin: 60px auto 36px; width: calc(100% - 64px); border: 20px solid transparent; border-image: url('/diablo-frame.webp') 256 / 32px / 6px stretch; background: #100d0bf5; box-shadow: 0 12px 40px #000c; }
+  .main-screen::before { content: ''; position: absolute; left: 50%; top: -72px; width: min(440px, 64%); height: 128px; transform: translateX(-50%); z-index: 1; pointer-events: none; background: url('/diablo-ornament.webp') center / contain no-repeat; image-rendering: pixelated; }
+  .main-content { position: relative; margin: 0; max-width: none; padding: 18px 12px 20px; background: url('/diablo-gore.webp') right top / 384px 128px no-repeat; }
+  .status-text.diablo { display: block; }
+  .status-line { margin-bottom: 12px; font: 19px/1.1 var(--pixel); color: var(--text-2); }
+  .status-line::before { content: ''; flex: none; width: 7px; height: 7px; background: #b34729; box-shadow: 0 0 0 2px #391710, 0 0 8px #b3472955; transform: rotate(45deg); }
+  .status-line.flash { color: var(--accent-2); }
+  .page-heading { min-height: 40px; padding: 0 0 12px; border-bottom: 3px double var(--line-2); }
+  .page-heading h1 { color: var(--accent-2); font-size: 24px; font-variant: small-caps; letter-spacing: .04em; text-shadow: 0 2px #000; }
+  .machine-label { font: 16px var(--pixel); }
+  .stats { gap: 6px; }
+  .stat { padding: 5px 8px; background: var(--stone); border: 5px solid transparent; border-image: url('/diablo-frame.webp') 256 / 10px / 0 stretch; border-radius: 0; box-shadow: 0 2px #080604; }
+  .stat-number { font: 24px/1 var(--pixel); }
+  .stat.selected { color: #ffe2ae; background: url('/diablo-gore.webp') top right / 160px auto no-repeat, linear-gradient(#6a1712, #290e0b); box-shadow: inset 0 0 0 1px #bf4e30, inset 0 0 9px #a22c1840; }
+  /* The actual usage display is a row of life/mana globes at every viewport.
+     Native progress stays available to screen readers; ornament is aria-hidden. */
+  .usage-accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; background: transparent; border: 0; box-shadow: none; }
+  .usage-account { --orb: #2859a4; --orb-light: #8ec5ff; position: relative; gap: 10px; padding: 10px 12px; border: 9px solid transparent; border-image: url('/diablo-frame.webp') 256 / 18px / 1px stretch; background: linear-gradient(#1c1712, #0b0907); }
+  .usage-account[data-usage-provider=claude] { --orb: #a71718; --orb-light: #ff7964; }
+  .usage-account + .usage-account { border-top: 9px solid transparent; }
+  .usage-logo { flex-basis: 20px; color: var(--orb-light); }
+  .usage-windows { gap: 10px; overflow: visible; }
+  .usage-window { display: grid; grid-template-columns: auto minmax(34px, 1fr); grid-template-rows: auto auto; gap: 3px 9px; min-width: 0; flex: 1 1 0; line-height: 1.1; }
+  .usage-label { grid-column: 2; align-self: end; max-width: 100%; color: var(--text-2); font: 18px/1 var(--pixel); overflow: hidden; text-overflow: ellipsis; }
+  .usage-reset { grid-column: 2; align-self: start; text-align: left; font-size: 10px; }
+  .usage-percent { display: none; }
+  .usage-meter { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .usage-orb { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; grid-column: 1; grid-row: 1 / 3; width: 72px; height: 72px; flex: none; isolation: isolate; border: 4px ridge #857862; border-radius: 50%; background: #080706; box-shadow: 0 0 0 2px #060504, 0 0 0 4px #514635, 0 5px 0 #030202, 0 0 18px #000; }
+  .orb-liquid { position: absolute; inset: 1px; z-index: -1; border-radius: inherit; background: repeating-linear-gradient(0deg, #0000 0 3px, #0002 3px 4px), radial-gradient(ellipse at 36% 26%, var(--orb-light), var(--orb) 48%, #080706 100%); clip-path: inset(calc((1 - var(--remaining, 0)) * 100%) 0 0); }
+  .usage-orb::before { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 4px 1px 5px #ded2b433, inset -4px -6px 7px #000a; background: linear-gradient(135deg, #fff3 0 8%, #0000 8% 17%, #fff1 17% 21%, #0000 21%); pointer-events: none; }
+  .usage-orb::after { content: ''; position: absolute; width: 26px; height: 26px; bottom: -14px; left: calc(50% - 13px); background: url('/diablo-skull.svg') center / contain no-repeat; image-rendering: pixelated; pointer-events: none; }
+  .orb-value { z-index: 1; color: #fff1d2; font: 24px/1 var(--pixel); text-shadow: 1px 2px #000, -1px -1px #000, 1px -1px #000, -1px 1px #000; }
+  .orb-caption { z-index: 1; color: #e7d8ba; font: 13px/1 var(--pixel); text-shadow: 1px 1px #000, -1px -1px #000; }
+  .usage-high .usage-orb, .usage-full .usage-orb { border-color: #ca7547; }
+  .usage-full .orb-value { color: #ff9f82; }
+  .usage-stale .usage-orb, .usage-expired .usage-orb { opacity: .65; }
+  .search { background: #0b0907; border: 2px groove #695337; box-shadow: inset 0 2px 6px #0008; }
+  .group-heading { position: relative; padding: 5px 8px 5px 36px; margin: 12px 0 6px; border-block: 3px double #70604b; background: url('/diablo-gore.webp') right top / 180px auto no-repeat, linear-gradient(90deg, #382b20, #17120d 75%); }
+  .group-heading::before { content: ''; position: absolute; left: -5px; top: 50%; width: 42px; height: 42px; transform: translateY(-50%); background: url('/diablo-portrait.webp') center / contain no-repeat; pointer-events: none; image-rendering: pixelated; }
+  .group-title h2 { color: var(--accent-2); font-size: 15px; letter-spacing: .03em; }
+  .group-title .icon { color: var(--accent); }
+  .session-card { padding: 8px 12px; background: linear-gradient(90deg, #28221a, #17130f); border: 7px solid transparent; border-image: url('/diablo-frame.webp') 256 / 14px / 0 stretch; box-shadow: var(--shadow); transition: background-color .12s, box-shadow .12s; }
+  .session-card:is(:hover, :focus-visible) { background: url('/diablo-gore.webp') right top / 260px auto no-repeat, linear-gradient(90deg, #641b15, #28100d); box-shadow: inset 0 0 0 1px #bd5130, inset 0 0 22px #d12c1726, 0 0 10px #951a1026; outline: 1px solid #d4b06e; outline-offset: 1px; }
+  .session-card:is(:hover, :focus-visible) .agent-mark .provider-icon { filter: drop-shadow(0 0 3px #c42c1b); }
+  .session-card.needs-input { background: url('/diablo-gore.webp') right top / 280px auto no-repeat, linear-gradient(90deg, #3f1b14, #1b110d); box-shadow: inset 3px 0 #a23823, var(--shadow); }
+  .session-card.needs-input:is(:hover, :focus-visible) { background: url('/diablo-gore.webp') right top / 280px auto no-repeat, linear-gradient(90deg, #702219, #33120e); }
+  .session-card.subagent { background: #14120f; }
+  .session-card.subagent::before { border-radius: 0; border-color: #725838; }
+  .session-title { color: #e8d5ad; font: 20px/1.05 var(--pixel); }
+  .session-card.subagent .session-title { font: 17px/1.1 var(--pixel); }
+  .agent-mark, .agent-mark.claude { position: relative; width: 36px; height: 42px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .session-card.subagent .agent-mark { width: 26px; height: 32px; border-radius: 0; font-size: 12px; }
+  .badge { border: 1px solid currentColor; border-radius: 0; font: 16px/1 var(--pixel); padding: 3px 6px; }
+  .badge .dot { width: 5px; height: 5px; border-radius: 0; }
+  .badge.green .dot::after { display: none; }
+  .plan-meter { border-radius: 0; }
+  .primary { border: 6px solid transparent; border-image: url('/diablo-frame.webp') 256 / 14px / 1px stretch; background: url('/diablo-gore.webp') center top / 200px auto no-repeat, linear-gradient(#873322, #551b13); color: #fff0cb; box-shadow: inset 0 0 0 1px #290d07, 0 2px #080604; }
+  .primary:hover:not(:disabled) { background: linear-gradient(#a3452c, #6d2418); border-color: #db9b5f; }
+  .secondary, .quiet-button { border: 5px solid transparent; border-image: url('/diablo-frame.webp') 256 / 10px / 0 stretch; background: var(--stone); box-shadow: inset 0 0 0 1px #0c0906; color: var(--text-2); }
+  :is(.secondary, .quiet-button):hover:not(:disabled) { background: linear-gradient(#453421, #241a10); border-color: #a4814f; color: var(--accent-2); }
+  :is(.primary, .secondary, .quiet-button):active:not(:disabled) { border-style: inset; }
+  .theme-options, .filter-options { padding: 12px; border: 8px solid transparent; border-image: url('/diablo-frame.webp') 256 / 18px / 3px stretch; background: #19130e; }
+  .tab.active, .theme-choice[aria-pressed=true] { background: url('/diablo-gore.webp') right top / 160px auto no-repeat, #5a1b13; color: #ffe2ae; box-shadow: inset 2px 0 #dc6740; }
+  .theme-choice[aria-pressed=true]::after { content: ''; width: 24px; height: 24px; background: url('/diablo-skull.svg') center / contain no-repeat; image-rendering: pixelated; }
+
+  .theme-console { display: flex; flex-direction: column; margin-bottom: 12px; padding: 8px; border: 10px solid transparent; border-image: url('/diablo-frame.webp') 256 / 20px / 3px stretch; background: #0b0907; box-shadow: var(--carved); }
+  .console-lamps, .console-sweep, .console-vector, .console-signal, .console-power { display: none; }
+  .console-heading { display: flex; align-items: center; justify-content: space-between; padding: 8px 3px 6px; color: var(--text-3); font: 17px/1 var(--pixel); text-transform: uppercase; }
+  .console-count { color: var(--accent-2); }
+  .console-screen { position: relative; height: 126px; overflow: hidden; border: 1px solid #44351f; background: url('/diablo-map.svg') center / 100% 100% no-repeat, #110f0b; box-shadow: inset 0 0 14px #000; }
+  .console-contacts { position: absolute; inset: 0; }
+  .console-contact { position: absolute; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; transform: translate(-50%, -50%); color: #bfb398; }
+  .console-contact::before { content: ''; position: absolute; inset: 9px; background: currentColor; box-shadow: 0 0 0 1px #000, 0 0 5px currentColor; }
+  .console-contact[data-status=working] { color: var(--ok); }
+  .console-contact:is([data-status=question], [data-status=permission]) { color: var(--warn); }
+  .console-contact:is([data-status=question], [data-status=permission])::before { inset: 7px 9px; clip-path: polygon(0 0, 100% 0, 100% 60%, 0 60%, 0 80%, 100% 80%, 100% 100%, 0 100%); }
+  .console-contact:is([data-status=error], [data-status=offline]) { color: var(--danger); }
+  .console-contact:is([data-tracked], :focus-visible, :hover) { outline: 1px solid currentColor; outline-offset: -4px; background: #e0bb6814; z-index: 1; }
+  .console-empty { position: absolute; inset: 0; display: grid; place-items: center; background: #100c09db; color: var(--accent); font: 17px var(--pixel); }
+  .theme-console[data-disconnected=true] .console-contacts { opacity: .3; }
+  .console-readout { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px 2px 2px; }
+  .console-track-label { font: 15px/1 var(--pixel); color: var(--accent); }
+  .console-track-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-2); }
+  .console-readout:is([data-status=offline], [data-status=error]) .console-track-label { color: var(--danger); }
+
+  /* Inventory-like chat, approval and image frames; no texture over message content. */
+  .detail-panel { border: 12px solid transparent; border-image: url('/diablo-frame.webp') 256 / 24px / 0 stretch; background: #14110e; box-shadow: -8px 0 30px #000b; }
+  .chat-header { padding-left: 44px; background: url('/diablo-gore.webp') right top / 200px auto no-repeat, var(--stone); border-bottom: 3px ridge #6b563b; }
+  .chat-header::before { content: ''; position: absolute; left: 6px; top: 8px; width: 38px; height: 48px; background: url('/diablo-ornament.webp') center / auto 100% no-repeat; image-rendering: pixelated; pointer-events: none; }
+  .panel-title { color: var(--accent-2); font-family: var(--display); }
+  .recent-message { border-radius: 0; border-color: #483a29; background: #1c1711; }
+  .recent-message.user { background: #2b2115; border-color: #715536; }
+  .request-box, .access-console { border: 10px solid transparent; border-image: url('/diablo-frame.webp') 256 / 20px / 2px stretch; background: url('/diablo-gore.webp') right top / 230px auto no-repeat, #20170f; box-shadow: inset 0 0 0 1px #080604; }
+  .request-box { border-top-color: #b16f3b; }
+  .answer-option { position: relative; border: 5px solid transparent; border-image: url('/diablo-frame.webp') 256 / 10px / 0 stretch; border-radius: 0; }
+  .answer-option:has(input:checked) { padding-right: 34px; background: url('/diablo-gore.webp') right top / 170px auto no-repeat, #5c1b14; box-shadow: inset 0 0 0 1px #b84b30, 0 0 10px #b3271526; }
+  .answer-option:has(input:checked)::after { content: ''; position: absolute; right: 5px; top: calc(50% - 14px); width: 28px; height: 28px; background: url('/diablo-skull.svg') center / contain no-repeat; image-rendering: pixelated; }
+  .answer-option input { accent-color: #bd3925; }
+  .message-composer { background: var(--stone); border-top: 3px ridge #685137; }
+  .history-shot { padding: 4px; border: 8px solid transparent; border-image: url('/diablo-frame.webp') 256 / 16px / 0 stretch; border-radius: 0; background: #100b07; box-shadow: 2px 3px #0008; }
+  .history-shot img { border-radius: 0; image-rendering: auto; }
+  .shot-viewer { border: 18px solid transparent; border-image: url('/diablo-frame.webp') 256 / 30px / 4px stretch; border-radius: 0; padding: 12px; background: var(--stone); color: var(--text); box-shadow: 0 20px 60px #000; }
+  .shot-full img { border: 1px solid #0a0805; border-radius: 0; image-rendering: auto; }
+  .shot-button { border: 2px outset #79603d; border-radius: 0; background: #292016; color: var(--accent-2); }
+  .shot-meta { font-family: var(--pixel); font-size: 19px; }
+  .login-card { position: relative; width: min(100%, 400px); padding: 30px 22px 26px; border: 20px solid transparent; border-image: url('/diablo-frame.webp') 256 / 34px / 6px stretch; border-radius: 0; background: var(--stone); box-shadow: 0 20px 50px #000c, inset 0 0 40px #0007; }
+  .login-card::before { content: ''; position: absolute; inset: 0 0 auto; height: 64px; background: url('/diablo-gore.webp') right top / 256px 64px no-repeat; pointer-events: none; }
+  .login-display { display: flex; align-items: center; align-self: stretch; flex-direction: column; gap: 18px; padding: 8px 0 4px; }
+  .login-card .brand-mark { display: none; }
+  .login-card .brand-variant.diablo .brand-name { font-size: 32px; }
+  .login-symbol { order: -1; width: 100%; max-width: 300px; height: 100px; background: url('/diablo-ornament.webp') center / contain no-repeat; border-radius: 0; image-rendering: pixelated; }
+  .login-symbol .icon { display: none; }
+  .login-form input { border: 2px inset #79613e; text-align: center; letter-spacing: .12em; min-height: 48px; }
+  .login-form input::placeholder { font-size: 13px; letter-spacing: .04em; }
+  .access-console { display: block; padding: 18px; }
+  .theme-picker { border: 12px solid transparent; border-image: url('/diablo-frame.webp') 256 / 24px / 0 stretch; border-radius: 0; }
+  .theme-picker-choice { border-radius: 0; }
+  .toast { width: max-content; max-width: min(520px, calc(100% - 32px)); padding: 10px 18px 10px 48px; border: 9px solid transparent; border-image: url('/diablo-frame.webp') 256 / 18px / 3px stretch; border-radius: 0; background: url('/diablo-gore.webp') right top / 230px auto no-repeat, #21140e; color: #f1d3a0; box-shadow: 0 8px 24px #000d, inset 0 0 20px #0006; font: 20px/1.2 var(--pixel); text-shadow: 1px 1px #000; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  .toast::before { content: ''; position: absolute; left: 7px; top: calc(50% - 18px); width: 36px; height: 36px; background: url('/diablo-portrait.webp') center / contain no-repeat; image-rendering: pixelated; }
+  /* Narrow, static grips keep the dungeon treatment on long histories. */
+  @media (forced-colors: none) { &, * { scrollbar-color: #79613e #100d0a; scrollbar-width: thin; } }
+  .fire-button.armed { background: var(--danger); border-color: var(--danger); color: #190705; }
+}
+
+/* Picker assets are visible even before this theme is selected. */
+.theme-swatch.diablo { width: 28px; height: 28px; border: 0; border-radius: 0; background: url('/diablo-portrait.webp') center / contain no-repeat; image-rendering: pixelated; }
+.theme-preview.diablo { position: relative; background-image: url('/diablo-bg.webp'); image-rendering: pixelated; }
+.theme-preview.diablo::after { content: ''; position: absolute; inset: 20% 5%; background: url('/diablo-ornament.webp') center / contain no-repeat; }
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme=diablo] {
+    .main-screen::after { content: ''; position: absolute; right: -9px; top: 48px; width: 3px; height: 3px; background: #d07939; box-shadow: 0 23px #9d3d22, -5px 13px #cb873a, 2px 38px #71301a; pointer-events: none; animation: diablo-embers 4s steps(8) infinite; }
+    .usage-orb::before { animation: diablo-glass 6s steps(4) infinite; }
+    /* Effects pause while composing; no moving decoration near the caret. */
+    &:has(:is(textarea, input):focus) .main-screen::after,
+    &:has(:is(textarea, input):focus) .usage-orb::before { animation-play-state: paused; }
+  }
+}
+@keyframes diablo-embers { 0% { opacity: 0; transform: translateY(14px); } 25%, 60% { opacity: .7; } 100% { opacity: 0; transform: translateY(-20px); } }
+@keyframes diablo-glass { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
+
+@media (max-width: 1100px) and (min-width: 901px) {
+  :root[data-theme=diablo] {
+    .brand-variant.diablo .brand-name { font-size: 18px; }
+    .brand-variant.diablo .brand-mark { width: 28px; height: 28px; }
+  }
+}
+@media (max-width: 900px) {
+  :root[data-theme=diablo] {
+    .sidebar { padding: 14px 1px; border-width: 5px; border-image-width: 12px; }
+    .sidebar .sidebar-label { display: none; }
+    .theme-console { display: none; }
+    .main-screen { width: calc(100% - 32px); margin: 54px auto 24px; border-width: 14px; border-image-width: 24px; }
+    .main-content { padding: 32px 8px 16px; }
+    .main-screen::before { top: -62px; height: 100px; }
+  }
+}
+@media (max-width: 640px) {
+  :root[data-theme=diablo] {
+    .main-screen { width: calc(100% - 14px); margin: 44px auto 16px; border-width: 10px; border-image-width: 18px; border-image-outset: 2px; }
+    .main-screen::before { width: 86%; top: -58px; height: 90px; }
+    .main-content { padding: 32px 4px 18px; }
+    .status-line { font-size: 17px; margin-bottom: 10px; }
+    .stat { padding: 4px; gap: 5px; font-size: 11px; }
+    .stat-number { font-size: 21px; }
+    .usage-accounts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .usage-account { flex-direction: column; gap: 6px; padding: 5px 3px 12px; border-width: 5px; border-image-width: 12px; }
+    .usage-account + .usage-account { border-top-width: 5px; }
+    .usage-logo { flex: none; height: 16px; font-size: 16px; }
+    .usage-tag { flex: none; max-width: 100%; }
+    .usage-windows { width: 100%; gap: 6px; }
+    .usage-window { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 0; }
+    .usage-label { font-size: 17px; align-self: center; }
+    .usage-reset { align-self: center; max-width: 100%; font-size: 10px; margin-top: 6px; }
+    .usage-orb { width: 50px; height: 50px; border-width: 3px; }
+    .orb-value { font-size: 20px; }
+    .orb-caption { font-size: 12px; }
+    .usage-orb::after { width: 20px; height: 20px; left: calc(50% - 10px); bottom: -12px; }
+    .group-heading { padding: 5px 2px 5px 26px; gap: 4px; }
+    .group-heading::before { width: 32px; height: 36px; left: -5px; }
+    .group-title h2 { font-size: 14px; }
+    .session-card { padding-inline: 5px; border-width: 5px; border-image-width: 10px; gap: 8px; }
+    .detail-panel { border-width: 6px; border-image-width: 16px; }
+    .chat-header { padding-left: 6px; }
+    .chat-header::before { display: none; }
+    .login-card { padding: 20px 10px; border-width: 14px; border-image-width: 26px; }
+    .main-screen::after { display: none; }
+  }
+}

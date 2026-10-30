@@ -1,0 +1,9 @@
+Asset: client/public/diablo-gore.webp
+Generated with the built-in imagegen tool with a transparent background. The top 400px of the image is retained as the narrow blood overlay; saved as WebP at quality 92.
+
+Final prompt:
+Use case: stylized-concept
+Asset type: transparent horizontal gore overlay texture for the top edge of a dark fantasy UI panel, wide landscape 1536x1024 PNG.
+Primary request: a narrow strip of dried and fresh blood along an invisible straight horizontal upper edge, with thin irregular dribbles and fine scattered droplets descending from it, Diablo1/2 inspired late1990s pixel art.
+Composition: entire artwork contained in the uppermost third of the canvas, roughly1536px wide and260px tall, transparent space everywhere else. Topmost edge of blood starts at y=0 and runs across fullwidth, bottom irregular. Most blood sits within60px of top edge, with just a few thin drips reaching220px. Natural random asymmetry, no repeated shape, no symmetry. Sparse tiny splatters just below. This will be displayed at about380px width, making the blood fine and understated rather than oversized blocks.
+Style: fine-grained pixel art, small1-2pixel detail, deliberate dithered texture and rough edges, deep dried burgundy #300709 to oxblood #68180f, small muted wet crimson highlights. Not chunky8-bit blocks, not huge rectangular drips, not smooth vector. No body parts, no lettering, no borders. True transparent background.

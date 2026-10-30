@@ -1,0 +1,11 @@
+Asset: client/public/diablo-bg.webp
+Generated with the built-in imagegen tool; converted to WebP at quality 90.
+Original pixel-art environment, not extracted game artwork.
+
+Final prompt:
+Use case: stylized-concept
+Asset type: wide landscape background wallpaper for a compact dark fantasy dashboard, 1536x1024.
+Primary request: Diablo 1 / Diablo 2 inspired dark gothic dungeon, bloody pixel art. Original environment with no game logos or interface.
+Scene: facing the interior of a ruined medieval crypt, skulls and bones set into massive stone columns, candle-lit alcoves, rusty chains, old blood smeared and pooled on stone floor, heavy gothic arches, a faint blood-red glow in the depths. Gore as atmospheric pixel art environmental detail.
+Style: authentic late-1990s computer RPG pixel art with visibly square chunky pixels, limited earthy palette, hand-dithered shadows, dark charcoal stone, tarnished bronze, bone ivory, deep crimson and restrained candle amber. No smooth digital painting, no vector art, no blur.
+Composition: dramatic stone carvings and candles at the far left and right edges, central 65 percent mostly dark quiet shadowed masonry behind UI panels; floor and bloody debris near bottom. Landscape, symmetrical framing. Detail visible in the side margins. No people, no lettering, no UI, no watermark.

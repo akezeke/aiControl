@@ -1,0 +1,20 @@
+Assets: client/public/diablo-frame.webp, client/public/diablo-ornament.webp, client/public/diablo-portrait.webp
+Generated using the built-in imagegen tool with transparent backgrounds.
+Frame normalized to 1024x1024 with nearest-neighbor scaling; both saved as WebP at quality 94. CSS slices the frame at 256px.
+Portrait is the central skull cropped from the ornament, reduced to 192px for compact controls.
+
+Final frame prompt:
+Use case: stylized-concept
+Asset type: production UI nine-slice border asset, square 1024x1024 PNG, transparent background and transparent center.
+Primary request: a lavishly ornamented dark gothic pixel-art inventory window frame inspired by Diablo 1 and Diablo 2. Only the frame, no interface contents.
+Composition: strictly front-on symmetric square frame occupying the entire canvas, straight outer edges flush with canvas edges, rectangular empty transparent center from x=200 to824 y=200 to824. All artwork confined to 200-pixel-wide border. This will be sliced into 9 regions for CSS border-image; keep the long center of each edge continuous and repeatable stone/iron trim, put large complex ornament in the four corners. No perspective.
+Materials: chiseled blackened cathedral stone and tarnished aged iron, bone skulls carved in the corners, demonic curled horns, fluted moldings, riveted straps, cracks, reddish dried blood lodged in crevices. Bone and gray stone, very restrained bronze highlights, deep black shadows. Raised bevels and engraved ornamental grooves, elaborate relief, genuinely material rather than a thin line rectangle.
+Style: authentic late-90s dark fantasy computer game UI pixel art, 256x256 logical pixels scaled 4x nearest-neighbor to1024, sharp visible 4x4 square pixels, limited palette and deliberate dithering. Not a smooth 3D render, not glossy, not vector, no painterly blur. No text, no watermark. Entire central opening truly transparent, no black rectangle center, no checkerboard drawn in image.
+
+Final ornament prompt:
+Use case: stylized-concept
+Asset type: transparent production game UI ornament, wide landscape 1536x1024 canvas.
+Primary request: lavish gothic pixel-art pediment for a Diablo 1/2 inspired interface. Original sculpted skull-and-bone ornament, front-on symmetric, isolated on transparent background.
+Subject: a large snarling demonic skull at the horizontal center, with swept curled horns, tiny blood-red gemstone in the brow, two weathered skeletal stone gargoyles and elaborate curled wrought-iron scrollwork extending out symmetrically on both sides. Low wide triangular composition, hangs above a window. No creatures below, all pieces visibly connected as one carved ornament. Blood streaks under the center skull, chains hanging only short distances. Dense carved medieval gothic relief with visible depth and battered highlights. Mostly aged bone and desaturated dark gray stone, small warm tarnished bronze accents, restrained crimson gore.
+Composition: ornament fits across the middle horizontal band, width about1400 height450 pixels. Transparent margins on all sides. No decorative box or rectangular frame, no lettering, no symbols resembling text.
+Style: authentic late-1990s Diablo UI pixel art with chunky square 4x4 pixels, limited palette, hand-dithered shading, high-contrast sculpted edge highlights. Not vector, not smooth painting, not shiny modern render. Truly transparent background, no fake checkerboard.

@@ -1,3 +1,5 @@
+import { providerIcon } from './provider-icons.js';
+
 const consoles = new WeakMap();
 const labels = { working: 'Working', idle: 'Idle', question: 'Question', permission: 'Permission needed', offline: 'Offline', error: 'Error' };
 const needsInput = status => status === 'question' || status === 'permission';
@@ -28,12 +30,13 @@ function summary(sessions) {
     alien: `CREW ${sessions.length} · ACTIVE ${working} · AWAITING INPUT ${waiting}`,
     command: waiting ? `${waiting} awaiting orders · ${working} units active` : working ? `${working} units active` : 'All units standing by',
     simpsons: waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you · ${working} working` : working ? `${working} working · Doughnuts later` : 'All quiet in Springfield',
+    diablo: waiting ? `${waiting} need your counsel · ${working} questing` : working ? `${working} questing` : 'A moment of peace',
     heroes: waiting ? `${waiting} awaiting orders · ${working} on a quest` : working ? `${working} on a quest` : 'The realm is at peace',
   };
 }
 const flashes = {
-  ready: title => ({ modern: `Done · ${title}`, alien: `TASK COMPLETE · ${title}`, command: `Unit ready · ${title}`, simpsons: `Woo-hoo! Done · ${title}`, heroes: `Quest complete · ${title}` }),
-  input: title => ({ modern: `Needs you · ${title}`, alien: `INPUT REQUIRED · ${title}`, command: `Orders required · ${title}`, simpsons: `Needs you · ${title}`, heroes: `Orders required · ${title}` }),
+  ready: title => ({ modern: `Done · ${title}`, alien: `TASK COMPLETE · ${title}`, command: `Unit ready · ${title}`, simpsons: `Woo-hoo! Done · ${title}`, heroes: `Quest complete · ${title}`, diablo: `Quest complete · ${title}` }),
+  input: title => ({ modern: `Needs you · ${title}`, alien: `INPUT REQUIRED · ${title}`, command: `Orders required · ${title}`, simpsons: `Needs you · ${title}`, heroes: `Orders required · ${title}`, diablo: `Your counsel is needed · ${title}` }),
 };
 function setLine(line, texts, flash) {
   const key = JSON.stringify(texts);
@@ -74,7 +77,7 @@ export function renderThemeConsole(container, sessions, { disconnected = false, 
     // Command's power bar: the five-hour usage of each account, filled by renderPower().
     const power = element('div', 'console-power'); power.setAttribute('aria-hidden', 'true');
     power.append(element('span', 'power-label', 'PWR'));
-    for (const [provider, mark] of [['codex', '⌘'], ['claude', '✳']]) { const bar = element('span', 'power-bar'); bar.dataset.provider = provider; bar.append(element('i'), element('b', '', mark)); power.append(bar); }
+    for (const provider of ['codex', 'claude']) { const bar = element('span', 'power-bar'); bar.dataset.provider = provider; const mark = element('b'); mark.append(providerIcon(provider)); bar.append(element('i'), mark); power.append(bar); }
     const readout = element('div', 'console-readout');
     const signal = element('span', 'console-signal'); signal.setAttribute('aria-hidden', 'true');
     for (let i = 0; i < 9; i++) { const bar = element('i'); bar.style.setProperty('--signal-height', `${[3, 7, 12, 5, 17, 9, 14, 6, 3][i]}px`); bar.style.setProperty('--signal-delay', `${i * -140}ms`); signal.append(bar); }

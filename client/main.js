@@ -4,7 +4,10 @@ import './theme-effects.css';
 import './alien-visitor.css';
 import './theme-access.css';
 import './simpsons.css';
+import './diablo.css';
 import './heroes.css';
+import './provider-icons.css';
+import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
@@ -153,7 +156,7 @@ function alertsMenu() {
   return menu;
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
-const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes' };
+const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {
@@ -419,7 +422,7 @@ function renderCard(session, previous) {
   const card = el('button', `session-card ${session.needs ? 'needs-input' : ''} ${session.parentId ? 'subagent' : ''}`); card.type = 'button'; card.onclick = () => openPanel(session.id);
   // Long card loops run on a page-wide clock, so a rebuilt card continues them instead of restarting.
   card.style.setProperty('--since-load', `${-Math.round(performance.now())}ms`); card.dataset.sessionId = session.id; card.dataset.status = session.status; card.setAttribute('aria-label', `${session.title}, ${providerName(session.provider)}, ${(statuses[session.status] || statuses.unknown)[0]}`);
-  const mark = el('span', `agent-mark ${session.provider}`, session.provider === 'codex' ? '⌘' : '✳'); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
+  const mark = el('span', `agent-mark ${session.provider}`); mark.append(providerIcon(session.provider)); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
   if (session.unread) card.classList.add('unread');
   if (session.plan) { card.dataset.plan = ''; card.style.setProperty('--plan', session.plan[0] / session.plan[1]); }
   const body = el('span', 'session-body');
@@ -972,7 +975,7 @@ async function respond(request, payload, container, error) {
 function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
 function spawnButtons(cwd) {
   const actions = el('span', 'group-actions');
-  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
+  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
   return actions;
 }
 async function spawnAgent(cwd, choice, control) {

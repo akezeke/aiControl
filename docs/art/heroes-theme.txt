@@ -1,0 +1,8 @@
+Asset: client/public/heroes-theme.webp
+Generated with the built-in imagegen tool with transparency, trimmed and centered at 384px, saved as WebP at quality 94.
+
+Final prompt:
+Use case: stylized-concept
+Asset type: transparent square game UI theme emblem, 1024x1024 PNG, recognizable at32px.
+Primary request: a regal Heroes of Might and Magic 3 inspired heraldic crest. Original late1990s fantasy strategy pixel art.
+Subject: a cobalt-blue medieval shield with a thick elaborate polished gold rim, a proud gold griffin silhouette in the center (winged lion with eagle head), crowned with a small royal gold crown and a bright sapphire jewel. Bold compact readable silhouette, rich warm gold and royal blue. Carved relief depth, chunky gold edging, refined fine-grained pixel shading. The central griffin should fill most of the shield and read clearly at small UI size, not be a tiny fussy detail. A few restrained red ruby accents in crown. No text, no letters, no other emblems, no AI logos, no watermark, no backdrop. Single isolated shield, centered with 10 percent transparent margin on every side. True alpha transparency.

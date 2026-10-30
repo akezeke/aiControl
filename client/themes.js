@@ -8,6 +8,7 @@ export const themes = [
   { id: 'alien', name: 'MU/TH/UR', color: '#030703' },
   { id: 'command', name: 'EVA', color: '#62685a' },
   { id: 'simpsons', scheme: 'light', name: 'Springfield', color: '#86cbed' },
+  { id: 'diablo', scheme: 'dark', name: 'Sanctuary', color: '#100d0b' },
   { id: 'heroes', scheme: 'dark', name: 'Heroes', color: '#172749' },
   // The office replaces the list with a 3D scene; the chrome around it is paper pinned to a corkboard.
   { id: 'office', scheme: 'light', name: 'Office', color: '#dcc6a3' },

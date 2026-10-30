@@ -2,6 +2,7 @@
 // Plus the few controls that stay on screen: who's waiting, low usage, back to the list, the phone overview button, the aiming dot and the hint,
 // and the card beside whoever is outlined.
 import * as THREE from 'three';
+import { providerIcon } from '../provider-icons.js';
 
 const hintKey = 'ai-control-office-hint-3';
 
@@ -103,7 +104,7 @@ export function createCard(container) {
       const chips = line('chips', facts.plan && span('chip', `${facts.plan[0]}/${facts.plan[1]} steps`), facts.mode && span(`chip ${facts.mode}`, `${facts.mode} mode`),
         facts.context != null && span(`chip${facts.context >= 80 ? ' full' : ''}`, `ctx ${facts.context}%`), facts.state && span('state', facts.state));
       card.replaceChildren(...[
-        line('title', facts.provider && span(`mark ${facts.provider}`, facts.provider === 'codex' ? '⌘' : '✳'), facts.title || facts.providerName),
+        line('title', facts.provider && providerIcon(facts.provider), facts.title || facts.providerName),
         where.length && line('where', ...where),
         chips.childElementCount && chips,
         facts.detail && line('detail', facts.detail),
@@ -125,7 +126,7 @@ export function createMenu(container, onChoose) {
   const build = (choices, known) => {
     items = choices.map(choice => {
       const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`;
-      item.append(span(`mark ${choice.provider}`, choice.provider === 'codex' ? '⌘' : '✳'), choice.label);
+      item.append(providerIcon(choice.provider), choice.label);
       if (choice.last) item.append(span('last', 'last'));
       item.onclick = () => { const at = cwd ?? folder.value.trim(); if (!at) { folder.focus(); return; } result.close(); onChoose(at, choice, item); };
       return item;

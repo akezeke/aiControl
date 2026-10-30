@@ -1,6 +1,7 @@
 import './usage.css';
 import { usageWindowView, usageUpdatedText } from './usage-presentation.js';
 import { renderPower } from './theme-console.js';
+import { providerIcon } from './provider-icons.js';
 
 const node = (tag, className, text) => {
   const element = document.createElement(tag); element.className = className;
@@ -18,10 +19,11 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
   for (const account of accounts || []) {
     const stale = disconnected || account.status === 'stale';
     const row = node('article', `usage-account${stale ? ' usage-stale' : ''}`);
+    row.dataset.usageProvider = account.provider;
     row.setAttribute('aria-label', account.name);
     const detail = disconnected ? 'Disconnected · last known usage' : account.detail;
     const updated = usageUpdatedText(account, now, stale);
-    const mark = node('span', `usage-logo ${account.provider}`, account.provider === 'codex' ? '⌘' : '✳');
+    const mark = node('span', `usage-logo ${account.provider}`); mark.append(providerIcon(account.provider));
     mark.setAttribute('role', 'img');
     mark.setAttribute('aria-label', `${account.name} · ${updated}${detail ? ` · ${detail}` : ''}`);
     mark.title = `${account.name} · ${updated}${account.updatedAt ? `\n${new Date(account.updatedAt).toLocaleString()}` : ''}${detail ? `\n${detail}` : ''}`;
@@ -40,7 +42,14 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
       reset.setAttribute('aria-label', view.resetText);
       reset.title = `${view.resetText}${window.resetsAt ? `\n${new Date(window.resetsAt).toLocaleString()}` : ''}`;
       const percent = node('strong', 'usage-percent', view.percentText); percent.title = view.paceText;
-      cell.append(shortLabel, meter, percent, reset); windows.append(cell);
+      // The dungeon HUD uses liquid globes on desktop and phones. Keep the native
+      // progress element as its accessible equivalent and the full usage elsewhere.
+      const orb = node('span', 'usage-orb'); orb.setAttribute('aria-hidden', 'true');
+      const remaining = Math.max(0, 100 - view.barPercent);
+      orb.style.setProperty('--remaining', String(remaining / 100));
+      orb.title = `${account.name}, ${label}: ${view.percentText} used · ${Math.round(remaining)}% left${stale || view.expired ? ' (last known)' : ''}`;
+      orb.append(node('i', 'orb-liquid'), node('strong', 'orb-value', `${Math.round(remaining)}%`), node('span', 'orb-caption', 'left'));
+      cell.append(shortLabel, meter, percent, orb, reset); windows.append(cell);
     }
     if (!windows.children.length) {
       const status = node('span', 'usage-note', account.status === 'loading' ? 'Loading…' : 'Unavailable');

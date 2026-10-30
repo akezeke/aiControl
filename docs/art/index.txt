@@ -1,0 +1,13 @@
+Generated theme artwork
+
+All raster artwork below was generated with the built-in imagegen tool and saved locally as WebP. The accompanying text files preserve the exact final prompts and conversion details.
+
+client/public/diablo-bg.webp — diablo-bg.txt
+client/public/diablo-frame.webp — diablo-ui.txt
+client/public/diablo-ornament.webp — diablo-ui.txt
+client/public/diablo-portrait.webp — diablo-ui.txt
+client/public/diablo-gore.webp — diablo-blood.txt
+client/public/providers/{orbit-light,orbit-dark,alien,command,diablo,heroes,office,simpsons}-{codex,claude}.webp — provider-icons.txt
+client/public/heroes-theme.webp — heroes-theme.txt
+
+Sanctuary retains the internal theme ID "diablo" so saved selections continue to work.

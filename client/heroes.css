@@ -1,6 +1,6 @@
 /* A 1990s town screen: pixel scenery and sprites, blue stone, hard gold bevels.
    Text remains native and readable. All decoration is CSS/SVG; no render loop. */
-.theme-swatch.heroes { border-radius: 0; border: 2px ridge #dfba66; background: #244e89; box-shadow: inset 0 0 0 2px #162b51; }
+.theme-swatch.heroes { width: 28px; height: 28px; border: 0; border-radius: 0; background: url('/heroes-theme.webp') center / contain no-repeat; image-rendering: pixelated; }
 .theme-preview.heroes { background-image: url('/heroes-bg.webp'); background-position: 85% center; image-rendering: pixelated; border: 4px ridge #c3a05b; border-radius: 0; }
 
 :root[data-theme=heroes] {
@@ -11,7 +11,7 @@
   --scroll-track: #0d192e; --scroll-thumb: #a88b4c;
 
   .brand-variant.heroes { display: flex; }
-  .brand-variant.heroes .brand-mark { width: 32px; height: 40px; padding: 0; border-radius: 0; background: url('/heroes-crest.svg') center / contain no-repeat; box-shadow: none; image-rendering: pixelated; }
+  .brand-variant.heroes .brand-mark { width: 32px; height: 40px; padding: 0; border-radius: 0; background: url('/heroes-theme.webp') center / contain no-repeat; box-shadow: none; image-rendering: pixelated; }
   .brand-variant.heroes .brand-mark i { display: none; }
   .brand-variant.heroes .brand-name { font: 700 24px/1 var(--display); font-variant: small-caps; letter-spacing: .07em; color: #ffe5a1; text-shadow: 2px 2px #080e22; }
   .status-text.heroes { display: block; }
@@ -81,7 +81,7 @@
   .usage-accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 6px 18px; padding: 13px 17px; border: 5px solid transparent; border-image: var(--ornate) 34% / 33px stretch; background: var(--stone); box-shadow: 2px 3px #0008; }
   .usage-account { padding: 2px 0; gap: 10px; }
   .usage-account + .usage-account { border: 0; }
-  .usage-logo { position: relative; flex-basis: 31px; height: 40px; padding-top: 17px; color: #fff2c9; font-size: 13px; text-shadow: 1px 1px #000, -1px -1px #000; background: url('/heroes-crest.svg') center / 31px 39px no-repeat; }
+  .usage-logo { position: relative; flex-basis: 31px; height: 40px; padding-top: 17px; color: #fff2c9; font-size: 13px; text-shadow: 1px 1px #000, -1px -1px #000; background: url('/heroes-theme.webp') center / 31px 39px no-repeat; }
   .usage-logo.claude { color: #ffe6a2; font-size: 16px; }
   .usage-windows { gap: 15px; padding-block: 1px; }
   .usage-window, .usage-window.usage-wide { position: relative; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 0 6px; flex: 1 0 130px; min-width: 130px; padding: 0 1px 5px; line-height: 19px; }
@@ -163,7 +163,7 @@
   .login-display { display: flex; flex-direction: column; align-items: center; gap: 14px; align-self: stretch; padding: 8px 0 24px; background: url('/heroes-flourish.svg') center bottom / 200px 30px no-repeat; }
   .login-card .brand-mark { display: none; }
   .login-card .brand-name { font-size: 32px; }
-  .login-symbol { order: -1; width: 64px; height: 80px; border-radius: 0; background: url('/heroes-crest.svg') center / contain no-repeat; image-rendering: pixelated; }
+  .login-symbol { order: -1; width: 64px; height: 80px; border-radius: 0; background: url('/heroes-theme.webp') center / contain no-repeat; image-rendering: pixelated; }
   .login-symbol .icon { display: none; }
   .login-form input { text-align: center; letter-spacing: .12em; }
   .login-form label { color: #f3d99b; }
@@ -174,7 +174,7 @@
 
 /* Entrances and status changes use stepped movement; the page never waits for them. */
 .heroes-boot { position: fixed; inset: 0; z-index: 90; pointer-events: none; display: grid; place-items: center; background: #0b15299c; animation: heroes-reveal .9s steps(8, end) both; }
-.heroes-seal { width: 96px; height: 120px; background: url('/heroes-crest.svg') center / contain no-repeat; image-rendering: pixelated; }
+.heroes-seal { width: 96px; height: 120px; background: url('/heroes-theme.webp') center / contain no-repeat; image-rendering: pixelated; }
 @keyframes heroes-reveal { 0%, 20% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes heroes-flag { 50% { clip-path: polygon(0 0, 76% 0, 76% 20%, 100% 20%, 100% 80%, 76% 80%, 76% 100%, 0 100%); } }
 @keyframes heroes-spark { 0%, 65%, 100% { opacity: .35; } 75%, 90% { opacity: 1; } }
