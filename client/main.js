@@ -244,7 +244,9 @@ async function refresh() {
 // The Office theme swaps the list for a 3D scene, downloaded only once it is chosen.
 // Its ☰ shows the list in the same paper look (the scene is unmounted meanwhile) and 🏢 goes back; the choice is remembered.
 const officeViewKey = 'ai-control-office-view';
-let office = null, officeModule = null, officeList = (() => { try { return localStorage.getItem(officeViewKey) === 'list'; } catch { return false; } })();
+// Phones open on the list until the office is picked: it's the quicker check on a small screen.
+const phone = () => !!globalThis.matchMedia?.('(max-width: 640px) and (pointer: coarse)').matches;
+let office = null, officeModule = null, officeList = (() => { try { return (localStorage.getItem(officeViewKey) ?? (phone() ? 'list' : 'scene')) === 'list'; } catch { return phone(); } })();
 function setOfficeList(list) {
   officeList = list; try { localStorage.setItem(officeViewKey, list ? 'list' : 'scene'); } catch { /* per-tab only */ }
   syncOffice(); renderData();

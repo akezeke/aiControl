@@ -7,7 +7,8 @@ import * as THREE from 'three';
 import { isTypingTarget } from './status.js';
 
 export const EYE = 1.5;
-const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, TOUCH_LOOK = 0.006, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
+const reduceMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
+const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, TOUCH_LOOK = 0.006, LOCKED_LOOK = 0.0022, DRAG_SLOP = 6, JUMP = 4.2, FLING = 0.3, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
 const keys = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] };
 const turns = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
@@ -24,7 +25,7 @@ export const sceneFocused = canvas => [document.body, canvas, null].includes(doc
 
 export class Player {
   constructor(canvas, { colliders, room, onPick }) {
-    this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08;
+    this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08; this.spin = 0;
     this.colliders = colliders; this.room = room; this.onPick = onPick; this.held = new Set(); this.target = null;
     this.locked = this.wanted = this.releasing = this.asking = false; this.overview = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
@@ -53,8 +54,9 @@ export class Player {
       if (this.locked) { if (event.button === 0) this.onPick(this.centre, true); else if (event.button === 2) { this.wanted = false; this.unlock(); } return; }
       this.keyLook = false;
       if (event.button !== 0) return;
+      this.spin = 0;
       if (drag) { drag.moved = true; return; }
-      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }; canvas.setPointerCapture(event.pointerId);
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, t: event.timeStamp, v: 0 }; canvas.setPointerCapture(event.pointerId);
     });
     listen(canvas, 'pointermove', event => {
       if (this.locked) { look(event.movementX, event.movementY, LOCKED_LOOK); return; }
@@ -64,15 +66,25 @@ export class Player {
       if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < DRAG_SLOP) return;
       drag.moved = true;
       const dx = event.clientX - drag.x, dy = event.clientY - drag.y; drag.x = event.clientX; drag.y = event.clientY;
-      // A finger drags the scene along with it (turning the other way to a mouse), and a bit quicker: phone screens are small.
-      if (!this.overview) { if (event.pointerType === 'touch') look(-dx, -dy, TOUCH_LOOK); else look(dx, dy, LOOK); }
+      // A finger drags the scene along with it (turning the other way to a mouse): a swipe across the screen turns
+      // about 225° whatever its size, and the turn's speed (smoothed) carries on as a fling when the finger lifts.
+      if (this.overview) return;
+      if (event.pointerType !== 'touch') { look(dx, dy, LOOK); return; }
+      const speed = Math.max(TOUCH_LOOK, 1.25 * Math.PI / innerWidth), ms = Math.max(1, event.timeStamp - drag.t);
+      look(-dx, -dy, speed);
+      drag.v = drag.v * 0.6 + dx * speed / ms * 1000 * 0.4; drag.t = event.timeStamp;
     });
-    listen(canvas, 'pointerup', event => { if (drag && !drag.moved) this.onPick(event, event.pointerType === 'mouse'); drag = null; });
+    listen(canvas, 'pointerup', event => {
+      if (drag && !drag.moved) this.onPick(event, event.pointerType === 'mouse');
+      // A finger that stopped before lifting doesn't fling.
+      else if (drag && event.pointerType === 'touch' && event.timeStamp - drag.t < 100 && !reduceMotion?.matches) this.spin = drag.v;
+      drag = null;
+    });
     listen(canvas, 'pointercancel', () => { drag = null; });
   }
 
   // You stop where you are while the overview is up.
-  setOverview(on) { this.overview = on; this.held.clear(); this.target = null; this.keyLook = false; }
+  setOverview(on) { this.overview = on; this.spin = 0; this.held.clear(); this.target = null; this.keyLook = false; }
   // Browsers without pointer lock, or that refuse it, keep drag-to-look.
   lock() {
     this.wanted = true; if (this.locked || this.asking) return;
@@ -100,12 +112,14 @@ export class Player {
   flyTo(point, look, then, instant = false, pitch = -0.08) {
     const to = point.clone().setY(EYE), distance = this.position.distanceTo(to);
     this.target = null; this.height = this.rise = 0;
+    this.spin = 0;
     this.flight = { from: this.position.clone(), to, yaw: this.yaw, turn: turnTo(this.yaw, Math.atan2(look.x - to.x, look.z - to.z)), pitch: this.pitch, tilt: pitch, t: 0,
       duration: instant ? 0 : THREE.MathUtils.clamp(0.2 + distance * 0.05, 0.3, 0.7), lift: Math.min(0.5, distance * 0.08), then };
   }
 
   update(dt) {
     this.running = false;
+    if (this.spin) { this.yaw += this.spin * dt; this.spin *= Math.exp(-dt / FLING); if (Math.abs(this.spin) < 0.05) this.spin = 0; }
     if (this.flight) { this.fly(dt); return; }
     if (this.rise || this.height) { this.rise -= GRAVITY * dt; this.height = Math.max(0, this.height + this.rise * dt); if (!this.height) this.rise = 0; this.position.y = EYE + this.height; }
     const speed = SPEED * (this.shift ? RUN : 1), move = new THREE.Vector3();
