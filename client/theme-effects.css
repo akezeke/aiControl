@@ -239,7 +239,13 @@
   .message-composer, .chat-requests { background: #031003; border-top: 3px double var(--line-2); }
   .message-composer:focus-within { border-top-color: var(--accent); box-shadow: 0 -3px 16px #7dff6a12; }
   .composer-row::before { content: '>'; align-self: center; color: var(--accent); text-shadow: var(--glow); }
-  .message-form textarea, .custom-answer input, .login-form input, .access-form input:not([type=checkbox]) { background: var(--bg); border-color: var(--line-2); }
+  /* The same recessed glass in access forms, messages and request answers. */
+  :is(.message-form textarea, .custom-answer input, .deny-reason, .login-form input, .access-form input:not([type=checkbox])) { border: 2px inset #75845d; border-radius: 3px; background: #070f05; color: var(--text); box-shadow: inset 0 3px 8px #000; outline: none; caret-color: var(--accent); }
+  :is(.message-form textarea, .custom-answer input, .deny-reason, .login-form input, .access-form input:not([type=checkbox])):focus { border-color: #b9e09c; box-shadow: inset 0 3px 8px #000, 0 0 0 1px #83b26a66; }
+  .message-form textarea { padding: 11px 13px; }
+  .composer-row { padding: 5px; border: 1px solid #435336; border-radius: 4px; background: linear-gradient(#26351e, #111c0d); box-shadow: inset 0 1px #b9d39a26, 0 1px #0008; }
+  .composer-row::before { padding-left: 4px; }
+  .composer-row .primary { align-self: stretch; border: 1px outset #c6dbb1; border-bottom: 3px solid #3c512d; border-radius: 3px; background: linear-gradient(#d6eec0, #9cc17c); box-shadow: inset 0 1px #fff6, 0 1px 2px #0008; }
   .toast { border-radius: 0; background: var(--accent); color: var(--accent-ink); text-transform: uppercase; letter-spacing: .12em; box-shadow: 0 0 24px #7dff6a66; }
   .toast::before { content: 'MU/TH/UR ▸ '; }
 
@@ -455,12 +461,17 @@
   .history-latest.quiet-button { border-radius: 0; }
   .request-box { padding-top: 16px; border: 2px outset #6a7552; border-radius: 0; background: repeating-linear-gradient(135deg, var(--warn) 0 8px, #1b1604 8px 16px) top / 100% 6px no-repeat, var(--rivets), linear-gradient(#3b3518, #29250f); }
   .request-box > .eyebrow { color: var(--warn); font: 400 14px var(--stencil); letter-spacing: .12em; }
-  .answer-option { border: 2px inset #4f5a3c; background: #11180c; }
+  .answer-option { border: 2px inset #6d7b59; background: linear-gradient(#101c10, #080f0a); box-shadow: inset 0 2px 5px #0008; }
   .answer-option:hover { border-color: #8a9070; }
-  .answer-option:has(input:checked) { border: 2px solid var(--accent); background: #2f3519; box-shadow: 0 0 12px #f0c94a33; }
+  .answer-option:has(input:checked) { border: 2px solid var(--accent); background: #24301a; box-shadow: inset 3px 0 var(--accent), inset 0 2px 5px #0006; }
   .message-composer, .chat-requests { background: var(--rivets), linear-gradient(#3e4d3f, #26382b); border-top: 3px ridge #8a9372; }
   .message-composer:focus-within { border-top-color: var(--accent); box-shadow: 0 -3px 12px #f0c94a12; }
-  .message-form textarea, .custom-answer input, .login-form input, .access-form input:not([type=checkbox]) { border: 2px inset #828b6b; background: #0a1208; }
+  :is(.message-form textarea, .custom-answer input, .deny-reason, .login-form input, .access-form input:not([type=checkbox])) { border: 3px inset #879575; border-radius: 0; background: #080f09; color: #d5efb9; box-shadow: inset 0 3px 7px #000; outline: none; caret-color: var(--accent); }
+  :is(.message-form textarea, .custom-answer input, .deny-reason, .login-form input, .access-form input:not([type=checkbox])):focus { border-color: #e2c569; box-shadow: inset 0 3px 7px #000, 0 0 0 1px #e2c56955; }
+  :is(.message-form textarea, .custom-answer input, .deny-reason)::placeholder { color: #a8b798; }
+  .message-form textarea { padding: 11px 13px; }
+  .composer-row { padding: 5px; border: 1px solid; border-color: #8b9878 #253321 #202b1c #6a795a; background: linear-gradient(#4b5c42, #2a3a26); box-shadow: inset 0 1px #d0dfb12e, 0 1px #0008; }
+  .composer-row .primary { align-self: stretch; border-bottom-width: 3px; }
   .toast { border-radius: 0; border: 2px outset #a8af90; background: var(--rivets), var(--steel); color: #fff6c9; font: 400 19px/1.2 var(--readout); letter-spacing: .08em; text-transform: uppercase; text-shadow: 1px 1px #000; }
   .toast::before { content: 'EVA ▸ '; color: var(--ok); }
 
@@ -468,6 +479,10 @@
   .login-card .brand-name { font-size: 40px; }
   .login-symbol { width: 104px; height: 104px; border-radius: 0; background: url('/command-emblem.svg') center / contain no-repeat; filter: drop-shadow(3px 4px 0 #000a); }
   .login-form label { color: #f6efc8; text-shadow: 1px 1px #1d2316; font: 400 13px var(--stencil); text-transform: uppercase; letter-spacing: .1em; }
+}
+
+@media (forced-colors: active) {
+  :root:is([data-theme=alien], [data-theme=command]) :is(.message-form textarea, .custom-answer input, .deny-reason, .login-form input, .access-form input:not([type=checkbox])):focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
 }
 
 @media (forced-colors: none) {
