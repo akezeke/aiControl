@@ -10,7 +10,7 @@ const EASE = 5, FADED = 0.12, RUN_FOV = 6, STRIDE = 1.6; // radians of walk cycl
 export class OfficeCamera {
   constructor(camera, scene, player, room, { reducedMotion, container }) {
     this.camera = camera; this.player = player; this.room = room; this.reducedMotion = reducedMotion;
-    this.overview = false; this.amount = 0; this.focusPoint = null; this.focusAmount = 0; this.fov = camera.fov;
+    this.overview = false; this.amount = 0; this.focusPoint = null; this.focusAmount = 0; this.fov = camera.fov; this.game = null; this.gameAmount = 0;
     this.overhead = new Overview(container, camera.userData.canvas, camera);
     // First person: your arm, holding a #1 BOSS mug by the handle, bottom right. The text faces you (the side starts at the back).
     this.hands = new THREE.Group(); camera.add(this.hands); scene.add(camera);
@@ -44,6 +44,8 @@ export class OfficeCamera {
   setLayout(layout) { this.overhead.setLayout(layout); }
   // Frames a point (a character) from where you stand; null hands the camera back.
   focus(point) { this.focusPoint = point?.clone() || null; }
+  // A game in the secret room takes the view: `pose()` gives { from, look, fov, hands } in world space; null hands it back.
+  play(pose) { this.game = !!pose; if (pose) this.pose = pose; }
 
   update(dt) {
     this.overhead.update(dt);
@@ -51,15 +53,18 @@ export class OfficeCamera {
     this.amount += ((this.overview ? 1 : 0) - this.amount) * k;
     this.focusAmount += ((this.focusPoint ? 1 : 0) - this.focusAmount) * k;
     if (Math.abs(this.amount - (this.overview ? 1 : 0)) < 0.001) this.amount = this.overview ? 1 : 0;
+    this.gameAmount += ((this.game ? 1 : 0) - this.gameAmount) * k; if (Math.abs(this.gameAmount - (this.game ? 1 : 0)) < 0.001) this.gameAmount = this.game ? 1 : 0;
+    const game = this.gameAmount && this.pose();
 
     const p = this.player, eye = p.position, look = new THREE.Vector3(Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch), Math.cos(p.yaw) * Math.cos(p.pitch)).add(eye);
     // Talking: ease the view onto the character's face, a little lower and closer than standing eye level.
     if (this.focusAmount > 0.001 && this.focusPoint) look.lerp(this.focusPoint, this.focusAmount);
     this.from.copy(eye); this.look.copy(look);
+    if (game) { this.from.lerp(game.from, this.gameAmount); this.look.lerp(game.look, this.gameAmount); }
     if (this.amount) { const over = this.overhead.pose(); this.from.lerp(over.from, this.amount); this.look.lerp(over.look, this.amount); }
     this.camera.position.copy(this.from); this.camera.lookAt(this.look);
     // Running, or flying over to someone, widens the view a little.
-    const fov = this.fov + (p.running && !instant ? RUN_FOV : 0);
+    const fov = this.game ? game.fov : this.fov + (p.running && !instant ? RUN_FOV : 0);
     if (Math.abs(fov - this.camera.fov) > 0.01) { this.camera.fov += (fov - this.camera.fov) * k; this.camera.updateProjectionMatrix(); }
     // While talking, shift the picture left so the character is centred in the part the panel (or the screenshots) leaves open.
     const panel = document.querySelector('#panel:not([hidden]), .office-shots[open]'), canvas = this.camera.userData.canvas, shift = panel && innerWidth > 640 ? panel.offsetWidth / 2 * this.focusAmount : 0;
@@ -68,7 +73,7 @@ export class OfficeCamera {
       if (shift) this.camera.setViewOffset(canvas.clientWidth, canvas.clientHeight, shift, 0, canvas.clientWidth, canvas.clientHeight); else this.camera.clearViewOffset();
     }
 
-    this.hands.visible = this.amount < 0.2 && !this.focusPoint;
+    this.hands.visible = this.amount < 0.2 && !this.focusPoint && (this.gameAmount < 0.5 || game.hands);
     this.carry(dt, instant);
     this.fade();
   }

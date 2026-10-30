@@ -158,15 +158,15 @@ export function createMenu(container, onChoose) {
   return result;
 }
 
-export function createOverlays(container, { onNext, onList, onOverview, onNew }) {
+export function createOverlays(container, { onNext, onList, onOverview, onNew, onLeave }) {
   const bar = document.createElement('div'); bar.className = 'office-overlay'; container.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); if (onclick) b.onclick = onclick; bar.append(b); return b; };
+  const leave = button('office-leave', '✕', 'Leave the game (Esc)', onLeave); leave.hidden = true;
   const waiting = button('office-waiting', '', 'Walk to the next one waiting (n)', onNext); waiting.hidden = true;
   const usage = button('office-usage', '⚡', 'Usage is near its limit; see the whiteboard'); usage.hidden = true;
   button('office-new', '+', 'New agent in a folder', event => onNew(event.currentTarget));
   button('office-list', '☰', 'Show the list', onList);
-  // Phones have no Tab.
-  const eye = button('office-eye', '👁', 'Overview', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
+  const eye = button('office-eye', '👁', 'Overview (Tab)', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
   const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
   const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · E grab · F pour · Tab overview'; hint.hidden = seen; container.append(hint);
@@ -174,6 +174,7 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew })
     setWaiting(n) { waiting.hidden = !n; waiting.textContent = `⚠ ${n}`; },
     setUsageLow(on) { usage.hidden = !on; },
     setOverview(on) { eye.setAttribute('aria-pressed', String(on)); },
+    setPlaying(on) { leave.hidden = !on; },
     showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
     // The hint goes once you've used the overview.

@@ -29,6 +29,13 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
     groups.get(key).sessions.push(session);
   }
   const pods = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
+  // Seats saved from an earlier page (`saved`): the columns and rows nobody here now uses close up, everyone keeping their
+  // order, so a project that's gone doesn't leave an empty stretch of floor behind for good.
+  if (previous?.saved) {
+    const here = new Set(pods.map(pod => pod.key)), kept = previous.pods.filter(pod => here.has(pod.key));
+    const used = axis => [...new Set(kept.map(pod => pod[axis]))].sort((a, b) => a - b), cols = used('col'), rows = used('row');
+    previous = { ...previous, pods: kept.map(pod => ({ ...pod, col: cols.indexOf(pod.col), row: rows.indexOf(pod.row) })), grid: { cols: Math.max(1, cols.length), cellW: 0 } };
+  }
 
   // Seats from the previous layout stay put; newcomers take the lowest free slot.
   for (const pod of pods) {

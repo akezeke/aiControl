@@ -97,7 +97,7 @@ function bodyShape(fruit) {
       for (let i = 1; i < points.length; i++) if (points[i].y >= y && points[i - 1].y <= y) { const a = points[i - 1], b = points[i], k = (y - a.y) / ((b.y - a.y) || 1); return { x: 0, r: a.x + (b.x - a.x) * k }; }
       return { x: 0, r: 0.05 };
     };
-    shape = { geometry, height: points.at(-1).y, top: Math.max(...points.map(point => point.y)), surface };
+    shape = { geometry, points, height: points.at(-1).y, top: Math.max(...points.map(point => point.y)), surface };
   }
   bodies.set(fruit, shape);
   return shape;
@@ -435,10 +435,18 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
   // The rest are painted, all in one mesh and its outline.
   const worn = [], dark = new THREE.Color(trim).multiplyScalar(0.7).getStyle(), GOLD = '#f2c14e';
   const around = (geometry, angle) => { const x = shape.surface(collarY).x; return geometry.translate(-x, 0, 0).rotateY(angle).translate(x, 0, 0); };
-  // Hats: a shell over the top of the head from just above the brows, the stem left off.
+  // Hats: a shell over the top of the head from just above the brows, the stem left off. It follows the body's own profile,
+  // pushed out along its normals, so a round shoulder (an apple's) can't poke through; over the top it closes flat.
   const brim = faceY + 0.155, crown = (lift, puff = 0) => {
-    const top = shape.top, rows = Array.from({ length: 7 }, (_, i) => { const y = brim + (top - brim) * i / 6; return [shape.surface(y).r + lift + puff * (i / 6) ** 2, y + puff * (i / 6) ** 3]; });
-    return new THREE.LatheGeometry(smooth([...rows, [(shape.surface(top).r + lift) * 0.55, top + lift * 0.9 + puff * 1.2], [0, top + lift + puff * 1.3]], 18), 28);
+    const p = shape.points, peak = p.findIndex(q => q.y === shape.top), rows = [];
+    for (let i = 1; i <= peak; i++) {
+      if (p[i].y < brim) continue;
+      const dr = p[Math.min(i + 1, p.length - 1)].x - p[i - 1].x, dy = p[Math.min(i + 1, p.length - 1)].y - p[i - 1].y, n = Math.hypot(dr, dy) || 1;
+      const k = (p[i].y - brim) / ((shape.top - brim) || 1);
+      rows.push([p[i].x + dy / n * lift + puff * k * k, p[i].y - dr / n * lift + puff * k ** 3]);
+    }
+    rows.unshift([shape.surface(brim).r + lift, brim]);
+    return new THREE.LatheGeometry(smooth([...rows, [rows.at(-1)[0] * 0.55, shape.top + lift + puff * 1.2], [0, shape.top + lift + puff * 1.3]], 24), 28);
   };
   const ring = (radius, tube, y) => new THREE.TorusGeometry(radius, tube, 8, 32).rotateX(Math.PI / 2).translate(shape.surface(y).x, y, 0);
   if (hat && has.has('beanie')) {
@@ -475,9 +483,9 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
     const stud = onSkin(k * 1.25, faceY - 0.025, 0.006), drop = onSkin(k * 1.25, faceY - 0.075, 0.026);
     worn.push([new THREE.SphereGeometry(0.012, 8, 6).translate(...stud.toArray()), GOLD], [arc([stud, stud.clone().lerp(drop, 0.5).add(V(0, 0, 0.004)), drop], 0.004), GOLD], [new THREE.SphereGeometry(0.022, 10, 8).scale(0.85, 1.15, 0.85).translate(drop.x, drop.y - 0.012, drop.z), trim]);
   }
-  // Pearls: a string of beads hanging lowest at the front.
-  if (has.has('pearls')) for (let i = 0; i <= 14; i++) {
-    const a = (i / 14 - 0.5) * 2.6, at = onSkin(a, collarY + 0.012 - 0.03 * Math.cos(a / 2.6 * Math.PI), 0.012);
+  // Pearls: a full string of beads round the neck, hanging lowest at the front.
+  if (has.has('pearls')) for (let i = 0; i < 24; i++) {
+    const a = (i / 24 - 0.5) * Math.PI * 2, at = onSkin(a, collarY + 0.012 - 0.03 * (1 + Math.cos(a)) / 2, 0.012);
     worn.push([new THREE.SphereGeometry(0.017, 8, 6).translate(...at.toArray()), '#f6f1e7']);
   }
   // A scarf: a thick ring round the neck, two ends hanging down the front to one side, following the skin.

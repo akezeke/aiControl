@@ -192,7 +192,7 @@ export function standBefore(point, normal, distance, colliders, room) {
   }
   return null;
 }
-const free = (p, colliders, room) => (!room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS)) && !colliders.some(box => inside(p, box));
+export const free = (p, colliders, room) => (!room || (p.x >= RADIUS && p.x <= room.width - RADIUS && p.z >= RADIUS && p.z <= room.depth - RADIUS)) && !colliders.some(box => inside(p, box));
 
 // What's under a screen point: a character (by session id), a desk's monitor (userData.monitor: whose), a board on the wall
 // (userData.board), a pod's sign (userData.hire: { cwd, name }), a toggle (the light switch, the coffee machine), something to
@@ -205,6 +205,8 @@ export function rayAt(event, canvas, camera) {
   raycaster.setFromCamera(ndc, camera);
   return raycaster.ray.direction.clone();
 }
+// Drawn: it and everything it's in (a ray finds what's hidden too).
+const shown = node => { for (let n = node; n; n = n.parent) if (!n.visible) return false; return true; };
 export function pick(event, canvas, camera, scene) {
   rayAt(event, canvas, camera);
   for (const hit of raycaster.intersectObjects(scene.children, true)) {
@@ -212,7 +214,7 @@ export function pick(event, canvas, camera, scene) {
     while (node && !node.userData.sessionId && !node.userData.monitor && !node.userData.board && !node.userData.hire && !node.userData.toggle) node = node.parent;
     if (node?.userData.sessionId) return { kind: 'character', id: node.userData.sessionId };
     if (node?.userData.monitor) return { kind: 'monitor', id: node.userData.monitor, node, point: hit.point };
-    if (node?.userData.toggle) { if (node.visible) return { kind: 'toggle', node }; continue; } // the light switch, hidden with its wall
+    if (node?.userData.toggle) { if (shown(node)) return { kind: 'toggle', node }; continue; } // the light switch, hidden with its wall; a game behind a shut shelf
     if (node?.userData.hire) return { kind: 'hire', node, point: hit.point, ...node.userData.hire };
     // A board on a wall that's faded out for the overview is hidden: look past it.
     if (node) { if (node.visible) return { kind: 'board', node }; continue; }
