@@ -58,7 +58,7 @@
   color-scheme: light;
   --hand: 'Comic Neue', 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive;
   --display: var(--hand);
-  --bg: #c4935f; --panel: #fffef8; --panel-2: #f3eedf; --sunken: #fbf8ef;
+  --bg: #dcc6a3; --panel: #fffef8; --panel-2: #f3eedf; --sunken: #fbf8ef;
   --text: #1b1a1f; --text-2: #3a3742; --text-3: #5c5866;
   --line: #e4dccb; --line-2: #cfc4ad;
   --accent: #2b59c3; --accent-2: #1f46a0; --accent-ink: #fff; --accent-soft: #dfe8fb;
