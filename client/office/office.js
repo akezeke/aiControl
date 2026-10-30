@@ -14,6 +14,7 @@ import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
 import { createProps, REACH } from './props.js';
 import { createScreenshots } from './screenshots.js';
+import { createDarts } from './darts.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
 import { hireChoices } from '../hire.js';
@@ -68,9 +69,11 @@ export function mountOffice(container, hooks) {
     colliders: () => room.colliders,
     room: () => layout && room.secret.bounds(layout.room), // the secret room's beside the office
     // In first person, a mouse click that isn't on someone (or a board, a pod's sign or a ball) captures the mouse; captured, a
-    // click on the floor walks there. With a ball in hand a click throws it that way. A press that closes the sign's menu does nothing else.
+    // click on the floor walks there. With a ball (or, at the oche, a dart) in hand a click throws it that way. A press that closes
+    // the sign's menu does nothing else.
     onPick: (at, mouse) => {
       if (dismissed) return;
+      if (darts.ready && !view.overview) { darts.throw(rayAt(at, renderer.domElement, camera)); return; }
       if (props.holding && !view.overview) { props.throw(rayAt(at, renderer.domElement, camera)); return; }
       const hit = under(at);
       if (hit?.kind === 'character') office.talkTo(hit.id);
@@ -93,6 +96,11 @@ export function mountOffice(container, hooks) {
   room.onCoffee = () => { if (!props.fill()) player.walkTo(props.machineSpot, () => props.fill(), 0.3, true); };
   // The secret shelf's right book: pressed from where you stand if you can reach it, else you walk over first.
   room.onSecret = () => { const spot = room.secret.spot; if (player.position.clone().setY(0).distanceTo(spot) < 1.6) room.secret.toggle(); else player.walkTo(spot, () => room.secret.toggle(), 0.3, true); };
+  // Darts in the secret room: aimed where the mouse is, or the middle while it's captured; the view narrows at the oche.
+  const FOV = view.fov;
+  const darts = createDarts({ hands: view.hands, camera, aim: () => rayAt(dot ? player.centre : mouse || player.centre, renderer.domElement, camera),
+    busy: () => view.overview || !!player.flight || !!office.talking, zoom: on => { view.fov = on ? FOV * 0.6 : FOV; } });
+  room.secret.add(darts);
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
@@ -143,7 +151,7 @@ export function mountOffice(container, hooks) {
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE' && !menu.contains(event.target)) {
       event.preventDefault();
-      if (props.holding) props.throw(); else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node, monitor.point); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
+      if (props.holding) props.throw(); else if (darts.ready) darts.throw(); else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node, monitor.point); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
     }
     else if (event.code === 'KeyF' && !view.overview && !office.talking) { event.preventDefault(); if (!event.repeat) props.pour(true); }
   });

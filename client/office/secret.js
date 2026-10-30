@@ -65,6 +65,7 @@ const neon = (g, w, h) => {
 
 export function createSecret({ onPress }) {
   let open = false, t = 0, idle = 0, press = 0, time = 0, built = null;
+  const games = []; // what's played in here (darts.js): built into the room and updated with it
   const shelf = new THREE.Group(); shelf.userData.secret = 'shelf'; // userData keeps room.js's bake off what moves
   shelf.add(piece('secretShelf', shelfParts));
   // The right book tips out from its bottom front edge.
@@ -81,6 +82,7 @@ export function createSecret({ onPress }) {
     // Where to stand to press the right book.
     get spot() { return built && new THREE.Vector3(built.door.x - 0.9, 0, built.door.z); },
     toggle() { open = !open; idle = 0; press = PRESS; },
+    add(game) { games.push(game); if (built) game.build(built.room); },
     // A room `width` × `depth` (a new shell): the shelf and the games room go in `shell`; returns what blocks walking.
     build({ width, depth, shell }) {
       const door = new THREE.Vector3(width, 0, depth - DOOR.back), room = buildRoom(), collider = new THREE.Box3();
@@ -95,6 +97,7 @@ export function createSecret({ onPress }) {
       room.updateMatrixWorld(true);
       const colliders = room.userData.walls.map(wall => new THREE.Box3().setFromObject(wall));
       built = { door, room, collider, lamps }; place();
+      for (const game of games) game.build(room);
       return [...colliders, collider];
     },
     // Each frame, with where you stand (not the camera, which the overview lifts away).
@@ -111,6 +114,7 @@ export function createSecret({ onPress }) {
       room.visible = shown;
       for (const [light, power] of built.lamps) light.intensity = shown ? power : 0;
       if (shown && !still) room.userData.animate(time);
+      for (const game of games) game.update(dt, at, still, shown);
     },
   };
   // The shelf where the slide has got to (eased, with a little judder while it moves), and what it blocks there.
