@@ -523,6 +523,8 @@
   --stack-gap: 12px;
   --connector: #1b1a1f99;
   body, .login-screen { background: var(--cork); }
+  /* The way back to the scene, so it's easy to spot from the list. */
+  .quiet-button.office-button { background: var(--postit); }
   /* Strips of tape: cards get one at the top, at a slightly different angle and place down a list. */
   :is(.session-card:not(.subagent), .usage-accounts, .empty, .login-card, .request-box)::after { content: ''; position: absolute; top: -7px; left: 50%; width: 38px; height: 13px; margin-left: -19px; background: #fffc; box-shadow: 0 0 0 1px #0001; transform: rotate(-3deg); pointer-events: none; }
   .session-card:nth-child(3n+2)::after { left: 34%; transform: rotate(2deg); }
