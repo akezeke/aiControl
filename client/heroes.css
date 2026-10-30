@@ -8,6 +8,7 @@
   --stone: linear-gradient(110deg, #14234420, #080f2366), url('/heroes-stone.svg');
   --ornate: url('/heroes-ornate-frame.webp');
   --parchment: url('/heroes-parchment.webp');
+  --paper: #f1dfb6;
   --bevel: inset 1px 1px #f8df9b, inset -1px -1px #584026, 0 0 0 1px #0b1020, 2px 3px 0 #0007;
   --scroll-track: #0d192e; --scroll-thumb: #a88b4c;
 
@@ -152,7 +153,8 @@
     color: var(--text);
   }
   .history-content { padding-block: 12px 20px; }
-  .recent-message:not(.tool):not(.notice) { position: relative; padding: 14px 26px 16px; border: 5px solid transparent; border-image: var(--parchment) 24% fill / 30px stretch; border-radius: 0; background: none; box-shadow: none; }
+  /* The solid paper keeps dark ink readable while the border artwork loads, or if it fails. */
+  .recent-message:not(.tool):not(.notice) { position: relative; padding: 14px 26px 16px; border: 5px solid transparent; border-image: var(--parchment) 24% fill / 30px stretch; border-radius: 0; background: var(--paper); background-clip: padding-box; box-shadow: none; }
   .recent-message.user .message-meta strong { color: #345378; }
   .recent-message.user .message-meta::before { content: ''; flex: none; width: 20px; height: 20px; background: url('/heroes-seal.svg') center / contain no-repeat; image-rendering: pixelated; }
   .recent-message.user .message-meta { justify-content: start; gap: 6px; }
@@ -168,13 +170,13 @@
   .recent-message.tool.failed .tool-call { color: #ffaaa0; }
   .recent-message.tool.failed .tool-call::before { color: #ffaaa0; }
   .tool-run { padding-left: 0; border: 0; }
-  .tool-run > summary { padding: 6px 16px; border: 3px solid transparent; border-image: var(--parchment) 24% fill / 18px stretch; --danger: #9b322e; color: #4e4634; }
+  .tool-run > summary { padding: 6px 16px; border: 3px solid transparent; border-image: var(--parchment) 24% fill / 18px stretch; background: var(--paper); background-clip: padding-box; --danger: #9b322e; color: #4e4634; }
   .tool-run > summary .tool-call { color: #625840; }
   .tool-run > .recent-message.tool { margin: 0 8px; padding-left: 15px; }
   .history-shot { padding: 5px; border: 3px solid transparent; border-image: var(--ornate) 34% / 20px stretch; border-radius: 0; background: #101b32; box-shadow: none; }
   .history-latest.quiet-button { border-radius: 0; color: #ffe6a2; }
   .chat-requests, .message-composer { padding-top: 15px; border: 0; background: url('/heroes-flourish.svg') center top / 160px 20px no-repeat, var(--stone); }
-  .message-form .composer-row textarea { min-height: 90px; padding: 16px 28px; color-scheme: light; color: #30291e; caret-color: #345378; background: none; border: 5px solid transparent; border-image: var(--parchment) 24% fill / 30px stretch; box-shadow: none; }
+  .message-form .composer-row textarea { min-height: 90px; padding: 16px 28px; color-scheme: light; color: #30291e; caret-color: #345378; background: var(--paper); background-clip: padding-box; border: 5px solid transparent; border-image: var(--parchment) 24% fill / 30px stretch; box-shadow: none; }
   .message-form textarea::placeholder { color: #6c5d42; }
   .composer-row { gap: 9px; align-items: center; }
   .composer-row .primary { align-self: center; width: 72px; min-height: 72px; padding: 12px 8px; border: 0; background: url('/heroes-seal.svg') center / contain no-repeat; color: #fff0bf; box-shadow: none; text-shadow: 1px 1px #3b1922; font: 700 15px var(--display); }
