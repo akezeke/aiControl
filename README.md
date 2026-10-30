@@ -15,7 +15,7 @@ A self-hosted dashboard for keeping track of your local Codex and Claude Code se
 - Model, effort, permission mode, context, plan progress, goal and cost per session; unread dots for finished work.
 - Notifications (HTTPS) and theme sounds when a session needs you, a favicon badge, and `/` `j` `k` `n` shortcuts.
 - Five-hour and weekly usage limits for both accounts, with a warning when the current pace runs past the limit.
-- Themes: Orbit (auto, light or dark), MU/TH/UR, EVA, and Office, a 3D office where every session is a fruit at its desk. A picker asks on first visit.
+- Themes: Orbit (auto, light or dark), MU/TH/UR, EVA, Springfield (Simpsons-inspired), and Office, a 3D office where every session is a fruit at its desk. A picker asks on first visit.
 - This computer only, or your other devices over Tailscale. PIN or password, ten-minute idle lock.
 
 ## More is more

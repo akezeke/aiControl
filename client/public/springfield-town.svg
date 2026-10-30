@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="280" viewBox="0 0 1200 280" stroke="#293044" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M-20 198Q122 98 284 181T576 173Q747 83 921 181T1220 149V290H-20Z" fill="#88ba70"/>
+  <!-- Cooling towers and a sleepy suburban street, drawn as a flat animation cel. -->
+  <g fill="#d6d5c7">
+    <path d="M914 194q27-45 14-98h57q-14 53 14 98Z"/><ellipse cx="956" cy="96" rx="28" ry="6" fill="#a5a99d"/>
+    <path d="M995 194q27-54 15-116h62q-13 61 15 116Z"/><ellipse cx="1041" cy="78" rx="31" ry="7" fill="#a5a99d"/>
+  </g>
+  <path d="M937 74c-16-15-9-32 7-33-8-13 1-25 15-24m71 39c-18-12-17-28-1-33-7-10-3-21 8-27" fill="none" stroke="#fffdf5" stroke-width="14"/>
+  <path d="M-20 229Q177 178 364 223T709 218Q901 168 1220 219V290H-20Z" fill="#aad171"/>
+  <g>
+    <path d="M108 235V157h163v78Z" fill="#eab68e"/>
+    <path d="M91 159l69-51 55 12 69 39Z" fill="#bb7263"/>
+    <path d="M195 153v-42h18v42" fill="#eab68e"/>
+    <path d="M158 235v-50h29v50m-59-59h20v27h-20Zm73 0h43v39h-43Z" fill="#a9dfeb"/>
+    <path d="M172 185v50m29-33h43m-21-26v39" fill="none"/>
+    <path d="M268 235v-47h51v47" fill="#f2c998"/><path d="M259 190l32-26 36 26Z" fill="#bb7263"/>
+    <path d="M279 235v-30h29v30" fill="#dca57f"/>
+    <path d="M570 226v-53h102v53Z" fill="#c7a4ce"/><path d="M558 175l63-39 64 39Z" fill="#7d79a6"/>
+    <path d="M581 185h22v24h-22Zm53 0h22v24h-22Z" fill="#fff0a7"/>
+    <path d="M612 226v-28h14v28" fill="#e8b78c"/>
+  </g>
+  <g fill="#69a766">
+    <path d="M20 247v-29m-15 7c-24-16-10-42 7-40-8-32 24-47 41-26 31-11 47 22 27 38 23 23-11 49-32 31-10 10-31 10-43-3Z"/>
+    <path d="M351 233c-20-10-14-32 4-34-3-25 25-31 37-12 24-8 37 17 20 32 7 19-25 24-36 13-10 7-17 6-25 1Z"/>
+    <path d="M1090 231c-23-12-15-38 4-41-2-28 28-40 45-18 33-12 55 23 33 45 9 22-29 37-45 19-13 9-26 7-37-5Z"/>
+  </g>
+  <path d="M0 267q261-34 467-5t733-11v29H0Z" fill="#e5d2ab"/>
+  <path d="M440 241l4-7m5 8 7-4m304 0 4-8m4 9 8-4m-681 21 3-7m5 8 7-4" fill="none" stroke="#508452" stroke-width="2"/>
+</svg>

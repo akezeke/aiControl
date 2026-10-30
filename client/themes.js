@@ -7,6 +7,7 @@ export const themes = [
   { id: 'modern-dark', look: 'modern', scheme: 'dark', name: 'Orbit dark', color: '#0b0d12' },
   { id: 'alien', name: 'MU/TH/UR', color: '#030703' },
   { id: 'command', name: 'EVA', color: '#62685a' },
+  { id: 'simpsons', scheme: 'light', name: 'Springfield', color: '#86cbed' },
   // The office replaces the list with a 3D scene; the chrome around it is paper pinned to a corkboard.
   { id: 'office', scheme: 'light', name: 'Office', color: '#dcc6a3' },
 ];

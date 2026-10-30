@@ -1,0 +1,152 @@
+/* Springfield: flat animation cels, a purple TV, sky and doughnuts. SVGs stay small,
+   local and sharp; only the cloud layer moves continuously, using a transform. */
+:root[data-theme=simpsons] {
+  color-scheme: light;
+  --display: 'Comic Neue', 'Comic Sans MS', cursive;
+  --bg: #86cbed; --panel: #fffdf5; --panel-2: #f4eedf; --sunken: #fff9e9;
+  --text: #252938; --text-2: #424457; --text-3: #595567;
+  --line: #c3bba9; --line-2: #79727b;
+  --accent: #294fa3; --accent-2: #193d8a; --accent-ink: #fff; --accent-soft: #e4edff;
+  --ok: #28602d; --ok-soft: #d9edb6; --warn: #87400d; --warn-soft: #fff0a9; --warn-line: #a65d20; --danger: #a82035; --danger-soft: #ffe0e6;
+  --codex: #294fa3; --claude: #944322; --claude-soft: #ffe2c0;
+  --radius: 12px; --radius-sm: 7px;
+  --shadow: 2px 3px 0 #293044; --shadow-lg: 5px 6px 0 #293044, 0 18px 36px #29304433;
+  --focus: #193d8a; --ink: #293044; --yellow: #ffda3b; --pink: #f391b5;
+  --stack-gap: 9px; --connector: var(--ink);
+
+  body { background: var(--bg); }
+  .shell, .login-screen { position: relative; isolation: isolate; background: transparent; }
+  :is(.shell, .login-screen)::before, :is(.shell, .login-screen)::after { content: ''; position: fixed; z-index: -1; pointer-events: none; }
+  :is(.shell, .login-screen)::before { inset: -12px -36px; background: url('/springfield-clouds.svg') center top / 1000px 420px repeat; }
+  :is(.shell, .login-screen)::after { inset: auto 0 0; height: clamp(140px, 25vh, 280px); background: url('/springfield-town.svg') center bottom / auto 100% repeat-x; }
+  .workspace { position: relative; }
+  .page-heading h1 { font-size: 30px; letter-spacing: -.03em; }
+  .machine-label { color: var(--ink); }
+  .status-text.simpsons { display: block; }
+  .status-line { width: fit-content; max-width: 100%; padding: 3px 10px; border: 2px solid var(--ink); border-radius: 6px 12px 12px 2px; background: var(--panel); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+  .status-line.flash { background: var(--yellow); }
+
+  /* The sidebar is the living-room wall. Avoid transforms here: menus are fixed. */
+  .sidebar { background: #f1c4ce; border-right: 3px solid var(--ink); }
+  .sidebar .brand { margin: 1px 0 20px; }
+  .brand-variant.simpsons { display: flex; }
+  .brand-name { font: 700 25px/1.1 var(--display); letter-spacing: -.04em; }
+  .brand-mark { width: 36px; height: 36px; padding: 0; border-radius: 0; background: url('/springfield-donut.svg') center / contain no-repeat; box-shadow: none; }
+  .sidebar-label { margin-top: 14px; color: #51415a; }
+  .nav-item { border: 2px solid transparent; color: var(--ink); padding: 6px 8px; font-weight: 600; }
+  .nav-item:hover { border-color: var(--ink); background: #fff4cf; }
+  .nav-item.active { background: var(--yellow); border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink); color: var(--ink); }
+  .nav-count, .nav-item.active .nav-count { background: var(--panel); color: var(--ink); border: 1px solid var(--ink); line-height: 1.4; }
+  .sidebar > .top-actions { border-top: 2px solid #a87989; }
+
+  /* The live session map is a little rabbit-ear television. */
+  .theme-console { display: grid; position: relative; grid-template-columns: minmax(0, 1fr); padding: 7px; margin: 12px 0 4px; border: 3px solid var(--ink); border-radius: 16px 16px 12px 12px; background: #a18bc6; box-shadow: 3px 4px 0 var(--ink); }
+  .theme-console::before { content: ''; position: absolute; left: 40%; top: -24px; width: 32px; height: 24px; background: linear-gradient(49deg, transparent 45%, var(--ink) 47% 52%, transparent 54%) left / 50% 100% no-repeat, linear-gradient(-49deg, transparent 45%, var(--ink) 47% 52%, transparent 54%) right / 50% 100% no-repeat; pointer-events: none; }
+  .console-lamps, .console-power, .console-sweep, .console-vector svg, .console-signal { display: none; }
+  .console-heading { display: flex; justify-content: space-between; padding: 0 4px 5px; font: 700 13px var(--display); color: var(--ink); }
+  .console-count { font-variant-numeric: tabular-nums; }
+  .console-screen { position: relative; height: 114px; overflow: hidden; border: 3px solid var(--ink); border-radius: 22px / 15px; background: #b8e4ef; }
+  .console-vector { position: absolute; inset: 0; background: url('/springfield-town.svg') 25% bottom / auto 80px no-repeat; pointer-events: none; }
+  .console-contacts { position: absolute; inset: 0; }
+  .console-contact { position: absolute; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #656072; transform: translate(-50%, -50%); }
+  .console-contact::before { content: ''; position: absolute; inset: 6px; background: currentColor; border: 2px solid var(--ink); border-radius: 50%; box-shadow: 1px 1px 0 #fff; }
+  .console-contact[data-status=working] { color: #8cc854; }
+  .console-contact:is([data-status=question], [data-status=permission]) { color: var(--yellow); }
+  .console-contact[data-status=error] { color: #ed6881; }
+  .console-contact[data-tracked] { outline: 2px solid var(--ink); background: #fff9; z-index: 1; }
+  .console-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink); background: #fffdf5df; font: 700 13px var(--display); }
+  .console-readout { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 6px; padding: 4px 5px; border: 1.5px solid var(--ink); border-radius: 5px; background: var(--panel); font-size: 10px; }
+  .console-track-label { flex: none; font-weight: 750; }
+  .console-track-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .theme-console[data-disconnected=true] .console-readout { background: var(--danger-soft); color: var(--danger); }
+  .theme-console[data-disconnected=true] .console-contacts { visibility: hidden; }
+
+  /* Solid cels and short press travel keep controls clear and responsive. */
+  :is(.primary, .secondary, .quiet-button) { border: 2px solid var(--ink); background: var(--panel); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); font-weight: 700; }
+  .primary { background: var(--yellow); }
+  .primary:hover:not(:disabled) { background: #ffe774; }
+  :is(.secondary, .quiet-button):hover:not(:disabled) { border-color: var(--ink); background: #fff0a9; color: var(--ink); }
+  :is(.primary, .secondary, .quiet-button):active:not(:disabled) { transform: translate(2px, 2px); box-shadow: none; }
+  :is([data-decision=decline], [data-decision=cancel], .fire-button.armed) { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+  .stop-button { color: var(--danger); }
+  .filter-menu.filtered > summary, .alerts-menu.alerts-on > summary { background: var(--yellow); color: var(--ink); border-color: var(--ink); }
+  .theme-options, .filter-options { border: 2px solid var(--ink); background: var(--panel); box-shadow: 4px 4px 0 var(--ink); }
+  .tab.active, .theme-choice[aria-pressed=true] { background: var(--yellow); color: var(--ink); }
+  .stat { border: 2px solid var(--ink); background: var(--panel); box-shadow: 2px 2px 0 var(--ink); color: var(--ink); }
+  .stat.selected { border-color: var(--ink); background: var(--yellow); color: var(--ink); }
+  .search { border: 2px solid var(--ink); background: var(--panel); box-shadow: 2px 2px 0 var(--ink); }
+  :is(.message-form textarea, .login-form input, .access-form input:not([type=checkbox]), .custom-answer input, .deny-reason, .effort-select) { border: 2px solid var(--ink); background: var(--panel); }
+  .group-title h2 { font: 700 19px/1.2 var(--display); }
+  .group-heading { border-radius: 4px; background: #86cbede8; }
+  .group-title .icon, .project-path { color: var(--ink); }
+  .group-count { background: var(--yellow); border: 1px solid var(--ink); color: var(--ink); font-weight: 700; }
+  .session-card { border: 2px solid var(--ink); box-shadow: var(--shadow); transition: translate .12s, box-shadow .12s, background-color .12s; }
+  .session-card:hover { border-color: var(--ink); background: #fff9e4; translate: 0 -2px; box-shadow: 2px 5px 0 var(--ink); }
+  .session-card.needs-input { border-color: var(--ink); background: #fff0a9; box-shadow: inset 5px 0 var(--pink), var(--shadow); }
+  .session-card.needs-input:hover { background: #ffea8b; box-shadow: inset 5px 0 var(--pink), 2px 5px 0 var(--ink); }
+  .session-card.subagent { border-radius: 8px; }
+  .agent-mark { border: 2px solid var(--ink); background: #d6eafa; border-radius: 9px; }
+  .agent-mark.claude { border-color: var(--ink); background: var(--claude-soft); }
+  .badge { border: 1px solid var(--ink); font-weight: 700; }
+  .badge.amber { background: var(--yellow); }
+  .unread-dot { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--ink); }
+  .usage-accounts, .empty { border: 2px solid var(--ink); background: var(--panel); box-shadow: var(--shadow); }
+  .usage-meter { height: 8px; border: 1px solid var(--ink); }
+  .integrations { padding: 7px 10px; border: 2px solid var(--ink); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+  .connection-error { border: 2px solid var(--danger); background: var(--danger-soft); }
+
+  /* Conversation bubbles sit on the living-room wall; code stays in a plain font. */
+  .detail-panel { border-left: 3px solid var(--ink); background: var(--panel); }
+  .chat-header { background: #fff0a9; border-bottom: 2px solid var(--ink); }
+  .history-viewport { background: #f8e4e6; }
+  .recent-message:not(.tool, .notice) { border: 2px solid var(--ink); border-radius: 12px 12px 12px 3px; box-shadow: 2px 2px 0 #29304433; background: var(--panel); }
+  .recent-message.user { background: #e4edff; border-radius: 12px 12px 3px 12px; }
+  .chat-requests, .message-composer { background: var(--panel); border-top: 2px solid var(--ink); }
+  .request-box { border: 2px solid var(--ink); background: var(--warn-soft); box-shadow: 2px 2px 0 var(--ink); }
+  .request-box h3, .question-form legend { font: 700 18px/1.3 var(--display); }
+  .request-code, .request-details pre, .request-plan { background: var(--panel); }
+  .answer-option { border: 1.5px solid var(--line-2); background: var(--panel); }
+  .answer-option:has(input:checked) { border: 1.5px solid var(--ink); background: #dcecff; box-shadow: 2px 2px 0 var(--ink); }
+  .toast { border: 2px solid var(--ink); background: var(--yellow); color: var(--ink); box-shadow: var(--shadow); font-weight: 700; }
+  .login-card { border: 3px solid var(--ink); background: var(--panel); box-shadow: var(--shadow-lg); }
+  .login-card .brand-name { font-size: 32px; }
+  .login-card .brand-mark { width: 48px; height: 48px; }
+  .login-symbol { border: 2px solid var(--ink); background: var(--yellow); color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+}
+
+/* These also appear when a different theme is selected. */
+.theme-swatch.simpsons { background: url('/springfield-donut.svg') center / contain no-repeat, #86cbed; border-color: #293044; }
+.theme-preview.simpsons { background: url('/springfield-donut.svg') 50% 36% / 40% auto no-repeat, url('/springfield-town.svg') 20% bottom / auto 60% no-repeat, url('/springfield-clouds.svg') center / 220% auto, #86cbed; border: 2px solid #293044; }
+
+@keyframes springfield-cloud-drift { from { transform: translateX(-18px); } to { transform: translateX(18px); } }
+@keyframes springfield-donut-nod { 0%, 80%, 100% { rotate: 0deg; } 86% { rotate: -12deg; } 93% { rotate: 10deg; } }
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme=simpsons] :is(.shell, .login-screen)::before { animation: springfield-cloud-drift 32s ease-in-out infinite alternate; }
+  :root[data-theme=simpsons][data-working]:not([data-working="0"]) .brand-mark { animation: springfield-donut-nod 9s ease-in-out infinite; }
+}
+@media (max-width: 1100px) and (min-width: 641px) {
+  :root[data-theme=simpsons] .sidebar .brand { gap: 6px; }
+  :root[data-theme=simpsons] .sidebar .brand-name { font-size: 23px; }
+  :root[data-theme=simpsons] .sidebar .brand-mark { width: 30px; height: 30px; }
+}
+@media (max-width: 640px) {
+  :root[data-theme=simpsons] {
+    .topbar { background: #f1c4ce; border-bottom: 2px solid var(--ink); backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .topbar .brand-name { font-size: 23px; }
+    .theme-console { display: none; }
+    .detail-panel { border-left: 0; }
+    .page-heading h1 { font-size: 27px; }
+    :is(.shell, .login-screen)::after { background-position: 19% bottom; }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme=simpsons] .session-card:hover { translate: none; }
+}
+@media (forced-colors: active) {
+  :root[data-theme=simpsons] {
+    :is(.shell, .login-screen)::before, :is(.shell, .login-screen)::after, .theme-console::before { display: none; }
+    :is(.primary, .secondary, .quiet-button, .session-card, .nav-item.active, .stat, .answer-option:has(input:checked)) { border-color: ButtonText; }
+    :is(.search, .message-form textarea, .login-form input, .access-form input, .custom-answer input, .deny-reason):focus-within { outline: 2px solid Highlight; }
+    .console-contact::before { background: ButtonText; border-color: ButtonText; }
+  }
+}

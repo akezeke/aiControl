@@ -37,6 +37,8 @@ function speak(text) {
 }
 const sounds = {
   modern: kind => kind === 'input' ? (tone(880, 0, .4), tone(1318.5, .14, .6)) : tone(659.3, 0, .5),
+  // An original cartoon mallet cue, played only through the opt-in Sound control.
+  simpsons: kind => { const notes = kind === 'input' ? [783.99, 1046.5, 783.99] : [523.25, 783.99, 1046.5]; notes.forEach((note, i) => tone(note, i * .1, .22, 'triangle', .055)); },
   alien: kind => { for (let i = 0; i < (kind === 'input' ? 7 : 3); i++) tone(i % 2 ? 1480 : 1760, i * .065, .04, 'square', .025); },
   command: kind => speak({ input: 'Orders required', ready: 'Unit ready', on: 'EVA online' }[kind]) || tone(440, 0, .2, 'sawtooth', .04),
 };
