@@ -6,7 +6,7 @@ import { officeHasKeys, sceneFocused } from '../scene-keys.js';
 import { createCard, createMenu } from '../scene-ui.js';
 import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
-import { groundCells, paintGround, paintHood } from './ground.js';
+import { groundCells, paintGround, paintHood, paintLotShade } from './ground.js';
 import { buildTower, annex, dust, crane, coolingPlant, stackPlant } from './generator.js';
 import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
@@ -64,7 +64,7 @@ export function mountCity(box, hooks = {}) {
   glowCanvas.className = 'city-glow';
   if (bloom) box.append(glowCanvas);
 
-  const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), litHoods = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
+  const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), litHoods = new Map(), lotShades = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
   const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(), hops = new Map(), moods = new Map(); // ghosts: what has left the plan but is still going up in dust.
   let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '';
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
@@ -135,7 +135,7 @@ export function mountCity(box, hooks = {}) {
       const signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(id), { windows } = signal, phase = phaseOf(id, signal, now), dim = dimmed(building);
       if (signal.twinkle && !reduced) animating = true;
       hopped(id, `${windows}|${building.storeys}`, now, reduced || stage.puff);
-      stand(`${id}|${stage.storeys}|${windows}|${phase}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { beacon: signal.beacon && !dim && blink, named: true, bounce: bounceOf(id, signal, dim, now, reduced), sparks: signal.twinkle && !dim && !reduced ? sparks(now, id) : null });
+      stand(`${id}|${stage.storeys}|${windows}|${phase}|${!!signal.asleep}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { asleep: signal.asleep, beacon: signal.beacon && !dim && blink, named: true, bounce: bounceOf(id, signal, dim, now, reduced), sparks: signal.twinkle && !dim && !reduced ? sparks(now, id) : null });
       if (stage.crane) stand('crane', `crane:${id}`, x + CRANE_AT, z - CRANE_AT, () => ({ stack: crane(true) }), null, dim);
       effects(id, x, z, signal, stage, dim);
       return true;
@@ -145,7 +145,7 @@ export function mountCity(box, hooks = {}) {
       if (stage.gone) return false;
       const at = annexAt(building, i, view), group = `${building.id}+${i}`, signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(kid.id), dim = dimmed(building, kid.id), phase = phaseOf(kid.id, signal, now);
       hopped(kid.id, `${signal.windows}|${kid.storeys}`, now, reduced || stage.puff);
-      stand(`${group}|${stage.storeys}|${signal.windows}|${phase}`, group, at.x, at.z, () => annex(building.look, i, signal.windows, stage.storeys, phase), stage.puff ? null : kid.id, dim, { beacon: signal.beacon && !dim && blink, bounce: bounceOf(kid.id, signal, dim, now, reduced) });
+      stand(`${group}|${stage.storeys}|${signal.windows}|${phase}|${!!signal.asleep}`, group, at.x, at.z, () => annex(building.look, i, signal.windows, stage.storeys, phase), stage.puff ? null : kid.id, dim, { asleep: signal.asleep, beacon: signal.beacon && !dim && blink, bounce: bounceOf(kid.id, signal, dim, now, reduced) });
       effects(group, at.x, at.z, signal, stage, dim);
       return true;
     };
@@ -163,7 +163,7 @@ export function mountCity(box, hooks = {}) {
   };
   const visible = item => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return x > -CULL_X && x < size.width + CULL_X && y > -CULL_UP && y < size.height + CULL_DOWN; };
   const bake = item => {
-    const started = performance.now(), made = item.build(), sprite = renderSprite(made.stack, view, { dim: item.dim });
+    const started = performance.now(), made = item.build(), sprite = renderSprite(made.stack, view, { dim: item.dim, asleep: item.asleep });
     sprite.top = made.top ?? 0; sprite.cx = made.cx ?? 0; sprite.image = toImage(sprite); sprite.shadowImage = toImage(sprite.shadow);
     sprite.glowImage = bloom && sprite.lit.includes(1) ? toImage({ width: sprite.width, height: sprite.height, rgba: glowPixels(sprite.rgba, sprite.width, sprite.height, sprite.lit) }) : null;
     sprites.set(item.key, sprite);
@@ -182,6 +182,7 @@ export function mountCity(box, hooks = {}) {
     if (!lit) { const painted = paintHood(cells, hood, view); lit = { ...painted, image: toImage(painted), edgeImage: toImage({ width: painted.width, height: painted.height, rgba: painted.edge }) }; litHoods.set(key, lit); }
     return lit;
   };
+  const lotShade = () => { let shade = lotShades.get(view); if (!shade) { const painted = paintLotShade(view); shade = { ...painted, image: toImage(painted) }; lotShades.set(view, shade); } return shade; };
   // A lot's outline, walked on the ground so that it's the same shape in every view.
   const outline = (lot, colour) => {
     const half = LOT / 2 - PLOT;
@@ -202,6 +203,12 @@ export function mountCity(box, hooks = {}) {
     // A pointer on a project's sign shows which ground is its, leaving the rest of the city as it was.
     const pointedAt = hoveredHood && hoveredHood !== selectedHood && plan.hoods.find(hood => hood.key === hoveredHood), hinted = pointedAt && litHood(pointedAt);
     if (hinted) ctx.drawImage(hinted.image, gx - hinted.originX, gy - hinted.originY);
+    // Sleeping sessions' lots go dark with their towers. Under a lit project's rim, not over it, so its shape stays whole.
+    for (const hood of plan.hoods) for (const lot of hood.lots) if (lot.sessionId && signalOf(lot.sessionId).asleep) {
+      const shade = lotShade(), [sx, sy] = screen(lot.x, lot.z, view), [px, py] = toCanvas(camera, size, sx, sy);
+      ctx.drawImage(shade.image, px - shade.originX, py - shade.originY);
+    }
+    for (const over of [lit, hinted]) if (over) ctx.drawImage(over.edgeImage, gx - over.originX, gy - over.originY);
     for (const kind of Object.keys(lots)) { const lot = lots[kind] && lotOf(lots[kind]); if (lot) outline(lot, HIGHLIGHT[kind]); }
     const placed = list.filter(({ item }) => !item.over).map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, item, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
     drawn = placed.filter(item => item.opens);
@@ -243,7 +250,7 @@ export function mountCity(box, hooks = {}) {
     const at = new Map(placed.map(entry => [entry.item.group, entry])), buildingOf = id => plan.buildings.find(b => b.id === id || b.subagents.some(kid => kid.id === id));
     labels.sync(drawn.map(({ opens: id, sprite, item }) => {
       const session = sessions.get(id);
-      return { id, ax: item.sx, ay: item.sy - sprite.originY, name: item.named ? session?.title : null, bubble: session ? signalOf(id).bubble : null, unread: session && hooks.isUnread?.(session), dim: item.dim };
+      return { id, ax: item.sx, ay: item.sy - sprite.originY, name: item.named ? session?.title : null, bubble: session ? signalOf(id).bubble : null, unread: session && hooks.isUnread?.(session), dim: item.dim, mood: session ? signalOf(id).mood : null };
     }), camera.step);
     // On the project's left-hand corner in this view: its towers and their bubbles rise from the middle of the lots, so a corner stays clear.
     labels.signs(plan.hoods.map(hood => {

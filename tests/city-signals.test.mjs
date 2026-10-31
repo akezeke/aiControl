@@ -93,3 +93,13 @@ test('no reset time, no reset line', () => assert.equal(tagOf([{ label: '5-hour'
 test('a plant whose agent is away says so, whatever its last usage was', () => {
   assert.deepEqual(plantTag({ ...codex, connected: false }, [{ provider: 'codex', windows: [windowOf('5-hour', 90, 60)] }], NOW), { text: 'Codex offline', title: 'Codex is not connected', high: false });
 });
+test('a sleeping session goes dark and a working one says so, so that the two differ at a glance', () => {
+  assert.deepEqual([sig({ status: 'working' }).asleep, sig({ status: 'working' }).mood], [false, 'working']);
+  assert.deepEqual([sig({ status: 'working', activity: 'thinking' }).asleep, sig({ status: 'working', activity: 'thinking' }).mood], [false, 'working']);
+  assert.deepEqual([sig({ status: 'idle' }).asleep, sig({ status: 'idle' }).mood], [true, 'asleep']);
+  for (const status of ['permission', 'question', 'waiting', 'error']) assert.deepEqual([sig({ status }).asleep, sig({ status }).mood], [false, null], status);
+});
+test('without power a working session is dark too, and does not claim to be working', () => {
+  const away = sig({ status: 'working' }, { connected: false });
+  assert.deepEqual([away.asleep, away.mood], [true, 'asleep']);
+});

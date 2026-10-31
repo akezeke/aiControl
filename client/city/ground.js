@@ -195,6 +195,20 @@ export function paintHood({ x0, z0, w, rgb }, hood, view) {
   return { width, height, rgba, edge, originX: -minX, originY: -minY };
 }
 
+// Night over a sleeping session's lot, centred on the lot. Lots are all one size, so one per view does for all of them.
+const NIGHT_OVER = hex('#323353'), NIGHT_ALPHA = 165;
+export function paintLotShade(view) {
+  const half = LOT / 2, corners = [[-half, -half], [half, -half], [-half, half], [half, half]].map(([x, z]) => screen(x, z, view));
+  const minX = Math.floor(Math.min(...corners.map(c => c[0]))), maxX = Math.ceil(Math.max(...corners.map(c => c[0]))), minY = Math.floor(Math.min(...corners.map(c => c[1]))), maxY = Math.ceil(Math.max(...corners.map(c => c[1])));
+  const width = maxX - minX + 1, height = maxY - minY + 1, rgba = new Uint8ClampedArray(width * height * 4);
+  for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
+    const [x, z] = unproject(px + minX, py + minY, view), a = Math.floor(x), b = Math.floor(z);
+    if (a < -half || b < -half || a >= half || b >= half) continue;
+    const i = (px + py * width) * 4; rgba[i] = NIGHT_OVER[0]; rgba[i + 1] = NIGHT_OVER[1]; rgba[i + 2] = NIGHT_OVER[2]; rgba[i + 3] = NIGHT_ALPHA;
+  }
+  return { width, height, rgba, originX: -minX, originY: -minY };
+}
+
 // World (x, z) lands on pixel (screen x + originX, screen y + originY).
 export function paintGround({ x0, z0, w, d, rgb }, view) {
   const corners = [[x0, z0], [x0 + w, z0], [x0, z0 + d], [x0 + w, z0 + d]].map(([x, z]) => screen(x, z, view));

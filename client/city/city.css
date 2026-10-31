@@ -46,6 +46,8 @@
 .city-bubble .tail::after { content: ''; position: absolute; inset: 0; background: var(--bubble); clip-path: polygon(2px 0, 8px 0, 8px 2px, 6px 2px, 6px 4px, 4px 4px, 4px 2px, 2px 2px); }
 .city-bubble .dot { display: none; flex: none; width: 6px; height: 6px; background: #e83b3b; box-shadow: 0 0 0 2px #2e222f; margin: 0 2px; }
 .city-bubble.unread .dot { display: block; }
+.city-bubble.working { --bubble: #91db69; --bubble-edge: #1ebc73; z-index: 2; }
+.city-bubble.asleep { --bubble: #8b93af; --bubble-edge: #6d758d; }
 .city-bubble.high { --bubble: #f9c22b; --bubble-edge: #f79617; z-index: 3; }
 .city-bubble:hover { --bubble: #fbff86; --bubble-edge: #f9c22b; z-index: 4; }
 .city-bubble:focus-visible, .city-sign:focus-visible { outline: 2px solid #4d9be6; outline-offset: 1px; z-index: 4; }

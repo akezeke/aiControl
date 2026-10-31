@@ -54,11 +54,11 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
   const settle = entry => { if (project) place(entry); };
 
   return {
-    // items: [{ id, ax, ay, name, bubble: { icon, text, highlight } | null, unread, dim }]. A building with nothing to say still has its name.
+    // items: [{ id, ax, ay, name, bubble: { icon, text, highlight } | null, unread, dim, mood: 'working' | 'asleep' | null }]. A building with nothing to say still has its name.
     sync(items, step) {
       layer.classList.toggle('icons', step === 1); layer.classList.toggle('near', step > 2);
       const keep = new Set();
-      for (const { id, ax, ay, name, bubble, unread, dim } of items) {
+      for (const { id, ax, ay, name, bubble, unread, dim, mood } of items) {
         if (!bubble && !name) continue;
         const key = `b:${id}`; keep.add(key);
         const entry = shown.get(key) || add(key, 'button', 'city-bubble');
@@ -76,6 +76,7 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
           entry.node.classList.toggle('high', !!bubble?.highlight); entry.node.classList.toggle('unread', !!unread); entry.node.classList.toggle('bare', !icon);
         }
         entry.node.classList.toggle('dim', !!dim && !bubble?.highlight);
+        entry.node.classList.toggle('working', mood === 'working'); entry.node.classList.toggle('asleep', mood === 'asleep');
         anchor(entry, ax, ay); settle(entry);
       }
       sweep('b:', keep);

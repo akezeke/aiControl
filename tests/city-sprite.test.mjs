@@ -28,3 +28,10 @@ test('the shadow is solid and leaves the sprite the same way in the world', () =
   for (let i = 0; i < s.rgba.length; i += 4) if (s.rgba[i + 3]) { assert.equal(s.rgba[i + 3], 255); assert.deepEqual([s.rgba[i], s.rgba[i + 1], s.rgba[i + 2]], hex('#2e222f')); }
   assert.ok(s.rgba.some(Boolean));
 });
+test('a sleeping building loses most of its colour and light, and keeps its shape', () => {
+  const awake = renderSprite(box(), 0), asleep = renderSprite(box(), 0, { asleep: true });
+  assert.equal(asleep.width, awake.width); assert.deepEqual([...asleep.mask], [...awake.mask]);
+  const measure = ({ rgba, mask }) => { let light = 0, spread = 0, n = 0; mask.forEach((on, i) => { if (!on) return; const c = [...rgba.subarray(i * 4, i * 4 + 3)]; if (c.join() === '46,34,47') return; light += c[0] + c[1] + c[2]; spread += Math.max(...c) - Math.min(...c); n++; }); return { light: light / n, spread: spread / n }; };
+  const was = measure(awake), now = measure(asleep);
+  assert.ok(now.light < was.light * .7, `light ${now.light} of ${was.light}`); assert.ok(now.spread < was.spread * .6, `colour ${now.spread} of ${was.spread}`);
+});

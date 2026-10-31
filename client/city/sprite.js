@@ -44,7 +44,7 @@ function renderShadow(stack, view) {
   return { width, height, rgba, originX: -x0, originY: -y0 };
 }
 
-export function renderSprite(stack, view, { dim = false } = {}) {
+export function renderSprite(stack, view, { dim = false, asleep = false } = {}) {
   const { w, d, h, layers } = stack, world = WORLD[view], used = [];
   for (let y = 0; y < h; y++) { const L = layers[y]; if (L) used.push(...box(L.x0 - w / 2, L.x1 + 1 - w / 2, L.z0 - d / 2, L.z1 + 1 - d / 2, y)); }
   if (!used.length) return { width: 0, height: 0, rgba: new Uint8ClampedArray(0), originX: 0, originY: 0, mask: new Uint8Array(0), lit: new Uint8Array(0), shadow: renderShadow(stack, view) };
@@ -67,6 +67,12 @@ export function renderSprite(stack, view, { dim = false } = {}) {
       }
     }
   }
+  // Lights out: most of its colour goes and what's left falls towards night, so it can be told from a working tower across the city. Enough stays to know which one it is.
+  if (asleep) { lit.fill(0); for (let i = 0; i < n; i++) if (mask[i]) {
+    const grey = (rgba[i * 4] + rgba[i * 4 + 1] + rgba[i * 4 + 2]) / 3;
+    const P = nearest([0, 1, 2].map(k => { const faded = rgba[i * 4 + k] + (grey - rgba[i * 4 + k]) * .7; return faded * .55 + DIM_TO[k] * .25; }));
+    rgba[i * 4] = P[0]; rgba[i * 4 + 1] = P[1]; rgba[i * 4 + 2] = P[2];
+  } }
   if (dim) lit.fill(0);
   if (dim) for (let i = 0; i < n; i++) if (mask[i]) {
     const P = nearest([0, 1, 2].map(k => rgba[i * 4 + k] + (DIM_TO[k] - rgba[i * 4 + k]) * .6));

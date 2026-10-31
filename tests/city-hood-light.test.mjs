@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cityPlan, screen, LOT } from '../client/city/plan.js';
-import { groundCells, paintGround, paintHood } from '../client/city/ground.js';
+import { groundCells, paintGround, paintHood, paintLotShade } from '../client/city/ground.js';
 
 const layout = { pods: [{ key: 'a', name: 'alpha', cwd: '/a', col: 0, row: 0 }, { key: 'b', name: 'beta', cwd: '/b', col: 1, row: 0 }], desks: new Map([['s1', { podKey: 'a', slot: 0, sessionId: 's1' }]]), grid: { cols: 2 } };
 const plan = cityPlan(layout), cells = groundCells(plan), hood = plan.hoods[0];
@@ -43,4 +43,12 @@ test('lit ground stays the same kind of ground: a meadow does not turn into wate
   let seen = 0;
   for (let i = 0; i < width * height; i++) if (rgba[i * 4 + 3]) { const [r, g, b] = rgba.slice(i * 4, i * 4 + 3); if (r === 0x8f || r === 0xfb) continue; seen++; assert.ok(r > b && g > b, `${r},${g},${b}`); assert.ok(r > olive[0] - 1 && g > olive[1] - 1, `not brighter: ${r},${g},${b}`); }
   assert.ok(seen > 100);
+});
+test('the shade over a sleeping lot covers that lot, lets it show through, and stops at its edge', () => {
+  for (const view of [0, 1, 2, 3]) {
+    const shade = paintLotShade(view), at = (x, z) => { const [sx, sy] = screen(x, z, view), px = Math.round(sx) + shade.originX, py = Math.round(sy) + shade.originY; return px < 0 || py < 0 || px >= shade.width || py >= shade.height ? 0 : shade.rgba[(px + py * shade.width) * 4 + 3]; };
+    const alpha = at(0, 0); assert.ok(alpha > 0 && alpha < 255, `view ${view}: ${alpha}`);
+    assert.equal(at(LOT / 2 - 2, LOT / 2 - 2), alpha); assert.equal(at(-LOT / 2 + 2, -LOT / 2 + 2), alpha);
+    assert.equal(at(LOT / 2 + 2, LOT / 2 + 2), 0); assert.equal(at(-LOT / 2 - 2, 0), 0);
+  }
 });

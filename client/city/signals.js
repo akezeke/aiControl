@@ -11,6 +11,7 @@ export function citySignal(session, { connected = true, now = Date.now() } = {})
   return {
     windows: connected ? WINDOWS[screen] || 'dark' : 'dark', twinkle: working, beacon: screen === 'amber', smoke: screen === 'red',
     dust: screen === 'green' && session.activity === 'compacting', bubble: status.bubble,
+    asleep: !connected || screen === 'dark' || screen === 'off', mood: !connected || screen === 'dark' || screen === 'off' ? 'asleep' : working ? 'working' : null,
   };
 }
 
