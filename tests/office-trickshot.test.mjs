@@ -895,6 +895,19 @@ test('pinned, you can\'t walk, jump or click your way anywhere, and you can stil
   assert.ok(Math.hypot(player.position.x - 5, player.position.z - 2) > 1, 'and walks again');
 });
 
+test('a jump lands you there at once, level and facing that way, with any walk, flight or jump behind you', t => {
+  const { player } = pinned(t);
+  player.walkTo(V(9, 0, 2)); player.height = 0.4; player.rise = 2; player.spin = 3; player.pitch = -1;
+  player.jumpTo(-3, 7, 1.2);
+  assert.deepEqual([player.position.x, player.position.y, player.position.z, player.yaw], [-3, EYE, 7, 1.2]);
+  assert.equal(player.pitch, -0.08);
+  assert.equal(player.target, null);
+  player.flyTo(V(9, 0, 2), V(9, 0, 9));
+  player.jumpTo(-3, 7, 1.2);
+  player.update(1 / 60);
+  assert.deepEqual([player.position.x, player.position.y, player.position.z, player.yaw], [-3, EYE, 7, 1.2], 'nothing carries on');
+});
+
 test('a key still down from before doesn\'t walk you off afterwards', t => {
   const { player, press } = pinned(t);
   press('KeyW');

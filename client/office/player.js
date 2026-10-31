@@ -131,6 +131,8 @@ export class Player {
   get centre() { const r = this.canvas.getBoundingClientRect(); return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
   place(x, z, yaw) { this.position.set(x, EYE, z); this.yaw = yaw; }
+  // There at once, facing that way and level, whatever you were up to on the way.
+  jumpTo(x, z, yaw) { this.target = this.flight = null; this.height = this.rise = this.spin = 0; this.pitch = -0.08; this.place(x, z, yaw); }
   face(point) { this.yaw = Math.atan2(point.x - this.position.x, point.z - this.position.z); }
   get forward() { return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
   jump() { if (!this.pinned && !this.height && !this.rise && !this.flight) this.rise = JUMP; }

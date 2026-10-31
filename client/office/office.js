@@ -119,9 +119,7 @@ export function mountOffice(container, hooks) {
   // The coffee machine: fills the mug if you're by it, else you walk over first.
   room.onCoffee = () => { if (!props.fill()) player.walkTo(props.machineSpot, () => props.fill(), 0.3, true); };
   // The room grew with you in the kitchen: you and what's lying in there go along with its door.
-  // A walk to a mark in there is walked again once it has moved (office.update).
-  let remark = null;
-  room.kitchen.moved = dz => { const { inside } = room.kitchen; remark = player.target?.mark ?? null; if (inside(player.position)) { player.position.z += dz; player.target = null; } props.shift(inside, dz); };
+  room.kitchen.moved = dz => { const { inside } = room.kitchen; if (inside(player.position)) { player.position.z += dz; player.target = null; } props.shift(inside, dz); };
   // The secret shelf's right book: pressed from where you stand if you can reach it, else you walk over first.
   room.onSecret = () => { const spot = room.secret.spot; if (player.position.clone().setY(0).distanceTo(spot) < 1.6) room.secret.toggle(); else player.walkTo(spot, () => room.secret.toggle(), 0.3, true); };
   // Darts, the putting green and the pinball in the secret room. Clicking one (from near enough, else you walk over first)
@@ -141,8 +139,8 @@ export function mountOffice(container, hooks) {
     overlays.setPlaying(!!game); menu.close(); card.show(null);
     if (game) { unhover(); game.enter(); } // what enter takes from under an outline keeps it
   };
-  // A free game's played from exactly its mark, wherever that is by the time you get there.
-  const toMark = game => { const { x, z } = game.stand(); player.walkTo(new THREE.Vector3(x, 0, z), () => { const { x, z, yaw } = game.stand(); player.place(x, z, yaw); play(game); }, 0.05); if (player.target) player.target.mark = game; };
+  // A free game's played from exactly its mark: no walk, however far off that is and whatever's shut in between. The kitchen's first opening has little left to do by then (kitchen.prepare).
+  const toMark = game => { const { x, z, yaw } = game.stand(); player.jumpTo(x, z, yaw); play(game); };
   const onPlay = game => {
     if (view.overview) return;
     if (game.free) { toMark(game); return; }
@@ -341,7 +339,6 @@ export function mountOffice(container, hooks) {
       // First snapshot: stand just inside the door, looking into the room.
       // Not from inside a free game: you're out of it first. A seated one puts you back where it says when you leave it.
       if (!office.placed) { office.placed = true; if (playing?.free) play(null); const { width, depth } = layout.room; player.place(layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))); }
-      if (remark) { toMark(remark); remark = null; }
     },
     unmount() {
       cancelAnimationFrame(raf); observer.disconnect(); document.removeEventListener('visibilitychange', visibility);
