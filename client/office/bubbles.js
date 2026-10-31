@@ -92,7 +92,6 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   button('office-list', '☰', 'Show the list', onList);
   const eye = button('office-eye', '👁', 'Overview (Tab)', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
   const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
-  const meter = document.createElement('div'); meter.className = 'office-charge'; meter.hidden = true; const fill = meter.appendChild(document.createElement('i')); container.append(meter);
   const mark = document.createElement('div'); mark.className = 'office-mark'; mark.hidden = true; container.append(mark);
   const score = document.createElement('div'); score.className = 'office-score'; score.hidden = true; container.append(score);
   const copied = document.createElement('div'); copied.className = 'office-copied'; copied.textContent = 'Copied'; copied.hidden = true; container.append(copied);
@@ -102,7 +101,7 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   const closeLine = () => { if (line.hidden) return false; line.hidden = true; field.blur(); return true; };
   const close = line.appendChild(document.createElement('button')); close.type = 'button'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.setAttribute('aria-label', 'Close'); close.onclick = closeLine;
   line.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); closeLine(); } });
-  let charged = null, marked = null, copiedFor = 0;
+  let marked = null, copiedFor = 0;
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
   const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · E grab · F pour · Tab overview'; hint.hidden = seen; container.append(hint);
   return {
@@ -112,8 +111,6 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     setPlaying(on) { leave.hidden = !on; },
     showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
-    // How far a throw's charged, 0 to 1; null hides it. Once a frame while it's up, and nothing once it's full.
-    setCharge(level) { if (level === charged) return; charged = level; meter.hidden = level === null; if (level !== null) fill.style.transform = `scaleX(${level})`; },
     // Where a finger's throw will go, its screen point; null hides it. Once a frame, and nothing unless it changed.
     setMark(at) { if (at === marked) return; marked = at; mark.hidden = !at; if (at) { const r = container.getBoundingClientRect(); mark.style.left = `${at.clientX - r.left}px`; mark.style.top = `${at.clientY - r.top}px`; } },
     // A shot's target (`done` false) or how it went; null hides it.
@@ -125,6 +122,6 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     closeCopy(target) { return !line.contains(target) && closeLine(); },
     // The hint goes once you've used the overview.
     overviewUsed() { if (hint.hidden) return; hint.classList.add('gone'); setTimeout(() => { hint.hidden = true; }, 600); try { localStorage.setItem(hintKey, '1'); } catch { /* per tab only */ } },
-    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); meter.remove(); mark.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
+    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); mark.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
   };
 }

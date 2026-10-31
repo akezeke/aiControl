@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTrickshot } from '../client/office/trickshot.js';
 import { BLEND, arcPoints, blendLeft, createArc, drawnAt, launch } from '../client/office/throwing.js';
-import { makeBody, simulate, stopShort } from '../client/office/flight.js';
+import { TiltedBox, makeBody, simulate, stopShort } from '../client/office/flight.js';
 import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
 import { EYE, Player } from '../client/office/player.js';
 import { ITEMS, MONDAY, STARTS } from '../client/office/levels.js';
@@ -34,6 +34,8 @@ const begin = (t, id) => { t.game.start(t.game.entry(id)); t.game.enter(); const
 const play = (t, seconds = 20) => { for (let i = 0; i < seconds * 60 && t.game.run.state === 'flying'; i++) t.game.update(DT, null, false, true); };
 const throwIt = (t, { yaw, pitch, charge }) => t.game.release(charge, look(yaw, pitch));
 const item = (t, id) => t.game.item(id);
+// How far `p` is from the part of a flat list of points that starts at `i`.
+const segmentGap = (p, way, i) => { const a = V(way[i], way[i + 1], way[i + 2]), b = V(way[i + 3], way[i + 4], way[i + 5]); return new THREE.Line3(a, b).closestPointToPoint(p, true, V(0, 0, 0)).distanceTo(p); };
 
 test('a free game with the thrower\'s methods', () => {
   const { game } = setup();
@@ -229,31 +231,34 @@ test('a shot stopped in mid-air isn\'t left floating', () => {
   assert.equal(t.game.score, 'Miss');
 });
 
-test('the arc covers the first 0.6 s and matches the shot\'s path', () => {
+test('the arc follows the shot\'s path to its first contact', () => {
   const aim = { direction: look(IN.yaw, IN.pitch), charge: IN.charge }, t = setup({ aim: () => aim });
   begin(t, 'paper');
   t.game.update(DT, null, false, true);
   const dots = t.game.arc.points, { x, z } = STARTS.island, eye = V(x, EYE, z);
-  assert.ok(dots.length >= 18 && dots.length <= 36 && dots.length % 3 === 0, `${dots.length / 3} dots`);
+  assert.ok(dots.length >= 18 && dots.length % 3 === 0, `${dots.length / 3} dots`);
   assert.ok(t.game.arc.mesh.visible);
   assert.equal(t.game.arc.mesh.count, dots.length / 3);
   assert.equal(t.game.arc.mesh.parent !== null, true, 'it\'s in the room');
 
   const { pos, vel } = launch(ITEMS.paper, IN.charge, { position: eye }, aim.direction, V(0, 0, 0));
-  const { path } = simulate(makeBody(ITEMS.paper, pos, vel), levelWorld(), { maxTime: 0.6 });
+  const { path, contacts: [hit] } = simulate(makeBody(ITEMS.paper, pos, vel), levelWorld(), { maxTime: 2.5, stop: () => true });
+  assert.ok(hit, 'it hits something');
+  const way = [...pos.toArray(), ...path.subarray(0, Math.floor((hit.time / (1 / 240) - 0.5) / 4) * 3), ...hit.pos];
+  const dotsOn = i => V(dots[i], dots[i + 1], dots[i + 2]);
   let from = 0, after = 0;
   for (let i = 0; i < dots.length; i += 3) {
     if (t.game.arc.times[i / 3] < BLEND) continue; // still coming from the hand
     after++;
-    while (from < path.length && !(path[from] === dots[i] && path[from + 1] === dots[i + 1] && path[from + 2] === dots[i + 2])) from += 3;
-    assert.ok(from < path.length, `dot ${i / 3} is on the path, in order`);
+    while (from + 6 <= way.length && segmentGap(dotsOn(i), way, from) > 1e-3) from += 3;
+    assert.ok(from + 6 <= way.length, `dot ${i / 3} is on the path, in order`);
   }
   assert.ok(after >= 6, `${after} dots after the blend`);
 
   // The same as what's thrown.
   t.game.release(IN.charge, aim.direction);
   const flown = t.game.run.result.path;
-  for (let i = 0; i < path.length; i++) assert.equal(flown[i], path[i]);
+  for (let i = 0; i < path.length - 3; i++) assert.equal(flown[i], path[i]);
   assert.equal(t.game.arc.mesh.visible, false, 'gone with the throw');
 });
 
@@ -325,15 +330,118 @@ test('what\'s drawn from the hand doesn\'t go through a wall', () => {
   for (let i = 2; i < arc.points.length; i += 3) assert.ok(arc.points[i] <= onFace + 1e-3, `dot ${(i - 2) / 3} at ${arc.points[i]}`);
 });
 
-test('the arc stops at 4 m of flight and at 0.6 s', () => {
-  const eye = V(0, EYE, 0), hard = launch(ITEMS.rubber, 1, { position: eye }, V(0, 0.2, 1).normalize(), V(0, 0, 0));
-  const open = { colliders: [], columns: [], ceiling: 50 }, dots = arcPoints(ITEMS.rubber, hard, open, eye);
-  let far = 0, last = hard.pos;
-  for (let i = 0; i < dots.length; i += 3) { const p = V(dots[i], dots[i + 1], dots[i + 2]); far += p.distanceTo(last); last = p; }
-  assert.ok(far <= 4 && far > 3.3, `${far} m`);
-  const soft = launch(ITEMS.teabag, 0, { position: eye }, V(0, 0, 1), V(0, 0, 0)), slow = arcPoints(ITEMS.teabag, soft, open, eye);
-  const { path } = simulate(makeBody(ITEMS.teabag, soft.pos, soft.vel), open, { maxTime: 0.6 });
-  assert.deepEqual([...slow.slice(-3)], [...path.slice(-3)], 'it reaches 0.6 s');
+test('dots are evenly spaced in the world, and a long way gets a wider gap, not more dots', () => {
+  const eye = V(0, EYE, 0), wall = Object.assign(new THREE.Box3(V(-9, 0, 5), V(9, 3, 5.2)), { surface: 'wall' }), world = { colliders: [wall], columns: [], ceiling: 50 };
+  const thrown = launch(ITEMS.rubber, 1, { position: eye }, V(0, 0.05, 1).normalize(), V(0, 0, 0)), dots = arcPoints(ITEMS.rubber, thrown, world, eye);
+  assert.ok(dots.length / 3 >= 12 && dots.length / 3 <= 24, `${dots.length / 3} dots`);
+  for (let i = 3; i < dots.length; i += 3) {
+    const gap = Math.hypot(dots[i] - dots[i - 3], dots[i + 1] - dots[i - 2], dots[i + 2] - dots[i - 1]);
+    assert.ok(Math.abs(gap - 0.3) < 0.01, `gap ${gap} before dot ${i / 3}`);
+  }
+  const open = { colliders: [], columns: [], ceiling: 50 }, far = arcPoints(ITEMS.rubber, launch(ITEMS.rubber, 1, { position: eye }, V(0, 1, 0.1).normalize(), V(0, 0, 0)), open, eye);
+  assert.equal(far.length / 3, 24);
+  assert.ok(Math.hypot(far[0] - far[3], far[1] - far[4], far[2] - far[5]) > 0.3);
+});
+
+test('dots are one size and one flat colour, however far they are', () => {
+  const eye = V(0, EYE, 0), open = { colliders: [], columns: [], ceiling: 50 }, arc = createArc(), m = new THREE.Matrix4(), scale = V(0, 0, 0), p = V(0, 0, 0), q = new THREE.Quaternion();
+  arc.show(ITEMS.rubber, launch(ITEMS.rubber, 1, { position: eye }, V(0, 0.2, 1).normalize(), V(0, 0, 0)), open, eye, V(-0.3, EYE - 0.3, 0.2));
+  const sizes = new Set();
+  for (let i = 0; i < arc.mesh.count; i++) { arc.mesh.getMatrixAt(i, m); m.decompose(p, q, scale); sizes.add(scale.toArray().join()); }
+  assert.equal(sizes.size, 1, [...sizes].join(' '));
+  assert.ok(p.distanceTo(eye) > 3, 'the last is well away');
+  arc.mesh.geometry.computeBoundingSphere();
+  const radius = arc.mesh.geometry.boundingSphere.radius * scale.x;
+  assert.ok(radius > 0.005 && radius < 0.02, `${radius} m`);
+  assert.equal(arc.mesh.material.vertexColors, false);
+  assert.equal(arc.mesh.geometry.attributes.color, undefined);
+  assert.ok(arc.ring.material.color.equals(arc.mesh.material.color), 'the ring is the same colour');
+  assert.ok(arc.mesh.material.depthTest && arc.ring.material.depthTest, 'things in front hide them');
+});
+
+test('a contact says which way the surface faces and where the thing was', () => {
+  const eye = V(0, EYE, 0), wall = Object.assign(new THREE.Box3(V(-9, 0, 3), V(9, 3, 3.2)), { surface: 'wall' });
+  const { contacts: [hit] } = simulate(makeBody(ITEMS.rubber, eye, V(0, 0, 8)), { colliders: [wall], columns: [], ceiling: 50 }, { stop: () => true });
+  assert.deepEqual(hit.normal, [0, 0, -1]);
+  assert.ok(Math.abs(hit.pos[2] - (3 - ITEMS.rubber.radius)) < 1e-6, `${hit.pos}`);
+});
+
+// The ring against what it should be lying on: `gapTo` is how far it is off the surface, along `normal`.
+const onSurface = (arc, normal, gapTo) => {
+  assert.equal(arc.ring.visible, true, 'there is a ring');
+  assert.equal(arc.ring.parent, arc.mesh);
+  assert.ok(V(0, 0, 1).applyQuaternion(arc.ring.quaternion).distanceTo(normal) < 1e-6, 'it faces out');
+  const gap = gapTo(arc.ring.position);
+  assert.ok(gap > 0 && gap < 0.01, `${gap} m off the surface`);
+  const across = new THREE.Box3().setFromObject(new THREE.Mesh(arc.ring.geometry));
+  assert.ok(Math.max(across.max.x - across.min.x, across.max.y - across.min.y) >= 0.08 && across.max.x - across.min.x <= 0.1, 'about 9 cm');
+};
+
+test('a throw at a wall, the floor or something tilted has a ring on what it hits, and no dot past it', () => {
+  const kind = ITEMS.rubber, eye = V(0, EYE, 0), palm = V(-0.3, EYE - 0.3, 0.2);
+  const wall = Object.assign(new THREE.Box3(V(-9, 0, 3), V(9, 3, 3.2)), { surface: 'wall' }), walled = { colliders: [wall], columns: [], ceiling: 50 };
+  const at = createArc();
+  at.show(kind, launch(kind, 1, { position: eye }, V(0, 0, 1), V(0, 0, 0)), walled, eye, palm);
+  onSurface(at, V(0, 0, -1), p => 3 - p.z);
+  for (let i = 2; i < at.points.length; i += 3) {
+    assert.ok(at.points[i] <= 3 - kind.radius + 1e-3, `dot ${(i - 2) / 3} at ${at.points[i]}`);
+    if (i > 2) assert.ok(at.points[i] > at.points[i - 3], `dot ${(i - 2) / 3} doesn't come back`);
+  }
+  assert.ok(at.points.at(-1) > 3 - kind.radius - 0.32, 'and they get there');
+
+  const open = { colliders: [], columns: [], ceiling: 50 }, down = createArc();
+  down.show(kind, launch(kind, 0.3, { position: eye }, V(0, -0.4, 1).normalize(), V(0, 0, 0)), open, eye, palm);
+  onSurface(down, V(0, 1, 0), p => p.y);
+  for (let i = 1; i < down.points.length; i += 3) assert.ok(down.points[i] >= kind.low - 1e-3, `dot ${(i - 1) / 3} at ${down.points[i]}`);
+  for (let i = 4; i < down.points.length; i += 3) assert.ok(down.points[i] < down.points[i - 3] + 0.05, 'still falling');
+
+  const tilted = new TiltedBox({ centre: [0, 1, 3], half: [2, 2, 0.1], rotation: [-0.5, 0, 0], surface: 'ramp' }), slope = createArc(), face = V(0, 0, -1).applyQuaternion(tilted.quaternion);
+  slope.show(kind, launch(kind, 1, { position: eye }, V(0, 0, 1), V(0, 0, 0)), { colliders: [tilted], columns: [], ceiling: 50 }, eye, palm);
+  onSurface(slope, face, p => p.clone().sub(tilted.centre).dot(face) - tilted.half.z);
+});
+
+test('no ring when nothing\'s hit by the time it stops looking', () => {
+  const eye = V(0, EYE, 0), open = { colliders: [], columns: [], ceiling: 500 }, arc = createArc(), thrown = launch(ITEMS.rubber, 1, { position: eye }, V(0, 1, 0), V(0, 0, 0));
+  arc.show(ITEMS.rubber, thrown, open, eye, V(-0.3, EYE - 0.3, 0.2));
+  assert.equal(arc.mesh.visible, true);
+  assert.ok(arc.mesh.count > 0);
+  assert.equal(arc.ring.visible, false);
+  const { path } = simulate(makeBody(ITEMS.rubber, thrown.pos, thrown.vel), open, { maxTime: 2.5 }), end = V(...path.slice(-3));
+  assert.ok(V(...arc.points.slice(-3)).distanceTo(end) < 2, 'the dots go on to the cap');
+  assert.ok(end.y > 2, 'still up in the air');
+});
+
+test('no ring on what\'s out of sight behind something', () => {
+  const kind = ITEMS.rubber, eye = V(0, EYE, 0), palm = V(-0.3, EYE - 0.3, 0.2), thrown = launch(kind, 0.5, { position: eye }, V(0, 0.75, 1).normalize(), V(0, 0, 0));
+  const screen = Object.assign(new THREE.Box3(V(-9, 0, 1), V(9, 2, 1.1)), { surface: 'screen' }), arc = createArc();
+  // Over the screen and onto the floor beyond it.
+  arc.show(kind, thrown, { colliders: [screen], columns: [], ceiling: 50 }, eye, palm);
+  assert.ok(arc.points.at(-1) > 1.1, 'it does go over');
+  assert.equal(arc.ring.visible, false);
+  // The same throw with nothing there.
+  arc.show(kind, launch(kind, 0.51, { position: eye }, V(0, 0.75, 1).normalize(), V(0, 0, 0)), { colliders: [], columns: [], ceiling: 50 }, eye, palm);
+  assert.equal(arc.ring.visible, true);
+});
+
+test('the ring goes with the arc, nothing listens to it, and a hand alone doesn\'t move it', () => {
+  const kind = ITEMS.rubber, eye = V(0, EYE, 0), wall = Object.assign(new THREE.Box3(V(-9, 0, 3), V(9, 3, 3.2)), { surface: 'wall' }), world = { colliders: [wall], columns: [], ceiling: 50 };
+  const arc = createArc(), room = new THREE.Group(), thrown = launch(kind, 1, { position: eye }, V(0, 0, 1), V(0, 0, 0)), palm = V(-0.3, EYE - 0.3, 0.2);
+  room.add(arc.mesh);
+  arc.show(kind, thrown, world, eye, palm);
+  room.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster(eye.clone(), V(0, 0, 1));
+  ray.ray.direction.subVectors(arc.ring.position.clone().add(V(0.04, 0, 0)), eye).normalize();
+  assert.deepEqual(ray.intersectObject(room, true), []);
+  const was = arc.ring.position.clone();
+  arc.show(kind, thrown, world, eye, palm.clone().setY(EYE - 0.1));
+  assert.ok(arc.ring.position.equals(was));
+  assert.equal(arc.ring.parent, arc.mesh, 'in the room with the dots: no call of its own');
+  arc.hide();
+  assert.equal(arc.mesh.visible, false);
+  let shown = true; arc.ring.traverseAncestors(a => { if (!a.visible) shown = false; });
+  assert.equal(shown, false);
+  arc.show(kind, thrown, world, eye, palm);
+  assert.equal(arc.ring.visible, true, 'and back again');
 });
 
 test('the arc follows aim and charge, and isn\'t worked out again without a change', () => {

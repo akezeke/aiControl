@@ -1,7 +1,6 @@
 // One way of throwing, for the office's loose things and whatever else you can have in hand: hold to charge, let go to throw, in
 // a hand built like the one that throws darts. No document or window here, so what a throw does can be tested in Node.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { STEP, makeBody, simulate, stopShort } from './flight.js';
 import { toonMaterial } from './toon.js';
 
@@ -26,53 +25,71 @@ export const BLEND = 0.2;
 export const blendLeft = t => { const u = THREE.MathUtils.clamp(t / BLEND, 0, 1); return 1 - u * u * (3 - 2 * u); };
 export const drawnAt = (out, pos, offset, t, kind, colliders) => t >= BLEND ? out.copy(pos) : stopShort(pos, out.copy(pos).addScaledVector(offset, blendLeft(t)), kind, colliders);
 
-// The start of a charged throw's way, as dots: places it really passes, in order, from its first evenly along the first 0.6 s or 4 m of
-// it, whichever ends first; and how far into the flight each is. Thrown from `eye`, like the throw (stopShort): so a wall right in front of you shows.
-const ARC_TIME = 0.6, ARC_LENGTH = 4, DOTS = 12, SAMPLE = 4 * STEP; // simulate's path has every fourth step
+// A charged throw's way to the first thing it hits, as dots: places it really passes, evenly apart in the world from where it starts, so
+// the gaps shrink into the distance; a longer way than DOTS can do opens the gaps. And how far into the flight each is. Later bounces stay unshown: that's
+// the puzzle. Thrown from `eye`, like the throw (stopShort): so a wall right in front of you shows.
+const ARC_TIME = 2.5, GAP = 0.3, DOTS = 24, SAMPLE = 4 * STEP; // simulate's path has every fourth step
+const first = () => true, LIFT = 0.003, SIGHT = { radius: 1e-3, low: 1e-3 };
 function arcWay(kind, launched, world, eye) {
-  const pos = stopShort(eye, launched.pos.clone(), kind, world.colliders), { path } = simulate(makeBody(kind, pos, launched.vel), world, { maxTime: ARC_TIME });
-  const ends = []; let far = 0, x = pos.x, y = pos.y, z = pos.z; // the samples within reach, and how far along each is
-  for (let i = 0; i < path.length; i += 3) {
-    const step = Math.hypot(path[i] - x, path[i + 1] - y, path[i + 2] - z);
-    if (far + step > ARC_LENGTH) break;
-    far += step; x = path[i]; y = path[i + 1]; z = path[i + 2]; ends.push(far);
+  const start = stopShort(eye, launched.pos.clone(), kind, world.colliders), { path, contacts: [hit] } = simulate(makeBody(kind, start, launched.vel), world, { maxTime: ARC_TIME, stop: first });
+  // Its corners: the start, the samples from before the hit (the step that hits goes on after it, so not that one's), the hit.
+  const before = hit ? Math.floor((hit.time / STEP - 0.5) / 4) : path.length / 3, corners = [start.x, start.y, start.z, ...path.subarray(0, before * 3), ...(hit?.pos ?? [])];
+  const timeAt = i => i <= before ? i * SAMPLE : hit.time;
+  let length = 0;
+  for (let i = 3; i < corners.length; i += 3) length += Math.hypot(corners[i] - corners[i - 3], corners[i + 1] - corners[i - 2], corners[i + 2] - corners[i - 1]);
+  const gap = Math.max(GAP, length / (DOTS - 1)), points = [start.x, start.y, start.z], times = [0];
+  let along = 0, next = gap;
+  for (let i = 3; i < corners.length; i += 3) {
+    const piece = Math.hypot(corners[i] - corners[i - 3], corners[i + 1] - corners[i - 2], corners[i + 2] - corners[i - 1]);
+    for (; next <= along + piece && times.length < DOTS; next += gap) {
+      const u = (next - along) / piece;
+      points.push(corners[i - 3] + (corners[i] - corners[i - 3]) * u, corners[i - 2] + (corners[i + 1] - corners[i - 2]) * u, corners[i - 1] + (corners[i + 2] - corners[i - 1]) * u);
+      times.push(timeAt(i / 3 - 1) + (timeAt(i / 3) - timeAt(i / 3 - 1)) * u);
+    }
+    along += piece;
   }
-  const points = [], times = []; let at = 0;
-  for (let dot = 0; dot < DOTS && ends.length; dot++) {
-    const last = at; while (at < ends.length - 1 && ends[at] < far * dot / (DOTS - 1)) at++;
-    if (at === last && dot) continue; // fewer samples than dots
-    points.push(path[at * 3], path[at * 3 + 1], path[at * 3 + 2]); times.push((at + 1) * SAMPLE);
-  }
-  return { start: pos, points: Float32Array.from(points), times };
+  return { start, points: Float32Array.from(points), times, ring: hit ? ringAt(hit, kind, world, eye) : null };
 }
 export const arcPoints = (kind, launched, world, eye) => arcWay(kind, launched, world, eye).points;
 
-// Drawn as dots of one size on the screen, a bright middle in a dark ring, unlit: they read on a white wall or in the dark.
-// One draw, a new way is worked out only when the throw changed, and it's drawn again only if that or the hand did. Nothing's listening to the ray.
-const DOT_SIZE = 0.008, coloured = (geometry, color) => { const c = new THREE.Color(color), n = geometry.attributes.position.count, all = new Float32Array(n * 3); for (let i = 0; i < n; i++) c.toArray(all, i * 3); return geometry.setAttribute('color', new THREE.BufferAttribute(all, 3)); };
-let dotShape;
-const scaled = new THREE.Matrix4(), near = new THREE.Vector3(), real = new THREE.Vector3(), offset = new THREE.Vector3(), SAME_HAND = 1e-3 ** 2;
+// Where the ring lies: on the surface under the thing's middle, as far from it as flight.js keeps it. None if you couldn't see that spot from `eye`.
+function ringAt({ pos, normal }, { low, radius }, world, eye) {
+  const n = new THREE.Vector3().fromArray(normal), at = new THREE.Vector3().fromArray(pos).addScaledVector(n, LIFT - (n.y > 0.7 ? low : radius));
+  return stopShort(eye, sight.copy(at), SIGHT, world.colliders).equals(at) ? { at, n } : null;
+}
+
+// Small balls of one size in the world, so they shrink with distance and go behind what's in front. One flat unlit colour that reads
+// on a white wall and in the dark. One draw, a new way is worked out only when the throw changed, and it's drawn again only if that or the
+// hand did. The ring is the mesh's child, so it comes and goes with the dots. Nothing's listening to the ray.
+const DOT_RADIUS = 0.011, COLOUR = '#ff3d14', RING = [0.033, 0.045], FACING = new THREE.Vector3(0, 0, 1);
+let dotShape, ringShape;
+const placed = new THREE.Matrix4(), near = new THREE.Vector3(), real = new THREE.Vector3(), offset = new THREE.Vector3(), sight = new THREE.Vector3(), SAME_HAND = 1e-3 ** 2, deaf = () => {};
 export function createArc() {
-  // The ring: a bigger ball turned inside out, so only its far side draws, behind the middle.
-  dotShape ??= mergeGeometries([coloured(new THREE.IcosahedronGeometry(1, 1), '#ffe14d'), coloured(new THREE.IcosahedronGeometry(1.5, 1).scale(-1, 1, 1), '#1b1a1f')]);
-  const mesh = new THREE.InstancedMesh(dotShape, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }), DOTS);
-  mesh.count = 0; mesh.visible = false; mesh.frustumCulled = false; mesh.raycast = () => {}; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  dotShape ??= new THREE.IcosahedronGeometry(DOT_RADIUS, 1);
+  ringShape ??= new THREE.RingGeometry(RING[0], RING[1], 28);
+  const mesh = new THREE.InstancedMesh(dotShape, new THREE.MeshBasicMaterial({ color: COLOUR, toneMapped: false }), DOTS);
+  mesh.count = 0; mesh.visible = false; mesh.frustumCulled = false; mesh.raycast = deaf; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const ring = new THREE.Mesh(ringShape, new THREE.MeshBasicMaterial({ color: COLOUR, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  ring.visible = false; ring.raycast = deaf; mesh.add(ring);
   const was = { kind: null, pos: new THREE.Vector3(), vel: new THREE.Vector3(), palm: new THREE.Vector3() };
   let way = null;
   const arc = {
-    mesh, points: new Float32Array(0), times: [],
+    mesh, ring, points: new Float32Array(0), times: [],
     // `palm`: where the hand is, in the same frame as the world.
     show(kind, launched, world, eye, palm) {
       mesh.visible = true;
       const same = was.kind === kind && was.pos.equals(launched.pos) && was.vel.equals(launched.vel);
       if (same && was.palm.distanceToSquared(palm) < SAME_HAND) return;
       was.palm.copy(palm);
-      if (!same) { was.kind = kind; was.pos.copy(launched.pos); was.vel.copy(launched.vel); way = arcWay(kind, launched, world, eye); }
+      if (!same) {
+        was.kind = kind; was.pos.copy(launched.pos); was.vel.copy(launched.vel); way = arcWay(kind, launched, world, eye);
+        ring.visible = !!way.ring;
+        if (way.ring) { ring.position.copy(way.ring.at); ring.quaternion.setFromUnitVectors(FACING, way.ring.n); }
+      }
       offset.subVectors(palm, way.start); arc.times = way.times; arc.points = way.points.slice(); mesh.count = arc.points.length / 3;
       for (let i = 0; i < mesh.count; i++) {
         drawnAt(near, real.fromArray(way.points, i * 3), offset, way.times[i], kind, world.colliders).toArray(arc.points, i * 3);
-        const size = near.distanceTo(eye) * DOT_SIZE;
-        mesh.setMatrixAt(i, scaled.makeScale(size, size, size).setPosition(near));
+        mesh.setMatrixAt(i, placed.makeTranslation(near));
       }
       mesh.instanceMatrix.needsUpdate = true;
     },

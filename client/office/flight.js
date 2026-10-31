@@ -5,7 +5,7 @@ import * as THREE from 'three';
 export const STEP = 1 / 240, GRAVITY = 9.8, MOST = 24, REST = 0.1; // seconds per step; most steps in a frame; quiet time before rest
 const { Vector3, Quaternion, Euler } = THREE;
 const normal = new Vector3(), near = new Vector3(), local = new Vector3(), speed = new Vector3(), mid = new Vector3(), half = new Vector3();
-const floor = new Vector3(0, 1, 0), ceiling = new Vector3(0, -1, 0), event = { surface: '', box: null, speed: 0 }; // `event` is reused: copy what you keep
+const floor = new Vector3(0, 1, 0), ceiling = new Vector3(0, -1, 0), event = { surface: '', box: null, speed: 0, normal }; // `event` is reused: copy what you keep
 
 // A box turned by Euler angles (x, y, z). Same duck type as Box3: min/max are its world AABB, plus owner and surface.
 export class TiltedBox {
@@ -57,7 +57,7 @@ export function stopShort(from, to, { radius: r, low }, colliders) {
 export const contact = (b, world, n, surface, box) => {
   const vn = b.vel.dot(n);
   if (vn < 0) {
-    if (world.onContact) { event.surface = surface; event.box = box; event.speed = -vn; world.onContact(b, event); }
+    if (world.onContact) { event.surface = surface; event.box = box; event.speed = -vn; event.normal = n; world.onContact(b, event); }
     b.vel.addScaledVector(n, -(vn < -1 ? 1 + (box?.bounce ?? b.kind.bounce) : 1) * vn);
   }
   return n.y > 0.7;
@@ -146,11 +146,11 @@ export function advance(b, dt, world) {
   if (b.due > STEP) b.due = STEP;
 }
 
-// A whole shot ahead of time on a body (stepped in place): the path every 4 steps, each contact, and where it ends.
+// A whole shot ahead of time on a body (stepped in place): the path every 4 steps, each contact (with where the thing was and which way the surface faces), and where it ends.
 export function simulate(b, world, { maxTime = 8, stop } = {}) {
   const most = Math.floor(maxTime / STEP + 1e-9), path = new Float32Array(Math.floor(most / 4) * 3), contacts = [];
   let n = 0, done = false, at = 0;
-  const watch = { ...world, onContact(body, e) { world.onContact?.(body, e); const c = { time: (n + 1) * STEP, surface: e.surface, speed: e.speed, box: e.box }; contacts.push(c); if (stop?.(c)) done = true; } };
+  const watch = { ...world, onContact(body, e) { world.onContact?.(body, e); const c = { time: (n + 1) * STEP, surface: e.surface, speed: e.speed, box: e.box, normal: e.normal.toArray(), pos: body.pos.toArray() }; contacts.push(c); if (stop?.(c)) done = true; } };
   for (; n < most && !b.rest && !done; n++) {
     stepBody(b, watch);
     if ((n + 1) % 4 === 0) { path[at++] = b.pos.x; path[at++] = b.pos.y; path[at++] = b.pos.z; }
