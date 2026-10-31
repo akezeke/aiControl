@@ -69,7 +69,7 @@ export function mountCity(box, hooks = {}) {
   const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(), hops = new Map(), moods = new Map(), states = new Map(), bursts = new Map(); // ghosts: what has left the plan but is still going up in dust.
   let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '', hour = timeOfDay(), clock = 0;
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
-  let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
+  let raf = 0, timer = 0, dirty = true, lastDrawn = '', glowDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
   let glide = null, coast = null, drawn = [], selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
 
@@ -168,7 +168,7 @@ export function mountCity(box, hooks = {}) {
     };
     animating = false; steaming = false;
     const quiet = !!selectedHood;
-    cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${stackId(stack)}`, `prop:${i}`, x, z, () => ({ stack }), null, quiet));
+    cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${stackId(stack)}`, `prop:${i}`, x, z, () => ({ stack }), null, quiet, { baked: true }));
     for (const { provider, key, x, z, connected } of plan.plants) {
       const [make, stripe] = PLANTS[provider], lit = connected && !error, on = lit && !reduced, phase = on ? Math.floor(now / STEAM_MS) % 4 : 0;
       if (on) steaming = true;
@@ -177,7 +177,7 @@ export function mountCity(box, hooks = {}) {
     for (const building of plan.buildings) if (towerOf(building)) building.subagents.forEach((kid, i) => annexOf(building, i, kid));
     if (!reduced) {
       const busy = plan.buildings.filter(({ id }) => sessions.has(id) && !signalOf(id).asleep);
-      for (const { id, x, z, along, colour } of traffic(plan.roads, busy, now)) { animating = true; stand(`car:${colour}:${along}`, `car:${id}`, x, z, () => ({ stack: car(colour, along) }), null, quiet, { moves: true }); }
+      for (const { id, x, z, along, colour } of traffic(plan.roads, busy, now)) { stand(`car:${colour}:${along}`, `car:${id}`, x, z, () => ({ stack: car(colour, along) }), null, quiet, { moves: true }); }
     }
     for (const [id, ghost] of ghosts) if (!(ghost.kid ? annexOf(ghost.building, ghost.i, ghost.kid) : towerOf(ghost.building))) ghosts.delete(id);
     return items.sort((a, b) => a.sy - b.sy);
@@ -246,7 +246,7 @@ export function mountCity(box, hooks = {}) {
     const placed = list.filter(({ item }) => !item.over).map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, item, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
     drawn = placed.filter(item => item.opens);
     syncLabels(placed);
-    for (const { sprite, x, y } of placed) if (sprite.shadowImage) ctx.drawImage(sprite.shadowImage, x - sprite.shadow.originX, y - sprite.shadow.originY);
+    for (const { sprite, x, y, item } of placed) if (sprite.shadowImage && !item.baked) ctx.drawImage(sprite.shadowImage, x - sprite.shadow.originX, y - sprite.shadow.originY);
     // A hop lifts and squashes the picture and leaves the shadow on the ground.
     for (const { sprite, x, y, item } of placed) if (sprite.image) drawBounced(ctx, sprite.image, sprite, x, y, item.bounce);
     // Effects last: they are in the air, in front of whatever stands there.
@@ -266,7 +266,10 @@ export function mountCity(box, hooks = {}) {
     const spray = target => { for (const entry of placed) if (entry.item.sparks) { const [x, y] = crown(entry); for (const spark of entry.item.sparks) { target.fillStyle = spark.colour; target.fillRect(x + spark.x, y + spark.y, 1, 1); } } };
     spray(ctx);
     flash(ctx, false, crown, under);
-    if (bloom) {
+    // Cars and steam don't glow, and this is the dearest part of a paint: it waits until something that does has changed.
+    const glowing = bloom && [gx, gy, chosen?.key, size.width, size.height, ...placed.filter(({ sprite, item }) => sprite.glowImage || item.sparks || item.beacon).map(({ sprite, x, y, item }) => `${item.key}:${sprite.glowImage ? 1 : 0}:${x},${y}:${item.beacon ? 1 : 0}:${item.bounce?.lift ?? ''},${item.bounce?.squash ?? ''}:${item.sparks?.map(spark => spark.x * 100 + spark.y) ?? ''}`), ...[...bursts.values()].filter(({ kind }) => BURSTS[kind].glow).map(({ group }) => `${group}:${paintedAt}`)].join();
+    if (bloom && glowing !== glowDrawn) {
+      glowDrawn = glowing;
       const shiftX = lampOffset(gx), shiftY = lampOffset(gy), kx = glowCanvas.width / size.width, ky = glowCanvas.height / size.height;
       lampsCtx.setTransform(1, 0, 0, 1, 0, 0); lampsCtx.clearRect(0, 0, lamps.width, lamps.height); lampsCtx.setTransform(1, 0, 0, 1, shiftX, shiftY);
       if (lit) lampsCtx.drawImage(lit.edgeImage, gx - lit.originX, gy - lit.originY);
@@ -357,6 +360,7 @@ export function mountCity(box, hooks = {}) {
       if (Math.hypot(coast.vx, coast.vy) < COAST_MIN) coast = null;
     }
     const items = standing(now).filter(visible), ready = [];
+    if (items.some(item => item.moves)) animating = true;
     if (items.length * 6 > sprites.max) sprites.max = items.length * 6;
     let baked = false, waiting = false;
     for (const item of items) {
