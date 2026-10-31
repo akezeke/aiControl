@@ -18,7 +18,7 @@ const NAMES = { sink: 'Sink', bucket: 'Bucket', bin: 'Bin', basket: 'Basket', sh
 const HAND_BACK = 1, PARTY = 1.2, BITS = 24, GROUND = 0.008; // seconds the camera stays on where a shot ended; of confetti; how many; the tape's height
 const ZERO = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
 // The camera on a shot: where it would like to be, [behind, above, to the side of] the item; how near it may be; how fast it and its look catch up (m/s at most, for it), and how fast "behind" comes round after a bounce (per second); how much room it keeps.
-const VIEWS = [[1.5, 0.6, 0], [1.2, 1, 0], [0.6, 1.4, 0], [0.9, 0.9, 0.9], [0.9, 0.9, -0.9], [-0.9, 0.9, 0], [0, 1.4, 0.5], [0, 1.4, -0.5]], NEAREST = 0.7, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, CLEAR = 1e-3;
+const VIEWS = [[1.5, 0.6, 0], [1.2, 1, 0], [0.6, 1.4, 0], [0.9, 0.9, 0.9], [0.9, 0.9, -0.9], [-0.9, 0.9, 0], [0, 1.4, 0.5], [0, 1.4, -0.5]], NEAREST = 0.7, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, CLEAR = 1e-3, WEDGED = 1, CLIMB = 3, CLIMBS = 0.4;
 let world; const flightWorld = () => world ??= levelWorld(); // ponytail: read only, the same boxes shot.js flies through (it keeps its own copy)
 
 // Each centred where flight.js has it, resting `low` over what it's on.
@@ -63,7 +63,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   const arc = createArc(), axis = new THREE.Vector3(), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: 52, hands: false };
   const follow = { at: new THREE.Vector3(), look: new THREE.Vector3(), ahead: new THREE.Vector3(), spot: new THREE.Vector3(), step: new THREE.Vector3(), from: new THREE.Vector3() };
   const eye = new THREE.Vector3(), now = new THREE.Vector3(), flying = new THREE.Vector3(), palm = new THREE.Vector3(), fromHand = new THREE.Vector3(); // `flying`: where it really is, the mesh only drawn from the hand
-  let group = null, pending = null, entry = null, kind = null, mesh = null, angle = 0, moved = false, handBack = 0, partyLeft = 0;
+  let group = null, pending = null, entry = null, kind = null, mesh = null, angle = 0, moved = false, handBack = 0, partyLeft = 0, climb = 0;
 
   const bits = Array.from({ length: BITS }, () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 })), spots = new Float32Array(BITS * 3), colours = new Float32Array(BITS * 3);
   { const paper = ['#ffd166', '#ef476f', '#06d6a0', '#4f7cff'].map(c => new THREE.Color(c)); for (let i = 0; i < BITS; i++) paper[i % 4].toArray(colours, i * 3); }
@@ -94,7 +94,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   const palmNow = () => { const { x, z } = kitchen.origin; hand.palm.getWorldPosition(palm); palm.x -= x; palm.z -= z; return palm; };
   const inHand = () => { mesh.rotation.set(0, 0, 0); hand.hold(mesh, kind.radius); };
   // Everything a shot set going stops: its sound, the pans, the confetti, and the camera comes straight back, so a throw leaves from your eyes.
-  const stop = () => { hush(); kitchen.pans?.rest(); party.visible = false; partyLeft = 0; handBack = 0; moved = false; angle = 0; view?.play(null); if (view) view.gameAmount = 0; };
+  const stop = () => { hush(); kitchen.pans?.rest(); party.visible = false; partyLeft = 0; handBack = 0; moved = false; angle = 0; climb = 0; view?.play(null); if (view) view.gameAmount = 0; };
 
   // From the eyes on, it goes only through free space: it's walked to where it wants to be, one axis at a time so it slides along what's in the
   // way. So it can't be in anything, whatever the bounce.
@@ -113,11 +113,15 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       if (got > 0.99 * whole && got > NEAREST * NEAREST) { spot.copy(step); break; }
     }
     spot.sub(at).multiplyScalar(1 - Math.exp(-dt * CATCH)).clampLength(0, FASTEST * dt).add(at); // coming free of what held it back, it doesn't leap
+    // One axis at a time it can wedge where two things meet (a cupboard's top and the banner): with nowhere to go it climbs a moment, and comes on over.
+    const wanted = at.distanceToSquared(spot); from.copy(at);
+    if (climb > 0) { climb -= dt; spot.y = Math.min(at.y + CLIMB * dt, WALL_H - CAMERA.radius); }
     for (const axis of ['x', 'z', 'y']) { // never right up to what it hit: stopShort doesn't count a box it starts in
       step.copy(at); step[axis] = spot[axis]; stopShort(at, step, CAMERA, colliders);
       const go = step[axis] - at[axis];
       if (step[axis] === spot[axis]) at[axis] = spot[axis]; else if (Math.abs(go) > CLEAR) at[axis] += go - Math.sign(go) * CLEAR;
     }
+    if (wanted > WEDGED * WEDGED * dt * dt && at.distanceToSquared(from) < CLEAR * CLEAR) climb = CLIMBS;
     look.lerp(flying, 1 - Math.exp(-dt * EYES));
   };
   const handBackNow = () => {
