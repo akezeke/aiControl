@@ -181,7 +181,7 @@ export function drawClipboard({ g, width: w, height: h }, page, lines) {
     if (!indent && i) y += 5;
     const x = left + indent * 26;
     g.fillStyle = done ? '#8b8f98' : indent ? INK.black : INK.blue; g.font = `${indent ? 23 : 29}px ${SHARPIE}`; g.fillText(text, x, y);
-    if (done) { g.strokeStyle = INK.red; g.lineWidth = 3; scribble(g, x - 4, y - 8, x + g.measureText(text).width + 4, y - 7, i); }
+    if (done) { g.strokeStyle = INK.red; g.lineWidth = 2; scribble(g, x - 4, y - 8, x + g.measureText(text).width + 4, y - 7, i); }
     y += indent ? 26 : 29;
   });
 }
