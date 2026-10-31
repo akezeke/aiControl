@@ -25,5 +25,6 @@ export function challenges(key) {
   return out;
 }
 
-const num = n => String(Math.round(n)).replace(/\B(?=(\d{3})+$)/g, ',');
-export const copyLine = (key, bests) => { const [, m, d] = key.split('-'); return `Trickshot ${+d} ${MONTHS[m - 1]}: ${[0, 1, 2].map(i => bests[i] == null ? '-' : bests[i] > 0 ? num(bests[i]) : 'miss').join(' / ')}`; };
+export const num = n => String(Math.round(n)).replace(/\B(?=(\d{3})+$)/g, ',');
+export const bestText = best => best == null ? '-' : best > 0 ? num(best) : 'miss'; // not played; a score; played, and nothing yet
+export const copyLine = (key, bests) => { const [, m, d] = key.split('-'); return `Trickshot ${+d} ${MONTHS[m - 1]}: ${[0, 1, 2].map(i => bestText(bests[i])).join(' / ')}`; };

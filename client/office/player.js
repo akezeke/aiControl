@@ -238,7 +238,7 @@ export function standNear(target, from, colliders, room, distance = 1.1) {
 // Where to stand to read a board: `distance` straight out from it along the wall's `normal`, else nearer, else a little to one side.
 export function standBefore(point, normal, distance, colliders, room) {
   const side = new THREE.Vector3(-normal.z, 0, normal.x);
-  for (const shift of [0, 0.5, -0.5, 1, -1]) for (let d = distance; d >= 0.8; d -= 0.3) {
+  for (const shift of [0, 0.5, -0.5, 1, -1]) for (let d = distance; d >= Math.min(distance, 0.8); d -= 0.3) {
     const p = point.clone().addScaledVector(normal, d).addScaledVector(side, shift).setY(EYE);
     if (free(p, colliders, room)) return p;
   }

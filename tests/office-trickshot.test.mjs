@@ -17,7 +17,7 @@ const ORIGIN = { x: -0.2, z: 5 }, DT = 1 / 60;
 const IN = { yaw: 2.416772208600941, pitch: 0.17453292519943295, charge: 0.625 }; // the paper ball into the sink, off a cupboard and the wall
 const WEDGED = { yaw: rad(-129), pitch: rad(17), charge: 1 }; // a rubber ball from the far table, still a metre up at 8 s
 
-function setup({ aim, reduced = false, holding = false, store } = {}) {
+function setup({ aim, reduced = false, holding = false, store, score, share } = {}) {
   const calls = [], saved = [], group = new THREE.Group(), camera = { position: V(0, EYE, 0) };
   const props = { holding, throw(direction, drop) { calls.push(['drop', direction, drop]); props.holding = false; }, loose: () => [] };
   const hand = { palm: new THREE.Object3D(), held: null, hold(mesh, radius) { calls.push(['hold', mesh, radius]); hand.held = mesh; }, free() { calls.push(['free']); hand.held?.removeFromParent(); hand.held = null; }, pull(level) { calls.push(['pull', level]); } };
@@ -25,7 +25,7 @@ function setup({ aim, reduced = false, holding = false, store } = {}) {
   const view = { plays: [], play(pose) { view.plays.push(pose); }, gameAmount: 0 };
   const memory = store ?? { value: null, getItem() { return memory.value; }, setItem(key, value) { memory.value = value; saved.push(value); } };
   const onPlay = game => { calls.push(['play', game]); camera.position.set(game.stand().x, EYE, game.stand().z); };
-  const game = createTrickshot({ kitchen, hand, camera, props, view, onPlay, aim, store: memory, reducedMotion: () => reduced });
+  const game = createTrickshot({ kitchen, hand, camera, props, view, onPlay, aim, score, share, store: memory, reducedMotion: () => reduced });
   game.build(group);
   return { game, calls, saved, group, camera, props, hand, kitchen, view, memory };
 }
@@ -601,4 +601,39 @@ test('a key still down from before doesn\'t walk you off afterwards', t => {
   player.pin(false);
   player.update(1 / 60);
   assert.deepEqual([player.position.x, player.position.z], [5, 2]);
+});
+
+test('after a daily shot its line can be copied: the Copy button shows, and C copies; a level has none', () => {
+  const scores = [], lines = [], d = setup({ score: (text, done, copy) => scores.push(copy), share: line => lines.push(line) }), day = '2026-10-31';
+  d.game.start({ item: 'paper', start: 'island', target: 'sink', day, index: 1 }); d.game.enter();
+  assert.equal(scores.at(-1), false, 'nothing to copy yet');
+  assert.equal(d.game.key('KeyC', true), false);
+  throwIt(d, IN); play(d);
+  assert.equal(scores.at(-1), true);
+  assert.equal(d.game.key('KeyC', false), false, 'on the way down only');
+  assert.equal(d.game.key('KeyC', true), true);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^Trickshot 31 Oct: - \/ [\d,]+ \/ -$/);
+  d.game.reset();
+  assert.equal(scores.at(-1), false, 'back in hand, it goes');
+  d.game.leave();
+  assert.equal(scores.at(-1), false);
+
+  const t = setup({ score: (text, done, copy) => scores.push(copy), share: line => lines.push(line) });
+  begin(t, 'paper'); throwIt(t, IN); play(t);
+  assert.ok(t.game.run.result.made);
+  assert.equal(scores.at(-1), false);
+  assert.equal(t.game.key('KeyC', true), false);
+  assert.equal(lines.length, 1);
+});
+
+test('progress changing is counted, for the boards to notice', () => {
+  const t = setup(), before = t.game.saved;
+  begin(t, 'paper'); throwIt(t, IN); play(t);
+  assert.equal(t.game.saved, before + 1);
+  t.game.leave();
+  t.game.start({ item: 'paper', start: 'island', target: 'sink' }); t.game.enter();
+  throwIt(t, IN); play(t);
+  assert.equal(t.game.saved, before + 1, 'a random shot keeps no score, so nothing to redraw');
+  assert.deepEqual(t.game.progress.daily, {});
 });

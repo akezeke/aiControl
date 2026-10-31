@@ -8,7 +8,7 @@ import { makeBody, stopShort } from './flight.js';
 import { MOST_TIME, createRun } from './shot.js';
 import { ITEMS, MONDAY, STARTS } from './levels.js';
 import { KITCHEN, ZONES, levelWorld } from './kitchen-plan.js';
-import { challenges, dayKey } from './daily.js';
+import { challenges, copyLine, dayKey } from './daily.js';
 import { loadProgress, recordDaily, recordLevel, saveProgress } from './progress.js';
 import { EYE } from './player.js';
 import { toonMaterial, withOutline } from './toon.js';
@@ -57,8 +57,8 @@ const knock = (surface, speed) => {
   else tone(320, 150, 0.07, 'triangle', 0.22 * loud + 0.05);
 };
 
-// `aim()` is where a throw would go right now: { direction, charge }. `score(text, done)` shows a line, or null clears it.
-export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score, store, reducedMotion = () => false }) {
+// `aim()` is where a throw would go right now: { direction, charge }. `score(text, done, copy)` shows a line, or null clears it; `copy`: it's after a daily shot, so game.copy() has something to say. `share(line)` copies a line.
+export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score, share, store, reducedMotion = () => false }) {
   const progress = loadProgress(store), items = {}, holders = {}, hits = {}, rested = {};
   const arc = createArc(), axis = new THREE.Vector3(), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: 52, hands: false };
   const follow = { at: new THREE.Vector3(), look: new THREE.Vector3(), ahead: new THREE.Vector3(), spot: new THREE.Vector3(), step: new THREE.Vector3(), from: new THREE.Vector3() };
@@ -88,7 +88,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     hits[id].position.set(at[0], at[1] - ITEMS[MONDAY.find(e => e.id === id).item].low, at[2]); hits[id].scale.set(0.3, away(id) ? 0.75 : 0.35, 0.3);
   };
 
-  const label = () => score?.(entry ? game.score ?? `→ ${NAMES[entry.target]}` : null, !!game.score);
+  const label = () => score?.(entry ? game.score ?? `→ ${NAMES[entry.target]}` : null, !!game.score, !!game.score && !!entry?.day);
   // Your eyes, in the room's frame: on the mark, where a shot's camera move has no say.
   const eyeNow = () => { const { x, z } = STARTS[entry.start]; return eye.set(x, EYE, z); };
   const palmNow = () => { const { x, z } = kitchen.origin; hand.palm.getWorldPosition(palm); palm.x -= x; palm.z -= z; return palm; };
@@ -139,8 +139,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   };
 
   const finish = r => {
-    if (entry.day) { recordDaily(progress, entry.day, entry.index, r); saveProgress(progress, store); }
-    else if (entry.id) { recordLevel(progress, entry.id, r); saveProgress(progress, store); if (r.made) rested[entry.id] = r.pos; }
+    if (entry.day) { recordDaily(progress, entry.day, entry.index, r); saveProgress(progress, store); game.saved++; }
+    else if (entry.id) { recordLevel(progress, entry.id, r); saveProgress(progress, store); game.saved++; if (r.made) rested[entry.id] = r.pos; }
     game.score = r.made ? `${r.points} × ${r.multiplier} = ${r.score}` : 'Miss'; label();
     if (r.made) celebrate(r.pos); else tone(190, 110, 0.28, 'sawtooth', 0.1);
     // Out of time and still up on something, or wedged: not left hanging there.
@@ -148,7 +148,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   };
 
   const game = {
-    free: true, progress, arc, party, score: null, run: null,
+    free: true, progress, arc, party, score: null, run: null, saved: 0, // `saved`: how many times progress has changed, for the boards
     item: id => items[id],
     get holding() { return !!entry && game.run.state === 'aiming'; },
     get heldKind() { return kind; },
@@ -162,6 +162,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       return { ...challenges(day)[index], day, index };
     },
     start(next) { pending = next; onPlay(game); },
+    // Today's line (or the day this shot's for, should it have turned since), with your best per challenge.
+    copy() { const day = entry?.day ?? dayKey(new Date()); share?.(copyLine(day, progress.daily[day] ?? [])); },
     stand() { const { x, z, stand } = STARTS[(pending ?? entry ?? MONDAY[0]).start]; return { x: kitchen.origin.x + x, z: kitchen.origin.z + z, yaw: stand }; },
     build(room) {
       group = room;
@@ -207,7 +209,12 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       stop(); game.run.reset(); game.score = null; inHand(); label();
     },
     click() { if (game.run?.state === 'done') game.reset(); },
-    key(code, down) { if (code !== 'KeyR' || !entry || !down) return false; game.reset(); return true; },
+    key(code, down) {
+      if (!entry || !down) return false;
+      if (code === 'KeyR') { game.reset(); return true; }
+      if (code === 'KeyC' && entry.day && game.score) { game.copy(); return true; }
+      return false;
+    },
     pose() {
       const { x, z } = kitchen.origin;
       pose.from.set(follow.at.x + x, follow.at.y, follow.at.z + z); pose.look.set(follow.look.x + x, follow.look.y, follow.look.z + z);

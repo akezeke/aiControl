@@ -81,10 +81,11 @@ export class Bubbles {
 
 export { createCard, createMenu } from '../scene-ui.js';
 
-export function createOverlays(container, { onNext, onList, onOverview, onNew, onLeave }) {
+export function createOverlays(container, { onNext, onList, onOverview, onNew, onLeave, onCopy }) {
   const bar = document.createElement('div'); bar.className = 'office-overlay'; container.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); if (onclick) b.onclick = onclick; bar.append(b); return b; };
   const leave = button('office-leave', '✕ Quit game', 'Stop playing and stand up (Esc)', onLeave); leave.hidden = true;
+  const copy = button('office-copy', 'Copy', 'Copy today\'s scores (C)', event => { event.currentTarget.blur(); onCopy(); }); copy.hidden = true;
   const waiting = button('office-waiting', '', 'Walk to the next one waiting (n)', onNext); waiting.hidden = true;
   const usage = button('office-usage', '⚡', 'Usage is near its limit; see the whiteboard'); usage.hidden = true;
   button('office-new', '+', 'New agent in a folder', event => onNew(event.currentTarget));
@@ -94,7 +95,14 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   const meter = document.createElement('div'); meter.className = 'office-charge'; meter.hidden = true; const fill = meter.appendChild(document.createElement('i')); container.append(meter);
   const mark = document.createElement('div'); mark.className = 'office-mark'; mark.hidden = true; container.append(mark);
   const score = document.createElement('div'); score.className = 'office-score'; score.hidden = true; container.append(score);
-  let charged = null, marked = null;
+  const copied = document.createElement('div'); copied.className = 'office-copied'; copied.textContent = 'Copied'; copied.hidden = true; container.append(copied);
+  // Where the clipboard can't be written: the line selected, to copy by hand. Esc, its ✕ or a click anywhere else closes it; while it's up the keys are the input's.
+  const line = document.createElement('div'); line.className = 'office-copyline'; line.hidden = true; container.append(line);
+  const field = line.appendChild(document.createElement('input')); field.readOnly = true; field.setAttribute('aria-label', 'Today\'s scores');
+  const closeLine = () => { if (line.hidden) return false; line.hidden = true; field.blur(); return true; };
+  const close = line.appendChild(document.createElement('button')); close.type = 'button'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.setAttribute('aria-label', 'Close'); close.onclick = closeLine;
+  line.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); closeLine(); } });
+  let charged = null, marked = null, copiedFor = 0;
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
   const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · E grab · F pour · Tab overview'; hint.hidden = seen; container.append(hint);
   return {
@@ -109,9 +117,14 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     // Where a finger's throw will go, its screen point; null hides it. Once a frame, and nothing unless it changed.
     setMark(at) { if (at === marked) return; marked = at; mark.hidden = !at; if (at) { const r = container.getBoundingClientRect(); mark.style.left = `${at.clientX - r.left}px`; mark.style.top = `${at.clientY - r.top}px`; } },
     // A shot's target (`done` false) or how it went; null hides it.
-    setScore(text, done) { score.hidden = text == null; score.textContent = text ?? ''; score.classList.toggle('done', !!done); },
+    setScore(text, done, canCopy) { score.hidden = text == null; score.textContent = text ?? ''; score.classList.toggle('done', !!done); copy.hidden = !canCopy; },
+    showCopy(text) { field.value = text; line.hidden = false; field.focus(); field.select(); },
+    showCopied() { copied.hidden = false; clearTimeout(copiedFor); copiedFor = setTimeout(() => { copied.hidden = true; }, 1200); },
+    get copying() { return !line.hidden; },
+    // Closes it unless `target`'s part of it; says whether it did.
+    closeCopy(target) { return !line.contains(target) && closeLine(); },
     // The hint goes once you've used the overview.
     overviewUsed() { if (hint.hidden) return; hint.classList.add('gone'); setTimeout(() => { hint.hidden = true; }, 600); try { localStorage.setItem(hintKey, '1'); } catch { /* per tab only */ } },
-    dispose() { bar.remove(); dot.remove(); meter.remove(); mark.remove(); score.remove(); hint.remove(); },
+    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); meter.remove(); mark.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
   };
 }

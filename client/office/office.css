@@ -55,6 +55,12 @@
 .office-charge i { display: block; height: 100%; background: #e8574a; transform: scaleX(0); transform-origin: left; }
 .office-score { position: absolute; left: 50%; top: 68px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
 .office-score.done { padding: 8px 18px; background: #1b1a1fe6; color: #ffe14d; font-size: 22px; font-weight: 800; }
+.office-copied { position: absolute; left: 50%; top: 116px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; pointer-events: none; }
+.office-copyline { position: absolute; left: 50%; top: 116px; z-index: 2001; transform: translateX(-50%); display: flex; gap: 6px; width: min(440px, calc(100% - 32px)); padding: 6px; border: 2.5px solid #1b1a1f; border-radius: 14px; background: #fffdf7; box-shadow: 0 3px 0 #1b1a1f; }
+.office-copyline[hidden] { display: none; }
+.office-copyline input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 2px solid #1b1a1f; border-radius: 8px; background: #fff; color: #1b1a1f; font: 600 16px system-ui, sans-serif; }
+.office-copyline button { width: 36px; height: 36px; border: 0; border-radius: 8px; background: none; color: #1b1a1f; font: 700 16px system-ui, sans-serif; cursor: pointer; }
+.office-copyline button:hover, .office-copyline button:focus-visible { background: #ffd166; outline: none; }
 .office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; width: max-content; max-width: calc(100% - 32px); pointer-events: none; transition: opacity .5s; }
 .office-hint.gone { opacity: 0; }
 @media (pointer: coarse) { .office-hint { display: none; } }

@@ -8,7 +8,7 @@ import { Cast } from './animation.js';
 import { Player, pick, rayAt, officeHasKeys, gameKey, menuOpen, sceneFocused, standNear, standBefore, EYE } from './player.js';
 import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createMenu, createOverlays } from './bubbles.js';
-import { createBoards } from './boards.js';
+import { copyText, createBoards, createKitchenBoards } from './boards.js';
 import { highlight, showOutlines } from './toon.js';
 import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
@@ -152,8 +152,8 @@ export function mountOffice(container, hooks) {
   const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay });
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
-  const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (text, done) => overlays.setScore(text, done), reducedMotion: () => !!reducedMotion?.matches });
-  room.kitchen.add(trickshot);
+  const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (text, done, copy) => overlays.setScore(text, done, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => !!reducedMotion?.matches });
+  room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot));
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
@@ -172,7 +172,7 @@ export function mountOffice(container, hooks) {
     const r = renderer.domElement.getBoundingClientRect();
     menu.move({ clientX: r.left + (onScreen.x + 1) / 2 * r.width, clientY: r.top + (1 - onScreen.y) / 2 * r.height });
   };
-  listen(document, 'pointerdown', event => { dismissed = menu.open && !menu.contains(event.target); if (dismissed) menu.close(); }, true);
+  listen(document, 'pointerdown', event => { dismissed = menu.open && !menu.contains(event.target); if (dismissed) menu.close(); if (overlays.closeCopy(event.target)) dismissed = true; }, true);
   // The overview frees the mouse to click around; leaving it captures the mouse again if it was (see `free`).
   const overview = on => {
     if (on === view.overview) return;
@@ -181,9 +181,9 @@ export function mountOffice(container, hooks) {
     view.setOverview(on); player.setOverview(on); overlays.setOverview(on);
   };
   // Nothing else wants the mouse: no panel, menu or dialog up, not on the way to someone, not in the overview or a game, the window focused.
-  const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !view.overview && !office.talking && (!playing || playing.free) && document.hasFocus();
+  const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !overlays.copying && !view.overview && !office.talking && (!playing || playing.free) && document.hasFocus();
   let wasFree = true;
-  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview), onLeave: () => play(null),
+  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview), onLeave: () => play(null), onCopy: () => trickshot.copy(),
     onNew: anchor => {
       const r = anchor.getBoundingClientRect();
       const known = [...new Set((office.snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort();
@@ -196,7 +196,7 @@ export function mountOffice(container, hooks) {
   // F, held, pours. Moving takes the mouse back if the browser wouldn't hand it back by itself (see `free`). Playing a game,
   // E plays (where the mouse is), and Esc or a walking key steps back; a game's own keys (the pinball's flippers) are its.
   listen(document, 'keydown', event => {
-    if (event.key === 'Escape' && callOff()) { event.preventDefault(); return; }
+    if (event.key === 'Escape' && (overlays.closeCopy() || callOff())) { event.preventDefault(); return; }
     if (!officeHasKeys(event)) return;
     if (playing && event.key !== 'Tab') {
       if (playing.free && event.code === 'KeyR') callOff();
@@ -387,14 +387,14 @@ export function mountOffice(container, hooks) {
       const spot = standBefore(shoulder, normal, Math.max(0.8, 1.9 * scale), room.colliders, layout?.room);
       if (spot) player.flyTo(spot, centre, arrive, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z))); else arrive();
     },
-    // Fly over to a board on the wall and face it, back far enough to take it all in (and not crane up at the clock).
+    // Fly over to a board on the wall and face it, back far enough to take it all in (and not crane up at the clock). A small one says how near (userData.near).
     readBoard(node) {
       play(null);
       office.talking = null; overview(false); menu.close();
       const box = new THREE.Box3().setFromObject(node), centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
       const normal = new THREE.Vector3(0, 0, 1).transformDirection(node.matrixWorld).setY(0).normalize(), tan = Math.tan(THREE.MathUtils.degToRad(view.fov / 2));
       const fit = Math.max(size.y / 2 / tan, Math.max(size.x, size.z) / 2 / (tan * camera.aspect)) * 1.25, rise = centre.y - EYE;
-      const spot = standBefore(centre, normal, THREE.MathUtils.clamp(Math.max(fit, Math.abs(rise) * 1.7), 1, 3.5), room.colliders, layout?.room);
+      const spot = standBefore(centre, normal, THREE.MathUtils.clamp(Math.max(fit, Math.abs(rise) * 1.7), node.userData.near ?? 1, 3.5), room.colliders, layout && room.secret.bounds(layout.room));
       if (spot) player.flyTo(spot, centre, null, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z)));
     },
     // A pod's sign: let go of the mouse and offer Claude (per account) or Codex, started in the pod's folder.

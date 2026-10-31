@@ -94,9 +94,9 @@ function roomParts() {
   add(new THREE.TorusGeometry(VESSELS.bucket[3], 0.006, 6, 18, Math.PI).translate(VESSELS.bucket[0], VESSELS.bucket[4], VESSELS.bucket[2]), METAL);
   add(new THREE.TorusGeometry(0.035, 0.009, 6, 12).rotateY(Math.PI / 2).translate(VESSELS.tableMug[0], VESSELS.tableMug[1] + 0.06, VESSELS.tableMug[2] + VESSELS.tableMug[3] + 0.02), LOOK.tableMug);
 
-  // The clipboard and the score board, blank for now.
-  { const { x, y, z, w, h } = SPOTS.clipboard; add(B(x - 0.012, y - h / 2, z - w / 2, x + 0.012, y + h / 2, z + w / 2), '#a87b4f'); add(B(x - 0.016, y - h / 2 + 0.02, z - w / 2 + 0.02, x - 0.012, y + h / 2 - 0.03, z + w / 2 - 0.02), '#fbfaf5'); add(B(x - 0.024, y + h / 2 - 0.05, z - 0.05, x - 0.012, y + h / 2 - 0.005, z + 0.05), METAL); }
-  { const { x, y, z, w, h } = SPOTS.scores; add(B(x - w / 2 - 0.04, y - h / 2 - 0.04, z, x + w / 2 + 0.04, y + h / 2 + 0.04, z + 0.02), '#6d4a2b'); add(B(x - w / 2, y - h / 2, z - 0.004, x + w / 2, y + h / 2, z), '#fbfaf5'); }
+  // The clipboard's board and clip and the score board's frame; what's written on them is boards.js's.
+  { const { x, y, z, w, h } = SPOTS.clipboard; add(B(x - 0.012, y - h / 2, z - w / 2, x + 0.012, y + h / 2, z + w / 2), '#a87b4f'); add(B(x - 0.024, y + h / 2 - 0.05, z - 0.05, x - 0.012, y + h / 2 - 0.005, z + 0.05), METAL); }
+  { const { x, y, z, w, h } = SPOTS.scores; add(B(x - w / 2 - 0.04, y - h / 2 - 0.04, z, x + w / 2 + 0.04, y + h / 2 + 0.04, z + 0.02), '#6d4a2b'); }
   return parts;
 }
 
