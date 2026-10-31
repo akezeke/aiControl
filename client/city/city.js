@@ -19,7 +19,7 @@ const DRAG_SLOP = 6, GLIDE_MS = 220, NOTCH = 50, WHEEL_REST = 200;
 // A flick carries on: how long it takes to lose most of its speed, and what still counts as moving in CSS pixels per ms.
 const COAST_MS = 220, KEY_COAST_MS = 110, COAST_MIN = .03;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], a: [-1, 0], d: [1, 0], w: [0, -1], s: [0, 1] };
-const STEP_MS = 125, TWINKLE_MS = 1500, CACHE = 256, FLOOR = '#323353', HIGHLIGHT = { hover: '#f9c22b', selected: '#fbff86', cursor: '#4d9be6', asked: '#f9c22b' };
+const STEP_MS = 125, TWINKLE_MS = 1500, CACHE = 256, FLOOR = '#0b5e65', HIGHLIGHT = { hover: '#f9c22b', selected: '#fbff86', cursor: '#ffffff', asked: '#f9c22b' };
 // Everything but a chosen neighbourhood falls into shadow.
 const DUSK = 'rgba(46, 34, 47, .55)';
 // A sprite this far off the canvas can't reach it, so it isn't baked until it might.
@@ -47,7 +47,7 @@ const toImage = ({ width, height, rgba }) => {
 const stackIds = new WeakMap(); let stacksSeen = 0;
 const stackId = stack => { if (!stackIds.has(stack)) stackIds.set(stack, ++stacksSeen); return stackIds.get(stack); };
 // What the ground is painted from: anything else in the plan can change without repainting it.
-const groundKey = plan => JSON.stringify([plan.bounds, plan.roads, plan.parcels, plan.parks, plan.hoods.map(hood => [hood.key, hood.x, hood.z, hood.cols, hood.lots.map(lot => lot.sessionId ? 1 : 0)])]);
+const groundKey = plan => JSON.stringify([plan.bounds, plan.roads, plan.parcels, plan.parks, plan.hoods.map(hood => [hood.key, hood.x, hood.z, hood.cols, hood.lots.map(lot => lot.sessionId)])]);
 
 export function mountCity(box, hooks = {}) {
   const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { alpha: false });

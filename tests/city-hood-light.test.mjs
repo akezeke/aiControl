@@ -36,3 +36,11 @@ test('a lot with a building on it stays told apart from an empty one', () => {
   const taken = hood.lots.find(lot => lot.sessionId), empty = hood.lots.find(lot => !lot.sessionId), lit = paintHood(cells, hood, 0);
   assert.notDeepEqual([...pixel(lit, taken.x + 20, taken.z + 20, 0)], [...pixel(lit, empty.x + 20, empty.z + 20, 0)]);
 });
+test('lit ground stays the same kind of ground: a meadow does not turn into water', () => {
+  const olive = [0x56, 0x54, 0x30], hood = { x: 0, z: 0, cols: 1 }, W = 70, D = 140, big = new Uint8Array(W * D * 3);
+  for (let i = 0; i < W * D; i++) big.set(olive, i * 3);
+  const { width, height, rgba } = paintHood({ x0: 0, z0: 0, w: W, rgb: big }, hood, 0);
+  let seen = 0;
+  for (let i = 0; i < width * height; i++) if (rgba[i * 4 + 3]) { const [r, g, b] = rgba.slice(i * 4, i * 4 + 3); if (r === 0x8f || r === 0xfb) continue; seen++; assert.ok(r > b && g > b, `${r},${g},${b}`); assert.ok(r > olive[0] - 1 && g > olive[1] - 1, `not brighter: ${r},${g},${b}`); }
+  assert.ok(seen > 100);
+});

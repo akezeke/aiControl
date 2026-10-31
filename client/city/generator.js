@@ -77,6 +77,14 @@ export function fountain() {
   S.cyl(0, 0, 0, 6, 1, hex('#9babb2')); S.cyl(0, 1, 0, 5, 1, hex('#0b8a8f')); S.cyl(0, 1, 0, 1.2, 4, hex('#c7dcd0'));
   return S.bake();
 }
+// A street lamp. Only ever one stack, so all of them share a sprite.
+let streetLamp = null;
+export function lamp() {
+  if (streetLamp) return streetLamp;
+  const S = new Stack(4, 4, 9);
+  S.box(0, 0, 0, 1, 7, 1, hex('#3e3546')); S.box(0, 7, 0, 2, 2, 2, glow('#fbff86'));
+  return streetLamp = S.bake();
+}
 // `along` lays a car along the world's x axis, otherwise along z.
 export function car(colour, along) {
   const S = new Stack(10, 10, 4);

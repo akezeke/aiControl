@@ -6,11 +6,13 @@ import { renderSprite } from '../client/city/sprite.js';
 import { RESURRECT_64, EXTRAS, hex, inPalette, nearest } from '../client/city/palette.js';
 import { Stack } from '../client/city/stack.js';
 
-test('Resurrect 64 is complete and has no extras yet', () => {
+test('Resurrect 64 is complete, and the few extras are new colours of its own kind', () => {
   assert.equal(RESURRECT_64.length, 64);
   assert.equal(new Set(RESURRECT_64).size, 64);
   assert.ok(RESURRECT_64.includes('#2e222f') && RESURRECT_64.includes('#ffffff'));
-  assert.deepEqual(EXTRAS, []);
+  assert.ok(EXTRAS.length <= 8);
+  for (const c of EXTRAS) assert.ok(!RESURRECT_64.includes(c), c);
+  assert.equal(new Set(EXTRAS).size, EXTRAS.length);
 });
 test('nearest always lands on the palette and keeps palette colours', () => {
   for (const c of RESURRECT_64) assert.deepEqual(nearest(hex(c)), hex(c));

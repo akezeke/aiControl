@@ -1,23 +1,57 @@
 // The ground the city stands on: every road, parcel and lot in a flat grid of cells, baked once per view. Pure.
 import { hex, nearest } from './palette.js';
 import { fnv } from './identity.js';
-import { fountain, car, tree } from './generator.js';
+import { fountain, car, tree, lamp } from './generator.js';
 import { LOT, PLOT, ROAD, WALK, PLANT, unproject, screen } from './plan.js';
 import { SHADOW } from './sprite.js';
 
-const C = Object.fromEntries(Object.entries({ floor: '#323353', block: '#484a77', plot: '#625565', tick: '#7f708a', road: '#3e3546', walk: '#7f708a', dash: '#9babb2', zebra: '#c7dcd0', shadow: '#2e222f',
-  lawn: '#374e4a', trail: '#ab947a', water: '#0b5e65', water2: '#0b8a8f', paving: '#625565', paving2: '#7f708a', court: '#a24b6f', line: '#c7dcd0', tarmac: '#3e3546' }).map(([k, v]) => [k, hex(v)]));
-const MARGIN = 180, ROADW = ROAD + WALK * 2, DARK = .7, INSET = 2, TICK = 7, CARS = ['#e83b3b', '#4d9be6', '#f9c22b', '#c7dcd0', '#0eaf9b'];
+const C = Object.fromEntries(Object.entries({ block: '#484a77', road: '#3e3546', walk: '#966c6c', dash: '#9babb2', zebra: '#c7dcd0', shadow: '#2e222f',
+  lawn: '#4c4a2a', trail: '#ab947a', water: '#0b5e65', water2: '#0b8a8f', paving: '#966c6c', paving2: '#ab947a', court: '#a24b6f', line: '#c7dcd0', tarmac: '#3e3546', sea: '#0b5e65', ripple: '#0b8a8f', foam: '#8ff8e2', sand: '#ab947a', land: '#4c4a2a', land2: '#565430', tuft: '#676633', flower: '#fbb954', stake: '#c7dcd0', bush: '#239063', bud: '#1ebc73' }).map(([k, v]) => [k, hex(v)]));
+const MARGIN = 180, ROADW = ROAD + WALK * 2, DARK = .7, INSET = 2, CARS = ['#e83b3b', '#4d9be6', '#f9c22b', '#c7dcd0', '#0eaf9b'];
+
+// What a session's lot is paved with: its own for as long as it lasts, in big quiet patterns so that a building still stands out on it.
+const CHECK = (u, v) => ((u >> 3) ^ (v >> 3)) & 1, MOWN = (u, v) => (u >> 3) & 1, RINGS = (u, v) => (Math.max(Math.abs(u - 32.5), Math.abs(v - 32.5)) >> 3) & 1, BRICK = (u, v) => ((u + ((v >> 3) & 1) * 6) >> 3 ^ (v >> 2)) & 1, PANELS = (u, v) => (u % 16 === 0 || v % 16 === 0) ? 1 : 0;
+const LOTS = [['#6e2727', '#7a3045', '#cd683d', '#e6904e', CHECK], ['#165a4c', '#1a6a55', '#547e64', '#ab947a', MOWN], ['#45293f', '#553350', '#6b3e75', '#905ea9', RINGS], ['#7f5f5a', '#8a6a62', '#ab947a', '#c9a98e', BRICK], ['#0b5e65', '#0a525a', '#0b8a8f', '#0eaf9b', PANELS]].map(([a, b, kerb, path, pattern]) => {
+  const A = hex(a), B = hex(b);
+  return { a: A, b: B, kerb: hex(kerb), path: hex(path), tile: (u, v) => pattern(u, v) ? A : B };
+});
+export const lotLook = id => LOTS[fnv(`lot:${id}`) % LOTS.length];
+const KERB = 2, PATH = 4, BUSH = 8, STAKE = 6;
+// How far the land runs past the city: its power plants stand north and west of it, so that's where it needs the room.
+const LAND = 98, LAND_FAR = 40, RIPPLES = 66, CORNER = 34, TREE_GRID = 21;
+// Cheap and without a visible grain, which a sum of multiples isn't: this runs for every cell of the map.
+const mix = (a, b) => { let n = Math.imul(a, 73856093) ^ Math.imul(b, 19349663); n = Math.imul(n ^ n >>> 13, 1274126177); return (n ^ n >>> 16) >>> 0; };
+// Slow waves, so that the meadow's lighter part comes in big soft patches and trees gather in them.
+const patch = (x, z) => Math.sin(x / 19 + z / 31) + Math.sin(z / 13 - x / 41);
+const meadow = (x, z) => { const n = mix(x, z); return patch(x, z) > .55 ? n % 401 === 0 ? C.flower : n % 37 === 0 ? C.tuft : C.land2 : n % 149 === 0 ? C.tuft : C.land; };
 
 // Rebuilding a stack is the slow part and only a few dozen ever exist, so the same tree is the same object.
 const stacks = new Map(), once = (key, make) => { if (!stacks.has(key)) stacks.set(key, make()); return stacks.get(key); };
+
+// An island: the distance past the edge of a rounded box, made uneven by a couple of slow waves.
+const reachOf = (W, D) => (x, z) => { const qx = Math.abs(x - (W + LAND_FAR - LAND) / 2) - (W + LAND_FAR + LAND) / 2 + CORNER, qz = Math.abs(z - (D + LAND_FAR - LAND) / 2) - (D + LAND_FAR + LAND) / 2 + CORNER; return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - CORNER + Math.sin(x / 23) * 3 + Math.sin(z / 17) * 2; };
+// The slow part of the ground, and the part a new session doesn't change, so it's only painted when the city changes size.
+let land = { key: '', rgb: null };
+function landscape(W, D, x0, z0, w, d) {
+  const key = `${W},${D}`;
+  if (land.key === key) return land.rgb;
+  const out = new Uint8Array(w * d * 3), reach = reachOf(W, D);
+  for (let b = 0; b < d; b++) for (let a = 0; a < w; a++) {
+    const past = reach(x0 + a, z0 + b);
+    // Ripples are dashes, thinning out the further they are from shore so that they never end in a line.
+    const c = past < 0 ? meadow(x0 + a, z0 + b) : past < 4 ? C.sand : past < 5 ? C.foam : past < RIPPLES && a % 9 < 5 && mix(a >> 3, b) % (12 + Math.floor(past)) === 0 ? C.ripple : C.sea;
+    out.set(c, (a + b * w) * 3);
+  }
+  land = { key, rgb: out };
+  return out;
+}
 
 export function groundCells(plan) {
   const { w: W, d: D } = plan.bounds, x0 = -MARGIN, z0 = -MARGIN, w = W + MARGIN * 2, d = D + MARGIN * 2, rgb = new Uint8Array(w * d * 3), props = [];
   const set = (x, z, c) => { const a = Math.floor(x) - x0, b = Math.floor(z) - z0; if (a < 0 || b < 0 || a >= w || b >= d) return; const i = (a + b * w) * 3; rgb[i] = c[0]; rgb[i + 1] = c[1]; rgb[i + 2] = c[2]; };
   const rect = (x, z, W2, D2, c) => { for (let b = 0; b < D2; b++) for (let a = 0; a < W2; a++) set(x + a, z + b, typeof c === 'function' ? c(a, b) : c); };
   const prop = (stack, x, z) => props.push({ stack, x, z });
-  rect(x0, z0, w, d, C.floor);
+  rgb.set(landscape(W, D, x0, z0, w, d));
   rect(0, 0, W, D, C.block);
 
   // Roads run the length of the city; a walk either side, dashes down the middle, a crossing at each junction.
@@ -27,7 +61,11 @@ export function groundCells(plan) {
   for (const x of plan.roads.xs) for (const z of plan.roads.zs) {
     rect(x - WALK, z - WALK, ROADW, ROADW, C.road);
     const across = a => a % 3 < 2 ? C.zebra : C.road, down = (a, b) => b % 3 < 2 ? C.zebra : C.road;
-    rect(x, z - WALK, ROAD, WALK, across); rect(x, z + ROAD, ROAD, WALK, across); rect(x - WALK, z, WALK, ROAD, down); rect(x + ROAD, z, WALK, ROAD, down);
+    // A crossing only where a road carries on.
+    if (z > plan.roads.zs[0]) rect(x, z - WALK, ROAD, WALK, across);
+    if (z < plan.roads.zs.at(-1)) rect(x, z + ROAD, ROAD, WALK, across);
+    if (x > plan.roads.xs[0]) rect(x - WALK, z, WALK, ROAD, down);
+    if (x < plan.roads.xs.at(-1)) rect(x + ROAD, z, WALK, ROAD, down);
   }
 
   for (const { kind, x, z, w: W2, d: D2, seed } of plan.parcels) PARCELS[kind]({ rect, prop, h: n => fnv(`${seed}:${n}`) }, x, z, W2, D2);
@@ -36,16 +74,38 @@ export function groundCells(plan) {
   // Paved where someone's building; corner ticks where one could go.
   for (const hood of plan.hoods) for (const lot of hood.lots) {
     const a = lot.x - LOT / 2, b = lot.z - LOT / 2, n = LOT - INSET * 2, A = n - 1;
-    rect(a + INSET, b + INSET, n, n, C.floor);
-    if (lot.sessionId) rect(a + PLOT, b + PLOT, LOT - PLOT * 2, LOT - PLOT * 2, C.plot);
-    else rect(a + INSET, b + INSET, n, n, (u, v) => (u === 0 || v === 0 || u === A || v === A) && (u < TICK || A - u < TICK) && (v < TICK || A - v < TICK) ? C.tick : C.floor);
+    if (lot.sessionId) {
+      const N = LOT - PLOT * 2, look = lotLook(lot.sessionId), towardRoad = lot.slot & 1 ? v => v > N / 2 : v => v < N / 2;
+      rect(a + PLOT, b + PLOT, N, N, (u, v) => {
+        if (u < KERB || v < KERB || u >= N - KERB || v >= N - KERB) return look.kerb;
+        if (Math.abs(u + .5 - N / 2) < PATH && towardRoad(v)) return look.path;
+        const inU = Math.min(u, N - 1 - u) - KERB, inV = Math.min(v, N - 1 - v) - KERB;
+        if (inU >= 1 && inU < BUSH && inV >= 1 && inV < BUSH) return (u + v) % 5 ? C.bush : C.bud;
+        return look.tile(u, v);
+      });
+    } else rect(a + INSET, b + INSET, n, n, (u, v) => (u === 0 || v === 0 || u === A || v === A) && (u < STAKE || A - u < STAKE) && (v < STAKE || A - v < STAKE) ? C.stake : meadow(a + INSET + u, b + INSET + v));
+  }
+
+  // A lamp at each corner of each lot, on the pavement: enough to read the streets by at night, too short to hide anything.
+  for (const hood of plan.hoods) {
+    for (let i = 0; i <= hood.cols; i++) prop(lamp(), hood.x + i * LOT, hood.z - 1);
+    for (const r of [1, 2]) prop(lamp(), hood.x - 1, hood.z + r * LOT);
+  }
+
+  // Trees on the outskirts, in the meadow's patches, never in front of a plant or its road.
+  for (let z = -LAND; z < D + LAND_FAR; z += TREE_GRID) for (let x = -LAND; x < W + LAND_FAR; x += TREE_GRID) {
+    const n = mix(x, z), X = x + n % 9, Z = z + (n >>> 8) % 9;
+    if (X > -12 && Z > -12 && X < W + 12 && Z < D + 12) continue;
+    if (reachOf(W, D)(X, Z) > -10 || patch(X, Z) < .1 || n % 3 === 0) continue;
+    if (plan.plants.some(plant => Math.hypot(X - plant.x, Z - plant.z) < 36 || (plant.provider === 'claude' ? X < 0 && Math.abs(Z - plant.z) < 16 : Z < 0 && Math.abs(X - plant.x) < 16))) continue;
+    const seed = n % 9; prop(once(`tree${seed}`, () => tree(seed)), X, Z);
   }
 
   // A spur from the ring road to each plant.
   for (const plant of plan.plants) {
     if (plant.provider === 'claude') road(-PLANT + 16, plant.z - 9, PLANT - 16, ROADW);
     else road(plant.x - 9, -PLANT + 12, ROADW, PLANT - 12);
-    rect(plant.x - 18, plant.z - 14, 36, 28, C.plot);
+    rect(plant.x - 18, plant.z - 14, 36, 28, C.walk);
   }
 
   // The props' shadows lie on the ground for good. A building's is its own sprite, because it changes height.
@@ -115,8 +175,9 @@ function bigPark({ rect, prop, h }, x, z, W, D) {
 
 // A chosen neighbourhood lit up, to lay over the ground: its own cells brighter, a line between them, and a rim round the lot.
 // `edge` is the rim alone, which is the part that glows.
-const LIT = new Map([[C.floor, '#4d65b4'], [C.block, '#4d65b4'], [C.plot, '#4d9be6'], [C.tick, '#8fd3ff']].map(([from, to]) => [from.join(), hex(to)]));
-const RIM = 3, LINE = hex('#8fd3ff'), RIM_LIGHT = hex('#fbff86');
+const LIT = new Map([[C.stake, '#ffffff']].map(([from, to]) => [from.join(), hex(to)]));
+const RIM = 3, LINE = hex('#8fd3ff'), RIM_LIGHT = hex('#fbff86'), LIFT = .22;
+const lifted = c => { const key = c.join(); if (!LIT.has(key)) LIT.set(key, c.map((v, i) => Math.round(v + (LINE[i] - v) * LIFT))); return LIT.get(key); };
 export function paintHood({ x0, z0, w, rgb }, hood, view) {
   const W = hood.cols * LOT, D = 2 * LOT, corners = [[0, 0], [W, 0], [0, D], [W, D]].map(([x, z]) => screen(hood.x + x, hood.z + z, view));
   const minX = Math.floor(Math.min(...corners.map(c => c[0]))), maxX = Math.ceil(Math.max(...corners.map(c => c[0]))), minY = Math.floor(Math.min(...corners.map(c => c[1]))), maxY = Math.ceil(Math.max(...corners.map(c => c[1])));
@@ -127,7 +188,7 @@ export function paintHood({ x0, z0, w, rgb }, hood, view) {
     if (a < 0 || b < 0 || a >= W || b >= D) continue;
     const i = (px + py * width) * 4, rim = a < RIM || b < RIM || a >= W - RIM || b >= D - RIM;
     let colour = rim ? RIM_LIGHT : seam(a) || seam(b) ? LINE : null;
-    if (!colour) { const c = (Math.floor(x) - x0 + (Math.floor(z) - z0) * w) * 3, here = [rgb[c], rgb[c + 1], rgb[c + 2]]; colour = LIT.get(here.join()) || here; }
+    if (!colour) { const c = (Math.floor(x) - x0 + (Math.floor(z) - z0) * w) * 3, here = [rgb[c], rgb[c + 1], rgb[c + 2]]; colour = lifted(here); }
     rgba[i] = colour[0]; rgba[i + 1] = colour[1]; rgba[i + 2] = colour[2]; rgba[i + 3] = 255;
     if (rim) { edge[i] = colour[0]; edge[i + 1] = colour[1]; edge[i + 2] = colour[2]; edge[i + 3] = 255; }
   }
