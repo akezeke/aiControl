@@ -155,18 +155,22 @@ test('a second finger calls the throw off', t => {
   pointer('down', 20, { pointerType: 'touch' }); pointer('down', 60, { pointerType: 'touch', pointerId: 2 }); pointer('up', 60, { pointerType: 'touch', pointerId: 2 });
   assert.deepEqual(calls, [['press', 20], 'cancel']);
 });
-test('a finger held a moment aims as it charges, finely, and throws through where it came down', t => {
+test('a finger held a moment aims as it charges, finely, and throws through the centre, wherever it came down', t => {
   const { calls, pointer, player } = presses(t), yaw = player.yaw, touch = { pointerType: 'touch' };
   pointer('down', 20, { ...touch, timeStamp: 1000 });
-  assert.deepEqual(player.aimAt, { clientX: 20, clientY: 50 });
   pointer('move', 120, { ...touch, timeStamp: 1300 });
   assert.deepEqual(calls, [['press', 20]], 'still charging');
   const turned = player.yaw - yaw;
   assert.ok(turned > 0, 'the scene follows the finger, as it does when looking');
   assert.ok(Math.abs(turned) < 100 * 0.003, 'finer than looking');
   pointer('up', 120, { ...touch, timeStamp: 1400 });
-  assert.deepEqual(calls, [['press', 20], ['release', 20]]);
+  assert.deepEqual(calls, [['press', 20], ['release', 50]], 'the centre of the turned view');
   assert.equal(player.spin, 0, 'and no fling');
+});
+test('a tap anywhere throws along the centre', t => {
+  const { calls, pointer } = presses(t), touch = { pointerType: 'touch' };
+  pointer('down', 80, touch); pointer('up', 80, touch);
+  assert.deepEqual(calls, [['press', 80], ['release', 50]]);
 });
 test('a finger swiped straight away looks round: no throw, at the speed it always had', t => {
   const { calls, pointer, player } = presses(t), yaw = player.yaw, touch = { pointerType: 'touch' };
@@ -186,7 +190,7 @@ test('a second finger calls off a throw that is being aimed', t => {
 test('a mouse drag still calls the throw off however long it was held', t => {
   const { calls, pointer, player } = presses(t);
   pointer('down', 20, { timeStamp: 1000 }); pointer('move', 60, { timeStamp: 2000 });
-  assert.deepEqual(calls, [['press', 20], 'cancel']); assert.equal(player.aimAt, null);
+  assert.deepEqual(calls, [['press', 20], 'cancel']);
 });
 test('captured, a press charges, moving looks, and it throws from the middle of the screen', t => {
   const { calls, pointer, player } = presses(t), yaw = player.yaw; player.locked = true;

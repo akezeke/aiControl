@@ -99,7 +99,6 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   button('office-list', '☰', 'Show the list', onList);
   const eye = button('office-eye', '👁', 'Overview (Tab)', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
   const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
-  const mark = document.createElement('div'); mark.className = 'office-mark'; mark.hidden = true; container.append(mark);
   const meter = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); meter.setAttribute('class', 'office-charge'); meter.setAttribute('viewBox', `0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`); meter.setAttribute('aria-hidden', 'true');
   meter.innerHTML = `<g>${['ink', 'track', 'fill', 'shine'].map(name => `<path class="${name}" d="${gaugeArc()}" pathLength="1"/>`).join('')}</g>`; container.append(meter);
   const fill = meter.querySelector('.fill');
@@ -111,7 +110,7 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   const closeLine = () => { if (line.hidden) return false; line.hidden = true; field.blur(); return true; };
   const close = line.appendChild(document.createElement('button')); close.type = 'button'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.setAttribute('aria-label', 'Close'); close.onclick = closeLine;
   line.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); closeLine(); } });
-  let marked = null, copiedFor = 0, charged = null, box = null, gaugeX = null, gaugeY = null;
+  let copiedFor = 0, charged = null, box = null, gaugeX = null, gaugeY = null;
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
   const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · E grab · F pour · Tab overview'; hint.hidden = seen; container.append(hint);
   return {
@@ -121,18 +120,16 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     setPlaying(on) { leave.hidden = !on; },
     showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
-    // Where a finger's throw will go, its screen point; null hides it. Once a frame, and nothing unless it changed.
-    setMark(at) { if (at === marked) return; marked = at; mark.hidden = !at; if (at) { const r = container.getBoundingClientRect(); mark.style.left = `${at.clientX - r.left}px`; mark.style.top = `${at.clientY - r.top}px`; } },
     // How far a throw's charged, 0 to 1, and the screen point it aims at; null hides it. Once a frame while it's up: it only writes
     // when the level or the point moved, and only reads the container's place when it comes up.
-    setCharge(level, at, finger) {
+    setCharge(level, at) {
       if (level === null) { if (charged !== null) { charged = gaugeX = gaugeY = null; meter.classList.remove('shown', 'full'); } return; }
       if (charged === null) { box = container.getBoundingClientRect(); meter.classList.add('shown'); }
       const step = Math.round(level * 100);
       if (step !== charged) { charged = step; fill.setAttribute('stroke-dasharray', `${step / 100} 2`); fill.style.stroke = gaugeColour(step / 100); meter.classList.toggle('full', step === 100); }
       if (at.clientX === gaugeX && at.clientY === gaugeY) return;
       gaugeX = at.clientX; gaugeY = at.clientY;
-      const { x, y } = gaugeAt(gaugeX - box.left, gaugeY - box.top, box.width, box.height, finger);
+      const { x, y } = gaugeAt(gaugeX - box.left, gaugeY - box.top, box.width, box.height);
       meter.style.transform = `translate(${x}px, ${y}px)`;
     },
     // What a shot asks (goalOf's list, a ticked line struck through) and, beside it, how it went; a null goal hides it.

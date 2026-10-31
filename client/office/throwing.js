@@ -132,12 +132,10 @@ export function gaugeColour(level) {
   const u = THREE.MathUtils.clamp(level, 0, 1), side = u < MIDDLE ? 0 : 1, t = side ? (u - MIDDLE) / (1 - MIDDLE) : u / MIDDLE;
   return `rgb(${HEAT[side].map((c, i) => Math.round((c + (HEAT[side + 1][i] - c) * t) * 255)).join(',')})`;
 }
-// Where its middle goes, in the container: round where the throw aims. A finger would cover it, so above that, or beside it near the top.
+// Where its middle goes, in the container: round where the throw aims, kept on screen.
 export const GAUGE_SIZE = 76;
-const CLEAR_FINGER = 76;
-export function gaugeAt(x, y, width, height, finger) {
+export function gaugeAt(x, y, width, height) {
   const out = GAUGE_SIZE / 2;
-  if (finger) { if (y - CLEAR_FINGER >= out) y -= CLEAR_FINGER; else x += x < width / 2 ? CLEAR_FINGER : -CLEAR_FINGER; }
   return { x: THREE.MathUtils.clamp(x, out, width - out), y: THREE.MathUtils.clamp(y, out, height - out) };
 }
 

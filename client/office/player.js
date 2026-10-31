@@ -4,7 +4,7 @@
 // off first of all (`onCancel`, true if there was one), and so do losing the mouse or the window. Not captured, a drag does too.
 // Captured is what you want until you let go yourself: whatever else takes the mouse (a panel, a menu, the overview, another
 // window) gives it back when it's done (`wanted`, `resume`). Looking with the arrow keys aims with the dot too, until the mouse moves.
-// Touch drags the view along with the finger and taps to walk or pick someone. Holding something, a finger held a moment aims as it charges (`aimAt`); swiped straight away it's only looking. While the overview is up it has the keys and drags.
+// Touch drags the view along with the finger and taps to walk or pick someone. Holding something, a finger held a moment aims as it charges, turning the view finely, and throws along the view's centre wherever it came down; swiped straight away it's only looking. While the overview is up it has the keys and drags.
 // A click on the floor walks there round the furniture: a walking key calls it off, and looking around doesn't.
 // Pinned (`pin`), for a game played from your own eyes, you stay where you are and can still look.
 import * as THREE from 'three';
@@ -40,7 +40,7 @@ export class Player {
   constructor(canvas, { colliders, room, onPick, onPress = () => false, onRelease = () => {}, onCancel = () => false, onLetGo = () => {}, lookHeld = () => false, route }) {
     this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08; this.spin = 0;
     this.colliders = colliders; this.room = room; this.onPick = onPick; this.onPress = onPress; this.onRelease = onRelease; this.onCancel = onCancel; this.onLetGo = onLetGo; this.lookHeld = lookHeld; this.route = route; this.held = new Set(); this.target = null;
-    this.locked = this.wanted = this.releasing = this.asking = false; this.overview = this.pinned = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null; this.aimAt = null;
+    this.locked = this.wanted = this.releasing = this.asking = false; this.overview = this.pinned = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
     this.disposers = [];
     // A drag; and `charging`: this press charged a throw, so its release is that throw's, even if it's been called off since, and
@@ -80,7 +80,6 @@ export class Player {
       if (drag) { drag.moved = true; noThrow(); return; }
       drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, t: event.timeStamp, v: 0 }; canvas.setPointerCapture(event.pointerId);
       charging = this.onPress(event, event.pointerType === 'mouse');
-      this.aimAt = charging && event.pointerType === 'touch' ? { clientX: event.clientX, clientY: event.clientY } : null;
     });
     listen(canvas, 'pointermove', event => {
       if (event.button === 2) this.onCancel(); // pressed with the left still down, a right click is only a move
@@ -102,13 +101,13 @@ export class Player {
       drag.v = drag.v * 0.6 + dx * speed / ms * 1000 * 0.4; drag.t = event.timeStamp;
     });
     listen(canvas, 'pointerup', event => {
-      if (charging) { charging = false; this.onRelease(this.locked ? this.centre : this.aimAt ?? event); }
+      if (charging) { charging = false; this.onRelease(this.locked || event.pointerType !== 'mouse' ? this.centre : event); }
       else if (drag && !drag.moved) this.onPick(event, event.pointerType === 'mouse');
       // A finger that stopped before lifting doesn't fling.
       else if (drag && event.pointerType === 'touch' && event.timeStamp - drag.t < 100 && !reduceMotion?.matches) this.spin = drag.v;
-      drag = null; this.aimAt = null;
+      drag = null;
     });
-    listen(canvas, 'pointercancel', () => { drag = null; noThrow(); this.aimAt = null; });
+    listen(canvas, 'pointercancel', () => { drag = null; noThrow(); });
   }
 
   // You stop where you are while the overview is up.

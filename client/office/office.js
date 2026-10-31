@@ -107,10 +107,10 @@ export function mountOffice(container, hooks) {
     const level = charge.release(clock()); keyed = false; if (level === null) return;
     overlays.setCharge(null); thrower().release(level, rayAt(at, renderer.domElement, camera));
   };
-  // Where a throw would go if let go now: E throws at the dot, a finger at its mark. And a level's item, with something else in hand,
+  // Where a throw would go if let go now: E and a finger throw along the centre, whatever else the pointer's doing. And a level's item, with something else in hand,
   // is a click: that's dropped when the level starts.
   let keyed = false;
-  const throwAt = () => charge.active && (player.aimAt || keyed && player.centre) || (dot ? player.centre : mouse || player.centre);
+  const throwAt = () => charge.active && keyed || dot ? player.centre : mouse || player.centre;
   const throwRay = () => { camera.updateMatrixWorld(); return rayAt(throwAt(), renderer.domElement, camera); };
   const dropsHeld = at => { if (playing || !props.holding) return false; const hit = under(at); return hit?.kind === 'toggle' && hit.node.userData.dropsHeld; };
   const arc = createArc(); scene.add(arc.mesh);
@@ -236,6 +236,7 @@ export function mountOffice(container, hooks) {
     if (!dot) card.move(mouse);
   });
   listen(container, 'pointerleave', () => { mouse = null; });
+  listen(container, 'pointerdown', event => { if (event.pointerType !== 'mouse') mouse = null; }); // on a device with both, a finger's throw isn't the mouse's
   const hover = dt => {
     const aiming = player.aiming && !view.overview && !office.talking;
     if (aiming !== dot) { dot = aiming; overlays.showDot(aiming); hoverIn = 0; }
@@ -262,10 +263,9 @@ export function mountOffice(container, hooks) {
   const tiltSigns = () => { for (const sign of signs) { sign.rotation.x = -PITCH * view.amount; sign.scale.setScalar(1 + 0.4 * view.amount); } };
   frames.add(dt => {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
-    overlays.setMark(charge.active ? player.aimAt : null);
     if (charge.active) {
       if (!canCharge() || !officeHasKeys(noEvent)) callOff();
-      else { const level = charge.level(clock()); overlays.setCharge(level, throwAt(), !!player.aimAt); if (!reducedMotion?.matches) hand.pull(level); }
+      else { const level = charge.level(clock()); overlays.setCharge(level, throwAt()); if (!reducedMotion?.matches) hand.pull(level); }
     }
     // Whatever took the mouse is done with it.
     const now = free(); if (now && !wasFree) player.resume(); wasFree = now;

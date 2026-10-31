@@ -1041,16 +1041,9 @@ test('the power gauge goes from calm to hot', () => {
   assert.equal(gaugeColour(-1), gaugeColour(0)); assert.equal(gaugeColour(2), gaugeColour(1));
 });
 
-test('the power gauge sits at the aim, clear of a finger, and always on screen', () => {
-  assert.deepEqual(gaugeAt(500, 325, 1000, 650, false), { x: 500, y: 325 }, 'round the dot or the pointer');
+test('the power gauge sits at the aim, and always on screen', () => {
+  assert.deepEqual(gaugeAt(500, 325, 1000, 650), { x: 500, y: 325 }, 'round the dot or the pointer');
   const out = GAUGE_SIZE / 2, inside = ({ x, y }, w, h, why) => assert.ok(x >= out && x <= w - out && y >= out && y <= h - out, `${why}: ${x}, ${y}`);
-  inside(gaugeAt(3, 2, 1000, 650, false), 1000, 650, 'a pointer in the corner');
-  inside(gaugeAt(998, 648, 1000, 650, false), 1000, 650, 'and the far one');
-  // A finger's pad is about 25 px round its point and comes from below: the gauge is never over that or below it.
-  for (const [w, h] of [[390, 780], [780, 390]]) for (let x = 0; x <= w; x += 13) for (let y = 0; y <= h; y += 13) {
-    const at = gaugeAt(x, y, w, h, true);
-    inside(at, w, h, `a finger at ${x}, ${y}`);
-    assert.ok(Math.hypot(at.x - x, at.y - y) >= out + 25, `over the finger at ${x}, ${y}: ${at.x}, ${at.y}`);
-    if (y > 120) assert.ok(at.y < y, `above a finger at ${x}, ${y}: ${at.y}`);
-  }
+  inside(gaugeAt(3, 2, 1000, 650), 1000, 650, 'a pointer in the corner');
+  inside(gaugeAt(998, 648, 1000, 650), 1000, 650, 'and the far one');
 });
