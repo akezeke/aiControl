@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { createTrickshot } from '../client/office/trickshot.js';
 import { BLEND, GAUGE_SIZE, arcPoints, blendLeft, createArc, drawnAt, gaugeAt, gaugeColour, launch } from '../client/office/throwing.js';
 import { TiltedBox, makeBody, simulate, stepBody, stopShort } from '../client/office/flight.js';
-import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
+import { SPOTS, ZONES, levelWorld } from '../client/office/kitchen-plan.js';
 import { EYE, Player } from '../client/office/player.js';
 import { WALL_H } from '../client/office/furniture.js';
 import { BALLS, LOOSE } from '../client/office/props.js';
@@ -73,11 +73,11 @@ test('a free game with the thrower\'s methods', () => {
   assert.equal(game.entry('mug').item, 'mug');
 });
 
-test('its mark is in the room\'s frame, facing the way the level says', () => {
+test('its mark is in the room\'s frame, facing the target', () => {
   const { game } = setup();
   game.start(game.entry('mug'));
-  const { x, z, stand } = STARTS.fridge, spot = game.stand();
-  assert.deepEqual([spot.x, spot.z, spot.yaw], [ORIGIN.x + x, ORIGIN.z + z, stand]);
+  const { x, z } = STARTS.fridge, { centre } = ZONES.shelf, spot = game.stand();
+  assert.deepEqual([spot.x, spot.z, spot.yaw], [ORIGIN.x + x, ORIGIN.z + z, Math.atan2(centre.x - x, centre.z - z)]);
 });
 
 test('starting a level drops what you\'re carrying', () => {
@@ -963,25 +963,52 @@ test('the bar shows the goal from the start, its lines struck as they\'re done, 
 });
 
 const MARKER_SIGHT = { radius: 0.01, low: 0.01 };
-test('a marker hangs over the target, seen from the mark, for every shot there is', () => {
+// What a shot's first view shows of the arrow, on a screen `width` by `height`, from its mark at the facing it starts with (player.jumpTo's pitch, the camera's fov).
+const arrowOnScreen = (t, width, height) => {
+  const { marker } = t.game, { x, z, yaw } = t.game.stand(), camera = new THREE.PerspectiveCamera(70, width / height, 0.05, 200);
+  camera.position.set(x - ORIGIN.x, EYE, z - ORIGIN.z); camera.rotation.set(-0.08, yaw + Math.PI, 0, 'YXZ'); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
+  return [marker.position, marker.position.clone().setY(marker.position.y + marker.scale.y)].map(p => { const n = p.clone().project(camera); return { x: (n.x + 1) / 2 * width, y: (1 - n.y) / 2 * height, front: n.z < 1 }; });
+};
+const EVERY_SHOT = [...MONDAY, ...Object.entries(PAIRS).flatMap(([item, pairs]) => pairs.map(([start, target]) => ({ item, start, target })))];
+test('an arrow points down at the target, its tip in sight of the mark, clear of what\'s over it, for every shot there is', () => {
   const t = setup(), { colliders } = levelWorld();
   assert.equal(t.game.marker.visible, false, 'not till a level\'s on');
-  const shots = [...MONDAY, ...Object.entries(PAIRS).flatMap(([item, pairs]) => pairs.map(([start, target]) => ({ item, start, target })))];
-  for (const shot of shots) {
+  for (const shot of EVERY_SHOT) {
     t.game.start(shot); t.game.enter(); t.game.update(DT, null, false, true);
-    const { marker } = t.game, zone = ZONES[shot.target], p = marker.position.clone(), { x, z } = STARTS[shot.start], eye = V(x, EYE, z);
+    const { marker } = t.game, zone = ZONES[shot.target], tip = marker.position.clone(), head = tip.clone().setY(tip.y + marker.scale.y), { x, z } = STARTS[shot.start], eye = V(x, EYE, z), name = `${shot.item} from ${shot.start} at ${shot.target}`;
     assert.equal(marker.visible, true);
-    assert.ok(Math.abs(p.x - zone.centre.x) < 1e-9 && Math.abs(p.z - zone.centre.z) < 1e-9 && p.y > zone.centre.y + zone.half.y, `${shot.target}: over it`);
-    assert.ok(stopShort(eye, p.clone(), MARKER_SIGHT, colliders).distanceTo(p) < 1e-6, `${shot.item} from ${shot.start}: seen over ${shot.target}`);
-    assert.equal(marker.parent, t.group); let deaf = true; marker.traverse(n => { const hits = []; n.raycast(new THREE.Raycaster(eye, p.clone().sub(eye).normalize()), hits); deaf &&= !hits.length; }); assert.ok(deaf, 'clicks go through');
+    assert.ok(Math.abs(tip.x - zone.centre.x) < zone.half.x && Math.abs(tip.z - zone.centre.z) < zone.half.z && tip.y > zone.centre.y + zone.half.y + 0.05, `${name}: tip over it`);
+    if (shot.target === 'sink') assert.ok(Math.abs(tip.x - SPOTS.tap.x) > 0.1, `${name}: not in the tap's spout`);
+    assert.ok(stopShort(eye, tip.clone(), MARKER_SIGHT, colliders).distanceTo(tip) < 1e-6, `${name}: tip seen`);
+    assert.ok(stopShort(tip, head.clone(), MARKER_SIGHT, colliders).distanceTo(head) < 1e-6, `${name}: stands clear`);
+    assert.equal(marker.parent, t.group);
+    marker.traverse(n => { const hits = []; if (!n.isSprite) n.raycast(new THREE.Raycaster(eye, tip.clone().sub(eye).normalize()), hits); assert.equal(hits.length, 0, 'deaf'); });
     t.game.leave(); assert.equal(marker.visible, false);
   }
 });
 
-test('the marker bobs gently, keeps still under reduced motion, and isn\'t drawn while a shot\'s camera is on', () => {
+test('a level starts with its arrow on screen and big enough, on a phone and a desktop, below the bar', () => {
+  const t = setup();
+  for (const shot of EVERY_SHOT) {
+    t.game.start(shot); t.game.enter();
+    const name = `${shot.item} from ${shot.start} at ${shot.target}`;
+    for (const [width, height, least] of [[390, 780, 35], [1000, 650, 28]]) {
+      const [tip, head] = arrowOnScreen(t, width, height);
+      for (const p of [tip, head]) assert.ok(p.front && p.x > width * 0.2 && p.x < width * 0.8 && p.y > 140 && p.y < height * 0.9, `${name} at ${width}: on screen, at ${Math.round(p.x)},${Math.round(p.y)}`);
+      assert.ok(tip.y - head.y >= least, `${name} at ${width}: ${Math.round(tip.y - head.y)} px tall`);
+      assert.ok(tip.y - head.y < 90, `${name} at ${width}: not huge, ${Math.round(tip.y - head.y)} px`);
+    }
+    t.game.leave();
+  }
+});
+
+test('the arrow bobs and pulses gently, keeps still and bright under reduced motion, and isn\'t drawn while a shot\'s camera is on', () => {
   const t = setup(); begin(t, 'paper');
   const ys = []; for (let i = 0; i < 200; i++) { t.game.update(DT, null, false, true); ys.push(t.game.marker.position.y); }
   const spread = Math.max(...ys) - Math.min(...ys); assert.ok(spread > 0.02 && spread < 0.08, `bobs ${spread}`);
+  const halo = t.game.marker.children.find(n => n.isSprite), lit = t.game.marker.material; assert.ok(lit.isMeshBasicMaterial && lit.toneMapped === false, 'lit from within, not by the room');
+  const bright = []; for (let i = 0; i < 200; i++) { t.game.update(DT, null, false, true); bright.push(halo.material.opacity); }
+  assert.ok(Math.max(...bright) - Math.min(...bright) > 0.2, 'pulses');
   throwIt(t, IN); t.game.update(DT, null, false, true);
   assert.equal(t.game.marker.visible, false, 'the shot\'s camera has the view');
   play(t); t.game.update(DT, null, false, true); assert.equal(t.game.marker.visible, false, 'holding on where it landed');
@@ -990,6 +1017,7 @@ test('the marker bobs gently, keeps still under reduced motion, and isn\'t drawn
   const calm = setup({ reduced: true }); begin(calm, 'paper'); calm.game.update(DT, null, true, true);
   const y = calm.game.marker.position.y; for (let i = 0; i < 100; i++) calm.game.update(DT, null, true, true);
   assert.equal(calm.game.marker.position.y, y); assert.equal(calm.game.marker.visible, true);
+  assert.ok(calm.game.marker.children.find(n => n.isSprite).material.opacity > 0.7, 'steady and bright');
   throwIt(calm, IN); calm.game.update(DT, null, true, true); assert.equal(calm.game.marker.visible, true, 'no camera comes into it');
 });
 

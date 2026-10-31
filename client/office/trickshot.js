@@ -15,7 +15,7 @@ import { toonMaterial, withOutline } from './toon.js';
 import { WALL_H } from './furniture.js';
 
 const HAND_BACK = 1, PARTY = 1.2, BITS = 24, GROUND = 0.008; // seconds the camera stays on where a shot ended; of confetti; how many; the tape's height
-const OVER = 0.2, HIGHEST = 1, BOB = 0.025, BOBS = 2.2, MARKER_SIGHT = { radius: 0.01, low: 0.01 }; // the marker: how far over its target, at least and at most; how far it bobs either way, and how fast (radians a second)
+const LIT = '#ffd21f', ARROW = 0.09, OVER = 0.2, LEAST = 0.08, HIGHEST = 1, BOB = 0.025, BOBS = 2.2, TAP_ASIDE = -0.13, MARKER_SIGHT = { radius: 0.01, low: 0.01 }; // the marker: its colour; how tall per metre from the mark, so it looks the same size from near and far; how far its tip stays over its target, as a rule and when there's no room; as high as it goes to be seen; how far it bobs either way, and how fast (radians a second); to the side of the sink's middle, where the tap's spout is
 const ZERO = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
 // The camera on a shot: where it would like to be, [behind, above, to the side of] the item; how near it may be; how fast it and its look catch up (m/s at most, for it), and how fast "behind" comes round after a bounce (per second); how much room it keeps.
 const VIEWS = [[1.5, 0.6, 0], [1.2, 1, 0], [0.6, 1.4, 0], [0.9, 0.9, 0.9], [0.9, 0.9, -0.9], [-0.9, 0.9, 0], [0, 1.4, 0.5], [0, 1.4, -0.5]], NEAREST = 0.7, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, CLEAR = 1e-3, WEDGED = 1, CLIMB = 3, CLIMBS = 0.4;
@@ -38,10 +38,14 @@ const marks = () => {
   return tape;
 };
 
-// What to throw at: a little point of the tape's colour hanging over the target, looking down at it. It glows a bit, so the lights going out don't lose it.
+// What to throw at: an arrow lit from within, its tip at its own origin, one tall, for overTarget to size. Unlit, so full light and none look alike, the ink keeps it off a white wall; the halo's plain alpha, for added light would vanish on white.
 const makeMarker = () => {
-  const m = withOutline(new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.17, 4).rotateX(Math.PI).rotateY(Math.PI / 4), toonMaterial('#f2c230', { emissive: '#5a4408' })), 0.008);
-  m.visible = false; m.raycast = () => {}; m.traverse(n => { n.raycast = () => {}; });
+  const m = withOutline(new THREE.Mesh(new THREE.LatheGeometry([[0, 0], [0.27, 0.45], [0.1, 0.45], [0.1, 1], [0, 1]].map(([x, y]) => new THREE.Vector2(x, y)), 12), new THREE.MeshBasicMaterial({ color: LIT, toneMapped: false })), 0.04);
+  const fade = new Uint8Array(32 * 32 * 4).map((_, i) => { if (i % 4 < 3) return 255; const at = i >> 2; return 255 * Math.max(0, 1 - Math.hypot((at % 32) - 15.5, (at >> 5) - 15.5) / 15.5) ** 2; });
+  const map = new THREE.DataTexture(fade, 32, 32); map.magFilter = map.minFilter = THREE.LinearFilter; map.needsUpdate = true;
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map, color: LIT, depthWrite: false, toneMapped: false })); halo.position.y = 0.5; halo.scale.setScalar(2.4);
+  m.add(halo); m.visible = false; m.raycast = () => {}; m.traverse(n => { n.raycast = () => {}; });
+  m.glow = amount => { m.material.color.set(LIT).multiplyScalar(0.8 + 0.2 * amount); halo.material.opacity = 0.35 + 0.4 * amount; }; // amount: 0 to 1
   return m;
 };
 
@@ -100,10 +104,13 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   const eyeNow = () => { const { x, z } = STARTS[entry.start]; return eye.set(x, EYE, z); };
   const palmNow = () => { const { x, z } = kitchen.origin; hand.palm.getWorldPosition(palm); palm.x -= x; palm.z -= z; return palm; };
   const inHand = () => { mesh.rotation.set(0, 0, 0); hand.hold(mesh, kind.radius); };
-  // The marker: over the target, higher if that's what it takes to see it from the mark (the bin's behind the island from the stove).
+  // The marker: over the target, under what's over that (a sink's cupboards), and higher if that's what it takes to see its tip from the mark (the bin's behind the orange from the stove).
   const overTarget = () => {
-    const { centre, half } = ZONES[entry.target]; bob = 0; eyeNow();
-    for (let over = OVER; over <= HIGHEST; over += 0.1) { marker.position.set(centre.x, centre.y + half.y + over, centre.z); if (stopShort(eye, now.copy(marker.position), MARKER_SIGHT, flightWorld().colliders).equals(marker.position)) return; }
+    const { centre, half } = ZONES[entry.target], top = centre.y + half.y, x = centre.x + (entry.target === 'sink' ? TAP_ASIDE : 0), { colliders } = flightWorld(); bob = 0; eyeNow();
+    const room = stopShort(flying.set(x, top, centre.z), now.set(x, top + WALL_H, centre.z), MARKER_SIGHT, colliders).y - top - BOB;
+    const size = Math.min(ARROW * Math.hypot(eye.x - centre.x, eye.z - centre.z), room - LEAST);
+    marker.scale.setScalar(size); marker.glow(1);
+    for (let over = Math.min(OVER, room - size); over <= HIGHEST; over += 0.1) { marker.position.set(x, top + over, centre.z); if (stopShort(eye, now.copy(marker.position), MARKER_SIGHT, colliders).equals(marker.position)) return; }
   };
   // Everything a shot set going stops: its sound, the pans, the confetti, and the camera comes straight back, so a throw leaves from your eyes.
   const stop = () => { hush(); kitchen.pans?.rest(); party.visible = false; partyLeft = 0; handBack = 0; moved = false; angle = 0; climb = 0; view?.play(null); if (view) view.gameAmount = 0; };
@@ -186,7 +193,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     start(next) { pending = next; onPlay(game); },
     // Today's line (or the day this shot's for, should it have turned since), with your best per challenge.
     copy() { const day = entry?.day ?? dayKey(new Date()); share?.(copyLine(day, progress.daily[day] ?? [])); },
-    stand() { const { x, z, stand } = STARTS[(pending ?? entry ?? MONDAY[0]).start]; return { x: kitchen.origin.x + x, z: kitchen.origin.z + z, yaw: stand }; },
+    // Its mark, facing the target: a phone's view is narrow, and the arrow's no use out of it.
+    stand() { const { start, target } = pending ?? entry ?? MONDAY[0], { x, z } = STARTS[start], { centre } = ZONES[target]; return { x: kitchen.origin.x + x, z: kitchen.origin.z + z, yaw: Math.atan2(centre.x - x, centre.z - z) }; },
     build(room) {
       group = room;
       room.add(marks(), arc.mesh, party, marker);
@@ -247,7 +255,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       blowUp(dt);
       if (!entry) return;
       marker.visible = !moved;
-      if (!moved) { const was = Math.sin(bob); if (!reducedMotion()) bob += dt * BOBS; marker.position.y += (Math.sin(bob) - was) * BOB; }
+      if (!moved && !reducedMotion()) { const was = Math.sin(bob); bob += dt * BOBS; marker.position.y += (Math.sin(bob) - was) * BOB; marker.glow((Math.sin(bob) + 1) / 2); }
       const { run } = game;
       if (run.state === 'aiming') {
         const a = shown && aim?.();
