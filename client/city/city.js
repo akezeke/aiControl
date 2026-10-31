@@ -10,11 +10,11 @@ import { groundCells, paintGround } from './ground.js';
 import { buildTower, annex, dust, crane, coolingPlant, stackPlant } from './generator.js';
 import { Bloom, glowPixels } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
-import { citySignal, Lifecycle } from './signals.js';
+import { citySignal, plantTag, Lifecycle } from './signals.js';
 import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf } from './view.js';
 import { createControls, createLabels } from './labels.js';
 
-const USAGE_LOW = 80, TAG_X = 16, TAG_Y = 6;
+const TAG_X = 16, TAG_Y = 6;
 const DRAG_SLOP = 6, PAN_KEY = 8, GLIDE_MS = 220, KEY_GLIDE_MS = 120, NOTCH = 50, WHEEL_REST = 200;
 // A flick carries on: how long it takes to lose most of its speed, and what still counts as moving in CSS pixels per ms.
 const COAST_MS = 220, COAST_MIN = .03;
@@ -109,7 +109,7 @@ export function mountCity(box, hooks = {}) {
       if (stage.gone) return false;
       const signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(id), { windows } = signal, phase = phaseOf(id, signal, now), dim = dimmed(building);
       if (signal.twinkle && !reduced) animating = true;
-      stand(`${id}|${stage.storeys}|${windows}|${phase}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { beacon: signal.beacon && !dim && blink });
+      stand(`${id}|${stage.storeys}|${windows}|${phase}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { beacon: signal.beacon && !dim && blink, named: true });
       if (stage.crane) stand('crane', `crane:${id}`, x + CRANE_AT, z - CRANE_AT, () => ({ stack: crane(true) }));
       effects(id, x, z, signal, stage, dim);
       return true;
@@ -197,7 +197,7 @@ export function mountCity(box, hooks = {}) {
     const at = new Map(placed.map(entry => [entry.item.group, entry])), buildingOf = id => plan.buildings.find(b => b.id === id || b.subagents.some(kid => kid.id === id));
     labels.sync(drawn.map(({ opens: id, sprite, item }) => {
       const session = sessions.get(id);
-      return { id, ax: item.sx, ay: item.sy - sprite.originY, bubble: session ? signalOf(id).bubble : null, unread: session && hooks.isUnread?.(session), dim: item.dim };
+      return { id, ax: item.sx, ay: item.sy - sprite.originY, name: item.named ? session?.title : null, bubble: session ? signalOf(id).bubble : null, unread: session && hooks.isUnread?.(session), dim: item.dim };
     }), camera.step);
     // On the project's left-hand corner in this view: its towers and their bubbles rise from the middle of the lots, so a corner stays clear.
     labels.signs(plan.hoods.map(hood => {
@@ -211,8 +211,8 @@ export function mountCity(box, hooks = {}) {
       tags.push({ key: building.id, text: `+${building.overflow}`, title: `${building.overflow} more subagents`, ax: ax + TAG_X, ay: ay - TAG_Y });
     }
     for (const plant of plan.plants) {
-      const percent = Math.max(0, ...(snapshot.usage || []).filter(account => account.provider === plant.provider).flatMap(account => (account.windows || []).map(window => window.usedPercent))), spot = at.get(`plant:${plant.provider}`);
-      if (percent >= USAGE_LOW && spot) tags.push({ key: plant.provider, text: `${Math.round(percent)}%`, title: `${plant.name} usage near its limit`, ax: spot.item.sx, ay: spot.item.sy - spot.sprite.originY - TAG_Y });
+      const spot = at.get(`plant:${plant.provider}`);
+      if (spot) tags.push({ key: plant.provider, ...plantTag(plant, snapshot.usage), ax: spot.item.sx, ay: spot.item.sy - spot.sprite.originY - TAG_Y });
     }
     labels.tags(tags);
     moveLabels();

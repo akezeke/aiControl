@@ -13,6 +13,14 @@ export function citySignal(session, { connected = true, now = Date.now() } = {})
   };
 }
 
+// A power plant's sign: whose it is, always, and how much of their limit is gone, once anything has said so.
+export function plantTag(plant, usage = [], low = 80) {
+  const percents = usage.filter(account => account.provider === plant.provider).flatMap(account => (account.windows || []).map(window => window.usedPercent));
+  if (!percents.length) return { text: plant.name, title: plant.name, high: false };
+  const percent = Math.max(...percents), high = percent >= low;
+  return { text: `${plant.name} ${Math.round(percent)}%`, title: `${plant.name} usage${high ? ' near its limit' : ''}`, high };
+}
+
 export class Lifecycle {
   #known = new Map(); #started = false;
   // `fired` holds ids the person has just fired and when: those come down at once, without waiting to drop off the list.

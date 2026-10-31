@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { citySignal, Lifecycle, RISE_MS, PUFF_MS, STEP_MS } from '../client/city/signals.js';
+import { citySignal, Lifecycle, RISE_MS, PUFF_MS, STEP_MS, plantTag } from '../client/city/signals.js';
 import { glyph } from '../client/city/glyphs.js';
 import { officeStatus } from '../client/office/status.js';
 
@@ -59,4 +59,13 @@ test('a leaving subagent loses a storey each step until nothing is left', () => 
   assert.equal(life.stage('k', 1000 + STEP_MS, false).storeys, 2);
   assert.equal(life.stage('k', 1000 + 3 * STEP_MS, false).storeys, 0);
   assert.equal(life.stage('k', 1000 + 30 * STEP_MS, false).storeys, 0);
+});
+
+test('a power plant always says whose it is, with its usage when there is any', () => {
+  const claude = { provider: 'claude', name: 'Claude' };
+  assert.deepEqual(plantTag(claude, []), { text: 'Claude', title: 'Claude', high: false });
+  assert.deepEqual(plantTag(claude, [{ provider: 'codex', windows: [{ usedPercent: 99 }] }]), { text: 'Claude', title: 'Claude', high: false });
+  assert.deepEqual(plantTag(claude, [{ provider: 'claude', windows: [{ usedPercent: 12.4 }, { usedPercent: 43.2 }] }]), { text: 'Claude 43%', title: 'Claude usage', high: false });
+  assert.deepEqual(plantTag(claude, [{ provider: 'claude', windows: [{ usedPercent: 80 }] }]), { text: 'Claude 80%', title: 'Claude usage near its limit', high: true });
+  assert.deepEqual(plantTag(claude, [{ provider: 'claude' }]), { text: 'Claude', title: 'Claude', high: false });
 });

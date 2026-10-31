@@ -83,11 +83,6 @@ export function car(colour, along) {
   S.box(0, 0, 0, along ? 6 : 3, 2, along ? 3 : 6, hex(colour)); S.box(0, 2, 0, along ? 3 : 2, 1, along ? 2 : 3, hex('#2e222f'));
   return S.bake();
 }
-export function stall(colour) {
-  const S = new Stack(12, 12, 6);
-  S.box(0, 0, 0, 7, 3, 7, hex('#694f62')); S.box(0, 3, 0, 9, 1, 9, X => (X + 64) % 4 < 2 ? hex(colour) : hex('#fdcbb0'));
-  return S.bake();
-}
 
 // Compacting: the top storeys come off in a cloud of dust.
 export function dust(w) {

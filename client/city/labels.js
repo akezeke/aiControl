@@ -45,25 +45,28 @@ export function createLabels(box, { onSession, onHood }) {
   const settle = entry => { if (project) place(entry); };
 
   return {
-    // items: [{ id, ax, ay, bubble: { icon, text, highlight } | null, unread, dim }]
+    // items: [{ id, ax, ay, name, bubble: { icon, text, highlight } | null, unread, dim }]. A building with nothing to say still has its name.
     sync(items, step) {
-      layer.classList.toggle('icons', step === 1);
+      layer.classList.toggle('icons', step === 1); layer.classList.toggle('near', step > 2);
       const keep = new Set();
-      for (const { id, ax, ay, bubble, unread, dim } of items) {
-        if (!bubble) continue;
+      for (const { id, ax, ay, name, bubble, unread, dim } of items) {
+        if (!bubble && !name) continue;
         const key = `b:${id}`; keep.add(key);
         const entry = shown.get(key) || add(key, 'button', 'city-bubble');
         if (!entry.bubble) { entry.node.onclick = () => onSession(id); entry.bubble = document.createElement('i'); entry.bubble.className = 'tail'; }
-        const sig = `${bubble.icon}|${bubble.text}|${!!bubble.highlight}|${!!unread}|${step === 1}`;
+        const sig = `${name}|${bubble?.icon}|${bubble?.text}|${!!bubble?.highlight}|${!!unread}|${step === 1}`;
         if (sig !== entry.sig) {
           entry.sig = sig; entry.w = null; entry.tail = null;
-          const icon = iconOf(bubble.icon), text = document.createElement('span'), dot = document.createElement('b');
-          text.className = 'text'; text.textContent = bubble.text || ''; dot.className = 'dot';
-          entry.node.replaceChildren(...(icon ? [icon] : []), text, dot, entry.bubble);
-          entry.node.title = bubble.text || ''; entry.node.setAttribute('aria-label', bubble.text || 'Open session');
-          entry.node.classList.toggle('high', !!bubble.highlight); entry.node.classList.toggle('unread', !!unread); entry.node.classList.toggle('bare', !icon);
+          const icon = iconOf(bubble?.icon), said = bubble?.text || '', words = [name, said].filter(Boolean).join(': '), dot = document.createElement('b'), rows = [];
+          dot.className = 'dot';
+          if (name) { const row = document.createElement('span'); row.className = 'name'; row.textContent = name; rows.push(row); }
+          if (icon || said) { const row = document.createElement('span'), text = document.createElement('span'); row.className = 'said'; text.className = 'text'; text.textContent = said; row.append(...(icon ? [icon] : []), text); rows.push(row); }
+          const body = document.createElement('span'); body.className = 'body'; body.append(...rows);
+          entry.node.replaceChildren(body, dot, entry.bubble);
+          entry.node.title = words; entry.node.setAttribute('aria-label', words || 'Open session');
+          entry.node.classList.toggle('high', !!bubble?.highlight); entry.node.classList.toggle('unread', !!unread); entry.node.classList.toggle('bare', !icon);
         }
-        entry.node.classList.toggle('dim', !!dim && !bubble.highlight);
+        entry.node.classList.toggle('dim', !!dim && !bubble?.highlight);
         anchor(entry, ax, ay); settle(entry);
       }
       sweep('b:', keep);
@@ -82,13 +85,14 @@ export function createLabels(box, { onSession, onHood }) {
       }
       sweep('s:', keep);
     },
-    // tags: [{ key, text, title, ax, ay }]
+    // tags: [{ key, text, title, high, ax, ay }]
     tags(list) {
       const keep = new Set();
-      for (const { key, text, title, ax, ay } of list) {
+      for (const { key, text, title, high, ax, ay } of list) {
         const id = `t:${key}`; keep.add(id);
         const entry = shown.get(id) || add(id, 'div', 'city-tag');
-        if (entry.sig !== text) { entry.sig = text; entry.w = null; entry.node.textContent = text; entry.node.title = title; }
+        if (entry.sig !== text) { entry.sig = text; entry.w = null; entry.node.textContent = text; }
+        entry.node.title = title; entry.node.classList.toggle('high', !!high);
         anchor(entry, ax, ay); settle(entry);
       }
       sweep('t:', keep);

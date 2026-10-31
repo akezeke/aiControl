@@ -1,13 +1,13 @@
 // The ground the city stands on: every road, parcel and lot in a flat grid of cells, baked once per view. Pure.
 import { hex, nearest } from './palette.js';
 import { fnv } from './identity.js';
-import { fountain, car, stall, tree } from './generator.js';
+import { fountain, car, tree } from './generator.js';
 import { LOT, PLOT, ROAD, WALK, PLANT, unproject, screen } from './plan.js';
 import { SHADOW } from './sprite.js';
 
 const C = Object.fromEntries(Object.entries({ floor: '#323353', block: '#484a77', plot: '#625565', tick: '#7f708a', road: '#3e3546', walk: '#7f708a', dash: '#9babb2', zebra: '#c7dcd0', shadow: '#2e222f',
   lawn: '#374e4a', trail: '#ab947a', water: '#0b5e65', water2: '#0b8a8f', paving: '#625565', paving2: '#7f708a', court: '#a24b6f', line: '#c7dcd0', tarmac: '#3e3546' }).map(([k, v]) => [k, hex(v)]));
-const MARGIN = 180, ROADW = ROAD + WALK * 2, DARK = .7, INSET = 2, TICK = 7, CARS = ['#e83b3b', '#4d9be6', '#f9c22b', '#c7dcd0', '#0eaf9b'], AWNINGS = ['#e83b3b', '#f9c22b', '#0eaf9b', '#ed8099'];
+const MARGIN = 180, ROADW = ROAD + WALK * 2, DARK = .7, INSET = 2, TICK = 7, CARS = ['#e83b3b', '#4d9be6', '#f9c22b', '#c7dcd0', '#0eaf9b'];
 
 // Rebuilding a stack is the slow part and only a few dozen ever exist, so the same tree is the same object.
 const stacks = new Map(), once = (key, make) => { if (!stacks.has(key)) stacks.set(key, make()); return stacks.get(key); };
@@ -99,7 +99,8 @@ const PARCELS = {
   market({ rect, prop, h }, x, z, W, D) {
     rect(x, z, W, D, (a, b) => (a + b) % 12 < 1 ? C.paving2 : C.paving);
     const mid = D > W, L = Math.max(W, D), n = Math.floor(L / 16);
-    for (let i = 0; i < n; i++) { const colour = AWNINGS[h(i + 2) % AWNINGS.length], u = (i + .5) * L / n, v = Math.min(W, D) / 2; prop(once(`stall${colour}`, () => stall(colour)), x + (mid ? v : u), z + (mid ? u : v)); }
+    // Trees rather than stalls: anything square and this small would pass for a subagent with no building of its own.
+    for (let i = 0; i < n; i++) { const seed = h(i + 2) % 9, u = (i + .5) * L / n, v = Math.min(W, D) / 2; prop(once(`tree${seed}`, () => tree(seed)), x + (mid ? v : u), z + (mid ? u : v)); }
   },
 };
 function bigPark({ rect, prop, h }, x, z, W, D) {
