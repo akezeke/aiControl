@@ -147,13 +147,15 @@ export function advance(b, dt, world) {
 }
 
 // A whole shot ahead of time on a body (stepped in place): the path every 4 steps, each contact (with where the thing was and which way the surface faces), and where it ends.
-export function simulate(b, world, { maxTime = 8, stop } = {}) {
+// `stop(contact)` true ends it at that step, and so does `until(body)` after any step. Called again on the same body, it goes on from there.
+export function simulate(b, world, { maxTime = 8, stop, until } = {}) {
   const most = Math.floor(maxTime / STEP + 1e-9), path = new Float32Array(Math.floor(most / 4) * 3), contacts = [];
   let n = 0, done = false, at = 0;
   const watch = { ...world, onContact(body, e) { world.onContact?.(body, e); const c = { time: (n + 1) * STEP, surface: e.surface, speed: e.speed, box: e.box, normal: e.normal.toArray(), pos: body.pos.toArray() }; contacts.push(c); if (stop?.(c)) done = true; } };
   for (; n < most && !b.rest && !done; n++) {
     stepBody(b, watch);
     if ((n + 1) % 4 === 0) { path[at++] = b.pos.x; path[at++] = b.pos.y; path[at++] = b.pos.z; }
+    if (until?.(b)) done = true;
   }
   return { path: path.slice(0, at), contacts, time: Math.min(maxTime, n * STEP), rest: b.rest, pos: b.pos.toArray() };
 }

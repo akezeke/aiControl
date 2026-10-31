@@ -274,12 +274,16 @@ test('the arc ends where the office\'s real throw first lands, short of a far wa
     assert.ok(ring.y < 0.01, `${ring.toArray()}`);
     assert.ok(ring.x < 12.5, `it falls short of the wall: ${ring.x}`);
     props.throw(direction, false, 1);
-    let falling = false, landed = null;
-    for (let i = 0; i < 240 * 3 && !landed; i++) { const y = ball.vel.y; props.update(1 / 240); if (y < 0) falling = true; if (falling && ball.vel.y > y + 1) landed = ball.pos.clone(); }
+    let falling = false, landed = null, again = 0;
+    const flown = [];
+    for (let i = 0; i < 240 * 3 && again < 240; i++) { const y = ball.vel.y; props.update(1 / 240); flown.push(ball.pos.clone()); if (landed) again++; if (y < 0) falling = true; if (!landed && falling && ball.vel.y > y + 1) landed = ball.pos.clone(); }
     assert.ok(landed, 'it came down');
     assert.ok(Math.hypot(landed.x - ring.x, landed.z - ring.z) < 0.1, `thrown, it lands at ${landed.x}, the ring's at ${ring.x}`);
-    assert.ok(last.x <= landed.x + 0.1, `no dot past it: ${last.x}`);
-    assert.ok(landed.x - last.x < 0.6, `the dots get there: ${last.x} to ${landed.x}`);
+    const dots = Array.from({ length: arc.points.length / 3 }, (_, i) => V(...arc.points.subarray(i * 3, i * 3 + 3)));
+    assert.ok(Math.min(...dots.map(d => d.distanceTo(landed))) < 0.6, 'the dots get there');
+    assert.ok(last.x <= landed.x + 1.3, `and go a bit over a metre on: ${last.x} to ${landed.x}`);
+    assert.ok(dots.some(d => d.x > landed.x), 'it keeps going, so there are dots after the landing');
+    for (const d of dots) if (d.x > landed.x) assert.ok(Math.min(...flown.map(p => p.distanceTo(d))) < 0.05, `the dot at ${d.toArray()} is where the thrown thing went`);
   }
 });
 

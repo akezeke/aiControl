@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTrickshot } from '../client/office/trickshot.js';
 import { BLEND, arcPoints, blendLeft, createArc, drawnAt, launch } from '../client/office/throwing.js';
-import { TiltedBox, makeBody, simulate, stopShort } from '../client/office/flight.js';
+import { TiltedBox, makeBody, simulate, stepBody, stopShort } from '../client/office/flight.js';
 import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
 import { EYE, Player } from '../client/office/player.js';
 import { WALL_H } from '../client/office/furniture.js';
@@ -38,6 +38,30 @@ const throwIt = (t, { yaw, pitch, charge }) => t.game.release(charge, look(yaw, 
 const item = (t, id) => t.game.item(id);
 // How far `p` is from the part of a flat list of points that starts at `i`.
 const segmentGap = (p, way, i) => { const a = V(way[i], way[i + 1], way[i + 2]), b = V(way[i + 3], way[i + 4], way[i + 5]); return new THREE.Line3(a, b).closestPointToPoint(p, true, V(0, 0, 0)).distanceTo(p); };
+// A throw's real way, every step, to the second contact or `past` metres after the first. Each hit with its place, its surface and the velocity it left with.
+const realWay = (kind, { pos, vel }, world, past = 1.3) => {
+  const b = makeBody(kind, pos, vel), hits = [], way = [...pos.toArray()];
+  const watch = { ...world, onContact(body, e) { hits.push({ surface: e.surface, normal: e.normal.clone(), pos: body.pos.clone() }); way.push(...body.pos.toArray()); } };
+  let after = 0, last = pos.clone(), left = null;
+  for (let n = 0; n < 240 * 4 && !b.rest && hits.length < 2 && after < past; n++) {
+    const before = hits.length;
+    stepBody(b, watch);
+    if (hits.length) after += last.distanceTo(b.pos);
+    if (hits.length && !before) { left = b.vel.clone(); }
+    last.copy(b.pos); way.push(last.x, last.y, last.z);
+  }
+  return { way, hits, left, after };
+};
+// Every dot is on the way, in order: how many got looked at. Within 2.5 cm, as a contact pushes the thing out by up to a step's move, and the dots go straight to it from the last sample.
+const onWay = (dots, way, skip = 0) => {
+  let from = 0;
+  for (let i = skip * 3; i < dots.length; i += 3) {
+    const p = V(dots[i], dots[i + 1], dots[i + 2]);
+    while (from + 6 <= way.length && segmentGap(p, way, from) > 0.025) from += 3;
+    assert.ok(from + 6 <= way.length, `dot ${i / 3} of ${dots.length / 3}, ${p.toArray()}, is on the real way, in order`);
+  }
+  return dots.length / 3 - skip;
+};
 
 test('a free game with the thrower\'s methods', () => {
   const { game } = setup();
@@ -233,7 +257,7 @@ test('a shot stopped in mid-air isn\'t left floating', () => {
   assert.equal(t.game.score, 'Miss');
 });
 
-test('the arc follows the shot\'s path to its first contact', () => {
+test('the arc follows the shot\'s real path', () => {
   const aim = { direction: look(IN.yaw, IN.pitch), charge: IN.charge }, t = setup({ aim: () => aim });
   begin(t, 'paper');
   t.game.update(DT, null, false, true);
@@ -246,15 +270,7 @@ test('the arc follows the shot\'s path to its first contact', () => {
   const { pos, vel } = launch(ITEMS.paper, IN.charge, { position: eye }, aim.direction, V(0, 0, 0));
   const { path, contacts: [hit] } = simulate(makeBody(ITEMS.paper, pos, vel), levelWorld(), { maxTime: 2.5, stop: () => true });
   assert.ok(hit, 'it hits something');
-  const way = [...pos.toArray(), ...path.subarray(0, Math.floor((hit.time / (1 / 240) - 0.5) / 4) * 3), ...hit.pos];
-  const dotsOn = i => V(dots[i], dots[i + 1], dots[i + 2]);
-  let from = 0, after = 0;
-  for (let i = 0; i < dots.length; i += 3) {
-    if (t.game.arc.times[i / 3] < BLEND) continue; // still coming from the hand
-    after++;
-    while (from + 6 <= way.length && segmentGap(dotsOn(i), way, from) > 1e-3) from += 3;
-    assert.ok(from + 6 <= way.length, `dot ${i / 3} is on the path, in order`);
-  }
+  const after = onWay(dots, realWay(ITEMS.paper, { pos, vel }, levelWorld()).way, t.game.arc.times.findIndex(time => time >= BLEND)); // before that, still coming from the hand
   assert.ok(after >= 6, `${after} dots after the blend`);
 
   // The same as what's thrown.
@@ -336,9 +352,11 @@ test('dots are evenly spaced in the world, and a long way gets a wider gap, not 
   const eye = V(0, EYE, 0), wall = Object.assign(new THREE.Box3(V(-9, 0, 5), V(9, 3, 5.2)), { surface: 'wall' }), world = { colliders: [wall], columns: [], ceiling: 50 };
   const thrown = launch(ITEMS.rubber, 1, { position: eye }, V(0, 0.05, 1).normalize(), V(0, 0, 0)), dots = arcPoints(ITEMS.rubber, thrown, world, eye);
   assert.ok(dots.length / 3 >= 12 && dots.length / 3 <= 24, `${dots.length / 3} dots`);
+  const hitZ = 5 - ITEMS.rubber.radius;
   for (let i = 3; i < dots.length; i += 3) {
     const gap = Math.hypot(dots[i] - dots[i - 3], dots[i + 1] - dots[i - 2], dots[i + 2] - dots[i - 1]);
-    assert.ok(Math.abs(gap - 0.3) < 0.01, `gap ${gap} before dot ${i / 3}`);
+    if (Math.max(dots[i + 2], dots[i - 1]) > hitZ - 0.31) assert.ok(gap < 0.31, `gap ${gap} before dot ${i / 3}, round the corner at the hit`);
+    else assert.ok(Math.abs(gap - 0.3) < 0.01, `gap ${gap} before dot ${i / 3}`);
   }
   const open = { colliders: [], columns: [], ceiling: 50 }, far = arcPoints(ITEMS.rubber, launch(ITEMS.rubber, 1, { position: eye }, V(0, 1, 0.1).normalize(), V(0, 0, 0)), open, eye);
   assert.equal(far.length / 3, 24);
@@ -379,7 +397,7 @@ const onSurface = (arc, normal, gapTo) => {
   assert.ok(Math.max(across.max.x - across.min.x, across.max.y - across.min.y) >= 0.08 && across.max.x - across.min.x <= 0.1, 'about 9 cm');
 };
 
-test('a throw at a wall, the floor or something tilted has a ring on what it hits, and no dot past it', () => {
+test('a throw at a wall, the floor or something tilted has a ring on what it hits, and no dot through it', () => {
   const kind = ITEMS.rubber, eye = V(0, EYE, 0), palm = V(-0.3, EYE - 0.3, 0.2);
   const wall = Object.assign(new THREE.Box3(V(-9, 0, 3), V(9, 3, 3.2)), { surface: 'wall' }), walled = { colliders: [wall], columns: [], ceiling: 50 };
   const at = createArc();
@@ -387,15 +405,13 @@ test('a throw at a wall, the floor or something tilted has a ring on what it hit
   onSurface(at, V(0, 0, -1), p => 3 - p.z);
   for (let i = 2; i < at.points.length; i += 3) {
     assert.ok(at.points[i] <= 3 - kind.radius + 1e-3, `dot ${(i - 2) / 3} at ${at.points[i]}`);
-    if (i > 2) assert.ok(at.points[i] > at.points[i - 3], `dot ${(i - 2) / 3} doesn't come back`);
   }
-  assert.ok(at.points.at(-1) > 3 - kind.radius - 0.32, 'and they get there');
+  assert.ok(Math.max(...at.points.filter((_, i) => i % 3 === 2)) > 3 - kind.radius - 0.32, 'and they get there');
 
   const open = { colliders: [], columns: [], ceiling: 50 }, down = createArc();
   down.show(kind, launch(kind, 0.3, { position: eye }, V(0, -0.4, 1).normalize(), V(0, 0, 0)), open, eye, palm);
   onSurface(down, V(0, 1, 0), p => p.y);
   for (let i = 1; i < down.points.length; i += 3) assert.ok(down.points[i] >= kind.low - 1e-3, `dot ${(i - 1) / 3} at ${down.points[i]}`);
-  for (let i = 4; i < down.points.length; i += 3) assert.ok(down.points[i] < down.points[i - 3] + 0.05, 'still falling');
 
   const tilted = new TiltedBox({ centre: [0, 1, 3], half: [2, 2, 0.1], rotation: [-0.5, 0, 0], surface: 'ramp' }), slope = createArc(), face = V(0, 0, -1).applyQuaternion(tilted.quaternion);
   slope.show(kind, launch(kind, 1, { position: eye }, V(0, 0, 1), V(0, 0, 0)), { colliders: [tilted], columns: [], ceiling: 50 }, eye, palm);
@@ -457,10 +473,59 @@ test('a throw that falls short of a far wall ends on the floor, not against the 
   assert.ok(hit.pos[2] < -7.5 && hit.pos[2] > -8.5, `first hit ${hit.pos[2]} m out`);
   onSurface(arc, V(0, 1, 0), p => p.y);
   assert.ok(Math.hypot(arc.ring.position.x - hit.pos[0], arc.ring.position.z - hit.pos[2]) < 1e-6, 'the ring is where it lands');
-  const last = V(...arc.points.slice(-3)), gap = last.distanceTo(V(...arc.points.slice(-6, -3)));
-  assert.ok(last.distanceTo(V(...hit.pos)) <= gap + 1e-3, `the last dot is ${last.distanceTo(V(...hit.pos))} m from it, gaps of ${gap}`);
-  assert.ok(last.y < 0.6, `and low down, ${last.y} m up`);
-  for (let i = 2; i < arc.points.length; i += 3) assert.ok(arc.points[i] >= hit.pos[2] - 1e-3, 'none past it');
+  const at = i => V(...arc.points.subarray(i * 3, i * 3 + 3)), place = V(...hit.pos), count = arc.points.length / 3, gap = at(0).distanceTo(at(1));
+  let closest = Infinity, furthest = -Infinity;
+  for (let i = 0; i < count; i++) { closest = Math.min(closest, at(i).distanceTo(place)); if (at(i).z < place.z) furthest = Math.max(furthest, at(i).distanceTo(place)); }
+  assert.ok(closest <= gap, `the closest dot is ${closest} m from it, gaps of ${gap}`);
+  assert.ok(furthest <= 1.3, `the furthest past it is ${furthest} m`);
+  assert.ok(at(count - 1).y < 0.6, `and low down, ${at(count - 1).y} m up`);
+  assert.ok(at(count - 1).z > -10, 'nowhere near the wall');
+});
+
+test('a throw at a wall shows the dots leaving it the way it really bounces, for a bit over a metre', () => {
+  const kind = ITEMS.rubber, eye = V(0, EYE, 0), wall = Object.assign(new THREE.Box3(V(-9, 0, 3), V(9, 3, 3.2)), { surface: 'wall' }), world = { colliders: [wall], columns: [], ceiling: 50 };
+  const thrown = launch(kind, 1, { position: eye }, V(0.45, 0.05, 1).normalize(), V(0, 0, 0)), { way, hits, left } = realWay(kind, thrown, world);
+  assert.equal(hits[0].surface, 'wall');
+  assert.ok(left.z < -0.5 && left.x > 0.5, `it does bounce: ${left.toArray()}`);
+  const dots = arcPoints(kind, thrown, world, eye);
+  onWay(dots, way);
+  const at = i => V(...dots.subarray(i * 3, i * 3 + 3)), count = dots.length / 3, peak = [...Array(count).keys()].reduce((best, i) => at(i).z > at(best).z ? i : best, 0);
+  const past = [...Array(count).keys()].slice(peak + 1).filter(i => at(i).z < at(i - 1).z);
+  assert.ok(past.length >= 2, `${past.length} dots leave the wall`);
+  const seen = at(past.at(-1)).sub(hits[0].pos);
+  assert.ok(seen.angleTo(left) < rad(8), `they leave at ${seen.angleTo(left) * 180 / Math.PI} degrees from how it really does`);
+  assert.ok(seen.length() >= 0.55 && seen.length() <= 1.3, `the last is ${seen.length()} m from the hit`);
+});
+
+test('the bounce stretch ends at the second contact', () => {
+  // A corner: the wall, then the side wall a hand away.
+  const kind = ITEMS.rubber, eye = V(0, EYE, 0), wall = Object.assign(new THREE.Box3(V(-9, 0, 3), V(9, 3, 3.2)), { surface: 'wall' }), side = Object.assign(new THREE.Box3(V(1.35, 0, -9), V(1.55, 3, 9)), { surface: 'side' });
+  const world = { colliders: [wall, side], columns: [], ceiling: 50 }, thrown = launch(kind, 1, { position: eye }, V(0.4, 0.05, 1).normalize(), V(0, 0, 0)), { way, hits } = realWay(kind, thrown, world, 5);
+  assert.deepEqual(hits.map(h => h.surface), ['wall', 'side']);
+  const dots = arcPoints(kind, thrown, world, eye), gone = hits[0].pos.distanceTo(hits[1].pos);
+  assert.ok(gone > 0.3 && gone < 0.9, `${gone} m between the hits`);
+  onWay(dots, way);
+  for (let i = 0; i < dots.length; i += 3) assert.ok(dots[i] <= 1.35 - kind.radius + 1e-3, 'none through the second wall');
+  assert.ok(dots.at(-1) > hits[0].pos.z - 0.9 && dots.at(-3) > hits[0].pos.x, 'they\'re on their way there');
+});
+
+test('a soft landing shows nothing made up after it', () => {
+  // Under a metre a second it just stops, and rolls: no bounce, so nothing to see.
+  const kind = LOOSE.mug, eye = V(0, 0.6, 0), thrown = { pos: V(0, kind.low + 0.02, 0), vel: V(0, -0.5, 0.4) }, world = { colliders: [], columns: [], ceiling: 50 };
+  const dots = arcPoints(kind, thrown, world, eye), { way, hits } = realWay(kind, thrown, world);
+  assert.equal(hits.length, 2);
+  onWay(dots, way);
+  assert.ok(dots.at(-1) < 0.05, `the last dot's ${dots.at(-1)} m along`);
+});
+
+test('in the kitchen, every dot of every throw is on the real way, never past the stretch', () => {
+  const world = levelWorld();
+  for (const name of ['paper', 'rubber', 'mug']) for (const start of Object.values(STARTS)) for (let yaw = 0; yaw < 360; yaw += 60) for (const [pitch, charge] of [[-0.2, 0.3], [0.1, 1], [0.4, 0.6]]) {
+    const kind = ITEMS[name] ?? LOOSE[name], eye = V(start.x, EYE, start.z), thrown = launch(kind, charge, { position: eye }, look(rad(yaw), pitch), V(0, 0, 0));
+    thrown.pos.copy(stopShort(eye, thrown.pos.clone(), kind, world.colliders));
+    const { way } = realWay(kind, thrown, world);
+    onWay(arcPoints(kind, thrown, world, eye), way);
+  }
 });
 
 test('every throw hits something before the arc stops looking, with no ring missing', () => {
