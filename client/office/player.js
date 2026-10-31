@@ -8,7 +8,7 @@
 // A click on the floor walks there round the furniture: a walking key calls it off, and looking around doesn't.
 // Pinned (`pin`), for a game played from your own eyes, you stay where you are and can still look.
 import * as THREE from 'three';
-import { isTypingTarget } from './status.js';
+import { menuOpen, officeHasKeys, sceneFocused } from '../scene-keys.js';
 
 export const EYE = 1.5;
 export const LOOK_UP = 0.8; // radians: as high as you can look
@@ -22,15 +22,7 @@ const keys = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] };
 const turns = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
-// A dialog or a toolbar menu is open (not the panel's own expanders, which stay open while it's hidden).
-export const menuOpen = () => !!document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open]');
-// Keys belong to the office only when nothing else wants them: no focused input, no open panel, dialog or menu.
-export function officeHasKeys(event) {
-  return !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target) && !isTypingTarget(document.activeElement)
-    && !document.body.classList.contains('panel-open') && !menuOpen();
-}
-// Nothing focused but the scene: on a button or link, Tab and Space keep their usual meaning.
-export const sceneFocused = canvas => [document.body, canvas, null].includes(document.activeElement);
+export { menuOpen, officeHasKeys, sceneFocused };
 // What a key does in a game. Seated, the arrows walk you out too and E clicks for as long as it's held. In a free game the arrows
 // still look, and a key held from before does nothing.
 export const gameKey = ({ key, code, repeat }, { free, holding }) => {

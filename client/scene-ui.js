@@ -9,6 +9,7 @@ function placeNear(container, node, at) {
   node.style.transform = `translate(${Math.max(8, left).toFixed(0)}px, ${Math.max(8, top).toFixed(0)}px)`;
 }
 
+// What the list shows and the scene doesn't: branch, plan steps, permission mode, context, how long in this state.
 export function createCard(container) {
   const card = document.createElement('div'); card.className = 'office-card'; card.hidden = true; card.setAttribute('aria-hidden', 'true'); container.append(card);
   const line = (className, ...parts) => { const div = document.createElement('div'); div.className = className; div.append(...parts.filter(part => part || part === 0)); return div; };
