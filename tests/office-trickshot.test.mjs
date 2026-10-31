@@ -8,7 +8,7 @@ import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
 import { EYE, Player } from '../client/office/player.js';
 import { WALL_H } from '../client/office/furniture.js';
 import { BALLS, LOOSE } from '../client/office/props.js';
-import { ITEMS, MONDAY, STARTS } from '../client/office/levels.js';
+import { ITEMS, MONDAY, PAIRS, STARTS } from '../client/office/levels.js';
 import { loadProgress } from '../client/office/progress.js';
 import { FLIGHT, SLOW, inZone } from '../client/office/shot.js';
 
@@ -929,6 +929,55 @@ test('after a daily shot its line can be copied: the Copy button shows, and C co
   assert.equal(scores.at(-1), false);
   assert.equal(t.game.key('KeyC', true), false);
   assert.equal(lines.length, 1);
+});
+
+test('the bar shows the goal from the start, its lines struck as they\'re done, and the verdict beside it', () => {
+  const said = [], t = setup({ score: (goal, verdict, copy) => said.push({ goal, verdict, copy }) });
+  begin(t, 'paper');
+  const first = said.at(-1), { trick, set } = MONDAY.find(e => e.id === 'paper');
+  assert.deepEqual(first.goal.map(g => g.done), [false, false, false]); assert.equal(first.verdict, null);
+  assert.match(first.goal[0].text, /^Paper ball → sink$/); assert.ok(trick.name.endsWith(first.goal[1].text)); assert.equal(first.goal[2].text, new Intl.NumberFormat('en-US').format(set));
+  throwIt(t, IN);
+  assert.ok(said.at(-1).goal.length === 3 && said.at(-1).verdict === null, 'in flight, still the goal');
+  play(t);
+  const done = said.at(-1); assert.equal(done.verdict, t.game.score); assert.ok(done.verdict); assert.equal(done.goal[0].done, true, 'put away: struck at once'); assert.equal(done.goal[0].text, first.goal[0].text);
+  for (let i = 0; i < 66; i++) t.game.update(DT, null, false, true);
+  assert.equal(said.at(-1).verdict, done.verdict, 'beside the goal once it\'s back in hand');
+  throwIt(t, SKIDS);
+  assert.equal(said.at(-1).verdict, null); assert.equal(said.at(-1).goal[0].done, true, 'struck stays struck');
+  t.game.leave();
+  assert.equal(said.at(-1).goal, null, 'gone with the level');
+});
+
+const MARKER_SIGHT = { radius: 0.01, low: 0.01 };
+test('a marker hangs over the target, seen from the mark, for every shot there is', () => {
+  const t = setup(), { colliders } = levelWorld();
+  assert.equal(t.game.marker.visible, false, 'not till a level\'s on');
+  const shots = [...MONDAY, ...Object.entries(PAIRS).flatMap(([item, pairs]) => pairs.map(([start, target]) => ({ item, start, target })))];
+  for (const shot of shots) {
+    t.game.start(shot); t.game.enter(); t.game.update(DT, null, false, true);
+    const { marker } = t.game, zone = ZONES[shot.target], p = marker.position.clone(), { x, z } = STARTS[shot.start], eye = V(x, EYE, z);
+    assert.equal(marker.visible, true);
+    assert.ok(Math.abs(p.x - zone.centre.x) < 1e-9 && Math.abs(p.z - zone.centre.z) < 1e-9 && p.y > zone.centre.y + zone.half.y, `${shot.target}: over it`);
+    assert.ok(stopShort(eye, p.clone(), MARKER_SIGHT, colliders).distanceTo(p) < 1e-6, `${shot.item} from ${shot.start}: seen over ${shot.target}`);
+    assert.equal(marker.parent, t.group); let deaf = true; marker.traverse(n => { const hits = []; n.raycast(new THREE.Raycaster(eye, p.clone().sub(eye).normalize()), hits); deaf &&= !hits.length; }); assert.ok(deaf, 'clicks go through');
+    t.game.leave(); assert.equal(marker.visible, false);
+  }
+});
+
+test('the marker bobs gently, keeps still under reduced motion, and isn\'t drawn while a shot\'s camera is on', () => {
+  const t = setup(); begin(t, 'paper');
+  const ys = []; for (let i = 0; i < 200; i++) { t.game.update(DT, null, false, true); ys.push(t.game.marker.position.y); }
+  const spread = Math.max(...ys) - Math.min(...ys); assert.ok(spread > 0.02 && spread < 0.08, `bobs ${spread}`);
+  throwIt(t, IN); t.game.update(DT, null, false, true);
+  assert.equal(t.game.marker.visible, false, 'the shot\'s camera has the view');
+  play(t); t.game.update(DT, null, false, true); assert.equal(t.game.marker.visible, false, 'holding on where it landed');
+  for (let i = 0; i < 66; i++) t.game.update(DT, null, false, true);
+  assert.equal(t.game.marker.visible, true, 'back with your eyes');
+  const calm = setup({ reduced: true }); begin(calm, 'paper'); calm.game.update(DT, null, true, true);
+  const y = calm.game.marker.position.y; for (let i = 0; i < 100; i++) calm.game.update(DT, null, true, true);
+  assert.equal(calm.game.marker.position.y, y); assert.equal(calm.game.marker.visible, true);
+  throwIt(calm, IN); calm.game.update(DT, null, true, true); assert.equal(calm.game.marker.visible, true, 'no camera comes into it');
 });
 
 test('progress changing is counted, for the boards to notice', () => {

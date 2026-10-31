@@ -135,8 +135,14 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
       const { x, y } = gaugeAt(gaugeX - box.left, gaugeY - box.top, box.width, box.height, finger);
       meter.style.transform = `translate(${x}px, ${y}px)`;
     },
-    // A shot's target (`done` false) or how it went; null hides it.
-    setScore(text, done, canCopy) { score.hidden = text == null; score.textContent = text ?? ''; score.classList.toggle('done', !!done); copy.hidden = !canCopy; },
+    // What a shot asks (goalOf's list, a ticked line struck through) and, beside it, how it went; a null goal hides it.
+    setScore(goal, verdict, canCopy) {
+      score.hidden = !goal; score.replaceChildren(); copy.hidden = !canCopy;
+      if (!goal) return;
+      const asks = score.appendChild(document.createElement('span'));
+      goal.forEach(({ text, done }, i) => { if (i) asks.append(' · '); asks.appendChild(document.createElement(done ? 's' : 'span')).textContent = text; });
+      if (verdict) { const said = score.appendChild(document.createElement('b')); said.textContent = verdict; }
+    },
     showCopy(text) { field.value = text; line.hidden = false; field.focus(); field.select(); },
     showCopied() { copied.hidden = false; clearTimeout(copiedFor); copiedFor = setTimeout(() => { copied.hidden = true; }, 1200); },
     get copying() { return !line.hidden; },

@@ -3,9 +3,9 @@
 // Each is a canvas texture redrawn only when what it shows changes. And the kitchen's: Trickshot's clipboard and score board.
 import * as THREE from 'three';
 import { usageWindowView } from '../usage-presentation.js';
-import { bestText, challenges, dayKey, num, randomShot } from './daily.js';
+import { PLACES, bestText, capital, challenges, dayKey, itemName, num, randomShot } from './daily.js';
 import { SPOTS } from './kitchen-plan.js';
-import { ITEMS, MONDAY } from './levels.js';
+import { MONDAY } from './levels.js';
 import { dims } from './lights.js';
 
 const MARKER = "'Comic Neue', 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive";
@@ -143,10 +143,6 @@ function drawWaiting({ g, width: w, height: h }, titles) {
     g.restore();
   });
 }
-
-// Trickshot's words. A start or a target as the clipboard has it.
-const PLACES = { doors: 'doors', island: 'island', farTable: 'far table', fridge: 'fridge', vending: 'vending', stove: 'stove', sink: 'sink', bucket: 'bucket', bin: 'bin', basket: 'basket', shelf: 'shelf', tableMug: 'mug' };
-const capital = text => text[0].toUpperCase() + text.slice(1), itemName = item => capital(ITEMS[item].name);
 
 // Monday's page: each item, and under it its three lines. All three done, the item's crossed off too.
 export const clipboardLines = progress => MONDAY.flatMap(({ id, item, trick, set }) => {

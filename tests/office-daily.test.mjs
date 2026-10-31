@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ITEMS, PAIRS } from '../client/office/levels.js';
-import { dayKey, challenges, randomShot, copyLine } from '../client/office/daily.js';
+import { ITEMS, MONDAY, PAIRS } from '../client/office/levels.js';
+import { dayKey, challenges, randomShot, copyLine, goalOf } from '../client/office/daily.js';
 import { loadProgress, saveProgress, recordLevel, recordDaily } from '../client/office/progress.js';
 
 const store = (init) => { const m = new Map(init ? [['aiControl.trickshot', init]] : []); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
@@ -122,3 +122,17 @@ test('a bad score, slot or day cannot wipe the save', () => {
 });
 
 test('big scores group after rounding', () => assert.equal(copyLine('2026-10-30', [12400.5, 999.6, 0]), 'Trickshot 30 Oct: 12,401 / 1,000 / miss'));
+
+test('a shot\'s goal: the item, where it goes and what else the level asks, ticked lines marked', () => {
+  const none = { lines: {}, best: {}, daily: {} }, rubber = MONDAY.find(e => e.id === 'rubber'), text = goal => goal.map(g => g.text).join(' · ');
+  assert.equal(text(goalOf(rubber, none)), 'Rubber ball → bucket · off the banner · 300');
+  assert.deepEqual(goalOf(rubber, { ...none, lines: { rubber: { away: true, trick: false, score: true } } }).map(g => g.done), [true, false, true]);
+  assert.equal(text(goalOf(MONDAY.find(e => e.id === 'mug'), none)), 'Mug → shelf · off the fridge · 500');
+  for (const e of MONDAY) { const parts = goalOf(e, none); assert.equal(parts.length, 3); assert.ok(parts.every(p => p.text && !p.done && !p.text.includes(','.repeat(2))), e.id); assert.ok(e.trick.name.endsWith(parts[1].text)); }
+  const random = { item: 'teabag', start: 'stove', target: 'tableMug' };
+  assert.deepEqual(goalOf(random, none), [{ text: 'Tea bag → mug', done: false }], 'a random shot has only where it goes');
+  const daily = { ...random, day: '2026-10-31', index: 1 };
+  assert.equal(text(goalOf(daily, none)), 'Tea bag → mug');
+  assert.equal(text(goalOf(daily, { ...none, daily: { '2026-10-31': [null, 0, null] } })), 'Tea bag → mug', 'no best yet');
+  assert.equal(text(goalOf(daily, { ...none, daily: { '2026-10-31': [null, 1250, null] } })), 'Tea bag → mug · best 1,250');
+});

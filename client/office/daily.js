@@ -28,3 +28,14 @@ export function challenges(key) {
 export const num = n => String(Math.round(n)).replace(/\B(?=(\d{3})+$)/g, ',');
 export const bestText = best => best == null ? '-' : best > 0 ? num(best) : 'miss'; // not played; a score; played, and nothing yet
 export const copyLine = (key, bests) => { const [, m, d] = key.split('-'); return `Trickshot ${+d} ${MONTHS[m - 1]}: ${[0, 1, 2].map(i => bestText(bests[i])).join(' / ')}`; };
+
+// Trickshot's words. A start or a target as the clipboard has it.
+export const PLACES = { doors: 'doors', island: 'island', farTable: 'far table', fridge: 'fridge', vending: 'vending', stove: 'stove', sink: 'sink', bucket: 'bucket', bin: 'bin', basket: 'basket', shelf: 'shelf', tableMug: 'mug' };
+export const capital = text => text[0].toUpperCase() + text.slice(1), itemName = item => capital(ITEMS[item].name);
+// What a shot asks of you, for the bar: where it goes, then a level's trick (its name goes "where, how") and score, or today's best at a daily. `done`: that line's ticked on the clipboard.
+export function goalOf({ id, item, target, trick, set, day, index }, { lines, daily }) {
+  const goal = [{ text: `${itemName(item)} → ${PLACES[target]}`, done: !!lines[id]?.away }];
+  if (trick) goal.push({ text: trick.name.split(', ').at(-1), done: !!lines[id]?.trick }, { text: num(set), done: !!lines[id]?.score });
+  else if (daily[day]?.[index] > 0) goal.push({ text: `best ${num(daily[day][index])}`, done: false });
+  return goal;
+}

@@ -153,7 +153,7 @@ export function mountOffice(container, hooks) {
   const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay });
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
-  const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (text, done, copy) => overlays.setScore(text, done, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => !!reducedMotion?.matches });
+  const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => !!reducedMotion?.matches });
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot));
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));

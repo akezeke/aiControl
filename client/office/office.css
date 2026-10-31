@@ -62,8 +62,10 @@
 .office-charge.full .track, .office-charge.full .fill { stroke-width: 9; }
 .office-charge.full g { transform-origin: 38px 38px; animation: office-charge-pop 200ms ease-out; }
 @keyframes office-charge-pop { 45% { transform: scale(1.18); } }
-.office-score { position: absolute; left: 50%; top: 68px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
-.office-score.done { padding: 8px 18px; background: #1b1a1fe6; color: #ffe14d; font-size: 22px; font-weight: 800; }
+.office-score { position: absolute; left: 50%; top: 68px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 12px; width: max-content; max-width: calc(100% - 24px); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; text-align: center; pointer-events: none; }
+.office-score[hidden] { display: none; }
+.office-score s { opacity: .6; }
+.office-score b { color: #ffe14d; font-size: 22px; font-weight: 800; white-space: nowrap; }
 .office-copied { position: absolute; left: 50%; top: 116px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; pointer-events: none; }
 .office-copyline { position: absolute; left: 50%; top: 116px; z-index: 2001; transform: translateX(-50%); display: flex; gap: 6px; width: min(440px, calc(100% - 32px)); padding: 6px; border: 2.5px solid #1b1a1f; border-radius: 14px; background: #fffdf7; box-shadow: 0 3px 0 #1b1a1f; }
 .office-copyline[hidden] { display: none; }
@@ -75,6 +77,7 @@
 @media (pointer: coarse) { .office-hint { display: none; } }
 /* Quit, Copy, the waiting count and the three buttons don't all fit on a phone in words: Quit is its ✕ there, and its title keeps the words. */
 @media (max-width: 640px) { .office-overlay { gap: 6px; } .office-overlay button { padding: 0 10px; white-space: nowrap; } .office-overlay .office-leave { font-size: 0; } .office-overlay .office-leave::before { content: '✕'; font-size: 16px; } }
+@media (max-width: 640px) { .office-copied, .office-copyline { top: 136px; } }
 @media (max-width: 640px) { .office-bubble { max-width: 200px; padding: 6px 11px; font-size: 14px; } .office-bubble .icon { width: 19px; height: 19px; } }
 @media (prefers-reduced-motion: reduce) { .office-bubble.highlight { animation: none; } .office-dot { transition: none; } .office-charge.full g { animation: none; } .office-charge.full .ink { stroke-width: 11; } .office-charge.full .track, .office-charge.full .fill { stroke-width: 7; } }
 
