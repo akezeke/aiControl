@@ -131,14 +131,23 @@ export function placeBubble(ax, ay, w, h, boxW, boxH, margin = 4) {
 }
 
 // The nearest spot for a sign that touches nothing in `taken`, or where it is if there is none. Only a side of something it would touch can be nearest.
+const TOUCH = 0.5, FARTHEST = 48, OFF_SIDE = 24, OFF_TOP = 48;
 export function clearOf(rect, taken, boxW, boxH, gap = 2) {
   const { x, y, w, h } = rect, solid = taken.filter(a => a.w > 0 && a.h > 0);
-  const hits = (px, py) => solid.some(a => px < a.x + a.w && px + w > a.x && py < a.y + a.h && py + h > a.y);
+  // Two names on the map keep their distance as it pans, so anything that only touches stays as it is: a sub-pixel of overlap would flip with the rounding, every frame.
+  const hits = (px, py) => solid.some(a => px < a.x + a.w - TOUCH && px + w > a.x + TOUCH && py < a.y + a.h - TOUCH && py + h > a.y + TOUCH);
   if (!hits(x, y)) return { x, y };
+  // A name already hanging off the edge may go on hanging there, or the only spot left is across whatever it met, and it jumps.
+  const left = Math.min(0, x), top = Math.min(0, y), right = Math.max(boxW, x + w), bottom = Math.max(boxH, y + h);
   let best = { x, y }, near = Infinity;
   for (const a of solid) for (const [px, py] of [[x, a.y + a.h + gap], [x, a.y - h - gap], [a.x - w - gap, y], [a.x + a.w + gap, y]]) {
     const cost = Math.abs(px - x) + Math.abs(py - y);
-    if (cost < near && px >= 0 && py >= 0 && px + w <= boxW && py + h <= boxH && !hits(px, py)) { best = { x: px, y: py }; near = cost; }
+    if (cost < near && cost <= FARTHEST && px >= left && py >= top && px + w <= right && py + h <= bottom && !hits(px, py)) { best = { x: px, y: py }; near = cost; }
   }
   return best;
+}
+
+// Is a name standing on this anchor wholly off the map? Long ones are centred on it, so they leave later than short ones.
+export function offMap(ax, ay, w, boxW, boxH) {
+  return ax < -OFF_SIDE - w / 2 || ax > boxW + OFF_SIDE + w / 2 || ay < -OFF_TOP || ay > boxH + OFF_SIDE;
 }

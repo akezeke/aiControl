@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutOffice } from '../client/office/layout.js';
 import { cityPlan, screen, LOT } from '../client/city/plan.js';
-import { keyPan, ZOOMS, OVERSCAN, fitCanvas, overscanned, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings, clearOf, stopRatio, baseStep, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf } from '../client/city/view.js';
+import { keyPan, ZOOMS, OVERSCAN, fitCanvas, overscanned, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings, clearOf, offMap, stopRatio, baseStep, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf } from '../client/city/view.js';
 
 test('art pixels are whole device pixels at any DPR', () => {
   for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) for (const step of ZOOMS) {
@@ -174,4 +174,28 @@ test('opposite keys cancel, and so does holding nothing', () => {
 });
 test('a key held before the frame clock starts counts as just pressed', () => {
   assert.deepEqual(keyPan([[0, 1]], -30), keyPan([[0, 1]], 0));
+});
+
+test('a sign hanging off the edge dodges a bubble by the short way, not by jumping across it', () => {
+  const sign = { x: 278, y: 330, w: 124, h: 26 }, bubble = { x: 186, y: 348, w: 132, h: 42 };
+  assert.deepEqual(clearOf(sign, [bubble], 390, 844), { x: 278, y: 320 });
+});
+
+test('names that only touch stay put: a rounding error must not push one away and back', () => {
+  const bubble = { x: 186, y: 348, w: 132, h: 42 };
+  for (const y of [321.6, 322, 322.4]) assert.deepEqual(clearOf({ x: 200, y, w: 124, h: 26 }, [bubble], 390, 844), { x: 200, y });
+});
+
+test('a name stays on the map until all of it has left, however long it is', () => {
+  assert.equal(offMap(-40, 100, 198, 390, 844), false);
+  assert.equal(offMap(-130, 100, 198, 390, 844), true);
+  assert.equal(offMap(430, 100, 198, 390, 844), false);
+  assert.equal(offMap(520, 100, 198, 390, 844), true);
+  assert.equal(offMap(100, -60, 198, 390, 844), true);
+  assert.equal(offMap(100, 900, 198, 390, 844), true);
+});
+
+test('a name never strays far from its project: with the nearest clear spot far off it stays and slides under', () => {
+  const sign = { x: 222, y: 40, w: 124, h: 26 }, bar = { x: 186, y: 8, w: 196, h: 44 }, bubble = { x: 180, y: 54, w: 132, h: 48 };
+  assert.deepEqual(clearOf(sign, [bar, bubble], 390, 844), { x: 222, y: 40 });
 });
