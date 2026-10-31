@@ -52,7 +52,7 @@ const toImage = ({ width, height, rgba }) => {
 const stackIds = new WeakMap(); let stacksSeen = 0;
 const stackId = stack => { if (!stackIds.has(stack)) stackIds.set(stack, ++stacksSeen); return stackIds.get(stack); };
 // What the ground is painted from: anything else in the plan can change without repainting it.
-const groundKey = plan => JSON.stringify([plan.bounds, plan.roads, plan.parcels, plan.parks, plan.hoods.map(hood => [hood.key, hood.x, hood.z, hood.cols, hood.lots.map(lot => lot.sessionId)])]);
+const groundKey = plan => JSON.stringify([plan.plants.map(plant => plant.provider), plan.bounds, plan.roads, plan.parcels, plan.parks, plan.hoods.map(hood => [hood.key, hood.x, hood.z, hood.cols, hood.lots.map(lot => lot.sessionId)])]);
 
 export function mountCity(box, hooks = {}) {
   const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { alpha: false });
@@ -70,7 +70,7 @@ export function mountCity(box, hooks = {}) {
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [];
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
-  let glide = null, coast = null, drawn = [], selectedHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
+  let glide = null, coast = null, drawn = [], selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
   const fit = () => {
@@ -199,6 +199,9 @@ export function mountCity(box, hooks = {}) {
     ctx.drawImage(ground.image, gx - ground.originX, gy - ground.originY);
     const chosen = selectedHood && plan.hoods.find(hood => hood.key === selectedHood), lit = chosen && litHood(chosen);
     if (lit) { ctx.fillStyle = DUSK; ctx.fillRect(0, 0, size.width, size.height); ctx.drawImage(lit.image, gx - lit.originX, gy - lit.originY); }
+    // A pointer on a project's sign shows which ground is its, leaving the rest of the city as it was.
+    const pointedAt = hoveredHood && hoveredHood !== selectedHood && plan.hoods.find(hood => hood.key === hoveredHood), hinted = pointedAt && litHood(pointedAt);
+    if (hinted) ctx.drawImage(hinted.image, gx - hinted.originX, gy - hinted.originY);
     for (const kind of Object.keys(lots)) { const lot = lots[kind] && lotOf(lots[kind]); if (lot) outline(lot, HIGHLIGHT[kind]); }
     const placed = list.filter(({ item }) => !item.over).map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, item, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
     drawn = placed.filter(item => item.opens);
@@ -539,7 +542,7 @@ export function mountCity(box, hooks = {}) {
 
   card = createCard(box);
   menu = createMenu(box, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item, slot), () => { if (lots.asked) { lots.asked = null; wake(); } });
-  labels = createLabels(box, { onSession: talkTo, onHood: selectHood, inTheWay: () => controls.rects() });
+  labels = createLabels(box, { onSession: talkTo, onHood: selectHood, onHoodHover: key => { if (key !== hoveredHood) { hoveredHood = key; dirty = true; wake(); } }, inTheWay: () => controls.rects() });
   const controls = createControls(box, { onFit: () => { if (camera) { clearHood(); fitCity(); } }, onNext: () => talkTo(hooks.nextWaiting?.()?.id), onList: () => hooks.showList?.(), onNew: askAnywhere });
   const listening = [[canvas, 'pointerdown', onDown], [canvas, 'pointermove', onMove], [canvas, 'pointerup', onUp], [canvas, 'pointercancel', onUp], [canvas, 'pointerleave', onLeave], [window, 'keydown', onKey], [window, 'keyup', onKeyUp], [window, 'blur', onBlur], [document, 'click', onClick]];
   for (const [target, type, listener] of listening) target.addEventListener(type, listener);
@@ -555,7 +558,7 @@ export function mountCity(box, hooks = {}) {
       sessions = new Map(snapshot.sessions.map(session => [session.id, session]));
       layout = snapshot.office ? sharedLayout(snapshot.office) : layoutOffice(snapshot.sessions, layout);
       const before = plan, now = performance.now();
-      plan = cityPlan(layout, snapshot.towers, plan, snapshot.providers);
+      plan = cityPlan(layout, snapshot.towers, plan, snapshot.providers, snapshot.sessions);
       const here = new Set(plan.buildings.flatMap(building => [building.id, ...building.subagents.map(kid => kid.id)]));
       // Still fired while it stands: a vacant lot keeps its building a while, and clearing early would bring it back.
       for (const [id, at] of fired) if (!here.has(id) && !sessions.has(id) || now - at > FIRED_MS) fired.delete(id);
@@ -569,6 +572,7 @@ export function mountCity(box, hooks = {}) {
       const key = groundKey(plan);
       if (key !== cellsKey) { cells = groundCells(plan); cellsKey = key; grounds.clear(); litHoods.clear(); dirty = true; }
       if (selectedHood && !plan.hoods.some(hood => hood.key === selectedHood)) selectedHood = null;
+      if (hoveredHood && !plan.hoods.some(hood => hood.key === hoveredHood)) hoveredHood = null;
       // Someone else may have just taken the lot it was asking about.
       if (lots.asked && menu.open && !menu.asking) { const lot = lotOf(lots.asked); if (!lot || lot.sessionId) menu.close(); }
       if (!camera) place();

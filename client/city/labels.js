@@ -14,8 +14,12 @@ function iconOf(emoji) {
   return canvas;
 }
 
+// Drawn on the same pixel grid as the city, so that no font brings its own idea of a plus sign.
+const pixels = path => `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" fill-rule="evenodd" shape-rendering="crispEdges" aria-hidden="true"><path d="${path}"/></svg>`;
+const FOLDER = 'M1 3h6v2h8v9H1zM3 7v5h10V7z';
+
 // Anchors are in the city's screen coordinates: `project` turns them into CSS pixels, so a pan only has to rewrite transforms.
-export function createLabels(box, { onSession, onHood, inTheWay = () => [] }) {
+export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, inTheWay = () => [] }) {
   const layer = document.createElement('div'); layer.className = 'city-labels'; box.append(layer);
   const shown = new Map();
   let project = null, width = 0, height = 0;
@@ -36,7 +40,12 @@ export function createLabels(box, { onSession, onHood, inTheWay = () => [] }) {
       const spot = placeBubble(ax, ay, entry.w, entry.h + TAIL, width, height);
       x = spot.x; y = spot.y;
       if (spot.tail !== entry.tail) { entry.tail = spot.tail; entry.bubble.style.left = `${Math.round(spot.tail)}px`; }
-    } else ({ x, y } = clearOf({ x: ax - entry.w / 2, y: ay - entry.h / 2, w: entry.w, h: entry.h }, taken, width, height));
+    } else {
+      // A sign stands on its project's corner, with its tail on the spot; pushed off by something in the way, a tail would point at nothing.
+      const sign = entry.key.startsWith('s:'), want = { x: ax - entry.w / 2, y: sign ? ay - entry.h - TAIL : ay - entry.h / 2 };
+      ({ x, y } = clearOf({ ...want, w: entry.w, h: entry.h }, taken, width, height));
+      if (sign) entry.node.classList.toggle('adrift', x !== want.x || y !== want.y);
+    }
     x = Math.round(x); y = Math.round(y);
     if (x !== entry.x || y !== entry.y) { entry.x = x; entry.y = y; entry.node.style.transform = `translate(${x}px, ${y}px)`; }
   };
@@ -79,7 +88,12 @@ export function createLabels(box, { onSession, onHood, inTheWay = () => [] }) {
         const entry = shown.get(id) || add(id, 'button', 'city-sign');
         // Back on the scene afterwards, so that Tab moves the cursor this just put on a lot.
         entry.node.onclick = event => { event.currentTarget.blur(); onHood(key); };
-        if (entry.sig !== name) { entry.sig = name; entry.w = null; entry.node.textContent = name; entry.node.title = name; }
+        // Only a mouse: a finger has no hover to end, and its tap selects the project anyway.
+        entry.node.onpointerenter = event => { if (event.pointerType === 'mouse') onHoodHover(key); };
+        entry.node.onpointerleave = () => onHoodHover(null);
+        entry.node.onfocus = () => onHoodHover(key);
+        entry.node.onblur = () => onHoodHover(null);
+        if (entry.sig !== name) { entry.sig = name; entry.w = null; entry.node.innerHTML = pixels(FOLDER); entry.node.append(name); entry.node.title = `Project: ${name}`; entry.node.setAttribute('aria-label', `Project ${name}`); }
         entry.node.classList.toggle('selected', !!selected);
         anchor(entry, ax, ay); settle(entry);
       }
@@ -88,11 +102,12 @@ export function createLabels(box, { onSession, onHood, inTheWay = () => [] }) {
     // tags: [{ key, text, title, high, ax, ay }]
     tags(list) {
       const keep = new Set();
-      for (const { key, text, title, high, ax, ay } of list) {
+      for (const { key, text, title, high, meter, ax, ay } of list) {
         const id = `t:${key}`; keep.add(id);
         const entry = shown.get(id) || add(id, 'div', 'city-tag');
         if (entry.sig !== text) { entry.sig = text; entry.w = null; entry.node.textContent = text; }
-        entry.node.title = title; entry.node.classList.toggle('high', !!high);
+        entry.node.title = title; entry.node.classList.toggle('high', !!high); entry.node.classList.toggle('gauge', meter !== undefined);
+        if (meter !== undefined) entry.node.style.setProperty('--used', `${Math.min(100, Math.max(0, meter))}%`);
         anchor(entry, ax, ay); settle(entry);
       }
       sweep('t:', keep);
@@ -116,8 +131,6 @@ export function createControls(box, { onFit, onNext, onList, onNew }) {
   const bar = document.createElement('div'); bar.className = 'city-controls'; box.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); b.onclick = onclick; bar.append(b); return b; };
   const lost = document.createElement('div'); lost.className = 'city-lost'; lost.textContent = 'Connection lost'; lost.hidden = true; bar.append(lost);
-  // Drawn on the same pixel grid as the city, so that no font brings its own idea of a plus sign.
-  const pixels = path => `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" fill-rule="evenodd" shape-rendering="crispEdges" aria-hidden="true"><path d="${path}"/></svg>`;
   const waiting = button('city-waiting', '', 'Next waiting (N)', () => onNext()); waiting.hidden = true;
   waiting.innerHTML = `${pixels('M7 1h2v2h1v2h1v2h1v2h1v2h1v3H1v-3h1V9h1V7h1V5h1V3h2zM7 5v5h2V5zM7 11v2h2v-2z')}<span></span>`;
   button('', '', 'Fit city (F)', () => onFit()).innerHTML = pixels('M1 1h5v2H3v3H1zM10 1h5v5h-2V3h-3zM1 10h2v3h3v2H1zM13 10h2v5h-5v-2h3z');

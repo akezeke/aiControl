@@ -1,4 +1,5 @@
 // What a building shows for its session, and how it comes and goes. Pure.
+import { usageWindowView } from '../usage-presentation.js';
 import { officeStatus } from '../office/status.js';
 
 export const RISE_MS = 1000, PUFF_MS = 500, STEP_MS = 125;
@@ -13,12 +14,13 @@ export function citySignal(session, { connected = true, now = Date.now() } = {})
   };
 }
 
-// A power plant's sign: whose it is, always, and how much of their limit is gone, once anything has said so.
-export function plantTag(plant, usage = [], low = 80) {
-  const percents = usage.filter(account => account.provider === plant.provider).flatMap(account => (account.windows || []).map(window => window.usedPercent));
-  if (!percents.length) return { text: plant.name, title: plant.name, high: false };
-  const percent = Math.max(...percents), high = percent >= low;
-  return { text: `${plant.name} ${Math.round(percent)}%`, title: `${plant.name} usage${high ? ' near its limit' : ''}`, high };
+// What a plant is for: each agent's fuel. The limit closest to running out, and when it comes back. Limits whose reset has passed are awaiting a refresh, so they say nothing.
+export function plantTag(plant, usage = [], now = Date.now(), low = 80) {
+  if (plant.connected === false) return { text: `${plant.name} offline`, title: `${plant.name} is not connected`, high: false };
+  const limits = usage.filter(account => account.provider === plant.provider).flatMap(account => account.windows || []).map(window => [window, usageWindowView(window, now)]).filter(([, view]) => !view.expired);
+  if (!limits.length) return { text: plant.name, title: plant.name, high: false };
+  const [worst, view] = limits.reduce((a, b) => b[0].usedPercent > a[0].usedPercent ? b : a), percent = worst.usedPercent, high = percent >= low, resets = view.resetShortText === '—' ? '' : `\nresets ${view.resetShortText}`;
+  return { text: `${plant.name} ${Math.round(percent)}%${resets}`, title: [`${plant.name} usage${high ? ' near its limit' : ''}`, ...limits.map(([window, { percentText, resetText }]) => `${window.label} ${percentText} · ${resetText}`)].join('\n'), high, meter: percent };
 }
 
 export class Lifecycle {

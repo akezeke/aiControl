@@ -11,7 +11,7 @@ const CROWN_MIX = (k, c, r) => CROWNS[(k + c * 3 + r * 5) % 10], MASS_MIX = (k, 
 // 5 projects with 3, 5, 3, 5, 3 sessions: 2, 3, 2, 3, 2 columns, 24 lots.
 function fullCity() {
   const sessions = [3, 5, 3, 5, 3].flatMap((n, p) => [...Array(n).keys()].map(i => ({ id: `s${p}-${i}`, project: `p${p}`, cwd: `/p/p${p}`, status: 'working' })));
-  const plan = cityPlan(layoutOffice(sessions, null, 1));
+  const plan = cityPlan(layoutOffice(sessions, null, 1), {}, null, [{ name: 'Claude Code', connected: true }, { name: 'Codex', connected: true }]);
   assert.equal(plan.hoods.reduce((sum, hood) => sum + hood.lots.length, 0), 24);
   return plan;
 }

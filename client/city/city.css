@@ -53,11 +53,20 @@
 .city-labels.near .city-bubble { max-width: 208px; }
 .city-labels.icons .city-bubble:not(.high) :is(.text, .name) { display: none; }
 .city-labels.icons .city-bubble.bare:not(.high) { display: none; }
-.city-sign { padding: 3px 6px; background-color: #484a77; box-shadow: inset 2px 2px 0 #4d65b4, inset -2px -2px 0 #323353; color: #fff; cursor: pointer; z-index: 1; }
-.city-sign:hover { background-color: #4d65b4; box-shadow: inset 2px 2px 0 #4d9be6, inset -2px -2px 0 #484a77; }
-.city-sign.selected { background-color: #fbff86; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #f9c22b; color: #2e222f; }
-.city-tag { padding: 2px 4px; background-color: #2e222f; color: #fbf5ef; z-index: 1; cursor: default; }
+.city-sign { --sign: #484a77; display: flex; align-items: center; gap: 4px; padding: 3px 6px; background-color: var(--sign); box-shadow: inset 2px 2px 0 #4d65b4, inset -2px -2px 0 #323353; color: #fff; cursor: pointer; z-index: 1; }
+.city-sign svg { flex: none; display: block; width: 12px; height: 12px; }
+.city-sign:is(:hover, :focus-visible) { --sign: #4d65b4; box-shadow: inset 2px 2px 0 #4d9be6, inset -2px -2px 0 #484a77; }
+.city-sign.selected { --sign: #fbff86; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #f9c22b; color: #2e222f; }
+/* The same stairs as a bubble's, down onto the project's corner. */
+.city-sign::before, .city-sign::after { content: ''; position: absolute; top: 100%; left: 50%; width: 10px; height: 6px; margin-left: -5px; pointer-events: none; }
+.city-sign::before { background: #2e222f; clip-path: polygon(0 0, 10px 0, 10px 2px, 8px 2px, 8px 4px, 6px 4px, 6px 6px, 4px 6px, 4px 4px, 2px 4px, 2px 2px, 0 2px); }
+.city-sign::after { background: var(--sign); clip-path: polygon(2px 0, 8px 0, 8px 2px, 6px 2px, 6px 4px, 4px 4px, 4px 2px, 2px 2px); }
+.city-sign.adrift::before, .city-sign.adrift::after { display: none; }
+.city-tag { padding: 2px 4px; background-color: #2e222f; color: #fbf5ef; text-align: center; white-space: pre-line; z-index: 1; cursor: default; }
 .city-tag.high { background-color: #f9c22b; color: #2e222f; }
+/* Fuel, in the same blocks as the list's meters: the part that's left is dark, the part that's used is lit. */
+.city-tag.gauge::after { content: ''; display: block; height: 4px; margin-top: 2px; background: linear-gradient(90deg, transparent var(--used), #484a77 0), repeating-linear-gradient(90deg, #4d9be6 0 4px, transparent 4px 5px); }
+.city-tag.gauge.high::after { background: linear-gradient(90deg, transparent var(--used), #f79617 0), repeating-linear-gradient(90deg, #2e222f 0 4px, transparent 4px 5px); }
 
 .office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; padding: 4px; background-color: #fbf5ef; color: #2e222f; }
 .office-menu[hidden] { display: none; }

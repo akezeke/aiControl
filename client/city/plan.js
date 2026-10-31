@@ -21,7 +21,7 @@ export function annexAt(building, i, view) { const [a, b] = turned(SPOTS[i], vie
 const parcel = (seed, x, z, w, d) => ({ kind: KINDS[fnv(seed) % KINDS.length], x, z, w, d, seed });
 
 // `previous` is what this page last drew: while it stays open the columns only grow, so nothing already on screen slides.
-export function cityPlan(layout, towers = {}, previous = null, providers = []) {
+export function cityPlan(layout, towers = {}, previous = null, providers = [], sessions = []) {
   towers ||= {};
   const before = new Map((previous?.hoods || []).map(hood => [hood.key, hood])), desks = [...layout.desks.values()];
   const slotsOf = key => desks.filter(desk => desk.podKey === key).map(desk => desk.slot);
@@ -67,7 +67,9 @@ export function cityPlan(layout, towers = {}, previous = null, providers = []) {
   }
 
   const connected = name => providers.find(provider => provider.name === name)?.connected === true;
-  const plants = [{ provider: 'claude', name: 'Claude Code', x: -PLANT, z: D * .62, connected: connected('Claude Code') }, { provider: 'codex', name: 'Codex', x: W * .62, z: -PLANT, connected: connected('Codex') }];
+  // An agent that isn't set up here has no plant. One that was, or that has sessions in the city, stays when it drops: dark, which is why they are.
+  const plants = [{ provider: 'claude', name: 'Claude Code', x: -PLANT, z: D * .62, connected: connected('Claude Code') }, { provider: 'codex', name: 'Codex', x: W * .62, z: -PLANT, connected: connected('Codex') }]
+    .filter(plant => plant.connected || sessions.some(session => session.provider === plant.provider) || previous?.plants.some(was => was.provider === plant.provider));
   const roads = { xs: [...xs.slice(0, -1).map(x => x - ROAD - WALK), W - ROAD - WALK], zs: Array.from({ length: rows + 1 }, (_, i) => zAt(i) - ROAD - WALK) };
   return { hoods, buildings, roads, parcels, parks, plants, bounds: { w: W, d: D }, widths };
 }

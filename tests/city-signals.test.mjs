@@ -61,11 +61,35 @@ test('a leaving subagent loses a storey each step until nothing is left', () => 
   assert.equal(life.stage('k', 1000 + 30 * STEP_MS, false).storeys, 0);
 });
 
+const NOW = Date.UTC(2026, 9, 31, 12), windowOf = (label, usedPercent, minutes) => ({ label, usedPercent, resetsAt: NOW + minutes * 60_000 });
 test('a power plant always says whose it is, with its usage when there is any', () => {
-  const claude = { provider: 'claude', name: 'Claude' };
-  assert.deepEqual(plantTag(claude, []), { text: 'Claude', title: 'Claude', high: false });
-  assert.deepEqual(plantTag(claude, [{ provider: 'codex', windows: [{ usedPercent: 99 }] }]), { text: 'Claude', title: 'Claude', high: false });
-  assert.deepEqual(plantTag(claude, [{ provider: 'claude', windows: [{ usedPercent: 12.4 }, { usedPercent: 43.2 }] }]), { text: 'Claude 43%', title: 'Claude usage', high: false });
-  assert.deepEqual(plantTag(claude, [{ provider: 'claude', windows: [{ usedPercent: 80 }] }]), { text: 'Claude 80%', title: 'Claude usage near its limit', high: true });
-  assert.deepEqual(plantTag(claude, [{ provider: 'claude' }]), { text: 'Claude', title: 'Claude', high: false });
+  const claude = { provider: 'claude', name: 'Claude' }, tag = windows => plantTag(claude, [{ provider: 'claude', windows }], NOW);
+  assert.deepEqual(plantTag(claude, [], NOW), { text: 'Claude', title: 'Claude', high: false });
+  assert.deepEqual(plantTag(claude, [{ provider: 'codex', windows: [windowOf('5-hour', 99, 60)] }], NOW), { text: 'Claude', title: 'Claude', high: false });
+  assert.deepEqual(plantTag(claude, [{ provider: 'claude' }], NOW), { text: 'Claude', title: 'Claude', high: false });
+  assert.equal(tag([windowOf('5-hour', 12.4, 60), windowOf('Weekly', 43.2, 60 * 48)]).text.split('\n')[0], 'Claude 43%');
+  assert.equal(tag([windowOf('5-hour', 80, 60)]).high, true);
+  assert.equal(tag([windowOf('5-hour', 79, 60)]).high, false);
+});
+const clock = minutes => new Date(NOW + minutes * 60_000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const codex = { provider: 'codex', name: 'Codex', connected: true }, tagOf = windows => plantTag(codex, [{ provider: 'codex', windows }], NOW);
+test('a plant says when the limit nearest to running out comes back', () => {
+  assert.equal(tagOf([windowOf('5-hour', 38, 90), windowOf('Weekly', 21, 60 * 96)]).text, `Codex 38%\nresets ${clock(90)}`);
+  assert.equal(tagOf([windowOf('5-hour', 10, 90), windowOf('Weekly', 47, 60 * 48)]).text, 'Codex 47%\nresets 2d');
+  assert.equal(tagOf([windowOf('Weekly', 47, 60 * 60)]).text, 'Codex 47%\nresets 2d 12h');
+  assert.equal(tagOf([windowOf('Weekly', 47, 120)]).text, `Codex 47%\nresets ${clock(120)}`);
+});
+test('its meter shows that same limit', () => assert.equal(tagOf([windowOf('5-hour', 38, 90), windowOf('Weekly', 21, 600)]).meter, 38));
+test('its tooltip names every limit and when each resets', () => {
+  const { title } = tagOf([windowOf('5-hour', 38, 90), windowOf('Weekly', 21, 60 * 96)]);
+  assert.match(title, /Codex usage/); assert.match(title, /5-hour 38% · Resets in 1h 30m/); assert.match(title, /Weekly 21% · Resets in 4d 0h/);
+});
+test('a limit whose reset has passed no longer counts', () => {
+  const tag = tagOf([windowOf('5-hour', 95, -5), windowOf('Weekly', 21, 600)]);
+  assert.equal(tag.meter, 21); assert.equal(tag.high, false);
+  assert.deepEqual(tagOf([windowOf('5-hour', 95, -5)]), { text: 'Codex', title: 'Codex', high: false });
+});
+test('no reset time, no reset line', () => assert.equal(tagOf([{ label: '5-hour', usedPercent: 38 }]).text, 'Codex 38%'));
+test('a plant whose agent is away says so, whatever its last usage was', () => {
+  assert.deepEqual(plantTag({ ...codex, connected: false }, [{ provider: 'codex', windows: [windowOf('5-hour', 90, 60)] }], NOW), { text: 'Codex offline', title: 'Codex is not connected', high: false });
 });

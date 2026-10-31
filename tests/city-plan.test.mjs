@@ -62,9 +62,23 @@ test('a neighbourhood with no folder asks for one', () => {
   const known = plan([s('a', 'x')]).hoods[0]; assert.deepEqual(spawnTarget(known, known.lots[1]), { cwd: '/p/x', slot: known.lots[1].slot });
 });
 test('plants sit outside the grid and show the connection', () => {
-  const p = plan([s('a', 'x')], {}, null, [{ name: 'Claude Code', connected: false }, { name: 'Codex', connected: true }]);
+  const claudeSession = { ...s('a', 'x'), provider: 'claude' };
+  const p = cityPlan(layoutOffice([claudeSession], null, 1), {}, null, [{ name: 'Claude Code', connected: false }, { name: 'Codex', connected: true }], [claudeSession]);
   const claude = p.plants.find(q => q.provider === 'claude'), codex = p.plants.find(q => q.provider === 'codex');
   assert.equal(claude.x, -PLANT); assert.equal(codex.z, -PLANT); assert.equal(claude.connected, false); assert.equal(codex.connected, true);
+});
+const plantsOf = (sessions, providers, previous) => cityPlan(layoutOffice(sessions, null, 1), {}, previous, providers, sessions).plants.map(q => q.provider);
+const both = (claude, codex) => [{ name: 'Claude Code', connected: claude }, { name: 'Codex', connected: codex }];
+test('an agent that was never connected and has no sessions gets no plant', () => assert.deepEqual(plantsOf([s('a', 'x')], both(true, false)), ['claude']));
+test('nothing connected, nothing built', () => assert.deepEqual(plantsOf([], both(false, false)), []));
+test('an agent with sessions keeps its plant while it is away, so its buildings have a reason to be dark', () => {
+  const p = cityPlan(layoutOffice([{ ...s('a', 'x'), provider: 'codex' }], null, 1), {}, null, both(false, false), [{ ...s('a', 'x'), provider: 'codex' }]);
+  assert.deepEqual(p.plants.map(q => [q.provider, q.connected]), [['codex', false]]);
+});
+test('a plant that was there stays when its agent drops, dark', () => {
+  const before = cityPlan(layoutOffice([s('a', 'x')], null, 1), {}, null, both(true, true), [s('a', 'x')]);
+  const after = cityPlan(layoutOffice([s('a', 'x')], null, 1), {}, before, both(true, false), [s('a', 'x')]);
+  assert.deepEqual(after.plants.map(q => [q.provider, q.connected]), [['claude', true], ['codex', false]]);
 });
 test('the painted ground is all palette, in every view', () => {
   const p = plan([s('a', 'x'), s('b', 'y')]), g = groundCells(p);

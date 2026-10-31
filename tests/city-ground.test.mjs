@@ -8,7 +8,7 @@ import { hex } from '../client/city/palette.js';
 
 const sessions = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
 const layout = { pods: [{ key: 'a', name: 'alpha', cwd: '/a', col: 0, row: 0 }, { key: 'b', name: 'beta', cwd: '/b', col: 1, row: 0 }], desks: new Map(sessions.map((id, i) => [id, { podKey: 'a', slot: i, sessionId: id }])), grid: { cols: 2 } };
-const plan = cityPlan(layout), cells = groundCells(plan);
+const plan = cityPlan(layout, {}, null, [{ name: 'Claude Code', connected: true }, { name: 'Codex', connected: true }]), cells = groundCells(plan);
 const at = (x, z) => { const i = (x - cells.x0 + (z - cells.z0) * cells.w) * 3; return [...cells.rgb.slice(i, i + 3)]; };
 const coloursOf = (lot, half = LOT / 2 - PLOT) => { const seen = new Map(); for (let z = -half; z < half; z++) for (let x = -half; x < half; x++) { const c = at(lot.x + x, lot.z + z).join(); seen.set(c, (seen.get(c) || 0) + 1); } return seen; };
 const taken = plan.hoods[0].lots.filter(lot => lot.sessionId), empty = plan.hoods[1].lots[0];
