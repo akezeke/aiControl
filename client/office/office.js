@@ -100,11 +100,11 @@ export function mountOffice(container, hooks) {
   const thrower = () => playing?.free ? playing : props;
   const canCharge = () => (!playing || playing.free) && thrower().holding && !view.overview && !menu.open;
   const startCharge = () => { if (!canCharge()) return false; charge.press(clock()); return true; };
-  const callOff = () => { keyed = false; if (!charge.active) return false; charge.cancel(); thrower().abort(); return true; };
+  const callOff = () => { keyed = false; if (!charge.active) return false; charge.cancel(); overlays.setCharge(null); thrower().abort(); return true; };
   const letGo = at => {
     if (!canCharge() || !officeHasKeys(noEvent)) { callOff(); return; }
     const level = charge.release(clock()); keyed = false; if (level === null) return;
-    thrower().release(level, rayAt(at, renderer.domElement, camera));
+    overlays.setCharge(null); thrower().release(level, rayAt(at, renderer.domElement, camera));
   };
   // Where a throw would go if let go now: E throws at the dot, a finger at its mark. And a level's item, with something else in hand,
   // is a click: that's dropped when the level starts.
@@ -266,7 +266,7 @@ export function mountOffice(container, hooks) {
     overlays.setMark(charge.active ? player.aimAt : null);
     if (charge.active) {
       if (!canCharge() || !officeHasKeys(noEvent)) callOff();
-      else if (!reducedMotion?.matches) hand.pull(charge.level(clock()));
+      else { const level = charge.level(clock()); overlays.setCharge(level, throwAt(), !!player.aimAt); if (!reducedMotion?.matches) hand.pull(level); }
     }
     // Whatever took the mouse is done with it.
     const now = free(); if (now && !wasFree) player.resume(); wasFree = now;

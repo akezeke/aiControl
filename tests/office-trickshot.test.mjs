@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTrickshot } from '../client/office/trickshot.js';
-import { BLEND, arcPoints, blendLeft, createArc, drawnAt, launch } from '../client/office/throwing.js';
+import { BLEND, GAUGE_SIZE, arcPoints, blendLeft, createArc, drawnAt, gaugeAt, gaugeColour, launch } from '../client/office/throwing.js';
 import { TiltedBox, makeBody, simulate, stepBody, stopShort } from '../client/office/flight.js';
 import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
 import { EYE, Player } from '../client/office/player.js';
@@ -841,4 +841,27 @@ test('progress changing is counted, for the boards to notice', () => {
   throwIt(t, IN); play(t);
   assert.equal(t.game.saved, before + 1, 'a random shot keeps no score, so nothing to redraw');
   assert.deepEqual(t.game.progress.daily, {});
+});
+
+test('the power gauge goes from calm to hot', () => {
+  const rgb = level => { const m = gaugeColour(level).match(/\d+/g).map(Number); assert.equal(m.length, 3, gaugeColour(level)); return m; };
+  const [r0, , b0] = rgb(0), [r1, g1, b1] = rgb(1);
+  assert.ok(b0 > r0, `cool at the start: ${rgb(0)}`);
+  assert.ok(r1 > 220 && b1 < 80 && g1 < 110, `hot when full: ${rgb(1)}`);
+  for (let i = 1; i <= 20; i++) assert.ok(rgb(i / 20)[0] >= rgb((i - 1) / 20)[0], 'it only gets redder');
+  assert.equal(gaugeColour(-1), gaugeColour(0)); assert.equal(gaugeColour(2), gaugeColour(1));
+});
+
+test('the power gauge sits at the aim, clear of a finger, and always on screen', () => {
+  assert.deepEqual(gaugeAt(500, 325, 1000, 650, false), { x: 500, y: 325 }, 'round the dot or the pointer');
+  const out = GAUGE_SIZE / 2, inside = ({ x, y }, w, h, why) => assert.ok(x >= out && x <= w - out && y >= out && y <= h - out, `${why}: ${x}, ${y}`);
+  inside(gaugeAt(3, 2, 1000, 650, false), 1000, 650, 'a pointer in the corner');
+  inside(gaugeAt(998, 648, 1000, 650, false), 1000, 650, 'and the far one');
+  // A finger's pad is about 25 px round its point and comes from below: the gauge is never over that or below it.
+  for (const [w, h] of [[390, 780], [780, 390]]) for (let x = 0; x <= w; x += 13) for (let y = 0; y <= h; y += 13) {
+    const at = gaugeAt(x, y, w, h, true);
+    inside(at, w, h, `a finger at ${x}, ${y}`);
+    assert.ok(Math.hypot(at.x - x, at.y - y) >= out + 25, `over the finger at ${x}, ${y}: ${at.x}, ${at.y}`);
+    if (y > 120) assert.ok(at.y < y, `above a finger at ${x}, ${y}: ${at.y}`);
+  }
 });

@@ -125,6 +125,21 @@ export function createCharge() {
   };
 }
 
+// The power gauge's colour at a charge, 0 to 1: calm, then warm, then hot.
+const HEAT = [[0.18, 0.72, 0.8], [1, 0.76, 0.2], [1, 0.2, 0.1]], MIDDLE = 0.55;
+export function gaugeColour(level) {
+  const u = THREE.MathUtils.clamp(level, 0, 1), side = u < MIDDLE ? 0 : 1, t = side ? (u - MIDDLE) / (1 - MIDDLE) : u / MIDDLE;
+  return `rgb(${HEAT[side].map((c, i) => Math.round((c + (HEAT[side + 1][i] - c) * t) * 255)).join(',')})`;
+}
+// Where its middle goes, in the container: round where the throw aims. A finger would cover it, so above that, or beside it near the top.
+export const GAUGE_SIZE = 76;
+const CLEAR_FINGER = 76;
+export function gaugeAt(x, y, width, height, finger) {
+  const out = GAUGE_SIZE / 2;
+  if (finger) { if (y - CLEAR_FINGER >= out) y -= CLEAR_FINGER; else x += x < width / 2 ? CLEAR_FINGER : -CLEAR_FINGER; }
+  return { x: THREE.MathUtils.clamp(x, out, width - out), y: THREE.MathUtils.clamp(y, out, height - out) };
+}
+
 // The arm and grip, with `fist` where the fist is on the arm: the arm runs off the bottom left, like the mug's (camera.js).
 export function handModel() {
   const arm = new THREE.Group(), grip = new THREE.Group(), ink = toonMaterial('#26252b');

@@ -51,6 +51,17 @@
 .office-dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fffdf7; box-shadow: 0 0 0 1.5px #1b1a1f; pointer-events: none; transition: transform .12s, background .12s; }
 .office-dot.aim { background: #4f7cff; transform: scale(1.7); }
 .office-mark { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; box-sizing: border-box; border-radius: 50%; border: 2px solid #fffdf7; box-shadow: 0 0 0 1.5px #1b1a1f, inset 0 0 0 1.5px #1b1a1f; pointer-events: none; }
+.office-charge { position: absolute; left: -38px; top: -38px; width: 76px; height: 76px; display: none; overflow: visible; fill: none; stroke-linecap: round; pointer-events: none; will-change: transform; }
+.office-charge.shown { display: block; }
+.office-charge path { stroke-width: 7; }
+.office-charge .ink { stroke: #1b1a1f; stroke-width: 11; }
+.office-charge .track { stroke: #fffdf7; }
+.office-charge .shine { display: none; stroke: #ffe9a8; stroke-width: 2; }
+.office-charge.full .shine { display: inline; }
+.office-charge.full .ink { stroke-width: 13; }
+.office-charge.full .track, .office-charge.full .fill { stroke-width: 9; }
+.office-charge.full g { transform-origin: 38px 38px; animation: office-charge-pop 200ms ease-out; }
+@keyframes office-charge-pop { 45% { transform: scale(1.18); } }
 .office-score { position: absolute; left: 50%; top: 68px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
 .office-score.done { padding: 8px 18px; background: #1b1a1fe6; color: #ffe14d; font-size: 22px; font-weight: 800; }
 .office-copied { position: absolute; left: 50%; top: 116px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; pointer-events: none; }
@@ -62,8 +73,10 @@
 .office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; width: max-content; max-width: calc(100% - 32px); pointer-events: none; transition: opacity .5s; }
 .office-hint.gone { opacity: 0; }
 @media (pointer: coarse) { .office-hint { display: none; } }
+/* Quit, Copy, the waiting count and the three buttons don't all fit on a phone in words: Quit is its ✕ there, and its title keeps the words. */
+@media (max-width: 640px) { .office-overlay { gap: 6px; } .office-overlay button { padding: 0 10px; white-space: nowrap; } .office-overlay .office-leave { font-size: 0; } .office-overlay .office-leave::before { content: '✕'; font-size: 16px; } }
 @media (max-width: 640px) { .office-bubble { max-width: 200px; padding: 6px 11px; font-size: 14px; } .office-bubble .icon { width: 19px; height: 19px; } }
-@media (prefers-reduced-motion: reduce) { .office-bubble.highlight { animation: none; } .office-dot { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .office-bubble.highlight { animation: none; } .office-dot { transition: none; } .office-charge.full g { animation: none; } .office-charge.full .ink { stroke-width: 11; } .office-charge.full .track, .office-charge.full .fill { stroke-width: 7; } }
 
 /* Talking: a narrower panel and no dimming, so the character stays in view beside it. */
 @media (min-width: 641px) {
@@ -73,8 +86,6 @@
 body.panel-open .office-hint { display: none; }
 /* It fades in gently as the view settles on whoever you're talking to. */
 @media (prefers-reduced-motion: no-preference) {
-/* Quit, Copy, the waiting count and the three buttons don't all fit on a phone in words: Quit is its ✕ there, and its title keeps the words. */
-@media (max-width: 640px) { .office-overlay { gap: 6px; } .office-overlay button { padding: 0 10px; white-space: nowrap; } .office-overlay .office-leave { font-size: 0; } .office-overlay .office-leave::before { content: '✕'; font-size: 16px; } }
   :root[data-theme-choice=office]:not([data-scene-fallback], [data-scene-list]) .detail-panel { animation: office-panel-in .4s ease; }
 }
 @keyframes office-panel-in { from { opacity: 0; transform: translateX(12px); } }

@@ -2,8 +2,15 @@
 // Plus the few controls that stay on screen: who's waiting, low usage, back to the list, the phone overview button, the aiming dot and the hint,
 // and the card beside whoever is outlined.
 import * as THREE from 'three';
+import { GAUGE_SIZE, gaugeAt, gaugeColour } from './throwing.js';
 
 const hintKey = 'ai-control-office-hint-3';
+
+// The power gauge's arc, going clockwise from the left over the top to the bottom: its opening faces the lower left, where the hand and the dots come from.
+const gaugeArc = () => {
+  const c = GAUGE_SIZE / 2, r = 27;
+  return `M ${c - r} ${c} A ${r} ${r} 0 1 1 ${c} ${c + r}`;
+};
 
 // Emoji sit at different heights in their fonts (on Windows the keyboard sits low and the zzz high), so the icon is
 // drawn on a canvas with the drawing itself centred instead of set as text.
@@ -93,6 +100,9 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   const eye = button('office-eye', '👁', 'Overview (Tab)', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
   const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
   const mark = document.createElement('div'); mark.className = 'office-mark'; mark.hidden = true; container.append(mark);
+  const meter = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); meter.setAttribute('class', 'office-charge'); meter.setAttribute('viewBox', `0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`); meter.setAttribute('aria-hidden', 'true');
+  meter.innerHTML = `<g>${['ink', 'track', 'fill', 'shine'].map(name => `<path class="${name}" d="${gaugeArc()}" pathLength="1"/>`).join('')}</g>`; container.append(meter);
+  const fill = meter.querySelector('.fill');
   const score = document.createElement('div'); score.className = 'office-score'; score.hidden = true; container.append(score);
   const copied = document.createElement('div'); copied.className = 'office-copied'; copied.textContent = 'Copied'; copied.hidden = true; container.append(copied);
   // Where the clipboard can't be written: the line selected, to copy by hand. Esc, its ✕ or a click anywhere else closes it; while it's up the keys are the input's.
@@ -101,7 +111,7 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   const closeLine = () => { if (line.hidden) return false; line.hidden = true; field.blur(); return true; };
   const close = line.appendChild(document.createElement('button')); close.type = 'button'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.setAttribute('aria-label', 'Close'); close.onclick = closeLine;
   line.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); closeLine(); } });
-  let marked = null, copiedFor = 0;
+  let marked = null, copiedFor = 0, charged = null, box = null, gaugeX = null, gaugeY = null;
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
   const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · E grab · F pour · Tab overview'; hint.hidden = seen; container.append(hint);
   return {
@@ -113,6 +123,18 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     setAim(on) { dot.classList.toggle('aim', on); },
     // Where a finger's throw will go, its screen point; null hides it. Once a frame, and nothing unless it changed.
     setMark(at) { if (at === marked) return; marked = at; mark.hidden = !at; if (at) { const r = container.getBoundingClientRect(); mark.style.left = `${at.clientX - r.left}px`; mark.style.top = `${at.clientY - r.top}px`; } },
+    // How far a throw's charged, 0 to 1, and the screen point it aims at; null hides it. Once a frame while it's up: it only writes
+    // when the level or the point moved, and only reads the container's place when it comes up.
+    setCharge(level, at, finger) {
+      if (level === null) { if (charged !== null) { charged = gaugeX = gaugeY = null; meter.classList.remove('shown', 'full'); } return; }
+      if (charged === null) { box = container.getBoundingClientRect(); meter.classList.add('shown'); }
+      const step = Math.round(level * 100);
+      if (step !== charged) { charged = step; fill.setAttribute('stroke-dasharray', `${step / 100} 2`); fill.style.stroke = gaugeColour(step / 100); meter.classList.toggle('full', step === 100); }
+      if (at.clientX === gaugeX && at.clientY === gaugeY) return;
+      gaugeX = at.clientX; gaugeY = at.clientY;
+      const { x, y } = gaugeAt(gaugeX - box.left, gaugeY - box.top, box.width, box.height, finger);
+      meter.style.transform = `translate(${x}px, ${y}px)`;
+    },
     // A shot's target (`done` false) or how it went; null hides it.
     setScore(text, done, canCopy) { score.hidden = text == null; score.textContent = text ?? ''; score.classList.toggle('done', !!done); copy.hidden = !canCopy; },
     showCopy(text) { field.value = text; line.hidden = false; field.focus(); field.select(); },
@@ -122,6 +144,6 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     closeCopy(target) { return !line.contains(target) && closeLine(); },
     // The hint goes once you've used the overview.
     overviewUsed() { if (hint.hidden) return; hint.classList.add('gone'); setTimeout(() => { hint.hidden = true; }, 600); try { localStorage.setItem(hintKey, '1'); } catch { /* per tab only */ } },
-    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); mark.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
+    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); mark.remove(); meter.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
   };
 }
