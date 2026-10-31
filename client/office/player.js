@@ -31,11 +31,19 @@ export function officeHasKeys(event) {
 }
 // Nothing focused but the scene: on a button or link, Tab and Space keep their usual meaning.
 export const sceneFocused = canvas => [document.body, canvas, null].includes(document.activeElement);
+// What a key does in a game. Seated, the arrows walk you out too and E clicks for as long as it's held. In a free game the arrows
+// still look, and a key held from before does nothing.
+export const gameKey = ({ key, code, repeat }, { free, holding }) => {
+  if (key === 'Escape') return 'leave';
+  if (code === 'KeyE') return !free ? 'click' : repeat ? null : holding ? 'charge' : 'click';
+  if (code.startsWith('Arrow')) return free ? 'look' : 'leave';
+  return /^(Key[WASD]|Space)$/.test(code) && !(free && repeat) ? 'leave' : null;
+};
 
 export class Player {
-  constructor(canvas, { colliders, room, onPick, onPress = () => false, onRelease = () => {}, onCancel = () => false, onLetGo = () => {}, route }) {
+  constructor(canvas, { colliders, room, onPick, onPress = () => false, onRelease = () => {}, onCancel = () => false, onLetGo = () => {}, lookHeld = () => false, route }) {
     this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08; this.spin = 0;
-    this.colliders = colliders; this.room = room; this.onPick = onPick; this.onPress = onPress; this.onRelease = onRelease; this.onCancel = onCancel; this.onLetGo = onLetGo; this.route = route; this.held = new Set(); this.target = null;
+    this.colliders = colliders; this.room = room; this.onPick = onPick; this.onPress = onPress; this.onRelease = onRelease; this.onCancel = onCancel; this.onLetGo = onLetGo; this.lookHeld = lookHeld; this.route = route; this.held = new Set(); this.target = null;
     this.locked = this.wanted = this.releasing = this.asking = false; this.overview = this.pinned = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null; this.aimAt = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
     this.disposers = [];
@@ -60,7 +68,7 @@ export class Player {
       if (lost) setTimeout(() => { if (document.hasFocus() && !document.hidden) { this.wanted = false; this.onLetGo(); } }, 100);
     });
     listen(document, 'pointerlockerror', () => { this.asking = false; });
-    const look = (x, y, speed) => { this.yaw -= x * speed; this.pitch = THREE.MathUtils.clamp(this.pitch - y * speed, -1.1, LOOK_UP); if (this.target) this.target.looked += (Math.abs(x) + Math.abs(y)) * speed; };
+    const look = (x, y, speed) => { if (this.lookHeld()) return; this.yaw -= x * speed; this.pitch = THREE.MathUtils.clamp(this.pitch - y * speed, -1.1, LOOK_UP); if (this.target) this.target.looked += (Math.abs(x) + Math.abs(y)) * speed; };
     // Captured: every move looks, a left click picks under the dot, a right click lets go.
     // Otherwise a drag looks around and a press that barely moves is a click on what's under it; a second finger makes it neither.
     listen(canvas, 'contextmenu', event => event.preventDefault());
@@ -154,12 +162,13 @@ export class Player {
 
   update(dt) {
     this.running = false;
+    if (this.lookHeld()) this.spin = 0;
     if (this.spin) { this.yaw += this.spin * dt; this.spin *= Math.exp(-dt / FLING); if (Math.abs(this.spin) < 0.05) this.spin = 0; }
     if (this.flight) { this.fly(dt); return; }
     if (this.rise || this.height) { this.rise -= GRAVITY * dt; this.height = Math.max(0, this.height + this.rise * dt); if (!this.height) this.rise = 0; this.position.y = EYE + this.height; }
     const speed = SPEED * (this.shift ? RUN : 1), move = new THREE.Vector3();
     for (const code of this.held) {
-      if (turns[code]) { const [yaw, pitch] = turns[code]; this.yaw += yaw * TURN * dt; this.pitch = THREE.MathUtils.clamp(this.pitch + pitch * TILT * dt, -1.1, LOOK_UP); if (this.target) this.target.looked += TURN * dt; }
+      if (turns[code]) { if (this.lookHeld()) continue; const [yaw, pitch] = turns[code]; this.yaw += yaw * TURN * dt; this.pitch = THREE.MathUtils.clamp(this.pitch + pitch * TILT * dt, -1.1, LOOK_UP); if (this.target) this.target.looked += TURN * dt; }
       else if (!this.pinned) { const [x, z] = keys[code]; move.x += x; move.z += z; this.target = null; } // also a walk begun with this key already down
     }
     if (move.lengthSq()) {

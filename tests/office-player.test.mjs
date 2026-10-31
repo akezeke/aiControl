@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { Player, EYE, free, resolveStep, standNear } from '../client/office/player.js';
+import { Player, EYE, free, gameKey, resolveStep, standNear } from '../client/office/player.js';
 import { walkGrid, findPath } from '../client/office/path.js';
 
 const box = (x1, z1, x2, z2) => new THREE.Box3(new THREE.Vector3(x1, 0, z1), new THREE.Vector3(x2, 1, z2));
@@ -34,13 +34,13 @@ test('nowhere to stand: null', () => {
 });
 
 // A Player without a browser: its listeners are kept so a test can press keys and move the mouse.
-function walker(t, colliders, { route = (from, to) => findPath(walkGrid(colliders, room), from, to) } = {}) {
+function walker(t, colliders, { route = (from, to) => findPath(walkGrid(colliders, room), from, to), lookHeld } = {}) {
   const was = { document: globalThis.document, window: globalThis.window }, handlers = {};
   const target = { addEventListener: (type, fn) => { handlers[type] = fn; }, removeEventListener() {} };
   globalThis.document = { ...target, body: { classList: { contains: () => false } }, querySelector: () => null, activeElement: null };
   globalThis.window = target;
   t.after(() => Object.assign(globalThis, was));
-  const player = new Player({ ...target, setPointerCapture() {} }, { colliders: () => colliders, room: () => room, onPick() {}, route });
+  const player = new Player({ ...target, setPointerCapture() {} }, { colliders: () => colliders, room: () => room, onPick() {}, route, lookHeld });
   player.place(5, 2, 0);
   const press = code => handlers.keydown({ code, target: null, preventDefault() {} });
   const run = (seconds, each) => { for (let i = 0; i < seconds * 60; i++) { player.update(1 / 60); each?.(); } };
@@ -134,6 +134,43 @@ test('untouched, the view turns to face the way it walks; a twitch of the mouse 
 });
 
 const circle = { width: 16, depth: 16, inside: ({ x, z }) => Math.hypot(x - 8, z - 8) <= 6.6 };
+test('while the look is held nothing turns the view, and you come back to the same aim', t => {
+  let held = false;
+  const { player, press, handlers, run } = walker(t, [], { lookHeld: () => held });
+  player.yaw = 1; player.pitch = 0.2; player.locked = true;
+  held = true;
+  handlers.pointermove({ movementX: 200, movementY: 40, pointerId: 1 });
+  press('ArrowLeft'); press('ArrowUp'); player.spin = 3;
+  run(0.5);
+  assert.equal(player.yaw, 1); assert.equal(player.pitch, 0.2); assert.equal(player.spin, 0);
+  held = false;
+  run(0.1);
+  assert.ok(player.yaw > 1, 'an arrow still down turns again');
+  const { yaw } = player;
+  handlers.pointermove({ movementX: 200, movementY: 0, pointerId: 1 });
+  assert.notEqual(player.yaw, yaw, 'and so does the mouse');
+});
+
+test('a key in a game: seated, E clicks while it\'s held and the arrows leave', () => {
+  const seated = { free: false }, key = (code, repeat = false) => ({ key: code === 'Escape' ? 'Escape' : '', code, repeat });
+  for (const repeat of [false, true]) {
+    assert.equal(gameKey(key('KeyE', repeat), seated), 'click');
+    for (const code of ['KeyW', 'KeyD', 'Space', 'ArrowLeft', 'Escape']) assert.equal(gameKey(key(code, repeat), seated), 'leave', code);
+  }
+  assert.equal(gameKey(key('KeyQ'), seated), null);
+});
+test('a key in a free game: a held one doesn\'t leave or throw again, and the arrows look', () => {
+  const free = { free: true, holding: true }, key = (code, repeat = false) => ({ key: code === 'Escape' ? 'Escape' : '', code, repeat });
+  assert.equal(gameKey(key('KeyE'), free), 'charge');
+  assert.equal(gameKey(key('KeyE'), { free: true, holding: false }), 'click');
+  assert.equal(gameKey(key('KeyE', true), free), null);
+  assert.equal(gameKey(key('KeyE', true), { free: true, holding: false }), null);
+  for (const code of ['KeyW', 'KeyS', 'Space']) { assert.equal(gameKey(key(code), free), 'leave', code); assert.equal(gameKey(key(code, true), free), null, code); }
+  for (const repeat of [false, true]) assert.equal(gameKey(key('ArrowUp', repeat), free), 'look');
+  assert.equal(gameKey(key('Escape', true), free), 'leave');
+  assert.equal(gameKey(key('KeyQ'), free), null);
+});
+
 test('a round room stops you at its edge', () => {
   let p = new THREE.Vector3(14.5, 1.5, 8);
   for (let i = 0; i < 20; i++) p = resolveStep(p, new THREE.Vector3(.2, 0, 0), [], circle);

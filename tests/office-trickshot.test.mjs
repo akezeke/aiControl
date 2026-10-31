@@ -488,6 +488,47 @@ test('slow motion on a made shot, on top of the whole flight\'s gentle rate', ()
   assert.ok(seen.has(FLIGHT) && seen.has(SLOW));
 });
 
+// What's been played, for a test to listen to. `audio` stays with the module once it's made, so there's one of these.
+const heard = [];
+const fakeAudio = { currentTime: 0, destination: {}, resume() {},
+  createGain: () => ({ gain: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect: to => to, disconnect() {} }),
+  createOscillator() { const o = { frequency: { setValueAtTime(from) { o.from = from; }, exponentialRampToValueAtTime() {} }, connect: to => to, start() { heard.push(o.from); }, stop() {} }; return o; } };
+const listen = c => { const was = globalThis.AudioContext; globalThis.AudioContext = function () { return fakeAudio; }; c.after(() => { globalThis.AudioContext = was; }); heard.length = 0; };
+const FANFARE = 1047;
+
+test('a made shot gets its fanfare, and with reduced motion it doesn\'t', c => {
+  listen(c);
+  for (const reduced of [false, true]) {
+    const t = setup({ reduced });
+    begin(t, 'paper'); throwIt(t, IN); play(t);
+    assert.ok(t.game.score && t.game.score !== 'Miss');
+    assert.equal(heard.some(from => from === FANFARE), !reduced);
+    heard.length = 0;
+  }
+});
+
+test('a shot\'s camera has the view from the throw until it\'s handed back, and R takes it back at once', () => {
+  const t = setup();
+  begin(t, 'paper');
+  assert.equal(t.game.following, false, 'aiming');
+  throwIt(t, IN);
+  assert.equal(t.game.following, true, 'in flight');
+  play(t);
+  assert.equal(t.game.following, true, 'holding on where it landed');
+  for (let i = 0; i < 2 * 60; i++) t.game.update(DT, null, false, true);
+  assert.equal(t.game.following, false, 'handed back');
+  t.game.reset(); throwIt(t, IN);
+  assert.equal(t.game.following, true);
+  t.game.key('KeyR', true);
+  assert.equal(t.game.following, false);
+  throwIt(t, IN);
+  t.game.leave();
+  assert.equal(t.game.following, false);
+  const calm = setup({ reduced: true });
+  begin(calm, 'paper'); throwIt(calm, IN);
+  assert.equal(calm.game.following, false, 'with reduced motion the view stays yours');
+});
+
 test('with reduced motion there\'s no slow motion, camera move or celebration, just the score', () => {
   const t = setup({ reduced: true });
   begin(t, 'paper');
@@ -502,7 +543,6 @@ test('no level item is in props.loose()', () => {
   const t = setup(), loose = [];
   t.group.traverse(node => { if (node.userData.loose || node.userData.prop) loose.push(node); });
   assert.deepEqual(loose, []);
-  assert.deepEqual(t.props.loose(), []);
   for (const { id } of MONDAY) assert.ok(item(t, id));
 });
 

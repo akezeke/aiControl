@@ -5,7 +5,7 @@ import { layoutOffice, sharedLayout, VACANT_MS, DESK_W } from './layout.js';
 import { officeStatus, identity, monitorLines } from './status.js';
 import { createRoom } from './room.js';
 import { Cast } from './animation.js';
-import { Player, pick, rayAt, officeHasKeys, menuOpen, sceneFocused, standNear, standBefore, EYE } from './player.js';
+import { Player, pick, rayAt, officeHasKeys, gameKey, menuOpen, sceneFocused, standNear, standBefore, EYE } from './player.js';
 import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createMenu, createOverlays } from './bubbles.js';
 import { createBoards } from './boards.js';
@@ -74,6 +74,7 @@ export function mountOffice(container, hooks) {
     onRelease: at => letGo(at),
     onCancel: () => callOff(),
     onLetGo: () => { if (playing?.free) play(null); }, // Esc with the mouse captured: the browser keeps the key
+    lookHeld: () => !!playing?.following,
     onPick: (at, mouse) => {
       if (dismissed) return;
       if (playing) { playing.click(rayAt(at, renderer.domElement, camera)); return; }
@@ -116,7 +117,9 @@ export function mountOffice(container, hooks) {
   // The coffee machine: fills the mug if you're by it, else you walk over first.
   room.onCoffee = () => { if (!props.fill()) player.walkTo(props.machineSpot, () => props.fill(), 0.3, true); };
   // The room grew with you in the kitchen: you and what's lying in there go along with its door.
-  room.kitchen.moved = dz => { const { inside } = room.kitchen; if (inside(player.position)) { player.position.z += dz; player.target = null; } props.shift(inside, dz); };
+  // A walk to a mark in there is walked again once it has moved (office.update).
+  let remark = null;
+  room.kitchen.moved = dz => { const { inside } = room.kitchen; remark = player.target?.mark ?? null; if (inside(player.position)) { player.position.z += dz; player.target = null; } props.shift(inside, dz); };
   // The secret shelf's right book: pressed from where you stand if you can reach it, else you walk over first.
   room.onSecret = () => { const spot = room.secret.spot; if (player.position.clone().setY(0).distanceTo(spot) < 1.6) room.secret.toggle(); else player.walkTo(spot, () => room.secret.toggle(), 0.3, true); };
   // Darts, the putting green and the pinball in the secret room. Clicking one (from near enough, else you walk over first)
@@ -134,12 +137,14 @@ export function mountOffice(container, hooks) {
     if (seated || (was && !was.free)) { player.unlock(); player.setOverview(!!seated); view.play(seated && (() => seated.pose())); }
     playing = game; if (game?.free) player.pin(true);
     overlays.setPlaying(!!game); menu.close(); card.show(null);
-    if (game) game.enter();
+    if (game) { unhover(); game.enter(); } // what enter takes from under an outline keeps it
   };
+  // A free game's played from exactly its mark, wherever that is by the time you get there.
+  const toMark = game => { const { x, z } = game.stand(); player.walkTo(new THREE.Vector3(x, 0, z), () => { const { x, z, yaw } = game.stand(); player.place(x, z, yaw); play(game); }, 0.05); if (player.target) player.target.mark = game; };
   const onPlay = game => {
     if (view.overview) return;
+    if (game.free) { toMark(game); return; }
     const { x, z, yaw } = game.stand(), spot = new THREE.Vector3(x, 0, z);
-    if (game.free) { player.walkTo(spot, () => { player.place(x, z, yaw); play(game); }, 0.05); return; } // from exactly its mark
     if (player.position.clone().setY(0).distanceTo(spot) < 1.4) { player.place(player.position.x, player.position.z, yaw); play(game); }
     else player.walkTo(spot, () => { player.place(player.position.x, player.position.z, yaw); play(game); }, 0.3, true);
   };
@@ -195,10 +200,10 @@ export function mountOffice(container, hooks) {
     if (playing && event.key !== 'Tab') {
       if (playing.free && event.code === 'KeyR') callOff();
       if (playing.key?.(event.code, true)) { event.preventDefault(); return; }
-      // In a free game the arrows still look, and a key held from before isn't a walk.
-      if (event.key === 'Escape' || (playing.free ? !event.repeat && /^(Key[WASD]|Space)$/ : /^(Key[WASD]|Arrow\w+|Space)$/).test(event.code)) { event.preventDefault(); play(null); }
-      else if (event.code === 'KeyE') { event.preventDefault(); if (playing.free && playing.holding) { if (!event.repeat && startCharge()) keyed = true; } else if (!event.repeat) playing.click(aim()); }
-      else if (playing.free && event.code.startsWith('Arrow') && !player.locked && player.wanted && free()) player.lock();
+      const does = gameKey(event, playing);
+      if (does === 'leave') { event.preventDefault(); play(null); }
+      else if (event.code === 'KeyE') { event.preventDefault(); if (does === 'charge') { if (startCharge()) keyed = true; } else if (does === 'click') playing.click(aim()); }
+      else if (does === 'look' && !player.locked && player.wanted && free()) player.lock();
       return;
     }
     if (!player.locked && player.wanted && /^(Key[WASD]|Arrow\w+|Space)$/.test(event.code) && free()) player.lock();
@@ -220,6 +225,7 @@ export function mountOffice(container, hooks) {
   // wherever you are; hover's blue goes over the top.
   let picked = null, marks = new Set();
   const lit = (node, on) => highlight(node, on || marks.has(node), on ? undefined : PICKED);
+  const unhover = () => { lit(hovered, false); hovered = aimed = monitor = board = hire = toggle = prop = null; props.aim(null); };
   const mark = () => {
     const next = new Set(picked ? (office.snapshot?.sessions || []).filter(picked).map(session => cast.characters.get(session.id)?.root).filter(Boolean) : []);
     for (const node of [...marks, ...next]) if (node !== hovered) highlight(node, next.has(node), PICKED);
@@ -237,7 +243,7 @@ export function mountOffice(container, hooks) {
     hoverIn = 0.1;
     if (menu.open) return; // the sign keeps its outline while its menu is up
     // Playing, nothing else is outlined: the pointer aims.
-    if (playing) { lit(hovered, false); hovered = aimed = monitor = board = hire = toggle = prop = null; props.aim(null); card.show(null); overlays.setAim(false); renderer.domElement.style.cursor = 'crosshair'; return; }
+    if (playing) { unhover(); card.show(null); overlays.setAim(false); renderer.domElement.style.cursor = 'crosshair'; return; }
     const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
     aimed = hit?.kind === 'character' ? hit.id : null; monitor = hit?.kind === 'monitor' ? hit : null; board = hit?.kind === 'board' ? hit.node : null; hire = hit?.kind === 'hire' ? hit : null; toggle = hit?.kind === 'toggle' ? hit.node : null; togglePoint = hit?.point;
     prop = hit?.kind === 'prop' && !props.holding ? hit.body : null; props.aim(prop);
@@ -325,7 +331,9 @@ export function mountOffice(container, hooks) {
       boards.sync(snapshot, { error, waiting: waiting.map(session => session.title || session.project) });
       office.layout = layout;
       // First snapshot: stand just inside the door, looking into the room.
-      if (!office.placed) { office.placed = true; const { width, depth } = layout.room; player.place(layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))); }
+      // Not from inside a free game: you're out of it first. A seated one puts you back where it says when you leave it.
+      if (!office.placed) { office.placed = true; if (playing?.free) play(null); const { width, depth } = layout.room; player.place(layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))); }
+      if (remark) { toMark(remark); remark = null; }
     },
     unmount() {
       cancelAnimationFrame(raf); observer.disconnect(); document.removeEventListener('visibilitychange', visibility);

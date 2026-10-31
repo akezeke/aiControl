@@ -126,8 +126,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   };
 
   const celebrate = at => {
-    tone(523, 527, 0.14, 'square', 0.14); tone(659, 664, 0.14, 'square', 0.14, 0.08); tone(784, 790, 0.14, 'square', 0.14, 0.16); tone(1047, 1054, 0.3, 'square', 0.16, 0.24);
     if (reducedMotion()) return;
+    tone(523, 527, 0.14, 'square', 0.14); tone(659, 664, 0.14, 'square', 0.14, 0.08); tone(784, 790, 0.14, 'square', 0.14, 0.16); tone(1047, 1054, 0.3, 'square', 0.16, 0.24);
     partyLeft = PARTY; party.visible = true;
     for (const b of bits) { b.x = at[0]; b.y = at[1]; b.z = at[2]; const a = Math.random() * 7; b.vx = Math.cos(a) * (0.3 + Math.random()); b.vy = 1.5 + Math.random() * 1.6; b.vz = Math.sin(a) * (0.3 + Math.random()); }
   };
@@ -152,6 +152,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     item: id => items[id],
     get holding() { return !!entry && game.run.state === 'aiming'; },
     get heldKind() { return kind; },
+    // A shot's camera has the view, from the throw until it's handed back: your own aim waits, so you come back to the one you threw with.
+    get following() { return moved; },
     // A Monday level by its id, or today's daily ('daily-0' to 'daily-2').
     entry(id) {
       const daily = /^daily-(\d)$/.exec(id);
