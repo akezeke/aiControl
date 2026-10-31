@@ -1,7 +1,9 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTrickshot, keepInSight, shotFov } from '../client/office/trickshot.js';
+import { OfficeCamera } from '../client/office/camera.js';
 import { BLEND, GAUGE_SIZE, arcPoints, blendLeft, createArc, createCharge, createGauge, drawnAt, gaugeAt, gaugeColour, launch } from '../client/office/throwing.js';
 import { TiltedBox, makeBody, simulate, stepBody, stopShort } from '../client/office/flight.js';
 import { SPOTS, ZONES, levelWorld } from '../client/office/kitchen-plan.js';
@@ -1134,4 +1136,12 @@ test('under reduced motion a shot never takes the camera, whatever the screen', 
   const t = setup({ reduced: true }); t.view.camera = new THREE.PerspectiveCamera(70, 0.5, 0.05, 100);
   begin(t, 'rubber'); throwIt(t, { yaw: rad(92), pitch: rad(-10), charge: 0.63 }); play(t);
   assert.equal(t.view.plays.filter(Boolean).length, 0); assert.equal(t.view.camera.fov, 70);
+});
+
+test('what a game moves after the camera\'s update has the view again, in the same frame', () => {
+  const camera = new THREE.PerspectiveCamera(), at = { from: V(1, 2, 3), look: V(1, 2, 0), fov: 52, hands: false };
+  const view = Object.assign(Object.create(OfficeCamera.prototype), { camera, player: { position: V(0, 1.5, 0), yaw: 0, pitch: 0 }, from: V(0, 0, 0), look: V(0, 0, 0), gameAmount: 1, amount: 0, focusAmount: 0, pose: () => at });
+  assert.equal(view.place(), at); assert.deepEqual(camera.position.toArray(), [1, 2, 3]);
+  at.from.set(4, 5, 6); view.place(); assert.deepEqual(camera.position.toArray(), [4, 5, 6]);
+  assert.match(readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8'), /room\.kitchen\.update\([^;]*\); if \(playing\?\.following\) view\.place\(\);/, 'after the kitchen, whose games move in its update');
 });
