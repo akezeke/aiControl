@@ -22,7 +22,7 @@ export function createLights(world, glow, still = false) {
     setMode(state) { hail = state.mode === 'hail'; limit = state.mode === 'limit'; },
     repaint(next) { palette = next; neon = C(next.neon); },
     tick(dt, t, space) {
-      const pulse = still ? 1 : .5 + .5 * Math.sin(t * 3.4), { warpLevel: w, flash } = space;
+      const pulse = still ? 1 : .5 + .5 * Math.sin(t * 3.4), { warpLevel: w } = space;
       ambient.color.copy(limit ? AMBIENT.limit : hail ? AMBIENT.hail : AMBIENT.calm); ambient.groundColor.copy(ambient.color).multiplyScalar(.55); ambient.intensity = (limit ? .26 : palette.ambient) * 1.3 * LIGHT_SCALE;
       // A hail is told by the strips and the lamps; washing the whole room red turns the pale palette salmon and the crew tan.
       ring.color.copy(limit ? RED : hail ? tmp.copy(WARM).lerp(RED, .08 + pulse * .12) : WARM); ring.intensity = (limit ? .4 : hail ? 1.1 : 1.25) * LIGHT_SCALE;
@@ -35,7 +35,7 @@ export function createLights(world, glow, still = false) {
       glow.lamp.color.copy(limit ? RED : hail ? tmp.copy(WARM).lerp(RED, .6) : LAMP).multiplyScalar(limit ? .22 : hail ? .6 + pulse * .4 : 1);
       glow.recess.color.copy(limit ? RED : hail ? tmp.copy(RECESS).lerp(RED, .65) : RECESS).multiplyScalar(limit ? .2 : hail ? .35 + pulse : 1.35);
       glow.edge.color.copy(hail ? RED : limit ? DULL : neon).multiplyScalar(hail ? .4 + pulse * 1.5 : limit ? 1 : 1.7);
-      glow.glass.color.setScalar(limit ? .4 : 1 + flash * 3);
+      glow.glass.color.setScalar(limit ? .4 : 1);
     },
   };
 }

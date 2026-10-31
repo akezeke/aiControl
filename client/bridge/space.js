@@ -124,21 +124,19 @@ export function createSpace(still = false) {
     mesh.frustumCulled = false; mesh.renderOrder = 3; scene.add(mesh);
   }
 
-  let goal = 0, limit = false, warpT = 0, started = false, wasWarp = false;
+  let goal = 0, limit = false, warpT = 0, started = false;
   return {
-    scene, arcs, warpLevel: 0, flash: 0,
+    scene, arcs, warpLevel: 0,
     setMode(state) {
       limit = state.mode === 'limit';
       goal = limit || state.offline || !state.warp ? 0 : Math.min(1, .55 + state.warp * .12);
-      if (!started) { started = true; this.warpLevel = goal; wasWarp = goal > .05; }
+      if (!started) { started = true; this.warpLevel = goal; }
     },
     repaint(palette) { stripeMat.color.copy(C(palette.console)); palette.space.forEach((hex, i) => tint[i].value.set(hex)); },
     resize(w, h) { streakU.uRes.value.set(w, h); },
     tick(dt) {
       this.warpLevel += (goal - this.warpLevel) * (still ? 1 : 1 - Math.pow(.25, dt));
-      const w = this.warpLevel, atWarp = goal > .05;
-      if (atWarp !== wasWarp) { wasWarp = atWarp; if (!still) this.flash = atWarp ? .55 : .32; }
-      this.flash *= Math.pow(.02, dt);
+      const w = this.warpLevel;
       if (!still) warpT += dt * w * w;
       streakU.uT.value = warpT; streakU.uLen.value = 2 + w * w * 95; streakU.uAlpha.value = Math.min(1, Math.max(0, (w - .04) / .3));
       // Slipping into warp, the planet falls away behind the stars; dropping out, it's there again.

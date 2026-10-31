@@ -241,7 +241,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
       reticle.show((player.aiming || touch) && !zoomed && !look.overview); reticle.tick(dt, container.clientHeight || 1); board.tick(dt, container.clientWidth || 1, container.clientHeight || 1); brackets.tick(container.clientHeight || 1);
       for (const hologram of Object.values(holograms)) hologram.tick(dt, T, camera);
       space.tick(dt); lights.tick(dt, T, space); room.tick(dt, T, camera); figures.forEach(figure => figure.tick(dt, T));
-      post.flash = space.flash; post.render(world, space.scene, camera);
+      post.render(world, space.scene, camera);
     } catch (error) { console.error(error); stop(); }
   }
   raf = requestAnimationFrame(frame);

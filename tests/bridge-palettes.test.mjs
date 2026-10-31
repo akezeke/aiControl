@@ -145,3 +145,6 @@ test('the list has its own look: starship chrome, motion only if allowed, and it
   const still = css.replace(/@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\n\}/g, '').replace(/@keyframes[^\n]*/g, '');
   assert.doesNotMatch(still, /animation:/);
 });
+test('going to warp or dropping out never flashes the view', () => {
+  for (const file of ['bridge', 'lights', 'post', 'space']) assert.doesNotMatch(readFileSync(`client/bridge/${file}.js`, 'utf8'), /flash/i, file);
+});
