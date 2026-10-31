@@ -3,6 +3,9 @@ Fonts in this folder, from Google Fonts (latin subset), served locally:
 vt323.woff2 (VT323):
 Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)
 
+silkscreen.woff2 (Silkscreen):
+Copyright 2001 The Silkscreen Project Authors (https://github.com/googlefonts/silkscreen)
+
 antonio.woff2 (Antonio):
 Copyright 2013 The Antonio Project Authors (https://github.com/googlefonts/antonioFont)
 

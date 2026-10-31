@@ -56,7 +56,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* Brand */
 .brand { display: flex; align-items: center; gap: 10px; font: 700 16px/1 var(--display); letter-spacing: -.02em; white-space: nowrap; color: var(--text); }
 .brand-variant { display: none; align-items: center; gap: inherit; min-width: 0; }
-:root:is(:not([data-theme]), [data-theme=modern], [data-theme=office], [data-theme=bridge]) .brand-variant.modern, :root[data-theme=alien] .brand-variant.alien, :root[data-theme=command] .brand-variant.command { display: flex; }
+:root:is(:not([data-theme]), [data-theme=modern], [data-theme=office], [data-theme=bridge], [data-theme=city]) .brand-variant.modern, :root[data-theme=alien] .brand-variant.alien, :root[data-theme=command] .brand-variant.command { display: flex; }
 .brand-name { overflow: hidden; text-overflow: ellipsis; }
 .brand-mark { position: relative; flex: none; width: 30px; height: 30px; display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding: 8px 7px; border-radius: 9px; background: linear-gradient(140deg, #6366f1, #7c3aed 60%, #a855f7); box-shadow: 0 6px 14px -6px #6d28d9; }
 .brand-mark i { width: 4px; height: 10px; border-radius: 1px; background: #fff; }
@@ -86,6 +86,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .theme-swatch.modern-dark { background: radial-gradient(circle, #8b8cf9 0 32%, #0b0d12 36%); }
 .theme-swatch.alien { background: radial-gradient(circle, #b6f2a2 0 35%, #031203 40%); }
 .theme-swatch.office { background: radial-gradient(circle at 40% 40%, #f28c28 0 30%, #f7d23e 34% 55%, #d62828 59%); }
+.theme-swatch.city { background: linear-gradient(#f9c22b 0 0) 30% 70% / 22% 22% no-repeat, linear-gradient(#484a77 0 0) 30% 100% / 40% 70% no-repeat, #323353; }
 .theme-swatch.bridge { background: radial-gradient(circle, #ff4fd0 0 32%, #22378e 36%); }
 .theme-swatch.command { background: repeating-linear-gradient(135deg, #f0c94a 0 3px, #262c1f 3px 6px); }
 
@@ -147,7 +148,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .status-line { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 20px; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--accent); white-space: nowrap; }
 .status-line:empty { display: none; }
 .status-text { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-:root:is(:not([data-theme]), [data-theme=modern], [data-theme=office]) .status-text.modern, :root[data-theme=bridge] .status-text.bridge, :root[data-theme=alien] .status-text.alien, :root[data-theme=command] .status-text.command { display: block; }
+:root:is(:not([data-theme]), [data-theme=modern], [data-theme=office]) .status-text.modern, :root[data-theme=bridge] .status-text.bridge, :root[data-theme=city] .status-text.city, :root[data-theme=alien] .status-text.alien, :root[data-theme=command] .status-text.command { display: block; }
 .status-line.flash { color: var(--warn); }
 .console-power { display: none; }
 /* Back from a scene theme's list to its scene. */
@@ -445,6 +446,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .theme-preview.alien { background-image: linear-gradient(#0000 60%, #031203cc), url('/alien-bg.webp'); background-position: 62% center; }
 .theme-preview.command { background-image: url('/command-bg.webp'); }
 .theme-preview.bridge { background: radial-gradient(ellipse at 50% 120%, #ff4fd0 0 18%, transparent 19%), radial-gradient(ellipse at 50% 25%, #6a8cff 0 12%, #181450 40%, #22378e 41%); }
+.theme-preview.city { background: linear-gradient(#f9c22b 0 0) 24% 62% / 7% 8% no-repeat, linear-gradient(#ffffff 0 0) 54% 44% / 6% 7% no-repeat, linear-gradient(#4d9be6 0 0) 22% 100% / 18% 56% no-repeat, linear-gradient(#cf657f 0 0) 52% 100% / 14% 76% no-repeat, linear-gradient(#a884f3 0 0) 80% 100% / 18% 42% no-repeat, #323353; }
 .theme-preview.office { background: radial-gradient(circle at 30% 60%, #d62828 0 12%, transparent 13%), radial-gradient(circle at 52% 55%, #f7d23e 0 10%, transparent 11%), radial-gradient(circle at 74% 60%, #f28c28 0 12%, transparent 13%), linear-gradient(#cfe8f5 0 45%, #e9c896 45%); }
 @media (max-width: 640px) { .theme-picker-grid { grid-template-columns: 1fr 1fr; } }
 

@@ -783,6 +783,24 @@
   :root[data-theme=bridge]:is([data-scene-list], [data-scene-fallback]) .shell::after { content: ''; position: fixed; z-index: 1; inset: 0 0 auto; height: 20vh; pointer-events: none; background: linear-gradient(transparent, #6a8cff0f, transparent); animation: holo-sweep 9s linear infinite; }
   :root[data-theme=bridge] .session-card.needs-input::after { content: ''; position: absolute; inset: -1px; border: 1px solid var(--warn); border-radius: inherit; pointer-events: none; animation: holo-breathe 3s ease-in-out infinite; animation-delay: var(--since-load, 0s); }
 }
+:root[data-theme=city] {
+  /* The list as a game's menus: flat colour, square corners, a hard dark edge and pixel type on the labels. */
+  :is(.brand-name, .panel-title, .sidebar-label, .status-line, .page-heading h1, .empty h2) { font-family: var(--display); font-weight: 400; letter-spacing: 0; }
+  :is(.session-card, .usage-accounts, .empty, .login-card, .request-box, .quiet-button, .stop-button, .clear-button, .spawn-button, .shot-button, .next-button, .back-button, .fire-button) { border: 2px solid var(--line); border-radius: 0; }
+  .session-card { box-shadow: var(--shadow); }
+  .session-card:is(:hover, :focus-visible) { border-color: var(--accent-2); }
+  .session-card.needs-input { border-color: var(--warn); }
+  .session-card[data-status=error] { border-color: #e83b3b; }
+  .brand-mark { border-radius: 0; background: #4d9be6; box-shadow: none; }
+  .brand-mark i { background: #2e222f; }
+  .toast { background: var(--panel); color: var(--text); border: 2px solid var(--line); border-radius: 0; box-shadow: var(--shadow); }
+  .shot-viewer::backdrop { background: #2e222fd9; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* A waiting card blinks like the beacon on its building, on the 3 s poll clock so a re-render doesn't restart it. */
+  :root[data-theme=city] .session-card.needs-input { animation: city-blink 1.5s steps(1) infinite; animation-delay: var(--since-load, 0s); }
+}
+@keyframes city-blink { 50% { border-color: var(--warn-line); box-shadow: 2px 2px 0 var(--warn); } }
 @keyframes holo-sweep { from { transform: translateY(-20vh); } to { transform: translateY(100vh); } }
 @keyframes holo-breathe { 50% { opacity: .15; } }
 @media (prefers-reduced-motion: no-preference) {

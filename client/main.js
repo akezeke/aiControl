@@ -108,6 +108,7 @@ const icons = {
   exit: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m5-12 4 4-4 4m4-4H9"/>',
   eraser: '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21m9 0H7M5 11l9 9"/>',
   bridge: '<path d="M12 2c3 2.5 4.5 6 4.5 10l-1.5 5H9l-1.5-5C7.500 8 9 4.500 12 2Zm-3 15-3 3 .5-5 1.500-3m7 5 3 3-.5-5-1.500-3M12 8.500v2"/>',
+  city: '<path d="M3 21h18M5 21V11h5v10m0-15h6v15m0-9h4v9M8 14h0m5-5h0m0 4h0"/>',
   office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
@@ -321,7 +322,7 @@ function syncScene() {
   const module = sceneModules[look];
   if (!module) { sceneModules[look] = entry.load().then(loaded => { sceneModules[look] = loaded; syncScene(); }, () => { delete sceneModules[look]; if (document.documentElement.dataset.theme === look) fallBack(`${entry.name} failed to load; showing the list`); }); return; }
   if (module instanceof Promise) return;
-  if (!module.webglAvailable()) { fallBack(`${entry.name} needs WebGL 2; showing the list`); return; }
+  if (!module.webglAvailable()) { fallBack(`${entry.name} needs ${entry.needs || 'WebGL 2'}; showing the list`); return; }
   const box = el('div', 'scene'); box.id = look; main.append(box);
   try {
     sceneLook = look;

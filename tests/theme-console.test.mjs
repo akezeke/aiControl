@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sessionMapPoints } from '../client/theme-console.js';
+import { sessionMapPoints, summary } from '../client/theme-console.js';
 
 test('radar contacts close in on the centre the longer they wait for you', () => {
   const now = 1_000_000_000, session = (id, status, waited) => ({ id, status, requests: waited == null ? [] : [{ createdAt: now - waited }] });
@@ -12,3 +12,4 @@ test('radar contacts close in on the centre the longer they wait for you', () =>
   assert.equal(distance('b'), home('b'));
   assert.ok(Math.abs(distance('c') - home('c') * .2) < 1e-9);
 });
+test('city has its own wording', () => { assert.equal(summary([{ status: 'working' }, { status: 'permission' }]).city, '1 WAITING · 1 BUILDING'); assert.equal(summary([]).city, 'ALL QUIET'); });

@@ -87,6 +87,22 @@
   --focus: #8ba6ff;
 }
 
+:root[data-theme=city] {
+  /* Resurrect 64 only, the same as the scene. The error text is the palette's lighter red: #e83b3b reads 2.9:1 on this background, so it stays for borders. */
+  color-scheme: dark;
+  --display: 'Silkscreen', ui-monospace, monospace;
+  --bg: #323353; --panel: #484a77; --panel-2: #484a77; --sunken: #323353;
+  --text: #ffffff; --text-2: #c7dcd0; --text-3: #c7dcd0;
+  --line: #2e222f; --line-2: #2e222f;
+  --accent: #4d9be6; --accent-2: #8fd3ff; --accent-ink: #2e222f; --accent-soft: #4d65b4;
+  --ok: #30e1b9; --ok-soft: #165a4c; --warn: #f9c22b; --warn-soft: #4c3e24; --warn-line: #f79617; --danger: #f68181; --danger-soft: #2e222f;
+  --codex: #ffffff; --claude: #f57d4a; --claude-soft: #45293f;
+  --radius: 0; --radius-sm: 0;
+  --shadow: 2px 2px 0 #2e222f;
+  --shadow-lg: 4px 4px 0 #2e222f;
+  --focus: #8fd3ff;
+}
+
 :root[data-theme=office] {
   color-scheme: light;
   --hand: 'Comic Neue', 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive;
