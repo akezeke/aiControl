@@ -124,9 +124,11 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     if (wanted > WEDGED * WEDGED * dt * dt && at.distanceToSquared(from) < CLEAR * CLEAR) climb = CLIMBS;
     look.lerp(flying, 1 - Math.exp(-dt * EYES));
   };
+  // The wait's over: the camera comes back, under reduced motion it never left, and the item's in your hand again. The verdict stays up till you throw.
   const handBackNow = () => {
-    handBack = 0; moved = false; view?.play(null);
-    if (view && stopShort(follow.at, now.copy(eyeNow()), CAMERA, flightWorld().colliders).distanceToSquared(eye) > 1e-6) view.gameAmount = 0; // no easing back through the fridge
+    handBack = 0;
+    if (moved) { moved = false; view?.play(null); if (view && stopShort(follow.at, now.copy(eyeNow()), CAMERA, flightWorld().colliders).distanceToSquared(eye) > 1e-6) view.gameAmount = 0; } // no easing back through the fridge
+    game.run.reset(); inHand();
   };
 
   const celebrate = at => {
@@ -151,8 +153,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   };
   // The moment it really stops. Out of time and still up on something, or wedged: not left hanging there.
   const stopped = r => {
-    if (!r.rest && r.time >= MOST_TIME - 1e-6 && r.pos[1] > kind.low + 0.02) { game.run.reset(); inHand(); if (moved) handBackNow(); }
-    else if (moved) handBack = HAND_BACK;
+    if (!r.rest && r.time >= MOST_TIME - 1e-6 && r.pos[1] > kind.low + 0.02) handBackNow();
+    else handBack = HAND_BACK;
   };
 
   const game = {

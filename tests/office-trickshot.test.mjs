@@ -289,6 +289,60 @@ test('the camera\'s hand-back counts from when the item really stops, not from t
   assert.equal(t.view.plays.at(-1), null, 'back after about a second');
 });
 
+const aSecond = t => { for (let i = 0; i < 66; i++) t.game.update(DT, null, false, true); };
+test('a miss comes back to your hand with the camera, and the verdict stays up till the next throw', () => {
+  const t = setup();
+  begin(t, 'paper'); throwIt(t, SKIDS); play(t);
+  assert.equal(t.game.run.state, 'done'); assert.equal(t.hand.held, null, 'on the floor while you look at it'); assert.equal(t.game.holding, false);
+  for (let i = 0; i < 50; i++) t.game.update(DT, null, false, true);
+  assert.equal(t.hand.held, null, 'still waiting');
+  aSecond(t);
+  assert.equal(t.view.plays.at(-1), null);
+  assert.equal(t.hand.held, item(t, 'paper')); assert.equal(t.game.run.state, 'aiming'); assert.equal(t.game.holding, true); assert.deepEqual(item(t, 'paper').rotation.toArray().slice(0, 3), [0, 0, 0]);
+  assert.equal(t.game.score, 'Miss');
+  const saves = t.saved.length; aSecond(t); assert.equal(t.saved.length, saves);
+  t.game.click(look(0, 0)); assert.equal(t.game.score, 'Miss', 'a click there is the next throw\'s, not a reset');
+  throwIt(t, SKIDS);
+  assert.equal(t.game.score, null, 'the next throw clears it'); assert.equal(t.game.run.state, 'flying'); assert.equal(t.hand.held, null);
+});
+
+test('with reduced motion it comes back after the same wait', () => {
+  const t = setup({ reduced: true });
+  begin(t, 'paper'); throwIt(t, SKIDS); play(t);
+  assert.equal(t.hand.held, null); assert.equal(t.game.run.state, 'done');
+  for (let i = 0; i < 50; i++) t.game.update(DT, null, true, true);
+  assert.equal(t.hand.held, null);
+  for (let i = 0; i < 16; i++) t.game.update(DT, null, true, true);
+  assert.equal(t.hand.held, item(t, 'paper')); assert.equal(t.game.holding, true); assert.equal(t.game.score, 'Miss');
+  assert.equal(t.view.plays.filter(Boolean).length, 0, 'and no camera came into it');
+});
+
+test('a made shot comes back too, and it\'s put away when you leave', () => {
+  const t = setup();
+  begin(t, 'paper'); throwIt(t, IN); play(t);
+  const { pos } = t.game.run.result, score = t.game.score; assert.ok(t.game.run.result.made);
+  aSecond(t);
+  assert.equal(t.hand.held, item(t, 'paper')); assert.equal(t.game.holding, true); assert.equal(t.game.score, score);
+  t.game.leave();
+  assert.deepEqual(item(t, 'paper').position.toArray(), pos, 'where it landed');
+});
+
+test('R and a click still go at once during the wait; R after it clears the verdict', () => {
+  for (const again of [t => t.game.key('KeyR', true), t => t.game.click(look(0, 0))]) {
+    const t = setup();
+    begin(t, 'paper'); throwIt(t, IN); play(t);
+    for (let i = 0; i < 20; i++) t.game.update(DT, null, false, true);
+    again(t);
+    assert.equal(t.game.run.state, 'aiming'); assert.equal(t.game.score, null); assert.equal(t.view.plays.at(-1), null); assert.equal(t.hand.held, item(t, 'paper'));
+    aSecond(t); assert.equal(t.game.score, null, 'and the wait is off'); assert.equal(t.game.holding, true);
+  }
+  const t = setup();
+  begin(t, 'paper'); throwIt(t, IN); play(t); aSecond(t);
+  assert.ok(t.game.score);
+  t.game.key('KeyR', true);
+  assert.equal(t.game.score, null); assert.equal(t.hand.held, item(t, 'paper'));
+});
+
 test('a shot stopped in mid-air isn\'t left floating', () => {
   const t = setup();
   begin(t, 'rubber');
@@ -861,8 +915,11 @@ test('after a daily shot its line can be copied: the Copy button shows, and C co
   assert.equal(d.game.key('KeyC', true), true);
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^Trickshot 31 Oct: - \/ [\d,]+ \/ -$/);
+  for (let i = 0; i < 66; i++) d.game.update(DT, null, false, true);
+  assert.equal(d.hand.held, d.game.item('paper')); assert.equal(scores.at(-1), true, 'back in hand, it\'s still there');
+  assert.equal(d.game.key('KeyC', true), true); assert.equal(lines.length, 2); lines.pop();
   d.game.reset();
-  assert.equal(scores.at(-1), false, 'back in hand, it goes');
+  assert.equal(scores.at(-1), false, 'a reset takes it');
   d.game.leave();
   assert.equal(scores.at(-1), false);
 
