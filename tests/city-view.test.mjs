@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutOffice } from '../client/office/layout.js';
 import { cityPlan, screen, LOT } from '../client/city/plan.js';
-import { ZOOMS, fitCanvas, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings, clearOf } from '../client/city/view.js';
+import { ZOOMS, OVERSCAN, fitCanvas, overscanned, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings, clearOf, stopRatio, baseStep, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf } from '../client/city/view.js';
 
 test('art pixels are whole device pixels at any DPR', () => {
   for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) for (const step of ZOOMS) {
@@ -81,4 +81,71 @@ test('with nowhere clear a sign stays put, and an empty rect takes no room', () 
   const sign = { x: 10, y: 10, w: 80, h: 20 };
   assert.deepEqual(clearOf(sign, [{ x: 0, y: 0, w: 100, h: 40 }], 100, 40), { x: 10, y: 10 });
   assert.deepEqual(clearOf(sign, [{ x: 20, y: 15, w: 0, h: 0 }], 800, 600), { x: 10, y: 10 });
+});
+
+// ---- The eye: what's at the middle of the box and how big an art pixel looks. The canvas only ever gets a transform to match it.
+const BOX = [1001, 777], DPRS = [1, 1.25, 1.5, 2, 2.625, 3];
+const artUnder = (eye, qx, qy, w = BOX[0], h = BOX[1]) => [eye.cx + (qx - w / 2) / eye.r, eye.cy + (qy - h / 2) / eye.r];
+// Where a canvas pixel lands in the box, by the same sums the page does: the transform, then whole art pixels at this step.
+const onScreen = (camera, eye, dpr, sx, sy) => {
+  const size = overscanned(...BOX, dpr, camera.step), { x, y, s } = canvasTransform(eye, camera, size, ...BOX, dpr), [px, py] = toCanvas(camera, size, sx, sy), r = size.scale / dpr;
+  return [x + px * r * s, y + py * r * s];
+};
+
+test('the canvas reaches past the box on every side', () => {
+  for (const dpr of DPRS) for (const step of ZOOMS) {
+    const size = overscanned(...BOX, dpr, step), r = size.scale / dpr, { x, y, s } = canvasTransform(eyeOf({ cx: 10, cy: 20, step }, ...BOX, dpr), { cx: 10, cy: 20, step }, size, ...BOX, dpr);
+    assert.equal(s, 1); assert.ok(Math.abs(x + OVERSCAN * r) < 1e-6 && Math.abs(y + OVERSCAN * r) < 1e-6, `${x},${y}`);
+    assert.ok(size.width * r + x >= BOX[0] + r / 2 && size.height * r + y >= BOX[1] + r / 2, `dpr ${dpr} step ${step}`);
+  }
+});
+test('a stop has its art pixels on whole device pixels, wherever the eye has drifted', () => {
+  for (const dpr of DPRS) for (const step of ZOOMS) for (const drift of [0, .1, .37, .5, .83]) {
+    const camera = { cx: 40, cy: -7, step }, rest = eyeOf(camera, ...BOX, dpr), eye = { ...rest, cx: rest.cx + drift, cy: rest.cy - drift }, near = cameraFor(eye, ...BOX, dpr), size = overscanned(...BOX, dpr, near.step), t = canvasTransform(eye, near, size, ...BOX, dpr);
+    assert.equal(near.step, step); assert.equal(t.s, 1);
+    for (const v of [t.x, t.y]) assert.ok(Math.abs(v * dpr - Math.round(v * dpr)) < 1e-6, `${v} at dpr ${dpr}`);
+  }
+});
+test('a camera and its eye round-trip', () => {
+  for (const dpr of DPRS) for (const step of ZOOMS) { const camera = { cx: 123, cy: -45, step }; assert.deepEqual(cameraFor(eyeOf(camera, ...BOX, dpr), ...BOX, dpr), camera); }
+});
+test('an eye takes the largest step that does not magnify less than it', () => {
+  assert.deepEqual([.5, 1, 1.5, 2, 2.9, 3, 3.5, 4, 9].map(r => baseStep(r, 1)), [1, 1, 1, 2, 2, 3, 3, 4, 4]);
+  for (const dpr of DPRS) for (const step of ZOOMS) assert.equal(baseStep(stopRatio(step, dpr), dpr), step);
+});
+test('the middle of the box is the same point of the city either side of a change of step', () => {
+  for (const dpr of DPRS) for (const step of ZOOMS.slice(1)) {
+    const r = stopRatio(step, dpr), eye = { cx: 200.25, cy: 90.75, r }, just = { ...eye, r: r - 1e-6 };
+    const a = onScreen(cameraFor(eye, ...BOX, dpr), eye, dpr, 230, 100), b = onScreen(cameraFor(just, ...BOX, dpr), just, dpr, 230, 100);
+    assert.ok(Math.abs(a[0] - b[0]) <= 1 / dpr + 1e-3 && Math.abs(a[1] - b[1]) <= 1 / dpr + 1e-3, `${a} against ${b} at dpr ${dpr} step ${step}`);
+  }
+});
+test('between runs from one eye to the other, and a zoom keeps its still point still', () => {
+  const from = { cx: 100, cy: 50, r: 1 }, to = zoomAbout(from, 4, 800, 100, ...BOX), still = artUnder(from, 800, 100);
+  assert.deepEqual(between(from, to, 0), from); assert.deepEqual(between(from, to, 1), to);
+  for (const t of [.1, .25, .5, .9]) { const eye = between(from, to, t), art = artUnder(eye, 800, 100); assert.ok(eye.r > 1 && eye.r < 4); assert.ok(Math.abs(art[0] - still[0]) < 1e-6 && Math.abs(art[1] - still[1]) < 1e-6, `${art} at ${t}`); }
+});
+test('between a pan at one size is a straight line', () => { assert.deepEqual(between({ cx: 0, cy: 10, r: 2 }, { cx: 10, cy: 30, r: 2 }, .5), { cx: 5, cy: 20, r: 2 }); });
+test('zoomAbout keeps what is under the point under it', () => {
+  const eye = { cx: 33, cy: 44, r: 2 }, next = zoomAbout(eye, 3, 120, 700, ...BOX), [a, b] = artUnder(eye, 120, 700), [c, d] = artUnder(next, 120, 700);
+  assert.equal(next.r, 3); assert.ok(Math.abs(a - c) < 1e-9 && Math.abs(b - d) < 1e-9);
+});
+test('a pinch settles on the stop it was heading for', () => {
+  assert.equal(settleStep(2.3, 2, 1), 3, 'on the way in, a little past a stop is enough'); assert.equal(settleStep(2.05, 2, 1), 2);
+  assert.equal(settleStep(2.7, 3, 1), 2, 'and the same on the way out'); assert.equal(settleStep(2.95, 3, 1), 3);
+  assert.equal(settleStep(2.4, 2.4, 1), 2, 'no travel, the nearest'); assert.equal(settleStep(9, 4, 1), 4); assert.equal(settleStep(.2, 1, 1), 1);
+});
+
+test('a flick is the speed of the drag just before letting go', () => {
+  const trail = [[0, 0, 0], [20, 10, 0], [40, 20, 5], [60, 30, 10]];
+  assert.deepEqual(flickOf(trail, 65), { vx: .5, vy: 1 / 6 });
+});
+test('a drag that stopped before letting go is no flick', () => {
+  assert.equal(flickOf([[0, 0, 0], [20, 30, 0]], 400), null);
+  assert.equal(flickOf([[0, 0, 0], [40, 2, 0]], 45), null);
+  assert.equal(flickOf([], 10), null);
+  assert.equal(flickOf([[0, 0, 0]], 5), null);
+});
+test('a flick still reads on a slow screen, with one sample inside the window', () => {
+  assert.deepEqual(flickOf([[0, 0, 0], [80, 40, 0], [160, 80, 0]], 170), { vx: .5, vy: 0 });
 });

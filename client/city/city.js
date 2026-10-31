@@ -11,11 +11,13 @@ import { buildTower, annex, dust, crane, coolingPlant, stackPlant } from './gene
 import { Bloom, glowPixels } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, Lifecycle } from './signals.js';
-import { ZOOMS, fitCanvas, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites } from './view.js';
+import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf } from './view.js';
 import { createControls, createLabels } from './labels.js';
 
 const USAGE_LOW = 80, TAG_X = 16, TAG_Y = 6;
-const DRAG_SLOP = 6, PAN_KEY = 8, GLIDE_MS = 200, NOTCH = 50, WHEEL_REST = 200, PINCH_IN = 1.4, PINCH_OUT = .7;
+const DRAG_SLOP = 6, PAN_KEY = 8, GLIDE_MS = 220, KEY_GLIDE_MS = 120, NOTCH = 50, WHEEL_REST = 200;
+// A flick carries on: how long it takes to lose most of its speed, and what still counts as moving in CSS pixels per ms.
+const COAST_MS = 220, COAST_MIN = .03;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], a: [-1, 0], d: [1, 0], w: [0, -1], s: [0, 1] };
 const STEP_MS = 125, TWINKLE_MS = 1500, CACHE = 256, FLOOR = '#323353', HIGHLIGHT = { hover: '#f9c22b', selected: '#fbff86', cursor: '#4d9be6', asked: '#f9c22b' };
 // A sprite this far off the canvas can't reach it, so it isn't baked until it might.
@@ -55,14 +57,15 @@ export function mountCity(box, hooks = {}) {
   const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
   const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(); // ghosts: what has left the plan but is still going up in dust.
   let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '';
-  let view = 0, camera = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0;
+  let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [];
-  let glide = null, drawn = [], selectedHood = null, card = null, labels = null, menu = null, animating = false, test = null, slot, dismissed = false;
+  let glide = null, coast = null, drawn = [], selectedHood = null, card = null, labels = null, menu = null, animating = false, test = null, slot, dismissed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
   const fit = () => {
     if (!camera) return;
-    const rect = box.getBoundingClientRect(), next = fitCanvas(rect.width, rect.height, dpr(), camera.step);
+    const rect = box.getBoundingClientRect(), next = overscanned(rect.width, rect.height, dpr(), camera.step);
+    boxW = rect.width; boxH = rect.height;
     if (next.width === size.width && next.height === size.height && next.scale === size.scale && dpr() === ratio) return;
     size = next; ratio = dpr(); canvas.width = next.width; canvas.height = next.height; canvas.style.width = `${next.cssW}px`; canvas.style.height = `${next.cssH}px`;
     lamps.width = next.width; lamps.height = next.height; glowCanvas.width = Math.ceil(next.cssW); glowCanvas.height = Math.ceil(next.cssH); glowCanvas.style.width = `${next.cssW}px`; glowCanvas.style.height = `${next.cssH}px`;
@@ -73,7 +76,7 @@ export function mountCity(box, hooks = {}) {
     if (!width || !height || !plan) return;
     const waiting = hooks.nextWaiting?.(), focus = plan.buildings.find(building => building.id === waiting?.id || building.subagents.some(kid => kid.id === waiting?.id))?.hoodKey;
     camera = startCamera(plan, view, width, height, dpr(), focus);
-    fit();
+    fit(); eye = eyeOf(camera, boxW, boxH, dpr()); camera = cameraFor(eye, boxW, boxH, dpr()); fit(); placeCanvas();
   };
 
   const passes = id => { const session = sessions.get(id); return !!session && test(session); };
@@ -212,17 +215,38 @@ export function mountCity(box, hooks = {}) {
       if (percent >= USAGE_LOW && spot) tags.push({ key: plant.provider, text: `${Math.round(percent)}%`, title: `${plant.name} usage near its limit`, ax: spot.item.sx, ay: spot.item.sy - spot.sprite.originY - TAG_Y });
     }
     labels.tags(tags);
-    const ratioNow = size.scale / dpr();
-    labels.move((sx, sy) => { const [px, py] = toCanvas(camera, size, sx, sy); return [px * ratioNow, py * ratioNow]; }, box.clientWidth, box.clientHeight);
+    moveLabels();
+  };
+  const moveLabels = () => {
+    const { x, y, s } = canvasTransform(eye, camera, size, boxW, boxH, dpr()), k = size.scale / dpr() * s;
+    labelsStale = false;
+    labels.move((sx, sy) => { const [px, py] = toCanvas(camera, size, sx, sy); return [x + px * k, y + py * k]; }, boxW, boxH);
+  };
+  // The canvas under the eye. A move that stays within an art pixel costs a transform and nothing else.
+  const placeCanvas = () => {
+    const { x, y, s } = canvasTransform(eye, camera, size, boxW, boxH, dpr()), css = `translate(${x}px, ${y}px) scale(${s})`;
+    if (css === placed) return;
+    placed = css; canvas.style.transform = css; glowCanvas.style.transform = css; labelsStale = true;
+  };
+  const look = next => {
+    eye = next;
+    const at = cameraFor(eye, boxW, boxH, dpr());
+    if (at.cx !== camera.cx || at.cy !== camera.cy || at.step !== camera.step) { camera = at; fit(); dirty = true; }
+    placeCanvas();
   };
 
   // One sprite baked per frame at most; until it's ready a building shows what it last looked like.
   const step = now => {
     if (!plan || !camera) return false;
     if (glide) {
-      const t = Math.min(1, (now - glide.start) / GLIDE_MS);
-      camera = { ...camera, cx: Math.round(glide.from.cx + (glide.to.cx - glide.from.cx) * t), cy: Math.round(glide.from.cy + (glide.to.cy - glide.from.cy) * t) }; dirty = true;
+      const t = Math.min(1, Math.max(0, now - glide.start) / glide.ms);
+      look(between(glide.from, glide.to, 1 - (1 - t) ** 3));
       if (t === 1) glide = null;
+    } else if (coast) {
+      const dt = Math.min(50, Math.max(0, now - coast.at)), keep = Math.exp(-dt / COAST_MS); coast.at = now;
+      look(held({ ...eye, cx: eye.cx - coast.vx * dt / eye.r, cy: eye.cy - coast.vy * dt / eye.r }));
+      coast.vx *= keep; coast.vy *= keep;
+      if (Math.hypot(coast.vx, coast.vy) < COAST_MIN) coast = null;
     }
     const items = standing(now).filter(visible), ready = [];
     if (items.length * 4 > sprites.max) sprites.max = items.length * 4;
@@ -235,50 +259,57 @@ export function mountCity(box, hooks = {}) {
     }
     const drawing = ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.beacon ? 1 : 0}`).join();
     if (dirty || baked || drawing !== lastDrawn) { paint(ready); lastDrawn = drawing; dirty = false; }
+    if (labelsStale) { moveLabels(); followMenu(); }
     return waiting || baked;
   };
-  const moving = () => plan && (glide || animating);
+  const moving = () => plan && animating;
   const cancel = () => { cancelAnimationFrame(raf); clearTimeout(timer); raf = timer = 0; };
   const frame = now => {
-    raf = 0;
+    raf = 0; clearTimeout(timer); timer = 0;
     if (gone || document.hidden) return;
     try {
       const more = step(now);
-      if (more || dirty) schedule(); else if (moving()) timer = setTimeout(() => { timer = 0; schedule(); }, STEP_MS);
+      if (more || dirty || glide || coast) schedule(); else if (moving()) timer = setTimeout(() => { timer = 0; schedule(); }, STEP_MS);
     } catch (problem) { failure = problem; } // The next update throws it, and syncScene falls back to the list.
   };
   const schedule = () => { if (!raf && !gone && !document.hidden) raf = requestAnimationFrame(frame); };
   const wake = () => { dirty = true; cancel(); schedule(); };
   const onVisible = () => { if (!document.hidden) wake(); };
   document.addEventListener('visibilitychange', onVisible);
-  const resize = new ResizeObserver(() => { if (camera) { fit(); settle(); } else place(); if (camera) wake(); });
+  const resize = new ResizeObserver(() => { if (camera) { halt(); fit(); settle(); } else place(); if (camera) wake(); });
   resize.observe(box);
 
-  // ---- The camera. Everything that moves it goes through here, so it stays in whole art pixels and near the city.
-  const settle = () => { camera = clampCamera({ ...camera, cx: Math.round(camera.cx), cy: Math.round(camera.cy) }, cityBox(plan, view), size); };
-  const jump = next => { glide = null; camera = { ...camera, ...next }; fit(); settle(); wake(); };
-  const glideTo = next => {
-    const target = clampCamera({ ...camera, ...next }, cityBox(plan, view), size);
-    if (reducedMotion()) { jump(target); return; }
-    glide = { from: { cx: camera.cx, cy: camera.cy }, to: target, start: performance.now() }; wake();
+  // ---- The camera. Everything that moves the view goes through here, so that it comes to rest at a whole-pixel zoom, near the city.
+  const settle = () => { camera = clampCamera({ ...camera, cx: Math.round(camera.cx), cy: Math.round(camera.cy) }, cityBox(plan, view), size); eye = eyeOf(camera, boxW, boxH, dpr()); camera = cameraFor(eye, boxW, boxH, dpr()); fit(); placeCanvas(); };
+  const held = next => clampCamera(next, cityBox(plan, view), { width: boxW / next.r, height: boxH / next.r });
+  // A zoom can't stop part way, because art pixels have to land on whole device pixels: stopped, it finishes at once.
+  const halt = () => { if (glide && glide.from.r !== glide.to.r) look(glide.to); glide = null; coast = null; };
+  const jump = next => { glide = null; coast = null; camera = { ...camera, ...next }; fit(); settle(); wake(); };
+  const restAt = next => {
+    const step = next.step ?? glide?.to.step ?? camera.step, at = clampCamera({ cx: next.cx ?? eye.cx, cy: next.cy ?? eye.cy, step }, cityBox(plan, view), overscanned(boxW, boxH, dpr(), step));
+    return { ...eyeOf({ ...at, cx: Math.round(at.cx), cy: Math.round(at.cy) }, boxW, boxH, dpr()), step };
   };
-  const panBy = (dx, dy) => jump({ cx: camera.cx + dx, cy: camera.cy + dy });
-  const artAt = event => { const rect = canvas.getBoundingClientRect(), r = dpr() / size.scale; return [Math.floor((event.clientX - rect.left) * r), Math.floor((event.clientY - rect.top) * r)]; };
+  const glideTo = (next, ms = GLIDE_MS) => {
+    const to = restAt(next);
+    if (reducedMotion()) { jump(cameraFor(to, boxW, boxH, dpr())); return; }
+    coast = null; glide = { from: eye, to, start: performance.now(), ms }; schedule();
+  };
+  const panBy = (dx, dy) => { const from = glide?.to ?? eye; glideTo({ cx: from.cx + dx, cy: from.cy + dy }, KEY_GLIDE_MS); };
+  const artAt = event => { const rect = canvas.getBoundingClientRect(); return [Math.floor((event.clientX - rect.left) * canvas.width / rect.width), Math.floor((event.clientY - rect.top) * canvas.height / rect.height)]; };
+  const boxPoint = event => { const rect = box.getBoundingClientRect(); return [event.clientX - rect.left, event.clientY - rect.top]; };
   const centreOfBox = () => { const rect = box.getBoundingClientRect(); return { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }; };
-  // One step, keeping whatever is under the pointer under it.
+  // One stop, keeping whatever is under the pointer under it. Asked again while gliding, it carries on from the stop it was heading for.
   const zoom = (dir, at = centreOfBox()) => {
-    const step = ZOOMS[ZOOMS.indexOf(camera.step) + dir];
+    const step = ZOOMS[ZOOMS.indexOf(glide?.to.step ?? camera.step) + dir];
     if (!step) return;
-    const [px, py] = artAt(at), [sx, sy] = fromCanvas(camera, size, px, py);
-    glide = null; camera = { ...camera, step }; fit();
-    const [nx, ny] = artAt(at);
-    camera = { ...camera, cx: sx - nx + size.width / 2, cy: sy - ny + size.height / 2 }; settle(); wake();
+    const [qx, qy] = boxPoint(at);
+    glideTo({ ...zoomAbout(eye, stopRatio(step, dpr()), qx, qy, boxW, boxH), step });
   };
-  const fitCity = () => { const city = cityBox(plan, view), rect = box.getBoundingClientRect(); jump({ cx: (city.x0 + city.x1) / 2, cy: (city.y0 + city.y1) / 2, step: fitStep(city, rect.width, rect.height, dpr()) }); };
+  const fitCity = () => { const city = cityBox(plan, view); glideTo({ cx: (city.x0 + city.x1) / 2, cy: (city.y0 + city.y1) / 2, step: fitStep(city, boxW, boxH, dpr()) }); };
   // The same point of the city stays in the middle of the screen.
   const turn = dir => {
-    glide = null;
-    const [x, z] = unproject(camera.cx, camera.cy, view);
+    halt();
+    const [x, z] = unproject(eye.cx, eye.cy, view);
     view = (view + dir + 4) % 4; shown.clear();
     const [cx, cy] = screen(x, z, view); jump({ cx, cy });
   };
@@ -290,8 +321,7 @@ export function mountCity(box, hooks = {}) {
     const hood = plan.hoods.find(h => h.key === key);
     if (!hood || key === selectedHood) { clearHood(); return; }
     selectedHood = key; lots.cursor = hood.lots[0]?.key ?? null;
-    const rect = box.getBoundingClientRect(), next = focusHood(plan, hood, view, rect.width, rect.height, dpr());
-    if (next.step === camera.step) glideTo(next); else jump(next);
+    glideTo(focusHood(plan, hood, view, boxW, boxH, dpr()));
     wake();
   };
   const clearHood = () => { if (selectedHood || lots.cursor) { selectedHood = null; lots.cursor = null; wake(); } };
@@ -316,7 +346,7 @@ export function mountCity(box, hooks = {}) {
   const clickAt = event => { const hit = pickAt(event); if (hit?.id) talkTo(hit.id); else if (hit?.lot && !hit.lot.sessionId) askLot(hit.lot, false); };
 
   // ---- Starting an agent: on an empty lot, or through + wherever the server puts it. The lot stays lit until the menu closes.
-  const lotPoint = lot => { const [sx, sy] = screen(lot.x, lot.z, view), [px, py] = toCanvas(camera, size, sx, sy), rect = canvas.getBoundingClientRect(), r = size.scale / dpr(); return { clientX: rect.left + px * r, clientY: rect.top + py * r }; };
+  const lotPoint = lot => { const [sx, sy] = screen(lot.x, lot.z, view), [px, py] = toCanvas(camera, size, sx, sy), rect = canvas.getBoundingClientRect(); return { clientX: rect.left + px * rect.width / canvas.width, clientY: rect.top + py * rect.height / canvas.height }; };
   const folders = () => [...new Set((snapshot?.sessions || []).map(session => session.cwd).filter(Boolean))].sort();
   const askLot = (lot, focus) => {
     const target = spawnTarget(plan.hoods.find(hood => hood.lots.includes(lot)), lot);
@@ -351,31 +381,48 @@ export function mountCity(box, hooks = {}) {
   // ---- Mouse and touch. A press that doesn't move DRAG_SLOP is a click.
   const pointers = new Map();
   let press = null, pinch = null;
+  const fingers = () => { const [a, b] = [...pointers.values()]; return { apart: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2 }; };
+  // The art under the fingers stays under them, whatever they do, until they let go.
+  const followFingers = () => {
+    const now = fingers(), [qx, qy] = boxPoint(now), r = Math.min(stopRatio(ZOOMS.at(-1), dpr()), Math.max(stopRatio(ZOOMS[0], dpr()), pinch.r * now.apart / pinch.apart));
+    pinch.qx = qx; pinch.qy = qy;
+    look(held({ cx: pinch.ax - (qx - boxW / 2) / r, cy: pinch.ay - (qy - boxH / 2) / r, r })); schedule();
+  };
   const onDown = event => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    canvas.setPointerCapture(event.pointerId); pointers.set(event.pointerId, event); glide = null; card.show(null);
-    if (pointers.size === 1) press = { x: event.clientX, y: event.clientY, cx: camera?.cx, cy: camera?.cy, dragged: false };
-    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { apart: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) }; if (press) press.dragged = true; }
+    canvas.setPointerCapture(event.pointerId); pointers.set(event.pointerId, event); card.show(null);
+    if (eye) halt();
+    if (pointers.size === 1) press = { x: event.clientX, y: event.clientY, cx: eye?.cx, cy: eye?.cy, dragged: false, trail: [] };
+    if (pointers.size === 2 && eye) {
+      const now = fingers(), [qx, qy] = boxPoint(now);
+      pinch = { apart: now.apart, r: eye.r, qx, qy, ax: eye.cx + (qx - boxW / 2) / eye.r, ay: eye.cy + (qy - boxH / 2) / eye.r };
+      press = null;
+    }
   };
   const onMove = event => {
     if (!pointers.has(event.pointerId)) { if (event.pointerType === 'mouse' && camera) hover(event); return; }
     pointers.set(event.pointerId, event);
-    if (pointers.size >= 2 && pinch) {
-      const [a, b] = [...pointers.values()], apart = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), ratio = apart / pinch.apart;
-      if (ratio >= PINCH_IN || ratio <= PINCH_OUT) { zoom(ratio > 1 ? 1 : -1, { clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2 }); pinch.apart = apart; }
-      return;
-    }
+    if (pointers.size >= 2 && pinch) { followFingers(); return; }
     if (!press || !camera) return;
-    const dx = event.clientX - press.x, dy = event.clientY - press.y;
-    if (!press.dragged && Math.hypot(dx, dy) < DRAG_SLOP) return;
-    press.dragged = true; canvas.style.cursor = 'grabbing';
-    const r = dpr() / size.scale; jump({ cx: press.cx - Math.round(dx * r), cy: press.cy - Math.round(dy * r) });
+    if (!press.dragged && Math.hypot(event.clientX - press.x, event.clientY - press.y) < DRAG_SLOP) return;
+    // Taken up from here, so that the slop isn't a jump as the drag starts.
+    if (!press.dragged) { press.x = event.clientX; press.y = event.clientY; press.dragged = true; canvas.style.cursor = 'grabbing'; }
+    press.trail.push([event.timeStamp, event.clientX, event.clientY]);
+    if (press.trail.length > 8) press.trail.shift();
+    look(held({ ...eye, cx: press.cx - (event.clientX - press.x) / eye.r, cy: press.cy - (event.clientY - press.y) / eye.r })); schedule();
   };
   const onUp = event => {
     if (!pointers.delete(event.pointerId)) return;
-    if (pointers.size < 2) pinch = null;
-    if (pointers.size) { const [rest] = pointers.values(); press = { x: rest.clientX, y: rest.clientY, cx: camera?.cx, cy: camera?.cy, dragged: true }; return; }
-    const clicked = press && !press.dragged && event.type === 'pointerup' && !dismissed; press = null; canvas.style.cursor = 'grab';
+    if (pinch && pointers.size < 2) {
+      // On to the stop it was heading for. Whichever finger is left does nothing until it lifts too: a pan starting here would feel like a slip.
+      const step = settleStep(eye.r, pinch.r, dpr()), { qx, qy } = pinch;
+      pinch = null; press = null;
+      glideTo({ ...zoomAbout(eye, stopRatio(step, dpr()), qx, qy, boxW, boxH), step });
+    }
+    if (pointers.size) return;
+    const clicked = press && !press.dragged && event.type === 'pointerup' && !dismissed;
+    if (press?.dragged && event.type === 'pointerup' && !reducedMotion()) { const speed = flickOf(press.trail, event.timeStamp); if (speed) { coast = { ...speed, at: performance.now() }; schedule(); } }
+    press = null; canvas.style.cursor = 'grab';
     if (clicked) clickAt(event);
   };
   const onLeave = () => { if (!pointers.size) { setLot('hover', null); card.show(null); } };
@@ -427,7 +474,7 @@ export function mountCity(box, hooks = {}) {
   card = createCard(box);
   menu = createMenu(box, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item, slot), () => { if (lots.asked) { lots.asked = null; wake(); } });
   labels = createLabels(box, { onSession: talkTo, onHood: selectHood });
-  const controls = createControls(box, { onRotate: dir => camera && turn(dir), onFit: () => { if (camera) { clearHood(); fitCity(); } }, onNext: () => talkTo(hooks.nextWaiting?.()?.id), onList: () => hooks.showList?.(), onNew: askAnywhere });
+  const controls = createControls(box, { onFit: () => { if (camera) { clearHood(); fitCity(); } }, onNext: () => talkTo(hooks.nextWaiting?.()?.id), onList: () => hooks.showList?.(), onNew: askAnywhere });
   const listening = [[canvas, 'pointerdown', onDown], [canvas, 'pointermove', onMove], [canvas, 'pointerup', onUp], [canvas, 'pointercancel', onUp], [canvas, 'pointerleave', onLeave], [window, 'keydown', onKey], [document, 'click', onClick]];
   for (const [target, type, listener] of listening) target.addEventListener(type, listener);
   box.addEventListener('wheel', onWheel, { passive: false }); // On the box: over a bubble it should still zoom.
@@ -464,14 +511,14 @@ export function mountCity(box, hooks = {}) {
       controls.setWaiting(snapshot.sessions.filter(session => ['permission', 'question'].includes(session.status)).length);
       dirty = true; cancel();
       // Drawn here, not left to the next frame, so that a canvas that can't draw is caught by syncScene.
-      if (step(performance.now()) || moving()) schedule();
+      if (step(performance.now()) || moving() || glide || coast) schedule();
     },
     pick(next, open) {
       if (gone) return;
       test = next; dirty = true;
       if (open) menu.close();
       const hits = open && test && plan && camera ? plan.buildings.filter(building => passes(building.id) || building.subagents.some(kid => passes(kid.id))) : [];
-      if (hits.length) { const rect = box.getBoundingClientRect(), target = focusBuildings(hits, view, rect.width, rect.height, dpr()); if (target.step === camera.step) glideTo(target); else jump(target); }
+      if (hits.length) glideTo(focusBuildings(hits, view, boxW, boxH, dpr()));
       wake();
     },
     panelClosed() {},
@@ -484,7 +531,7 @@ export function mountCity(box, hooks = {}) {
       sprites.clear(); shown.clear(); grounds.clear(); ghosts.clear(); fired.clear(); canvas.remove(); glowCanvas.remove(); plan = null;
     },
     // For the local harness: no cost unless something calls it.
-    inspect: () => ({ camera, size, view, frames, bakeMs: [...bakeMs], groundMs: [...groundMs], cached: sprites.size, plan, lots: { ...lots }, drawn, ghosts: ghosts.size, animating }),
+    inspect: () => ({ camera, eye, glide: !!glide, coast: !!coast, placed, size, view, frames, bakeMs: [...bakeMs], groundMs: [...groundMs], cached: sprites.size, plan, lots: { ...lots }, drawn, ghosts: ghosts.size, animating }),
   };
   return scene;
 }

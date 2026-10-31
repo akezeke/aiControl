@@ -49,6 +49,56 @@ export function focusBuildings(buildings, view, cssW, cssH, dpr) {
 const offset = (camera, size) => [Math.round(size.width / 2 - camera.cx), Math.round(size.height / 2 - camera.cy)];
 export function toCanvas(camera, size, sx, sy) { const [ox, oy] = offset(camera, size); return [Math.round(sx) + ox, Math.round(sy) + oy]; }
 export function fromCanvas(camera, size, px, py) { const [ox, oy] = offset(camera, size); return [px - ox, py - oy]; }
+
+// ---- The eye: the point of the city at the middle of the box, and CSS pixels per art pixel. It moves freely; the canvas is painted at the
+// nearest whole camera and a transform covers the rest, so a pan is smooth, and at a stop the art still sits on whole device pixels.
+const ratioOf = dpr => dpr > 0 ? dpr : 1;
+export const stopRatio = (step, dpr) => fitCanvas(1, 1, dpr, step).scale / ratioOf(dpr);
+// Art pixels past each edge of the box, so that the part-pixel a pan adds never shows the floor.
+export const OVERSCAN = 2;
+export function overscanned(cssW, cssH, dpr, step) { const r = stopRatio(step, dpr), pad = 2 * OVERSCAN * r; return fitCanvas((cssW || 0) + pad, (cssH || 0) + pad, dpr, step); }
+export function baseStep(r, dpr) { return [...ZOOMS].reverse().find(step => stopRatio(step, dpr) <= r) ?? ZOOMS[0]; }
+export function eyeOf(camera, cssW, cssH, dpr) {
+  const r = stopRatio(camera.step, dpr), size = overscanned(cssW, cssH, dpr, camera.step), [ox, oy] = offset(camera, size);
+  return { cx: cssW / 2 / r + OVERSCAN - ox, cy: cssH / 2 / r + OVERSCAN - oy, r };
+}
+export function cameraFor(eye, cssW, cssH, dpr) {
+  const step = baseStep(eye.r, dpr), r = stopRatio(step, dpr), { width, height } = overscanned(cssW, cssH, dpr, step);
+  return { cx: Math.round(width / 2) - Math.round(cssW / 2 / r + OVERSCAN - eye.cx), cy: Math.round(height / 2) - Math.round(cssH / 2 / r + OVERSCAN - eye.cy), step };
+}
+export function canvasTransform(eye, camera, size, cssW, cssH, dpr) {
+  const [ox, oy] = offset(camera, size), device = ratioOf(dpr), whole = v => Math.round(v * device) / device;
+  return { x: whole(cssW / 2 - (eye.cx + ox) * eye.r), y: whole(cssH / 2 - (eye.cy + oy) * eye.r), s: eye.r / stopRatio(camera.step, dpr) };
+}
+// Size goes by ratio and position by 1/size, which is what holds a zoom's still point still, even when clamping moved where it ends.
+export function between(from, to, t) {
+  if (t <= 0) return from;
+  if (t >= 1) return to;
+  const r = from.r === to.r ? from.r : from.r * (to.r / from.r) ** t, k = from.r === to.r ? t : (1 / r - 1 / from.r) / (1 / to.r - 1 / from.r);
+  return { cx: from.cx + (to.cx - from.cx) * k, cy: from.cy + (to.cy - from.cy) * k, r };
+}
+export function zoomAbout(eye, r, qx, qy, cssW, cssH) {
+  const dx = qx - cssW / 2, dy = qy - cssH / 2;
+  return { cx: eye.cx + dx / eye.r - dx / r, cy: eye.cy + dy / eye.r - dy / r, r };
+}
+// Where a pinch comes to rest: ten percent past a stop, in the direction it was going, is enough to mean the next one.
+const LEAN = 1.1;
+export function settleStep(r, start, dpr) {
+  const stops = ZOOMS.map(step => [step, stopRatio(step, dpr)]);
+  if (r > start) return (stops.find(([, stop]) => stop >= r / LEAN) ?? stops.at(-1))[0];
+  if (r < start) return ([...stops].reverse().find(([, stop]) => stop <= r * LEAN) ?? stops[0])[0];
+  return stops.reduce((a, b) => Math.abs(b[1] - r) < Math.abs(a[1] - r) ? b : a)[0];
+}
+// How fast a drag was going as it let go, in CSS pixels per ms: nothing if it had stopped first, or was hardly moving.
+const FLICK_WINDOW = 90, FLICK_MIN = .12;
+export function flickOf(trail, at) {
+  const last = trail.at(-1);
+  if (!last || at - last[0] >= FLICK_WINDOW) return null;
+  const inside = trail.findIndex(([time]) => at - time < FLICK_WINDOW), first = trail[inside === trail.length - 1 ? Math.max(0, inside - 1) : inside];
+  if (last[0] === first[0]) return null;
+  const vx = (last[1] - first[1]) / (last[0] - first[0]), vy = (last[2] - first[2]) / (last[0] - first[0]);
+  return Math.hypot(vx, vy) < FLICK_MIN ? null : { vx, vy };
+}
 export function clampCamera(camera, box, size) {
   const keepX = Math.min(KEEP, (box.x1 - box.x0) / 2), keepY = Math.min(KEEP, (box.y1 - box.y0) / 2);
   return {
