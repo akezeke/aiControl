@@ -11,7 +11,7 @@ A self-hosted dashboard for local Codex and Claude Code sessions on **macOS and 
 - Chat history with Markdown, diffs, tool calls, screenshots and the Markdown files a session writes.
 - Account usage limits, notifications and sounds when a session needs you.
 - Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting.
-- A pixel-art City where each project is a neighbourhood and each session a building that grows while it runs.
+- A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
 - Trickshot in the Office's kitchen: bounce a paper ball, mug or plate into its target, with six levels, three daily shots and a score board.
 - Local access or access from other devices over Tailscale, protected by a PIN or password.
 
@@ -66,9 +66,9 @@ npm run build
 
 The Bridge theme is an original design and is not affiliated with any franchise.
 
-| City | City on a phone | City's list |
+| Metropolis | Metropolis on a phone | Metropolis list |
 | --- | --- | --- |
-| ![City](docs/screenshots/city-overview.webp) | ![City on a phone](docs/screenshots/city-phone.webp) | ![City's session list](docs/screenshots/city-list.webp) |
+| ![Metropolis](docs/screenshots/city-overview.webp) | ![Metropolis on a phone](docs/screenshots/city-phone.webp) | ![Metropolis session list](docs/screenshots/city-list.webp) |
 
 [More screenshots, including mobile](docs/screenshots).
 
