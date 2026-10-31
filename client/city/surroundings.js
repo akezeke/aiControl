@@ -33,6 +33,19 @@ export function boatsAt({ w, d }, now) {
   });
 }
 
+// A duck and her young, out and back round each big lake, turning before they reach the jetty.
+const YOUNG = [false, true, true], DUCK_OUT = -12, DUCK_GAP = .5, DUCK_SPEED = .0015, DUCK_APART = 5;
+export function ducksAt(lakes, now) {
+  return lakes.filter(lake => lake.big).flatMap(lake => {
+    const sweep = 2 * Math.PI - 2 * DUCK_GAP, length = (lake.ra + lake.rb) / 2 * .8 * sweep;
+    return YOUNG.map((young, i) => {
+      const t = (((now * DUCK_SPEED + lake.cx * 7 + lake.cz * 3 - i * DUCK_APART) / length) % 2 + 2) % 2, way = t < 1 ? 1 : -1, a = lake.jetty.facing + DUCK_GAP + (t < 1 ? t : 2 - t) * sweep;
+      const [x, z] = lake.at(a, DUCK_OUT), [nx, nz] = lake.at(a + way * .02, DUCK_OUT), along = Math.abs(nx - x) >= Math.abs(nz - z);
+      return { x: Math.round(x), z: Math.round(z), along, dir: (along ? nx - x : nz - z) < 0 ? -1 : 1, young, lake };
+    });
+  });
+}
+
 // Now and then a flock crosses, high up. It is over the city for a while and gone for longer, a new line each time.
 export const BIRD_EVERY = 60000;
 const BIRD_FLIGHT = 24000, BIRD_OFF = 160, WINGBEAT = 240, FLOCK = [[0, 0], [-6, -5], [-6, 5], [-12, -10], [-12, 10]];

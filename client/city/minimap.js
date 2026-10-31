@@ -1,7 +1,7 @@
 // The sidebar's site plan: the real island, roads and lots from the camera's angle, each session's tower on its own lot, and a box round what the camera sees.
 import { screen, annexAt, lotAt, unproject, LOT, ROAD, WALK } from './plan.js';
 import { hex } from './palette.js';
-import { LAND, LAND_EAST, LAND_FAR, lotLook, reachOf, soilOf } from './ground.js';
+import { LAND, LAND_EAST, LAND_FAR, lakesOf, lotLook, reachOf, soilOf } from './ground.js';
 
 export const MAP_PX = 2;
 const SEA = hex('#0b5e65'), RIPPLE = hex('#0b8a8f'), SAND = hex('#c9a98e'), TARMAC = hex('#2e222f'), POND = hex('#0b8a8f'), PAVED = hex('#7f5f5a'), PLANT = hex('#9babb2'), INK = hex('#2e222f');
@@ -34,7 +34,7 @@ export function mapPicture(plan, view, width, height, fit, { asleep = () => fals
   const rgba = new Uint8ClampedArray(width * height * 4), { w: W, d: D } = plan.bounds, reach = reachOf(W, D), isLit = litTest(lit), { land: GRASS, tuft: VACANT } = soilOf(time);
   const inRoad = (v, list) => list.some(r => v >= r - WALK && v < r + ROAD + WALK);
   const ownerOf = new Map(plan.buildings.map(building => [`${building.hoodKey}:${building.slot}`, building.id]));
-  const groundAt = (x, z) => {
+  const lakes = lakesOf(plan), groundAt = (x, z) => {
     const past = reach(x, z);
     if (past >= SHORE) return Math.floor(past) % 11 === 0 && Math.floor(x + z) % 37 < 12 ? RIPPLE : SEA;
     if (past >= 0) return SAND;
@@ -47,8 +47,10 @@ export function mapPicture(plan, view, width, height, fit, { asleep = () => fals
       const look = lotLook(owner);
       return Math.max(Math.abs(x - lot.x), Math.abs(z - lot.z)) > LOT / 2 - KERB ? look.kerb : look.a;
     }
+    const lake = lakes.find(p => x >= p.x && z >= p.z && x < p.x + p.w && z < p.z + p.d);
+    if (lake) return lake.land(x, z) < 0 ? POND : GRASS;
     const parcel = plan.parcels.find(p => x >= p.x && z >= p.z && x < p.x + p.w && z < p.z + p.d);
-    return !parcel || parcel.kind === 'park' ? GRASS : parcel.kind === 'pond' ? POND : PAVED;
+    return !parcel || parcel.kind === 'park' ? GRASS : PAVED;
   };
   const hoodAt = (x, z) => plan.hoods.find(hood => x >= hood.x && z >= hood.z && x < hood.x + hood.cols * LOT && z < hood.z + 2 * LOT);
   const put = (x, y, c) => { if (x < 0 || y < 0 || x >= width || y >= height) return; const i = (y * width + x) * 4; rgba[i] = c[0]; rgba[i + 1] = c[1]; rgba[i + 2] = c[2]; rgba[i + 3] = 255; };

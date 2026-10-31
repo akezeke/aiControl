@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { OUTLINE, hex } from '../client/city/palette.js';
 import { Stack } from '../client/city/stack.js';
 import { SpriteCache, renderSprite } from '../client/city/sprite.js';
+import { duck, lamp } from '../client/city/generator.js';
 
 const box = () => { const s = new Stack(12, 12, 12); s.box(0, 0, 0, 8, 8, 8, hex('#4d9be6')); return s.bake(); };
 test('a sprite has its size, mask and whole-number origin in every view', () => {
@@ -34,4 +35,19 @@ test('a sleeping building loses most of its colour and light, and keeps its shap
   const measure = ({ rgba, mask }) => { let light = 0, spread = 0, n = 0; mask.forEach((on, i) => { if (!on) return; const c = [...rgba.subarray(i * 4, i * 4 + 3)]; if (c.join() === '46,34,47') return; light += c[0] + c[1] + c[2]; spread += Math.max(...c) - Math.min(...c); n++; }); return { light: light / n, spread: spread / n }; };
   const was = measure(awake), now = measure(asleep);
   assert.ok(now.light < was.light * .7, `light ${now.light} of ${was.light}`); assert.ok(now.spread < was.spread * .6, `colour ${now.spread} of ${was.spread}`);
+});
+
+// Pixels sample every other voxel, so anything one voxel thick can fall between them and vanish from two of the four views.
+const showsEveryLayer = (stack, name) => {
+  const ink = hex(OUTLINE);
+  for (const view of [0, 1, 2, 3]) stack.layers.forEach((layer, y) => {
+    if (!layer) return;
+    const { rgba } = renderSprite({ ...stack, layers: stack.layers.map((other, i) => i === y ? other : null) }, view);
+    let body = 0; for (let i = 0; i < rgba.length; i += 4) if (rgba[i + 3] && (rgba[i] !== ink[0] || rgba[i + 1] !== ink[1] || rgba[i + 2] !== ink[2])) body++;
+    assert.ok(body > 0, `${name}: layer ${y} is gone from view ${view}`);
+  });
+};
+test('a lamp stands on its post in every view, not a light hanging in the air', () => showsEveryLayer(lamp(), 'lamp'));
+test('a duck keeps its neck and head in every view, whichever way it swims', () => {
+  for (const along of [true, false]) for (const dir of [1, -1]) for (const young of [false, true]) showsEveryLayer(duck(along, dir, young), `duck ${along} ${dir} ${young}`);
 });

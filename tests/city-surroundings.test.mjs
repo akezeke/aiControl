@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cityPlan, screen } from '../client/city/plan.js';
-import { coastOf, groundCells, reachOf } from '../client/city/ground.js';
+import { coastOf, groundCells, reachOf, lakesOf } from '../client/city/ground.js';
 import { boatsAt, BOATS, seaFrame, SEA_FRAMES } from '../client/city/surroundings.js';
 
 const desks = ['s1', 's2', 's3'].map((id, i) => [id, { podKey: 'a', slot: i, sessionId: id }]);
@@ -18,9 +18,11 @@ test('the sea moves: its frames differ, and come round again', () => {
 });
 test('waves stay off the land: only ever over sand or water', () => {
   const { w: W, d: D } = plan.bounds, reach = reachOf(W, D);
+  // The lakes have their own waves, and their own test.
+  const inLake = (x, z) => lakesOf(plan).some(lake => x >= lake.x && z >= lake.z && x < lake.x + lake.w && z < lake.z + lake.d);
   assert.ok(cells.water.shore.length > 100);
-  for (let i = 0; i < cells.water.shore.length; i += 2) assert.ok(reach(cells.water.shore[i], cells.water.shore[i + 1]) >= 0);
-  for (let i = 0; i < cells.water.glint.length; i += 2) assert.ok(reach(cells.water.glint[i], cells.water.glint[i + 1]) >= 4);
+  for (let i = 0; i < cells.water.shore.length; i += 2) if (!inLake(cells.water.shore[i], cells.water.shore[i + 1])) assert.ok(reach(cells.water.shore[i], cells.water.shore[i + 1]) >= 0);
+  for (let i = 0; i < cells.water.glint.length; i += 2) if (!inLake(cells.water.glint[i], cells.water.glint[i + 1])) assert.ok(reach(cells.water.glint[i], cells.water.glint[i + 1]) >= 4);
 });
 test('what shows is where its cell is, in every view', () => {
   for (const view of [0, 1, 2, 3]) {

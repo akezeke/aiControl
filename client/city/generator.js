@@ -85,7 +85,7 @@ let streetLamp = null;
 export function lamp() {
   if (streetLamp) return streetLamp;
   const S = new Stack(4, 4, 9);
-  S.box(0, 0, 0, 1, 7, 1, hex('#3e3546')); S.box(0, 7, 0, 2, 2, 2, glow('#fbff86'));
+  S.box(0, 0, 0, 2, 7, 1, hex('#625565')); S.box(0, 7, 0, 2, 2, 2, glow('#fbff86')); // Two voxels across: pixels sample every other voxel, and a post one voxel thick is gone from two of the four views.
   return streetLamp = S.bake();
 }
 // A pylon, lean enough not to count as a building: a pale banded lattice tapering to a mast, with its arms across the line it carries and an insulator hanging off each end. Two voxels thick, or a view can lose it between its samples.
@@ -118,6 +118,37 @@ export function boat(colour, along, dir, wake = true) {
   for (let y = 0; y < 9; y++) { const w = 8 - y; put(dir * (1 + w / 2), 4 + y, 0, w, 1, 1, hex('#f6f0e0')); }
   if (wake) for (let i = 1; i <= 5; i++) { if (i % 2) put(-dir * (6 + i), 0, -2 - (i >> 1), 1, 1, 1, foam); put(-dir * (6 + i), 0, 2 + (i >> 1), 1, 1, 1, foam); }
   return S.bake();
+}
+// Reeds at a lake's edge: a few blades, some with a brown head. Low, so they hide nothing.
+const reedClumps = new Map();
+export function reeds(n) {
+  if (reedClumps.has(n)) return reedClumps.get(n);
+  const S = new Stack(7, 7, 5), blades = [hex('#a2a947'), hex('#a2a947'), hex('#676633')], head = hex('#4c3e24');
+  for (let i = 0; i < 4 + n; i++) {
+    const u = Math.floor(hash(n + i * 7, 31) * 6) - 3, v = Math.floor(hash(n + i * 7, 32) * 6) - 3, tall = 2 + Math.floor(hash(n + i * 7, 33) * 3);
+    S.box(u, 0, v, 1, tall, 1, blades[i % 3]);
+    if (i % 3 === 0) S.box(u, tall, v, 1, 1, 1, head);
+  }
+  const baked = S.bake(); reedClumps.set(n, baked); return baked;
+}
+// Tied up at a jetty: a hull and a seat, with no mast to get in anything's way.
+const rowboats = new Map();
+export function rowboat(along) {
+  if (rowboats.has(along)) return rowboats.get(along);
+  const S = new Stack(12, 12, 3), put = (u, y, v, w, h, d, c) => along ? S.box(u, y, v, w, h, d, c) : S.box(v, y, u, d, h, w, c);
+  for (let u = -4; u <= 4; u++) { const w = Math.abs(u) > 3 ? 1 : Math.abs(u) > 2 ? 3 : 5; put(u, 0, 0, 1, 2, w, hex('#cd683d')); if (w > 1) put(u, 1, 0, 1, 1, w - 2, hex('#7f5f5a')); }
+  put(0, 1, 0, 1, 1, 3, hex('#e6904e'));
+  const baked = S.bake(); rowboats.set(along, baked); return baked;
+}
+// A duck and her young, facing the way they swim.
+const ducks = new Map();
+export function duck(along, dir, young) {
+  const key = `${along}${dir}${young}`;
+  if (ducks.has(key)) return ducks.get(key);
+  const S = new Stack(8, 8, 4), put = (u, y, v, w, h, d, c) => along ? S.box(u, y, v, w, h, d, c) : S.box(v, y, u, d, h, w, c), feathers = hex(young ? '#fbff86' : '#f6f0e0'), beak = hex('#f79617');
+  if (young) { put(0, 0, 0, 2, 1, 1, feathers); put(dir, 1, 0, 1, 1, 2, feathers); put(dir * 2, 1, 0, 1, 1, 2, beak); }
+  else { put(0, 0, 0, 4, 2, 2, feathers); put(dir * 2, 2, 0, 1, 2, 2, hex('#239063')); put(dir * 3, 2, 0, 1, 1, 2, beak); }
+  const baked = S.bake(); ducks.set(key, baked); return baked;
 }
 // The one thing on the island. Striped and windowless, so nobody takes it for a session's tower.
 export function lighthouse() {

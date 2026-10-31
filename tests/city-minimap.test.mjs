@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cityPlan, screen } from '../client/city/plan.js';
+import { lakesOf } from '../client/city/ground.js';
+import { hex } from '../client/city/palette.js';
 import { mapFit, mapSites, mapPicture, mapView, mapToScreen, MAP_PX } from '../client/city/minimap.js';
 
 const layout = () => ({
@@ -84,4 +86,14 @@ test("the map's land is the ground the city has at this hour", () => {
   const p = plan(), fit = mapFit(p, 0, W, H), colours = time => { const rgba = mapPicture(p, 0, W, H, fit, { time }), seen = new Set(); for (let i = 0; i < rgba.length; i += 4) seen.add(`${rgba[i]},${rgba[i + 1]},${rgba[i + 2]}`); return seen; };
   assert.ok(colours('day').has('75,112,88') && !colours('day').has('50,51,83'));
   assert.ok(colours('night').has('50,51,83') && !colours('night').has('75,112,88'));
+});
+
+test('a lake on the map is the lake\'s own shape, not its whole plot', () => {
+  const pods = Array.from({ length: 12 }, (_, i) => ({ key: `p${i}`, name: `project-${i}`, cwd: `/p${i}`, col: i % 4, row: (i * 2) % 12 }));
+  const city = cityPlan({ pods, desks: new Map(), grid: { cols: 4 } }, {}), lakes = lakesOf(city), width = 1600, height = 1000, fit = mapFit(city, 0, width, height), picture = mapPicture(city, 0, width, height, fit), WATER = hex('#0b8a8f').join();
+  const shown = (x, z) => { const [sx, sy] = screen(x, z, 0), i = (Math.floor(sy * fit.scale + fit.oy) * width + Math.floor(sx * fit.scale + fit.ox)) * 4; return [picture[i], picture[i + 1], picture[i + 2]].join(); };
+  const big = lakes.filter(lake => lake.big && !lake.islet), small = lakes.filter(lake => !lake.big);
+  assert.ok(big.length && small.length);
+  for (const lake of big) { assert.equal(shown(lake.cx, lake.cz), WATER, 'big lake'); assert.notEqual(shown(lake.x + 4, lake.z + 4), WATER, 'big lake\'s corner'); }
+  for (const lake of small) { assert.equal(shown(lake.cx, lake.cz), WATER, 'pond'); assert.notEqual(shown(lake.x, lake.z), WATER, 'pond\'s corner'); }
 });

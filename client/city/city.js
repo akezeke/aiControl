@@ -7,12 +7,12 @@ import { createCard, createMenu } from '../scene-ui.js';
 import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
 import { groundCells, paintGround, paintHood, paintLotShade, timeOfDay } from './ground.js';
-import { buildTower, annex, boat, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant } from './generator.js';
+import { buildTower, annex, boat, duck, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant } from './generator.js';
 import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
 import { hop, hum, phaseAt, sparks, STEAM_MS, traffic, BURSTS, burst, momentOf, jibBeat } from './juice.js';
-import { birdsAt, boatsAt, cloudBlob, cloudsAt, seaFrame, SEA_FRAMES, SEA_KINDS } from './surroundings.js';
+import { birdsAt, boatsAt, cloudBlob, cloudsAt, ducksAt, seaFrame, SEA_FRAMES, SEA_KINDS } from './surroundings.js';
 import { powerRoutes, pulsesAt, routeDots } from './power.js';
 import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf, keyPan } from './view.js';
 import { createControls, createLabels } from './labels.js';
@@ -186,6 +186,7 @@ export function mountCity(box, hooks = {}) {
       for (const { id, x, z, along, colour } of traffic(plan.roads, busy, now)) { stand(`car:${colour}:${along}`, `car:${id}`, x, z, () => ({ stack: car(colour, along) }), null, quiet, { moves: true }); }
     }
     if (!reduced) boatsAt(plan.bounds, now).forEach(({ x, z, along, dir }, i) => stand(`boat:${i}:${along}:${dir}`, `boat:${i}`, x, z, () => ({ stack: boat(BOAT_SAILS[i % BOAT_SAILS.length], along, dir) }), null, quiet, { moves: true }));
+    if (!reduced) ducksAt(cells.lakes, now).forEach(({ x, z, along, dir, young }, i) => stand(`duck:${along}:${dir}:${young}`, `duck:${i}`, x, z, () => ({ stack: duck(along, dir, young) }), null, quiet, { moves: true }));
     for (const [id, ghost] of ghosts) if (!(ghost.kid ? annexOf(ghost.building, ghost.i, ghost.kid) : towerOf(ghost.building))) ghosts.delete(id);
     return items.sort((a, b) => a.sy - b.sy);
   };

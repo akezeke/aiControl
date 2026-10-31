@@ -1,13 +1,14 @@
 // The ground the city stands on: every road, parcel and lot in a flat grid of cells, baked once per view. Pure.
 import { hex, nearest } from './palette.js';
 import { fnv } from './identity.js';
-import { fountain, car, tree, lamp, boat, lighthouse, pylon, PYLON_ARM, PYLON_REACH } from './generator.js';
+import { fountain, car, tree, lamp, boat, lighthouse, pylon, reeds, rowboat, PYLON_ARM, PYLON_REACH } from './generator.js';
+import { lakeOf, TRAIL_W } from './lake.js';
 import { powerLines } from './power.js';
 import { LOT, PLOT, ROAD, WALK, PLANT, unproject, screen } from './plan.js';
 import { SHADOW } from './sprite.js';
 
 const C = Object.fromEntries(Object.entries({ block: '#484a77', road: '#3e3546', walk: '#966c6c', dash: '#9babb2', zebra: '#c7dcd0', shadow: '#2e222f',
-  trail: '#ab947a', water: '#0b5e65', water2: '#0b8a8f', paving: '#966c6c', paving2: '#ab947a', court: '#a24b6f', line: '#c7dcd0', tarmac: '#3e3546', sea: '#0b5e65', ripple: '#0b8a8f', foam: '#8ff8e2', sand: '#ab947a', flower: '#fbb954', rose: '#cf657f', stake: '#7f708a', bush: '#239063', bud: '#1ebc73' }).map(([k, v]) => [k, hex(v)]));
+  trail: '#ab947a', water: '#0b5e65', water2: '#0b8a8f', paving: '#966c6c', paving2: '#ab947a', court: '#a24b6f', line: '#c7dcd0', tarmac: '#3e3546', sea: '#0b5e65', ripple: '#0b8a8f', foam: '#8ff8e2', sand: '#ab947a', flower: '#fbb954', rose: '#cf657f', shallow: '#0eaf9b', mud: '#7f5f5a', plank: '#966c6c', lily: '#239063', lily2: '#1ebc73', bloom: '#ed8099', stake: '#7f708a', bush: '#239063', bud: '#1ebc73' }).map(([k, v]) => [k, hex(v)]));
 // The land goes by the viewer's clock, sage by day and dusk blue by night, so the lit windows have the dark to glow against once it's dark out.
 const DAWN = 7, DUSK = 18;
 export const timeOfDay = (date = new Date()) => { const hour = date.getHours(); return hour >= DAWN && hour < DUSK ? 'day' : 'night'; };
@@ -101,8 +102,9 @@ export function groundCells(plan, time = 'day') {
     if (east) rect(x + ROAD, z, ARM, ROAD, (a, b) => a < CROSSING ? bars(b) : C.road);
   }
 
-  for (const { kind, x, z, w: W2, d: D2, seed } of plan.parcels) PARCELS[kind]({ rect, prop, light, lawn, h: n => fnv(`${seed}:${n}`) }, x, z, W2, D2);
-  for (const park of plan.parks) bigPark({ rect, prop, light, lawn, h: n => fnv(`${park.seed}:${n}`) }, park.x, park.z, park.w, park.d);
+  const lapping = { shore: [], past: [], glint: [] }, tools = seed => ({ rect, prop, light, lawn, soil, lapping, h: seeded(seed) });
+  for (const { kind, x, z, w: W2, d: D2, seed } of plan.parcels) PARCELS[kind](tools(seed), x, z, W2, D2);
+  for (const park of plan.parks) bigPark(tools(park.seed), park.x, park.z, park.w, park.d);
 
   // Paved where someone's building; corner ticks where one could go.
   for (const hood of plan.hoods) for (const lot of hood.lots) {
@@ -191,11 +193,13 @@ export function groundCells(plan, time = 'day') {
     rgb[i * 3] = dark[0]; rgb[i * 3 + 1] = dark[1]; rgb[i * 3 + 2] = dark[2];
   }
   // Whatever has been built over the water, or lies in a shadow on it, stays still.
-  const wet = new Set([C.sea, C.ripple, C.sand, C.foam].map(c => c.join())), stillWet = (x, z) => { const i = (x - x0 + (z - z0) * w) * 3; return wet.has(`${rgb[i]},${rgb[i + 1]},${rgb[i + 2]}`); };
+  const wet = new Set([C.sea, C.ripple, C.sand, C.foam, C.shallow].map(c => c.join())), stillWet = (x, z) => { const i = (x - x0 + (z - z0) * w) * 3; return wet.has(`${rgb[i]},${rgb[i + 1]},${rgb[i + 2]}`); };
   const water = { shore: [], past: [], glint: [] };
-  for (let i = 0; i < coast.shore.length; i += 2) if (stillWet(coast.shore[i], coast.shore[i + 1])) { water.shore.push(coast.shore[i], coast.shore[i + 1]); water.past.push(coast.past[i / 2]); }
-  for (let i = 0; i < coast.glint.length; i += 2) if (stillWet(coast.glint[i], coast.glint[i + 1])) water.glint.push(coast.glint[i], coast.glint[i + 1]);
-  return { x0, z0, w, d, rgb, props, water, lights, wires: [...lines.wires, ...lines.feeds], wireInk: hex(time === 'night' ? '#7f708a' : '#3e3546') };
+  for (const { shore, past, glint } of [coast, lapping]) {
+    for (let i = 0; i < shore.length; i += 2) if (stillWet(shore[i], shore[i + 1])) { water.shore.push(shore[i], shore[i + 1]); water.past.push(past[i / 2]); }
+    for (let i = 0; i < glint.length; i += 2) if (stillWet(glint[i], glint[i + 1])) water.glint.push(glint[i], glint[i + 1]);
+  }
+  return { x0, z0, w, d, rgb, props, water, lakes: lakesOf(plan).filter(lake => lake.big), lights, wires: [...lines.wires, ...lines.feeds], wireInk: hex(time === 'night' ? '#7f708a' : '#3e3546') };
 }
 
 // A pool of warm light under each lamp, in rings with a dithered edge. The ground is the same palette as ever, just nearer the lamp's colour.
@@ -247,9 +251,9 @@ const SMALL_PARKS = [
 // Parcels are flat or nearly so: nothing here is ever tall enough to get in a building's way.
 const PARCELS = {
   park(tools, x, z, W, D) { SMALL_PARKS[tools.h(KIND_OF) % SMALL_PARKS.length](tools, x, z, W, D); },
-  pond({ rect, prop, light, lawn, h }, x, z, W, D) {
-    const cx = W / 2, cz = D / 2, ra = W / 2 - 3, rb = D / 2 - 3;
-    rect(x, z, W, D, (a, b) => { const q = ((a - cx) / ra) ** 2 + ((b - cz) / rb) ** 2; return q < .72 ? (a * 3 + b * 5) % 23 === 0 ? C.water2 : C.water : q < 1 ? C.water2 : lawn; });
+  pond(tools, x, z, W, D) {
+    const { h, light, prop } = tools;
+    paintLake(lakeOf(h, x, z, W, D, false), tools);
     const seed = h(1) % 9; prop(once(`tree${seed}`, () => tree(seed)), x + W - 3, z + D - 3);
     light(x + 2, z + 2);
   },
@@ -279,17 +283,68 @@ const PARCELS = {
     for (let i = 0; i < n; i++) { const seed = h(i + 2) % 9, u = (i + .5) * L / n, v = Math.min(W, D) / 2; prop(once(`tree${seed}`, () => tree(seed)), x + (mid ? v : u), z + (mid ? u : v)); }
   },
 };
-function pondPark({ rect, prop, light, lawn, h }, x, z, W, D) {
-  const cx = W * .56, cz = D * .46;
-  rect(x, z, W, D, (a, b) => { const q = ((a - cx) / (W * .24)) ** 2 + ((b - cz) / (D * .2)) ** 2; if (q < .78) return (a * 3 + b * 5) % 29 === 0 ? C.water2 : C.water; if (q < 1) return C.water2; return Math.abs(((a - cx) / (W * .34)) ** 2 + ((b - cz) / (D * .3)) ** 2 - 1) < .05 ? C.trail : lawn; });
-  // Round the path by the pond. The trees keep clear of all of it.
-  for (let i = 0; i < 6; i++) { const a = (i + .5) * Math.PI / 3; light(x + cx + Math.cos(a) * W * .34, z + cz + Math.sin(a) * D * .3); }
-  for (let i = 0; i < 14; i++) {
-    const X = 8 + h(i * 2) % 1000 / 1000 * (W - 16), Z = 8 + h(i * 2 + 1) % 1000 / 1000 * (D - 16);
-    if (((X - cx) / (W * .4)) ** 2 + ((Z - cz) / (D * .36)) ** 2 < 1) continue;
-    treeAt(prop, h(40 + i), x + X, z + Z);
+// From the shore out, and from the shore in: mud, sand and a richer strip of grass; then shallows, deeper, deep. Each dithers into the next. A small pond has its bands closer together.
+const lakeCell = (p, x, z, close, { lawn, soil }) => {
+  const even = (x + z) & 1;
+  if (p >= 0) return p < 1.2 ? C.mud : p < 3 || (p < 3.7 && even) ? C.sand : p < 9 ? soil.land2 : lawn;
+  const q = -p / close;
+  if (q < 2.2 || (q < 2.9 && even)) return C.shallow;
+  if (q < 6 || (q < 6.7 && even)) return C.water2;
+  return x % 9 < 5 && mix(x >> 3, z) % 31 === 0 ? C.water2 : C.water;
+};
+const POST = hex('#45293f'), LAP_IN = 3, LAP_FROM = 2.5, LAKE_GLINT = 45, REED_APART = 8, LAKE_LAMPS = 6, CLOSEST = .45;
+function paintLake(lake, tools) {
+  const { rect, prop, light, h, lapping } = tools, { x, z, w: W, d: D, big, jetty, trail } = lake, close = Math.max(CLOSEST, Math.min(1, Math.min(lake.ra, lake.rb) / 30));
+  // The jetty's axis: how far out along it, and how far to either side.
+  const along = (X, Z) => jetty ? (X - jetty.mx) * jetty.ax + (Z - jetty.mz) * jetty.az : 0, across = (X, Z) => jetty ? jetty.ax ? Z - jetty.mz : X - jetty.mx : 0, byJetty = (X, Z, room) => jetty && along(X, Z) > 0 && Math.abs(across(X, Z)) <= jetty.half + room;
+  const sideSpur = (X, Z) => jetty && (jetty.ax ? Math.abs(X - jetty.mx) <= 1 && (Z - jetty.mz) * lake.spur > 0 : Math.abs(Z - jetty.mz) <= 1 && (X - jetty.mx) * lake.spur > 0);
+  rect(x, z, W, D, (a, b) => {
+    const X = x + a, Z = z + b, p = lake.land(X, Z), out = lake.past(X, Z);
+    if (big && (out >= trail - 1 && out < trail + TRAIL_W || out >= 0 && along(X, Z) > 0 && Math.abs(across(X, Z)) <= 1 || out >= trail && sideSpur(X, Z))) return C.trail;
+    if (p < 0) { if (p > -LAP_IN * close) { lapping.shore.push(X, Z); lapping.past.push(LAP_FROM - p / close); } else if (mix(X, Z) % LAKE_GLINT === 0) lapping.glint.push(X, Z); }
+    return lakeCell(p, X, Z, close, tools);
+  });
+  // Lilies in a few clusters, clear of the shore.
+  const CLUSTERS = big ? 5 : Math.min(lake.ra, lake.rb) >= 7 ? 1 : 0;
+  for (let c = 0; c < CLUSTERS; c++) {
+    const a = h(220 + c) % 628 / 100, pads = big ? 3 + h(230 + c) % 3 : 2, [ox, oz] = lake.at(a, big ? -9 : -2.5), spread = big ? 7 : 2, reach = big ? 2 : 1;
+    for (let i = 0; i < pads; i++) {
+      const n = h(240 + c * 8 + i), X = Math.round(ox + n % (spread * 2 + 1) - spread), Z = Math.round(oz + (n >>> 8) % (spread * 2 + 1) - spread);
+      if (lake.land(X, Z) > -reach - 1 || byJetty(X, Z, reach + 3)) continue;
+      rect(X - reach, Z - reach, reach * 2 + 1, reach * 2 + 1, (u, v) => { const du = u - reach, dv = v - reach; return Math.abs(du) + Math.abs(dv) > reach ? null : !du && !dv && i % 3 === 0 ? C.bloom : dv < 0 || du > 0 ? C.lily2 : C.lily; });
+    }
   }
+  // Reeds in clumps along the shore.
+  const ARCS = big ? 6 : 2;
+  for (let c = 0; c < ARCS; c++) {
+    const start = h(260 + c) % 628 / 100, clumps = big ? 3 + h(270 + c) % 3 : 2 + h(270 + c) % 2, step = REED_APART / ((lake.ra + lake.rb) / 2);
+    for (let i = 0; i < clumps; i++) {
+      const n = h(280 + c * 6 + i), [X, Z] = lake.at(start + i * step, -1 + n % 200 / 100 - .5).map(Math.round);
+      if (!byJetty(X, Z, 5)) prop(reeds(n % 3), X, Z);
+    }
+  }
+  if (!big) return;
+  // The jetty, on posts and with a shadow on the water; the path leads straight on to it.
+  const { ax, mx, mz, half } = jetty;
+  for (const [X, Z] of jetty.cells) {
+    const u = along(X, Z), v = across(X, Z), shade = ax ? [X, Z + half + 1 - v] : [X + half + 1 - v, Z];
+    if (v === half) rect(shade[0], shade[1], ax ? 1 : 2, ax ? 2 : 1, (a, b) => lake.past(shade[0] + a, shade[1] + b) < 0 ? C.shadow : null);
+    rect(X, Z, 1, 1, u % 2 ? C.plank : C.mud);
+  }
+  for (let u = jetty.shore - 2; u > jetty.shore - 14; u -= 5) for (const v of [-half - 1, half + 1]) { const X = ax ? mx + ax * u : mx + v, Z = ax ? mz + v : mz + jetty.az * u; rect(X, Z, 1, 1, lake.past(X, Z) < 0 ? POST : null); }
+  light(...jetty.end);
+  const moored = jetty.shore - 10, side = -(half + 5), [bx, bz] = ax ? [mx + ax * moored, mz + side] : [mx + side, mz + jetty.az * moored];
+  prop(rowboat(!!ax), bx, bz);
+  // Round the path, lit all the way; and the trees keep clear of it, its spurs and the water.
+  for (let i = 0; i < LAKE_LAMPS; i++) light(...lake.at(jetty.facing + (i + .5) * 2 * Math.PI / LAKE_LAMPS, trail + 1));
+  for (let i = 0; i < 28; i++) {
+    const X = x + 8 + h(i * 2) % 1000 / 1000 * (W - 16), Z = z + 8 + h(i * 2 + 1) % 1000 / 1000 * (D - 16);
+    if (lake.past(X, Z) < trail + TRAIL_W + 5 || byJetty(X, Z, 6) || Math.abs(jetty.ax ? X - mx : Z - mz) < 6 && (jetty.ax ? Z - mz : X - mx) * lake.spur > 0) continue;
+    treeAt(prop, h(40 + i), X, Z);
+  }
+  if (lake.islet) treeAt(prop, h(216), lake.islet.x, lake.islet.z);
 }
+const pondPark = (tools, x, z, W, D) => paintLake(lakeOf(tools.h, x, z, W, D, true), tools);
 // Two paths crossing at a fountain, in rings of flowers.
 function gardenPark({ rect, prop, light, lawn, h }, x, z, W, D) {
   const cx = W / 2, cz = D / 2, SQUARE = 14, RING_FROM = 20, RING_TO = 44, PATH_HALF = 3, CLEAR = 56, LAMP_OUT = 34;
@@ -320,6 +375,12 @@ function grovePark({ rect, prop, light, lawn, h }, x, z, W, D) {
   }
 }
 const bigPark = (tools, x, z, W, D) => [pondPark, gardenPark, grovePark][tools.h(KIND_OF) % 3](tools, x, z, W, D);
+// Every lake in the city, for whatever swims on them and for the map.
+const seeded = seed => n => fnv(`${seed}:${n}`);
+export const lakesOf = plan => [
+  ...plan.parks.filter(park => seeded(park.seed)(KIND_OF) % 3 === 0).map(park => lakeOf(seeded(park.seed), park.x, park.z, park.w, park.d, true)),
+  ...plan.parcels.filter(({ kind }) => kind === 'pond').map(parcel => lakeOf(seeded(parcel.seed), parcel.x, parcel.z, parcel.w, parcel.d, false)),
+];
 
 // A chosen neighbourhood lit up, to lay over the ground: its own cells brighter, a line between them, and a rim round the lot.
 // `edge` is the rim alone, which is the part that glows.
