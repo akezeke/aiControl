@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentFacts, agentLayout, fitText, shotUnder, stationName, visibleLimits, wrapLines } from '../client/bridge/displays.js';
+import { agentFacts, agentLayout, fitText, shotUnder, stationName, limitGroups, visibleLimits, wrapLines } from '../client/bridge/displays.js';
 import { SIGNALS } from '../client/bridge/palettes.js';
 
 const measure = text => [...text].length * 10;
@@ -103,4 +103,17 @@ test('a point on a display is on its screenshot only inside the picture', () => 
   assert.equal(at(rect.x + rect.w / 2, rect.y + rect.h / 2), true);
   assert.equal(at(rect.x + rect.w / 2, rect.y - 5), false); assert.equal(at(rect.x + rect.w / 2, rect.y + rect.h + 5), false);
   assert.equal(shotUnder(null, .5, .5, 1024, 1054), false);
+});
+test('an account is named once, with its windows under it', () => {
+  const rows = [{ name: 'MAX', window: '5H' }, { name: 'MAX', window: 'W' }, { name: 'PRO', window: '5H' }];
+  assert.deepEqual(limitGroups(rows).map(group => [group.name, group.rows.map(row => row.window)]), [['MAX', ['5H', 'W']], ['PRO', ['5H']]]);
+});
+test('two accounts with the same name stay apart', () => {
+  const rows = [{ name: 'MAX', window: '5H' }, { name: 'MAX', window: 'W' }, { name: 'MAX', window: '5H' }];
+  assert.deepEqual(limitGroups(rows).map(group => group.rows.length), [2, 1]);
+});
+test('an account stays together when the fullest limits were picked out of order', () => {
+  const rows = [{ name: 'MAX', window: 'W' }, { name: 'PRO', window: '5H' }, { name: 'MAX', window: '5H' }];
+  assert.deepEqual(limitGroups(rows).map(group => group.name), ['MAX', 'PRO']);
+  assert.equal(limitGroups(rows)[0].rows.length, 2);
 });

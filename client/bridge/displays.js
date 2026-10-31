@@ -135,6 +135,15 @@ function big(g, weight, size, text, width) {
 }
 // All of them if they fit; the fullest if they don't.
 export const visibleLimits = (rows, max) => rows.length > max ? [...rows].sort((a, b) => b.used - a.used).slice(0, max) : rows;
+// Each account once, with its windows under it. A window it already has means another account of the same name.
+export function limitGroups(rows) {
+  const groups = [];
+  for (const row of rows) {
+    const group = groups.find(({ name, rows: own }) => name === row.name && !own.some(({ window }) => window === row.window));
+    if (group) group.rows.push(row); else groups.push({ name: row.name, rows: [row] });
+  }
+  return groups;
+}
 // The two tall columns either side of the window, big enough to read from the chair. Left: the engines and every limit.
 function drawShipLeft(g, w, h, d) {
   const limit = d.mode === 'limit', top = 280, pad = 24;
@@ -142,14 +151,23 @@ function drawShipLeft(g, w, h, d) {
   g.fillStyle = limit ? '#e01f12' : '#0c0e16'; g.fillRect(0, 0, w, top);
   g.textAlign = 'center'; g.fillStyle = limit ? '#2a0300' : d.warp ? TEAL : d.offline ? DIM : Y; big(g, 700, 132, d.left, w - 2 * pad); g.fillText(d.left, w / 2, top / 2 + 16);
   g.fillStyle = limit ? '#2a0300' : DIM; big(g, 600, 54, d.engineLine, w - 2 * pad); g.fillText(fit(g, d.engineLine, w - 2 * pad), w / 2, top / 2 + 92); g.textAlign = 'left';
-  const each = Math.min(158, (h - top - 16) / Math.max(1, d.limitRows.length));
-  d.limitRows.forEach((row, i) => {
-    const y = top + 16 + i * each, color = row.full ? RED : row.near ? ORANGE : O;
-    g.fillStyle = INK; g.font = font(600, 54); g.fillText(fit(g, row.name, w * .5), pad, y + 50);
-    g.fillStyle = color; g.textAlign = 'right'; g.fillText(fit(g, row.text, w * .42), w - pad, y + 50); g.textAlign = 'left';
-    cells(g, pad, y + 64, w - 2 * pad, 26, row.used / 100, color);
-    g.fillStyle = DIM; g.font = font(400, 38); g.fillText(fit(g, row.left, w - 2 * pad), pad, y + 130);
-  });
+  // As big as the column allows: a few limits read from the chair, and five accounts still fit.
+  const groups = limitGroups(d.limitRows), tall = groups.reduce((sum, group) => sum + 70 + group.rows.length * 92, 0);
+  const s = Math.min(1.45, (h - top - 32) / Math.max(1, tall));
+  let y = top + 24;
+  for (const group of groups) {
+    g.fillStyle = INK; g.font = font(700, 54 * s); g.fillText(fit(g, group.name, w - 2 * pad), pad, y + 44 * s); y += 62 * s;
+    for (const row of group.rows) {
+      const color = row.full ? RED : row.near ? ORANGE : O;
+      g.fillStyle = INK; g.font = font(600, 50 * s); g.fillText(row.window, pad, y + 42 * s);
+      const after = pad + g.measureText(row.window).width + 18;
+      g.fillStyle = color; g.textAlign = 'right'; g.fillText(row.percent, w - pad, y + 42 * s); const room = w - pad - g.measureText(row.percent).width - 18 - after; g.textAlign = 'left';
+      g.fillStyle = DIM; g.font = font(400, 38 * s); g.fillText(fit(g, row.left, room), after, y + 42 * s);
+      cells(g, pad, y + 54 * s, w - 2 * pad, 22 * s, row.used / 100, color);
+      y += 92 * s;
+    }
+    y += 8 * s;
+  }
 }
 // Right: who's waiting, and what the crew has spent.
 function drawShipRight(g, w, h, d) {
@@ -268,7 +286,7 @@ export function createDisplays(room) {
       for (const { parentId } of sessions) if (parentId) helpers.set(parentId, (helpers.get(parentId) || 0) + 1);
       const limitRows = state.limits.map(limit => {
         const view = usageWindowView({ label: limit.window, usedPercent: limit.usedPercent, resetsAt: limit.resetsAt }, now);
-        return { name: `${glyph(limit.provider)} ${(limit.label || limit.provider || '').toUpperCase()}`, text: `${view.shortLabel.toUpperCase()} ${Math.round(limit.usedPercent)}%`, used: view.expired ? 0 : limit.usedPercent, left: view.resetIn.toUpperCase(), near: limit.near, full: limit.full, label: limit.window };
+        return { name: `${glyph(limit.provider)} ${(limit.label || limit.provider || '').toUpperCase()}`, window: view.shortLabel.toUpperCase(), percent: `${Math.round(limit.usedPercent)}%`, used: view.expired ? 0 : limit.usedPercent, left: view.resetIn.toUpperCase(), near: limit.near, full: limit.full, label: limit.window };
       });
       const worst = [...limitRows].sort((a, b) => b.used - a.used), full = worst.find(row => row.full);
       // Subagents share their parent's bill, so only main sessions count.
