@@ -3,7 +3,7 @@ import { TIERS, surfaceTier, levelWorld } from './kitchen-plan.js';
 
 // Trickshot scoring and playback, Node-runnable. A shot is simulated whole at release (runShot), then played back (createRun), so slow
 // motion can start before the score is known to the player. Coordinates are kitchen-local, as in kitchen-plan.js.
-export const SOFT = 0.5, FLIGHT = 0.7, SLOW = 0.25, SLOW_FOR = 0.6, MOST_TIME = 8; // m/s under which a hit scores nothing; playback rate of a whole flight, and in the last SLOW_FOR s of a made shot
+export const SOFT = 0.5, FLIGHT = 0.45, SLOW = 0.15, SLOW_FOR = 0.5, MOST_TIME = 8; // m/s under which a hit scores nothing; playback rate of a whole flight, and in the last SLOW_FOR s of a made shot
 const REPEAT = [1, 0.5, 0.25, 0]; // what the 1st, 2nd, 3rd and later hit on one surface are worth
 
 // ponytail: one shared collider list for every shot (levelWorld builds them all each call); nothing writes to it.

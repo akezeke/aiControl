@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { makeBody, simulate } from '../client/office/flight.js';
 import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
-import { FLIGHT, SLOW, scoreContacts, inZone, runShot, createRun } from '../client/office/shot.js';
+import { FLIGHT, SLOW, SLOW_FOR, scoreContacts, inZone, runShot, createRun } from '../client/office/shot.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const kind = (bounce, extra = {}) => ({ radius: 0.05, low: 0.05, bounce, roll: 1, drag: 0.1, upright: false, ...extra });
@@ -109,15 +109,15 @@ test('playback follows the path between samples', () => {
   assert.ok(Math.abs(run.time - 1 / 120) < 1e-9);
 });
 
-test('slow motion covers the last 0.6 s of a made shot, and never under reduced motion', () => {
+test('slow motion covers the last of a made shot, and never under reduced motion', () => {
   for (const reducedMotion of [false, true]) {
     const run = createRun({ start, reducedMotion }); run.shoot(onBin(), ZONES.bin);
     const total = run.result.time; assert.ok(run.result.made && total > 1);
     let slow = 0, scaled = 0;
     for (let i = 0; i < 2000 && run.state === 'flying'; i++) {
       run.advance(1 / 60);
-      if (run.timeScale === SLOW) { slow++; assert.ok(run.time > total - 0.6 - 1e-9, 'only in the last 0.6 s'); }
-      if (run.time > total - 0.6 + 1 / 60 && run.state === 'flying') scaled++;
+      if (run.timeScale === SLOW) { slow++; assert.ok(run.time > total - SLOW_FOR - 1e-9, 'only at the end'); }
+      if (run.time > total - SLOW_FOR + 1 / 60 && run.state === 'flying') scaled++;
     }
     assert.equal(slow > 0, !reducedMotion); assert.ok(reducedMotion || scaled > 0);
   }
@@ -169,7 +169,7 @@ test('a soft event just before a hard one on the same surface doesn\'t swallow i
 
 test('a made shot ends with the clock normal, and a big dt crosses into slow motion', () => {
   const run = createRun({ start }); run.shoot(onBin(), ZONES.bin);
-  const slowAt = run.result.time - 0.6; run.advance(slowAt / FLIGHT + 0.3);
+  const slowAt = run.result.time - SLOW_FOR; run.advance(slowAt / FLIGHT + 0.3);
   assert.equal(run.timeScale, SLOW);
   assert.ok(Math.abs(run.time - (slowAt + 0.3 * SLOW)) < 1e-9, `${run.time} vs ${slowAt}`); // 0.3 s of real time past the boundary is only 0.3 * SLOW of the shot
   run.advance(1e6);
@@ -181,7 +181,7 @@ test('a whole flight plays at the gentle rate, the same in big steps as small; r
   assert.equal(run.timeScale, FLIGHT); assert.ok(FLIGHT > SLOW && FLIGHT < 1);
   run.advance(0.5);
   assert.ok(Math.abs(run.time - 0.5 * FLIGHT) < 1e-9, `${run.time}`);
-  const total = run.result.time, real = (total - 0.6) / FLIGHT + 0.6 / SLOW, big = createRun({ start }), small = createRun({ start });
+  const total = run.result.time, real = (total - SLOW_FOR) / FLIGHT + SLOW_FOR / SLOW, big = createRun({ start }), small = createRun({ start });
   big.shoot(onBin(), ZONES.bin); small.shoot(onBin(), ZONES.bin);
   big.advance(real - 0.05);
   for (let i = 0; i < 100; i++) small.advance((real - 0.05) / 100);
