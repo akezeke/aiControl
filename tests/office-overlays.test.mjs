@@ -30,3 +30,16 @@ test('the overlays go without a trace when the office is closed', t => {
   overlays.dispose();
   assert.deepEqual(container.children.map(kid => kid.tag), []);
 });
+
+test('the throw button goes with the hand empty, whose holding is null', t => {
+  const was = globalThis.document;
+  globalThis.document = { createElement: element, createElementNS: (_, tag) => element(tag) };
+  t.after(() => { globalThis.document = was; });
+  const container = element('div'), noop = () => {}, overlays = createOverlays(container, { onNext: noop, onList: noop, onOverview: noop, onNew: noop, onLeave: noop, onCopy: noop, onThrow: { press: () => true, release: noop, cancel: noop } });
+  const button = container.children.find(kid => kid.className === 'office-throw');
+  assert.equal(button.hidden, true);
+  overlays.showThrow(true); assert.equal(button.hidden, false);
+  overlays.showThrow(null); assert.equal(button.hidden, true);
+  overlays.showThrow({}); assert.equal(button.hidden, false);
+  overlays.showThrow(undefined); assert.equal(button.hidden, true);
+});

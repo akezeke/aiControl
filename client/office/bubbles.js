@@ -121,7 +121,7 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     setPlaying(on) { leave.hidden = !on; },
     showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
-    showThrow(on) { if (thrower.hidden === on) thrower.hidden = !on; },
+    showThrow(on) { if (thrower.hidden === !!on) thrower.hidden = !on; }, // on: truthy; an empty hand's holding is null
     dropThrow() { throwing.drop(); },
     setCharge: createGauge(container, meter, meter.querySelector('.fill')),
     // What a shot asks (goalOf's list, a ticked line struck through) and, beside it, how it went; a null goal hides it.
