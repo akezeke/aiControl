@@ -1075,10 +1075,10 @@ function spawnButtons(cwd) {
   for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
   return actions;
 }
-async function spawnAgent(cwd, choice, control) {
+async function spawnAgent(cwd, choice, control, slot) {
   if (state.error) return;
   control.disabled = true;
-  try { const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account }); toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
+  try { const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account, ...typeof slot === 'number' ? { slot } : {} }); toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
   catch (e) { toast(e.message); }
   finally { control.disabled = false; }
 }

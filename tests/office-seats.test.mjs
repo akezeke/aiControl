@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { OfficeSeats, IDLE_MS } from '../server/seats.mjs';
+import { OfficeSeats, IDLE_MS, RESERVE_MS } from '../server/seats.mjs';
 import { sharedLayout } from '../client/office/layout.js';
 
 const s = (id, project, extra = {}) => ({ id, project, cwd: `/p/${project}`, status: 'idle', ...extra });
@@ -61,4 +61,31 @@ test('gone by the time anyone looks again, they are not shown walking out', () =
 test('a damaged seats file starts over', () => {
   const path = file(); writeFileSync(path, '{nope');
   assert.deepEqual(slots(new OfficeSeats(path).update([s('a', 'x')], T)), { a: 0 });
+});
+test('a reservation is honoured once', () => {
+  const seats = new OfficeSeats(); seats.update([s('a', 'p')], 1); seats.reserve('/p/p', 3, 2);
+  assert.equal(slots(seats.update([s('a', 'p'), s('b', 'p')], 3)).b, 3);
+  assert.equal(slots(seats.update([s('a', 'p'), s('b', 'p'), s('c', 'p')], 4)).c, 1);
+});
+test('a reservation for a taken slot moves nobody, and the newcomer gets the lowest free', () => {
+  const seats = new OfficeSeats(); seats.update([s('a', 'p')], 1); seats.reserve('/p/p', 0, 2);
+  assert.deepEqual(slots(seats.update([s('a', 'p'), s('b', 'p')], 3)), { a: 0, b: 1 });
+});
+test('what the server sends carries no reservations', () => { const seats = new OfficeSeats(); seats.reserve('/p/p', 3, 0); assert.ok(!JSON.stringify(seats.update([s('b', 'p')], 1)).includes('reserv')); });
+test('a reservation expires after 2 minutes', () => {
+  const seats = new OfficeSeats(); seats.reserve('/p/p', 3, 0);
+  assert.equal(slots(seats.update([s('b', 'p')], RESERVE_MS)).b, 0);
+});
+test('junk slots are ignored', () => {
+  const seats = new OfficeSeats();
+  for (const junk of [-1, 1.5, '2', null, undefined, 64, 1e9, NaN]) seats.reserve('/p/p', junk, 0);
+  assert.equal(slots(seats.update([s('b', 'p')], 1)).b, 0);
+});
+test('a released reservation leaves the next newcomer alone', () => {
+  const seats = new OfficeSeats(); seats.reserve('/p/p', 3, 0); seats.release('/p/p', 3);
+  assert.equal(slots(seats.update([s('b', 'p')], 1)).b, 0);
+});
+test('a reservation in one folder does nothing for another', () => {
+  const seats = new OfficeSeats(); seats.reserve('/p/q', 3, 0);
+  assert.equal(slots(seats.update([s('b', 'p')], 1)).b, 0);
 });

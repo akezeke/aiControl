@@ -22,7 +22,8 @@ const seat = (pod, slot) => ({ x: pod.left + DESK_W * ((slot >> 1) + 0.5), z: po
 export const sharedLayout = office => ({ ...office, desks: new Map(office.desks.map(desk => [desk.sessionId, desk])) });
 
 // A session that ends keeps its (empty) desk for VACANT_MS, so it can walk out and the pod doesn't jump at once.
-export function layoutOffice(sessions, previous, now = Date.now()) {
+// `reserved` is Map<podKey, slots, oldest first>: slots asked for by a spawn, which the next newcomers take if still free.
+export function layoutOffice(sessions, previous, now = Date.now(), reserved = new Map()) {
   const top = sessions.filter(s => !s.parentId), ids = new Set(top.map(s => s.id));
   for (const [id, old] of previous?.desks || []) {
     if (ids.has(id)) continue;
@@ -54,9 +55,12 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
       if (old?.podKey === pod.key && slots[old.slot] === undefined) { slots[old.slot] = session.id; kept.add(session.id); }
     }
     // By id, so a fresh page seats everyone the same way whatever order the snapshot lists them in.
+    const wanted = [...reserved.get(pod.key) || []];
     for (const session of [...pod.sessions].sort((a, b) => a.id.localeCompare(b.id))) {
       if (kept.has(session.id)) continue;
-      let slot = 0; while (slots[slot] !== undefined) slot++;
+      let slot = wanted.shift();
+      while (slot !== undefined && slots[slot] !== undefined) slot = wanted.shift();
+      if (slot === undefined) { slot = 0; while (slots[slot] !== undefined) slot++; }
       slots[slot] = session.id;
     }
     pod.slots = slots;

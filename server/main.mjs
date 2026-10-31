@@ -58,11 +58,13 @@ export async function startServer({ host, hostname, tls = null }) {
     document: (id, documentId) => claudeId(id) ? claude.document(id, documentId) : codex.document(messageTarget(id), documentId),
   };
   // Any existing directory (~ expands). Claude starts under the account asked for, or the one the project last used.
-  const spawn = ({ cwd, provider, account: label } = {}) => {
+  // `slot` is the desk or lot the agent was asked for, if any.
+  const spawn = ({ cwd, provider, account: label, slot } = {}) => {
     if (typeof cwd === 'string') cwd = cwd.trim().replace(/^~(?=\/|$)/, homedir()).replace(/(.)\/+$/, '$1');
     if (typeof cwd !== 'string' || !isAbsolute(cwd) || !statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return Promise.reject(fail('No such folder.', 404));
     const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
-    return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' });
+    seats.reserve(cwd, slot);
+    return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' }).catch(e => { seats.release(cwd, slot); throw e; });
   };
   const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];

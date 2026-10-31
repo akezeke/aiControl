@@ -162,10 +162,21 @@ const messages = {
   },
 };
 
+// Enough of a spawn to try by hand: the agent turns up a moment later, where it was asked for.
+let spawned = 0;
+const spawn = async ({ cwd, slot } = {}) => {
+  seats.reserve(cwd, slot);
+  setTimeout(() => {
+    const id = `demo-${++spawned}`, project = sessions.find(s => s.cwd === cwd)?.project || cwd.split('/').pop();
+    sessions.push({ ...sessions[0], id: `claude:${id}`, nativeId: id, title: `Agent ${spawned}`, cwd, project, status: 'idle', updatedAt: ago(0), context: 0 });
+  }, 800);
+  return { session: 'demo' };
+};
+
 const authFile = join(await mkdtemp(join(tmpdir(), 'ai-control-demo-')), 'auth.json');
 await savePassword(authFile, pin);
 const origins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
 const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: ['127.0.0.1', 'localhost'] } });
-const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages }));
+const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn }));
 server.listen(port, '127.0.0.1', () => console.log(`AI Control demo: ${origins[0]}  PIN ${pin}  (Ctrl-C stops)`));
 process.once('SIGINT', () => { server.closeAllConnections(); server.close(); vite.close().finally(() => process.exit(0)); });

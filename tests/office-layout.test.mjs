@@ -118,3 +118,16 @@ test('the coffee corner fits by the door wall, and the kitchen door clears the w
     assert.ok(depth - 0.32 - 0.35 >= door + KITCHEN_DOOR_W / 2); // the counter's front
   }
 });
+test('a newcomer takes the oldest reserved free slot, not the lowest free one', () => {
+  const l = layoutOffice([s('n', 'p')], null, 1, new Map([['/p/p', [5, 3]]]));
+  assert.equal(l.desks.get('n').slot, 5);
+});
+test('a reserved slot already taken is skipped', () => {
+  const first = layoutOffice([s('a', 'p')], null, 1);
+  assert.equal(layoutOffice([s('a', 'p'), s('n', 'p')], first, 2, new Map([['/p/p', [0, 4]]])).desks.get('n').slot, 4);
+});
+test('reservations move nobody already seated', () => {
+  const first = layoutOffice([s('a', 'p'), s('b', 'p')], null, 1), next = layoutOffice([s('a', 'p'), s('b', 'p')], first, 2, new Map([['/p/p', [0]]]));
+  assert.equal(next.desks.get('a').slot, first.desks.get('a').slot); assert.equal(next.desks.get('b').slot, first.desks.get('b').slot);
+});
+test('no reservation means the same seats as before', () => assert.equal(layoutOffice([s('a', 'p')], null, 1).desks.get('a').slot, 0));
