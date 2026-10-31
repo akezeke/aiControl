@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { createTrickshot } from '../client/office/trickshot.js';
+import { createTrickshot, keepInSight, shotFov } from '../client/office/trickshot.js';
 import { BLEND, GAUGE_SIZE, arcPoints, blendLeft, createArc, createCharge, createGauge, drawnAt, gaugeAt, gaugeColour, launch } from '../client/office/throwing.js';
 import { TiltedBox, makeBody, simulate, stepBody, stopShort } from '../client/office/flight.js';
 import { SPOTS, ZONES, levelWorld } from '../client/office/kitchen-plan.js';
@@ -1098,4 +1098,40 @@ test('the power gauge sits at the aim, and always on screen', () => {
   const out = GAUGE_SIZE / 2, inside = ({ x, y }, w, h, why) => assert.ok(x >= out && x <= w - out && y >= out && y <= h - out, `${why}: ${x}, ${y}`);
   inside(gaugeAt(3, 2, 1000, 650), 1000, 650, 'a pointer in the corner');
   inside(gaugeAt(998, 648, 1000, 650), 1000, 650, 'and the far one');
+});
+
+test('a shot\'s fov opens on a narrow screen until it shows as much across as a landscape one, up to 80°', () => {
+  const across = (fov, aspect) => Math.tan(rad(fov / 2)) * aspect;
+  assert.ok(Math.abs(shotFov(1.6) - 52) < 1e-9); assert.equal(shotFov(2.4), 52); assert.equal(shotFov(390 / 736), 80);
+  for (const aspect of [1, 1.2, 1.4]) { assert.ok(shotFov(aspect) > 52 && shotFov(aspect) < 80, `at ${aspect}`); assert.ok(Math.abs(across(shotFov(aspect), aspect) - across(52, 1.6)) < 1e-9, `as wide at ${aspect}`); }
+  for (let aspect = 0.4; aspect < 2; aspect += 0.1) assert.ok(shotFov(aspect) >= shotFov(aspect + 0.1), 'narrower is never less');
+});
+
+test('the look is drawn in only as far as the item needs, and stays where it was if it can', () => {
+  const at = V(0, 1, 0), item = V(0, 1, -2), most = rad(15), off = look => look.clone().sub(at).angleTo(item.clone().sub(at));
+  const near = V(0.2, 1, -2), kept = near.clone(); assert.equal(keepInSight(near, item, at, most), near); assert.ok(near.equals(kept), 'within it: left alone');
+  const far = V(4, 3, 0); keepInSight(far, item, at, most);
+  assert.ok(Math.abs(off(far) - most) < 1e-9, `on the limit, ${off(far)}`); assert.ok(Math.abs(far.distanceTo(at) - 2) < 1e-9, 'as far off as the item');
+  const on = V(1, 1, 1); keepInSight(on, at.clone(), at, most); assert.deepEqual(on.toArray(), [1, 1, 1]); // the item on the camera: nothing to look at
+});
+
+test('on a phone, a rubber ball\'s bounces stay well inside the screen, with the fov the shape asks for', () => {
+  for (const aspect of [390 / 736, 1000 / 610]) {
+    const t = setup(), cam = new THREE.PerspectiveCamera(shotFov(aspect), aspect, 0.05, 100), p = V(0, 0, 0), probe = cam.clone(); t.view.camera = cam; let shown = null; t.view.play = pose => { shown = pose; };
+    begin(t, 'rubber'); throwIt(t, { yaw: rad(92), pitch: rad(-10), charge: 0.63 });
+    let frames = 0, worst = 0; const mesh = item(t, 'rubber');
+    for (let i = 0; i < 12 * 60 && t.game.run.state !== 'aiming'; i++) {
+      t.game.update(DT, null, false, true); if (t.game.run.state === 'aiming' || !shown || i < 12) continue; // still leaving the hand
+      const { from, look: at, fov } = t.game.pose(); assert.equal(fov, shotFov(aspect));
+      probe.position.copy(from); probe.lookAt(at); probe.updateMatrixWorld(); probe.updateProjectionMatrix();
+      p.copy(mesh.position); p.x += ORIGIN.x; p.z += ORIGIN.z; p.project(probe); frames++; worst = Math.max(worst, Math.abs(p.x), Math.abs(p.y));
+    }
+    assert.ok(frames > 60, `watched it, ${frames}`); assert.ok(worst <= 0.7, `no further out than 70% of the way to the edge at ${aspect}: ${worst}`);
+  }
+});
+
+test('under reduced motion a shot never takes the camera, whatever the screen', () => {
+  const t = setup({ reduced: true }); t.view.camera = new THREE.PerspectiveCamera(70, 0.5, 0.05, 100);
+  begin(t, 'rubber'); throwIt(t, { yaw: rad(92), pitch: rad(-10), charge: 0.63 }); play(t);
+  assert.equal(t.view.plays.filter(Boolean).length, 0); assert.equal(t.view.camera.fov, 70);
 });

@@ -17,8 +17,18 @@ import { WALL_H } from './furniture.js';
 const HAND_BACK = 1, PARTY = 1.2, BITS = 24, GROUND = 0.008; // seconds the camera stays on where a shot ended; of confetti; how many; the tape's height
 const LIT = '#ffd21f', ARROW = 0.09, OVER = 0.2, LEAST = 0.08, HIGHEST = 1, BOB = 0.025, BOBS = 2.2, TAP_ASIDE = -0.13, MARKER_SIGHT = { radius: 0.01, low: 0.01 }; // the marker: its colour; how tall per metre from the mark, so it looks the same size from near and far; how far its tip stays over its target, as a rule and when there's no room; as high as it goes to be seen; how far it bobs either way, and how fast (radians a second); to the side of the sink's middle, where the tap's spout is
 const ZERO = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+const SHOT_FOV = 52, WIDEST_FOV = 80, LANDSCAPE = 1.6, IN_SIGHT = 0.6; // its fov, and how far that opens on a narrow screen; how far out it lets the item go, of the way to the edge of the screen's narrower side
 // The camera on a shot: where it would like to be, [behind, above, to the side of] the item; how near it may be; how fast it and its look catch up (m/s at most, for it), and how fast "behind" comes round after a bounce (per second); how much room it keeps.
 const VIEWS = [[1.5, 0.6, 0], [1.2, 1, 0], [0.6, 1.4, 0], [0.9, 0.9, 0.9], [0.9, 0.9, -0.9], [-0.9, 0.9, 0], [0, 1.4, 0.5], [0, 1.4, -0.5]], NEAREST = 0.7, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, CLEAR = 1e-3, WEDGED = 1, CLIMB = 3, CLIMBS = 0.4;
+// As much across as a landscape screen shows, as far as a fov can go without looking stretched.
+export const shotFov = aspect => Math.max(SHOT_FOV, Math.min(WIDEST_FOV, 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(SHOT_FOV / 2)) * LANDSCAPE / aspect))));
+// Whatever the look is lagging behind, the item is never more than `most` (radians) off it, seen from `at`: `look` is drawn in that far, not snapped.
+export const keepInSight = (look, item, at, most) => {
+  const to = sight.subVectors(item, at), from = sightFrom.subVectors(look, at), far = to.length();
+  if (!far || !from.lengthSq() || from.angleTo(to) <= most) return look;
+  return look.copy(to).applyAxisAngle(from.cross(to).normalize().negate(), most).add(at);
+};
+const sight = new THREE.Vector3(), sightFrom = new THREE.Vector3();
 let world; const flightWorld = () => world ??= levelWorld(); // ponytail: read only, the same boxes shot.js flies through (it keeps its own copy)
 
 // Each centred where flight.js has it, resting `low` over what it's on.
@@ -71,7 +81,7 @@ const knock = (surface, speed) => {
 // `aim()` is where a throw would go right now: { direction, charge }. `score(goal, verdict, copy)` shows what the shot asks and how it went (goalOf's list and a line or null), or a null goal clears it; `copy`: it's after a daily shot, so game.copy() has something to say. `share(line)` copies a line.
 export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score, share, store, reducedMotion = () => false }) {
   const progress = loadProgress(store), items = {}, holders = {}, hits = {}, rested = {};
-  const marker = makeMarker(), arc = createArc(), axis = new THREE.Vector3(), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: 52, hands: false };
+  const marker = makeMarker(), arc = createArc(), axis = new THREE.Vector3(), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: SHOT_FOV, hands: false };
   const follow = { at: new THREE.Vector3(), look: new THREE.Vector3(), ahead: new THREE.Vector3(), spot: new THREE.Vector3(), step: new THREE.Vector3(), from: new THREE.Vector3() };
   const eye = new THREE.Vector3(), now = new THREE.Vector3(), flying = new THREE.Vector3(), palm = new THREE.Vector3(), fromHand = new THREE.Vector3(); // `flying`: where it really is, the mesh only drawn from the hand
   let group = null, pending = null, entry = null, kind = null, mesh = null, angle = 0, moved = false, handBack = 0, partyLeft = 0, climb = 0, bob = 0;
@@ -142,6 +152,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     }
     if (wanted > WEDGED * WEDGED * dt * dt && at.distanceToSquared(from) < CLEAR * CLEAR) climb = CLIMBS;
     look.lerp(flying, 1 - Math.exp(-dt * EYES));
+    const seen = view?.camera, fov = Math.min(seen?.fov ?? SHOT_FOV, pose.fov = shotFov(seen?.aspect ?? LANDSCAPE));
+    keepInSight(look, flying, at, Math.atan(IN_SIGHT * Math.tan(THREE.MathUtils.degToRad(fov / 2)) * Math.min(1, seen?.aspect ?? LANDSCAPE)));
   };
   // The wait's over: the camera comes back, under reduced motion it never left, and the item's in your hand again. The verdict stays up till you throw.
   const handBackNow = () => {
