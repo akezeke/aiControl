@@ -160,6 +160,10 @@ test('a held key builds to full speed, and stays there', () => {
   assert.ok(Math.abs(full) > Math.abs(later));
   assert.equal(keyPan([[-1, 0]], 9000).vx, full);
 });
+test('held keys cross a wide screen in about a second', () => {
+  assert.ok(keyPan([[1, 0]], 5000).vx >= 1.3);
+  assert.ok(keyPan([[1, 0]], 200).vx >= 1.3, 'at full speed within a fifth of a second');
+});
 test('two keys together move no faster than one', () => {
   const one = keyPan([[1, 0]], 5000), two = keyPan([[1, 0], [0, 1]], 5000);
   assert.ok(Math.abs(Math.hypot(two.vx, two.vy) - one.vx) < 1e-9);

@@ -101,7 +101,7 @@ export function flickOf(trail, at) {
 }
 // Where held keys take the eye, in CSS pixels per ms. It goes as soon as a key is down, however long the keyboard waits to repeat, and builds up
 // so that a tap is a nudge.
-const KEY_SPEED = .6, KEY_START = .3, KEY_BUILD = 220;
+const KEY_SPEED = 1.4, KEY_START = .35, KEY_BUILD = 180;
 export function keyPan(held, heldFor) {
   const x = held.reduce((sum, key) => sum + key[0], 0), y = held.reduce((sum, key) => sum + key[1], 0), length = Math.hypot(x, y);
   if (!length) return null;
