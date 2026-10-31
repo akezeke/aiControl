@@ -110,7 +110,11 @@
   /* A question stops the street: paper between two lengths of tape. */
   .request-box { --text: #2e222f; --text-2: #3e3546; --text-3: #625565; --panel-2: #e3e6dc; --accent: #165a4c; padding-block: 20px; border-image-source: var(--px-warn); background: url('/city-hazard.svg') 0 0 / 16px 8px repeat-x, url('/city-hazard.svg') 0 100% / 16px 8px repeat-x, var(--paper); background-clip: padding-box; color: var(--text); box-shadow: none; }
   .request-box .eyebrow { color: #8a4b00; }
+  .request-box .answer-option { background: var(--panel-2); border-color: #8d9a8f; }
+  .request-box .answer-option:hover { border-color: var(--accent); }
+  .request-box .answer-option:has(input:checked) { background: #c3dccb; border-color: var(--accent); }
   .request-box :is(button, input, textarea, select) { --text: #fff; --text-2: #d9e2dc; --text-3: #c7dcd0; --panel-2: #565e60; --accent-ink: #fff; }
+  .request-box :is(input:not([type=radio], [type=checkbox]), textarea, select, pre, pre code) { color: #fff; }
   .message-composer { border-top: 2px solid var(--ink); position: relative; background-color: var(--panel); box-shadow: inset 0 2px 0 #6f787a; }
 }
 /* Between phone and desktop the sidebar is too narrow for a map, as in the other themes that have one. */
