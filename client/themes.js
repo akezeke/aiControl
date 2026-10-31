@@ -16,7 +16,7 @@ export const themes = [
   // The bridge is a 3D scene too; its colours are chosen on the bridge itself.
   { id: 'bridge', scheme: 'dark', name: 'Bridge', color: '#150f33' },
   // A pixel-art city, drawn on a 2D canvas in the Resurrect 64 palette; its list is the site office, in building materials.
-  { id: 'city', scheme: 'dark', name: 'City', color: '#4d4a44' },
+  { id: 'city', scheme: 'dark', name: 'Metropolis', color: '#4d4a44' },
 ];
 const storageKey = 'ai-control-theme';
 export function hasSavedTheme() { try { return themes.some(theme => theme.id === localStorage.getItem(storageKey)); } catch { return true; } }
