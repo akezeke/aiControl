@@ -7,13 +7,14 @@ import { createCard, createMenu } from '../scene-ui.js';
 import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
 import { groundCells, paintGround, paintHood, paintLotShade } from './ground.js';
-import { buildTower, annex, dust, crane, coolingPlant, stackPlant } from './generator.js';
+import { buildTower, annex, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant } from './generator.js';
 import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
-import { hop, hum, phaseAt, sparks, STEAM_MS } from './juice.js';
+import { hop, hum, phaseAt, sparks, STEAM_MS, traffic, BURSTS, burst, momentOf, jibBeat } from './juice.js';
 import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf, keyPan } from './view.js';
 import { createControls, createLabels } from './labels.js';
+import { paintMap, trackMap, steerMap } from './minimap.js';
 
 const TAG_X = 16, TAG_Y = 6;
 const DRAG_SLOP = 6, GLIDE_MS = 220, NOTCH = 50, WHEEL_REST = 200;
@@ -25,7 +26,7 @@ const STEP_MS = 125, CACHE = 256, FLOOR = '#0b5e65', HIGHLIGHT = { hover: '#f9c2
 const DUSK = 'rgba(46, 34, 47, .55)';
 // A sprite this far off the canvas can't reach it, so it isn't baked until it might.
 const CULL_X = 90, CULL_UP = 40, CULL_DOWN = 170;
-const BEACON = '#f9c22b', BEACON_INK = '#2e222f', BLINK_MS = 500, CRANE_AT = 20;
+const BEACON = '#f9c22b', BEACON_INK = '#2e222f', BLINK_MS = 500, CRANE_MAST_MIN = 28, CRANE_MAST_MAX = 52;
 // Dust and smoke climb from the roof a step at a time, growing as they go; a building ending goes up in a bigger cloud.
 const PLUME = [6, 10, 14, 18], PLUME_LIFT = 3, PUFF = [14, 22, 30, 36];
 // A session the server won't let go of comes back rather than leaving a lot that looks empty and isn't.
@@ -65,10 +66,10 @@ export function mountCity(box, hooks = {}) {
   if (bloom) box.append(glowCanvas);
 
   const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), litHoods = new Map(), lotShades = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
-  const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(), hops = new Map(), moods = new Map(); // ghosts: what has left the plan but is still going up in dust.
+  const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(), hops = new Map(), moods = new Map(), states = new Map(), bursts = new Map(); // ghosts: what has left the plan but is still going up in dust.
   let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '';
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
-  let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [];
+  let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
   let glide = null, coast = null, drawn = [], selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
 
@@ -101,6 +102,13 @@ export function mountCity(box, hooks = {}) {
   const hopped = (id, mood, now, reduced) => {
     if (moods.has(id) && moods.get(id) !== mood && !reduced) hops.set(id, now);
     moods.set(id, mood);
+  };
+  const fire = (kind, group, x, z, now) => { const key = `${kind}:${group}`; if (!bursts.has(key)) bursts.set(key, { kind, group, x, z, at: now, seed: `${group}:${Math.floor(now)}` }); };
+  // Worth a moment: done, stuck, or a storey up. Only ever for a change, and not for one nobody's looking at.
+  const noticed = (id, signal, storeys, x, z, now, dim, reduced) => {
+    const next = { twinkle: !!signal.twinkle, beacon: !!signal.beacon, smoke: !!signal.smoke, asleep: !!signal.asleep, offline: !!signal.offline, storeys }, kind = momentOf(states.get(id) ?? null, next);
+    states.set(id, next);
+    if (kind && !dim && !reduced) fire(kind, id, x, z, now);
   };
   const bounceOf = (id, signal, dim, now, reduced) => {
     if (reduced) return null;
@@ -135,8 +143,16 @@ export function mountCity(box, hooks = {}) {
       const signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(id), { windows } = signal, phase = phaseOf(id, signal, now), dim = dimmed(building);
       if (signal.twinkle && !reduced) animating = true;
       hopped(id, `${windows}|${building.storeys}`, now, reduced || stage.puff);
+      if (stage.puff) fire('fall', id, x, z, now);
+      else { if (stage.rising && !states.has(id)) fire('spawn', id, x, z, now); noticed(id, signal, building.storeys, x, z, now, dim, reduced); }
       stand(`${id}|${stage.storeys}|${windows}|${phase}|${!!signal.asleep}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { asleep: signal.asleep, beacon: signal.beacon && !dim && blink, named: true, bounce: bounceOf(id, signal, dim, now, reduced), sparks: signal.twinkle && !dim && !reduced ? sparks(now, id) : null });
-      if (stage.crane) stand('crane', `crane:${id}`, x + CRANE_AT, z - CRANE_AT, () => ({ stack: crane(true) }), null, dim);
+      const [craneX, craneZ] = craneSpot(view);
+      // While it's working a tower has a crane at it: the plainest thing in the city that says so. It stands still under reduced motion.
+      if (signal.twinkle && !stage.crane) {
+        const beat = reduced ? 0 : jibBeat(now, id, JIB_BEATS), mast = Math.min(CRANE_MAST_MAX, Math.max(CRANE_MAST_MIN, Math.ceil((stage.storeys * 3 + 12) / 4) * 4));
+        stand(`site:${beat}:${mast}`, `site:${id}`, x + craneX, z + craneZ, () => siteCrane(beat, mast, view), null, dim);
+      }
+      if (stage.crane) stand('crane', `crane:${id}`, x + craneX, z + craneZ, () => ({ stack: crane(true) }), null, dim);
       effects(id, x, z, signal, stage, dim);
       return true;
     };
@@ -145,6 +161,7 @@ export function mountCity(box, hooks = {}) {
       if (stage.gone) return false;
       const at = annexAt(building, i, view), group = `${building.id}+${i}`, signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(kid.id), dim = dimmed(building, kid.id), phase = phaseOf(kid.id, signal, now);
       hopped(kid.id, `${signal.windows}|${kid.storeys}`, now, reduced || stage.puff);
+      if (stage.puff) fire('fall', group, at.x, at.z, now); else if (stage.rising && !states.has(kid.id)) { states.set(kid.id, true); fire('spawn', group, at.x, at.z, now); }
       stand(`${group}|${stage.storeys}|${signal.windows}|${phase}|${!!signal.asleep}`, group, at.x, at.z, () => annex(building.look, i, signal.windows, stage.storeys, phase), stage.puff ? null : kid.id, dim, { asleep: signal.asleep, beacon: signal.beacon && !dim && blink, bounce: bounceOf(kid.id, signal, dim, now, reduced) });
       effects(group, at.x, at.z, signal, stage, dim);
       return true;
@@ -158,6 +175,10 @@ export function mountCity(box, hooks = {}) {
       stand(`plant:${provider}|${on}|${lit}|${phase}`, `plant:${provider}`, x, z, () => ({ stack: make(stripe, on, lit, phase) }), null, quiet);
     }
     for (const building of plan.buildings) if (towerOf(building)) building.subagents.forEach((kid, i) => annexOf(building, i, kid));
+    if (!reduced) {
+      const busy = plan.buildings.filter(({ id }) => sessions.has(id) && !signalOf(id).asleep);
+      for (const { id, x, z, along, colour } of traffic(plan.roads, busy, now)) { animating = true; stand(`car:${colour}:${along}`, `car:${id}`, x, z, () => ({ stack: car(colour, along) }), null, quiet, { moves: true }); }
+    }
     for (const [id, ghost] of ghosts) if (!(ghost.kid ? annexOf(ghost.building, ghost.i, ghost.kid) : towerOf(ghost.building))) ghosts.delete(id);
     return items.sort((a, b) => a.sy - b.sy);
   };
@@ -193,6 +214,17 @@ export function mountCity(box, hooks = {}) {
     }
   };
   const lotOf = key => { for (const hood of plan.hoods) for (const lot of hood.lots) if (lot.key === key) return lot; return null; };
+  // In the air they go from a roof if they have one; on the ground, from where they happened.
+  const flash = (target, ground, crown, under, glowing = false) => {
+    for (const { kind, group, x, z, at, seed } of bursts.values()) {
+      const spec = BURSTS[kind], pixels = !!spec.ground === ground && (!glowing || spec.glow) ? burst(kind, paintedAt - at, seed) : null;
+      if (!pixels) continue;
+      const parent = spec.crown ? under?.get(group) : null;
+      if (spec.crown && !parent) continue;
+      const [ax, ay] = parent ? crown(parent) : toCanvas(camera, size, ...screen(x, z, view));
+      for (const pixel of pixels) { target.fillStyle = pixel.colour; target.fillRect(ax + pixel.x, ay + pixel.y, pixel.size, pixel.size); }
+    }
+  };
   const paint = list => {
     frames++;
     const ground = groundImage(), [gx, gy] = toCanvas(camera, size, 0, 0);
@@ -210,6 +242,7 @@ export function mountCity(box, hooks = {}) {
     }
     for (const over of [lit, hinted]) if (over) ctx.drawImage(over.edgeImage, gx - over.originX, gy - over.originY);
     for (const kind of Object.keys(lots)) { const lot = lots[kind] && lotOf(lots[kind]); if (lot) outline(lot, HIGHLIGHT[kind]); }
+    flash(ctx, true);
     const placed = list.filter(({ item }) => !item.over).map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, item, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
     drawn = placed.filter(item => item.opens);
     syncLabels(placed);
@@ -232,12 +265,14 @@ export function mountCity(box, hooks = {}) {
     }
     const spray = target => { for (const entry of placed) if (entry.item.sparks) { const [x, y] = crown(entry); for (const spark of entry.item.sparks) { target.fillStyle = spark.colour; target.fillRect(x + spark.x, y + spark.y, 1, 1); } } };
     spray(ctx);
+    flash(ctx, false, crown, under);
     if (bloom) {
       const shiftX = lampOffset(gx), shiftY = lampOffset(gy), kx = glowCanvas.width / size.width, ky = glowCanvas.height / size.height;
       lampsCtx.setTransform(1, 0, 0, 1, 0, 0); lampsCtx.clearRect(0, 0, lamps.width, lamps.height); lampsCtx.setTransform(1, 0, 0, 1, shiftX, shiftY);
       if (lit) lampsCtx.drawImage(lit.edgeImage, gx - lit.originX, gy - lit.originY);
       for (const { sprite, x, y, item } of placed) if (sprite.glowImage) drawBounced(lampsCtx, sprite.glowImage, sprite, x, y, item.bounce);
       spray(lampsCtx);
+      flash(lampsCtx, false, crown, under, true);
       lampsCtx.fillStyle = BEACON;
       for (const entry of placed) if (entry.item.beacon) { const [x, y] = crown(entry); lampsCtx.fillRect(x - 1, y - 3, 3, 3); }
       bloom.draw(glowCtx, lamps, -shiftX * kx, -shiftY * ky, lamps.width * kx, lamps.height * ky);
@@ -288,9 +323,25 @@ export function mountCity(box, hooks = {}) {
     placeCanvas();
   };
 
+  // The sidebar's map follows the scene: redrawn when the city or what's picked changes, its box whenever the camera moves.
+  let mapEl = null, mapRev = 0, mapDrawn = '', mapOff = null;
+  const litNow = () => { const one = selectedHood ?? hoveredHood; return one ?? (test ? new Set(plan.buildings.filter(building => passes(building.id) || building.subagents.some(kid => passes(kid.id))).map(building => building.hoodKey)) : null); };
+  const syncMap = () => {
+    const el = hooks.mapScreen?.() ?? null;
+    if (el !== mapEl) { mapOff?.(); mapEl = el; mapDrawn = ''; mapOff = el && steerMap(el, (cx, cy, dragging) => { if (!plan || !camera) return; if (dragging) jump({ cx, cy }); else glideTo({ cx, cy }); }); }
+    if (!el) return;
+    const lit = litNow(), key = `${mapRev}|${view}|${lit instanceof Set ? [...lit].join() : lit ?? ''}`;
+    if (key !== mapDrawn && paintMap(el, plan, view, { lit, asleep: id => !!sessions.get(id) && !!signalOf(id).asleep })) mapDrawn = key;
+    trackMap(el, eye, boxW, boxH);
+  };
+
   // One sprite baked per frame at most; until it's ready a building shows what it last looked like.
   const step = now => {
     if (!plan || !camera) return false;
+    syncMap();
+    paintedAt = now;
+    for (const [key, { kind, at }] of bursts) if (now - at >= BURSTS[kind].ms) { bursts.delete(key); dirty = true; }
+    if (bursts.size) dirty = true;
     if (glide) {
       const t = Math.min(1, Math.max(0, now - glide.start) / glide.ms);
       look(between(glide.from, glide.to, 1 - (1 - t) ** 3));
@@ -314,7 +365,7 @@ export function mountCity(box, hooks = {}) {
       if (sprite) shown.set(item.group, sprite); else sprite = shown.get(item.group);
       if (sprite) ready.push({ item, sprite });
     }
-    const drawing = ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
+    const drawing = ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.moves ? `${item.sx},${item.sy}` : ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
     if (dirty || baked || drawing !== lastDrawn) { paint(ready); lastDrawn = drawing; dirty = false; }
     if (labelsStale) { moveLabels(); followMenu(); }
     return waiting || baked;
@@ -326,7 +377,7 @@ export function mountCity(box, hooks = {}) {
     if (gone || document.hidden) return;
     try {
       const more = step(now);
-      if (more || dirty || glide || coast || keysDown.size || hops.size) schedule();
+      if (more || dirty || glide || coast || keysDown.size || hops.size || bursts.size) schedule();
       else if (moving()) timer = setTimeout(() => { timer = 0; schedule(); }, STEP_MS);
       else if (steaming) timer = setTimeout(() => { timer = 0; schedule(); }, STEAM_MS - now % STEAM_MS + 1);
     } catch (problem) { failure = problem; } // The next update throws it, and syncScene falls back to the list.
@@ -402,7 +453,13 @@ export function mountCity(box, hooks = {}) {
     if (!reducedMotion()) hops.set(id, performance.now());
     panToWorld(building.x, building.z); hooks.openPanel?.(id);
   };
-  const clickAt = event => { const hit = pickAt(event); if (hit?.id) talkTo(hit.id); else if (hit?.lot && !hit.lot.sessionId) askLot(hit.lot, false); };
+  // A press on the ground answers where it landed, as an order does in a strategy game.
+  const tapped = event => {
+    if (reducedMotion()) return;
+    const [sx, sy] = fromCanvas(camera, size, ...artAt(event)), [x, z] = unproject(sx, sy, view), now = performance.now();
+    bursts.delete('tap:tap'); fire('tap', 'tap', x, z, now); schedule();
+  };
+  const clickAt = event => { const hit = pickAt(event); if (hit?.lot) tapped(event); if (hit?.id) talkTo(hit.id); else if (hit?.lot && !hit.lot.sessionId) askLot(hit.lot, false); };
 
   // ---- Starting an agent: on an empty lot, or through + wherever the server puts it. The lot stays lit until the menu closes.
   const lotPoint = lot => { const [sx, sy] = screen(lot.x, lot.z, view), [px, py] = toCanvas(camera, size, sx, sy), rect = canvas.getBoundingClientRect(); return { clientX: rect.left + px * rect.width / canvas.width, clientY: rect.top + py * rect.height / canvas.height }; };
@@ -586,7 +643,7 @@ export function mountCity(box, hooks = {}) {
       // One agent not being there may just mean it isn't installed; that shows on its plant. Lost means nothing can be reached.
       controls.setLost(!!error || !!snapshot.providers?.length && snapshot.providers.every(provider => !provider.connected));
       controls.setWaiting(snapshot.sessions.filter(session => ['permission', 'question'].includes(session.status)).length);
-      dirty = true; cancel();
+      mapRev++; dirty = true; cancel();
       // Drawn here, not left to the next frame, so that a canvas that can't draw is caught by syncScene.
       if (step(performance.now()) || moving() || glide || coast) schedule();
     },
@@ -602,7 +659,7 @@ export function mountCity(box, hooks = {}) {
     talkTo,
     fire(id) { if (gone) return; fired.set(id, performance.now()); if (snapshot) scene.update(snapshot, { error }); },
     unmount() {
-      gone = true; cancel(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('pointerdown', onPress, true);
+      gone = true; cancel(); mapOff?.(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('pointerdown', onPress, true);
       for (const [target, type, listener] of listening) target.removeEventListener(type, listener);
       box.removeEventListener('wheel', onWheel); controls.dispose(); card.dispose(); labels.dispose(); menu.dispose();
       sprites.clear(); shown.clear(); grounds.clear(); ghosts.clear(); fired.clear(); canvas.remove(); glowCanvas.remove(); plan = null;

@@ -103,9 +103,26 @@ export function dust(w) {
 }
 export function crane(on) {
   const S = new Stack(34, 8, 36), y = hex(on ? '#f9c22b' : '#8d7a3c');
-  S.box(-9, 0, 0, 2, 30, 2, (X, Y) => Y % 4 < 2 ? y : mul(y, .7)); S.box(-3, 30, 0, 26, 1, 1, y); S.box(-15, 28, 0, 4, 3, 3, hex('#4a4e60'));
-  S.line([9, 29, 0], [9, 17, 0], hex('#2b3040')); S.box(9, 14, 0, 3, 3, 2, hex('#776644'));
+  S.box(-9, 0, 0, 2, 30, 2, (X, Y) => Y % 4 < 2 ? y : mul(y, .7)); S.box(-3, 30, 0, 26, 1, 2, y); S.box(-15, 28, 0, 4, 3, 3, hex('#4a4e60'));
+  S.box(9, 17, 0, 2, 13, 2, hex('#2b3040')); S.box(9, 14, 0, 3, 3, 2, hex('#776644'));
   return S.bake();
+}
+// The crane beside a working tower, reaching over it. Only the jib turns, about the top of the mast, so a beat changes nothing below it. `mast` keeps it just above what it's building.
+// Everything on it is two voxels thick: a screen pixel samples one point, and a part one voxel thick can fall between the samples in a view or at an angle, and be gone.
+export const JIB_BEATS = 8;
+// It moves round the tower as the city turns, always to its right on screen: anywhere else it would stand in front of it or behind it.
+const CRANE_AT = 20, CRANE_SIDES = [[1, -1], [-1, -1], [-1, 1], [1, 1]];
+export const craneSpot = view => CRANE_SIDES[view].map(side => side * CRANE_AT);
+export function siteCrane(beat, mast = 30, view = 0) {
+  const R = 26, S = new Stack(R * 2, R * 2, mast + 6), steel = hex('#fb6b1d'), dark = hex('#2e222f'), yaw = Math.PI * (.75 - view / 2) + Math.sin(beat / JIB_BEATS * Math.PI * 2) * .5, cos = Math.cos(yaw), sin = Math.sin(yaw);
+  S.box(0, 0, 0, 3, 1, 3, dark);
+  S.box(0, 1, 0, 2, mast - 1, 2, (X, Y) => Y % 2 ? steel : mul(steel, .7));
+  S.box(0, mast, 0, 2, 2, 2, hex('#2b3040'));
+  for (let along = -6; along <= 24; along += .5) S.box(along * cos, mast + 1, along * sin, 2, 1, 2, steel);
+  S.box(-6 * cos, mast, -6 * sin, 3, 1, 3, dark);
+  S.box(18 * cos, mast - 8, 18 * sin, 2, 9, 2, dark);
+  S.box(18 * cos, mast - 10, 18 * sin, 3, 2, 2, hex('#776644'));
+  return { stack: S.bake() };
 }
 // Rising steam. Everything goes by where a puff is, not which one it is, so that after four phases the next has taken its place unseen.
 const PUFFS = 5;

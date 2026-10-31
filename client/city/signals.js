@@ -6,12 +6,13 @@ export const RISE_MS = 1000, PUFF_MS = 500, STEP_MS = 125;
 
 const WINDOWS = { green: 'lit', amber: 'dim', blue: 'dim' };
 
+// A subagent's bubble is its icon, with the words in its tooltip: there can be a lot of them, and the tower beside each has its own say.
 export function citySignal(session, { connected = true, now = Date.now() } = {}) {
   const status = officeStatus(session, now), { screen } = status, working = screen === 'green' && connected;
   return {
     windows: connected ? WINDOWS[screen] || 'dark' : 'dark', twinkle: working, beacon: screen === 'amber', smoke: screen === 'red',
-    dust: screen === 'green' && session.activity === 'compacting', bubble: status.bubble,
-    asleep: !connected || screen === 'dark' || screen === 'off', mood: !connected || screen === 'dark' || screen === 'off' ? 'asleep' : working ? 'working' : null,
+    dust: screen === 'green' && session.activity === 'compacting', bubble: status.bubble && session.parentId ? { ...status.bubble, terse: true } : status.bubble,
+    asleep: !connected || screen === 'dark' || screen === 'off', offline: !connected, mood: !connected || screen === 'dark' || screen === 'off' ? 'asleep' : working ? 'working' : null,
   };
 }
 

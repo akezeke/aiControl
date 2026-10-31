@@ -1,8 +1,9 @@
 // The DOM laid over the city: its buttons, and everything that talks or names a place.
 import { glyph } from './glyphs.js';
-import { clearOf, placeBubble } from './view.js';
+import { clearOf, offMap, placeBubble } from './view.js';
 
-const TAIL = 6, OFF_SIDE = 24, OFF_TOP = 48, INK = '#2e222f';
+const TAIL = 6, INK = '#2e222f';
+const POP = [{ transform: 'scale(.6)' }, { transform: 'scale(1.15)', offset: .5 }, { transform: 'scale(1)' }], POP_TIMING = { duration: 220, easing: 'steps(5)', composite: 'add' };
 
 // A 7 x 7 pixel icon, so that no emoji brings in a colour from outside the palette.
 function iconOf(emoji) {
@@ -31,7 +32,8 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
     return entry;
   };
   const place = (entry, taken = []) => {
-    const [ax, ay] = project(entry.ax, entry.ay), off = ax < -OFF_SIDE || ax > width + OFF_SIDE || ay < -OFF_TOP || ay > height + OFF_SIDE;
+    // A bubble is held on the map by its tail, so its own width doesn't keep it there.
+    const [ax, ay] = project(entry.ax, entry.ay), off = offMap(ax, ay, entry.bubble ? 0 : entry.w ?? 0, width, height);
     if (off !== entry.off) { entry.off = off; entry.node.hidden = off; }
     if (off) return;
     if (entry.w === null) { entry.w = entry.node.offsetWidth; entry.h = entry.node.offsetHeight; }
@@ -46,7 +48,8 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
       ({ x, y } = clearOf({ ...want, w: entry.w, h: entry.h }, taken, width, height));
       if (sign) entry.node.classList.toggle('adrift', x !== want.x || y !== want.y);
     }
-    x = Math.round(x); y = Math.round(y);
+    // Others dodge the exact spot: the rounded one differs by up to a pixel from frame to frame.
+    entry.fx = x; entry.fy = y; x = Math.round(x); y = Math.round(y);
     if (x !== entry.x || y !== entry.y) { entry.x = x; entry.y = y; entry.node.style.transform = `translate(${x}px, ${y}px)`; }
   };
   const anchor = (entry, ax, ay) => { const moved = entry.ax !== ax || entry.ay !== ay; entry.ax = ax; entry.ay = ay; return moved; };
@@ -54,7 +57,7 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
   const settle = entry => { if (project) place(entry); };
 
   return {
-    // items: [{ id, ax, ay, name, bubble: { icon, text, highlight } | null, unread, dim, mood: 'working' | 'asleep' | null }]. A building with nothing to say still has its name.
+    // items: [{ id, ax, ay, name, bubble: { icon, text, highlight, terse } | null, unread, dim, mood: 'working' | 'asleep' | null }]. A building with nothing to say still has its name.
     sync(items, step) {
       layer.classList.toggle('icons', step === 1); layer.classList.toggle('near', step > 2);
       const keep = new Set();
@@ -63,8 +66,12 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
         const key = `b:${id}`; keep.add(key);
         const entry = shown.get(key) || add(key, 'button', 'city-bubble');
         if (!entry.bubble) { entry.node.onclick = () => onSession(id); entry.bubble = document.createElement('i'); entry.bubble.className = 'tail'; }
-        const sig = `${name}|${bubble?.icon}|${bubble?.text}|${!!bubble?.highlight}|${!!unread}|${step === 1}`;
+        const sig = `${name}|${bubble?.icon}|${bubble?.text}|${!!bubble?.highlight}|${!!bubble?.terse}|${!!unread}|${step === 1}`;
         if (sig !== entry.sig) {
+          // A bubble whose news has changed, rather than its wording, pops. On top of wherever it's been placed.
+          const news = `${bubble?.icon}|${!!bubble?.highlight}`;
+          if (entry.sig && news !== entry.news && !matchMedia('(prefers-reduced-motion: reduce)').matches) entry.node.animate(POP, POP_TIMING);
+          entry.news = news;
           entry.sig = sig; entry.w = null; entry.tail = null;
           const icon = iconOf(bubble?.icon), said = bubble?.text || '', words = [name, said].filter(Boolean).join(': '), dot = document.createElement('b'), rows = [];
           dot.className = 'dot';
@@ -73,7 +80,7 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
           const body = document.createElement('span'); body.className = 'body'; body.append(...rows);
           entry.node.replaceChildren(body, dot, entry.bubble);
           entry.node.title = words; entry.node.setAttribute('aria-label', words || 'Open session');
-          entry.node.classList.toggle('high', !!bubble?.highlight); entry.node.classList.toggle('unread', !!unread); entry.node.classList.toggle('bare', !icon);
+          entry.node.classList.toggle('high', !!bubble?.highlight); entry.node.classList.toggle('unread', !!unread); entry.node.classList.toggle('bare', !icon); entry.node.classList.toggle('terse', !!bubble?.terse);
         }
         entry.node.classList.toggle('dim', !!dim && !bubble?.highlight);
         entry.node.classList.toggle('working', mood === 'working'); entry.node.classList.toggle('asleep', mood === 'asleep');
@@ -120,9 +127,9 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
       for (const entry of shown.values()) {
         if (!entry.bubble) { names.push(entry); continue; }
         place(entry);
-        if (!entry.off) taken.push({ x: entry.x, y: entry.y, w: entry.w, h: entry.h + TAIL });
+        if (!entry.off) taken.push({ x: entry.fx, y: entry.fy, w: entry.w, h: entry.h + TAIL });
       }
-      for (const entry of names) { place(entry, taken); if (!entry.off) taken.push({ x: entry.x, y: entry.y, w: entry.w, h: entry.h }); }
+      for (const entry of names) { place(entry, taken); if (!entry.off) taken.push({ x: entry.fx, y: entry.fy, w: entry.w, h: entry.h }); }
     },
     dispose() { layer.remove(); shown.clear(); },
   };

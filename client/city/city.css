@@ -1,4 +1,4 @@
-#city { position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: #323353; touch-action: none; }
+#city { position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: #4d4a44; touch-action: none; }
 /* Sized in JS: whole device pixels per art pixel, so never stretched to fit. */
 #city > canvas { display: block; image-rendering: pixelated; transform-origin: 0 0; will-change: transform; }
 @media (max-width: 640px) { :root[data-theme-choice=city]:not([data-scene-fallback], [data-scene-list]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
@@ -9,12 +9,13 @@
 /* Pixel corners, from themes.css: a border image with the corner pixel missing and the fill kept off it. A hard drop shadow follows the cut; a box shadow wouldn't. */
 .city-controls button, .city-lost, .office-card, .office-menu, .city-bubble, .city-sign, .city-tag, .office-menu .office-folder { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; }
 .city-controls button, .city-lost, .office-card, .office-menu { filter: drop-shadow(2px 2px 0 #2e222f); }
-.city-controls button { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 36px; height: 36px; padding: 0 8px; background-color: #484a77; color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); box-shadow: inset 2px 2px 0 #4d65b4, inset -2px -2px 0 #323353; cursor: pointer; }
+.city-controls button { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 36px; height: 36px; padding: 0 8px; background-color: #454c4e; color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); box-shadow: inset 2px 2px 0 #4d65b4, inset -2px -2px 0 #323353; cursor: pointer; }
 .city-controls svg { flex: none; display: block; }
+.city-controls button { background-image: var(--rivet), var(--rivet), var(--rivet), var(--rivet); background-position: 2px 2px, calc(100% - 2px) 2px, 2px calc(100% - 2px), calc(100% - 2px) calc(100% - 2px); background-size: 3px 3px; background-repeat: no-repeat; }
 .city-controls button[hidden], .city-lost[hidden] { display: none; }
-.city-controls button:hover { background-color: #4d65b4; box-shadow: inset 2px 2px 0 #4d9be6, inset -2px -2px 0 #484a77; }
-.city-controls button:active { transform: translate(2px, 2px); filter: none; box-shadow: inset 2px 2px 0 #323353; }
-.city-controls button:focus-visible { outline: 2px solid #fbff86; outline-offset: 1px; }
+.city-controls button:hover { background-color: #565e60; box-shadow: inset 2px 2px 0 #8a9496, inset -2px -2px 0 #454c4e; }
+.city-controls button:active { transform: translate(2px, 2px); filter: none; box-shadow: inset 2px 2px 0 #2c3032; }
+.city-controls button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .city-controls .city-waiting { background-color: #f9c22b; color: #2e222f; box-shadow: inset 2px 2px 0 #fbff86, inset -2px -2px 0 #f79617; }
 .city-controls .city-waiting:hover { background-color: #fbff86; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #f9c22b; }
 .city-lost { padding: 9px 8px; background-color: #e83b3b; color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); white-space: nowrap; }
@@ -28,7 +29,7 @@
 .office-card .branch { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .office-card .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; }
 .office-card .chip { padding: 0 6px; border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; font-size: 11px; }
-.office-card .chip.plan { background: #8fd3ff; }
+.office-card .chip.plan { background: #c7dcd0; }
 .office-card .chip.bypass, .office-card .chip.full { background: #f68181; }
 .office-card .detail { color: #3e3546; -webkit-line-clamp: 3; }
 
@@ -49,16 +50,17 @@
 .city-bubble.working { --bubble: #91db69; --bubble-edge: #1ebc73; z-index: 2; }
 .city-bubble.asleep { --bubble: #8b93af; --bubble-edge: #6d758d; }
 .city-bubble.high { --bubble: #f9c22b; --bubble-edge: #f79617; z-index: 3; }
-.city-bubble:hover { --bubble: #fbff86; --bubble-edge: #f9c22b; z-index: 4; }
-.city-bubble:focus-visible, .city-sign:focus-visible { outline: 2px solid #4d9be6; outline-offset: 1px; z-index: 4; }
+.city-bubble:hover { --bubble: #fff; --bubble-edge: #9babb2; z-index: 4; }
+.city-bubble:focus-visible, .city-sign:focus-visible { outline: 2px solid #fff; outline-offset: 1px; z-index: 4; }
 .city-bubble.dim { opacity: .55; }
 .city-labels.near .city-bubble { max-width: 208px; }
+.city-bubble.terse .text { display: none; }
 .city-labels.icons .city-bubble:not(.high) :is(.text, .name) { display: none; }
 .city-labels.icons .city-bubble.bare:not(.high) { display: none; }
-.city-sign { --sign: #484a77; display: flex; align-items: center; gap: 4px; padding: 3px 6px; background-color: var(--sign); box-shadow: inset 2px 2px 0 #4d65b4, inset -2px -2px 0 #323353; color: #fff; cursor: pointer; z-index: 1; }
+.city-sign { --sign: #165a4c; display: flex; align-items: center; gap: 4px; padding: 3px 6px; background-color: var(--sign); box-shadow: inset 2px 2px 0 #239063, inset -2px -2px 0 #0d3d33; color: #fff; cursor: pointer; z-index: 1; }
 .city-sign svg { flex: none; display: block; width: 12px; height: 12px; }
-.city-sign:is(:hover, :focus-visible) { --sign: #4d65b4; box-shadow: inset 2px 2px 0 #4d9be6, inset -2px -2px 0 #484a77; }
-.city-sign.selected { --sign: #fbff86; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #f9c22b; color: #2e222f; }
+.city-sign:is(:hover, :focus-visible) { --sign: #239063; box-shadow: inset 2px 2px 0 #1ebc73, inset -2px -2px 0 #165a4c; }
+.city-sign.selected { --sign: #fff; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #c7dcd0; color: #2e222f; }
 /* The same stairs as a bubble's, down onto the project's corner. */
 .city-sign::before, .city-sign::after { content: ''; position: absolute; top: 100%; left: 50%; width: 10px; height: 6px; margin-left: -5px; pointer-events: none; }
 .city-sign::before { background: #2e222f; clip-path: polygon(0 0, 10px 0, 10px 2px, 8px 2px, 8px 4px, 6px 4px, 6px 6px, 4px 6px, 4px 4px, 2px 4px, 2px 2px, 0 2px); }
@@ -67,13 +69,13 @@
 .city-tag { padding: 2px 4px; background-color: #2e222f; color: #fbf5ef; text-align: center; white-space: pre-line; z-index: 1; cursor: default; }
 .city-tag.high { background-color: #f9c22b; color: #2e222f; }
 /* Fuel, in the same blocks as the list's meters: the part that's left is dark, the part that's used is lit. */
-.city-tag.gauge::after { content: ''; display: block; height: 4px; margin-top: 2px; background: linear-gradient(90deg, transparent var(--used), #484a77 0), repeating-linear-gradient(90deg, #4d9be6 0 4px, transparent 4px 5px); }
+.city-tag.gauge::after { content: ''; display: block; height: 4px; margin-top: 2px; background: linear-gradient(90deg, transparent var(--used), #565e60 0), repeating-linear-gradient(90deg, #c7dcd0 0 4px, transparent 4px 5px); }
 .city-tag.gauge.high::after { background: linear-gradient(90deg, transparent var(--used), #f79617 0), repeating-linear-gradient(90deg, #2e222f 0 4px, transparent 4px 5px); }
 
 .office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; padding: 4px; background-color: #fbf5ef; color: #2e222f; }
 .office-menu[hidden] { display: none; }
 .office-menu button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 0; background: none; color: #2e222f; font: 700 14px system-ui, sans-serif; cursor: pointer; }
-.office-menu button:hover, .office-menu button:focus-visible { background: #f9c22b; outline: none; }
+.office-menu button:hover, .office-menu button:focus-visible { background: #c7dcd0; outline: none; }
 .office-menu button:disabled { opacity: .5; cursor: progress; }
 .office-menu .provider-icon { width: 18px; height: 18px; image-rendering: pixelated; }
 .office-menu .office-folder { width: 220px; min-height: 36px; margin-bottom: 2px; padding: 0 10px; border-radius: 0; background-color: #fff; color: #2e222f; font: 600 14px ui-monospace, monospace; }

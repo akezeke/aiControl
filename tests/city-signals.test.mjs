@@ -14,6 +14,7 @@ test('idle is dark', () => { const g = sig({ status: 'idle' }); assert.equal(g.w
 test('an error smokes and speaks', () => { const g = sig({ status: 'error', detail: 'boom' }); assert.equal(g.smoke, true); assert.equal(g.bubble.text, 'boom'); });
 test('connection lost: dark everywhere, nothing else changes', () => { const g = sig({ status: 'working' }, { connected: false }); assert.equal(g.windows, 'dark'); assert.equal(g.twinkle, false); });
 test('a beacon survives connection loss', () => assert.equal(sig({ status: 'permission' }, { connected: false }).beacon, true));
+test("a helper's bubble is its icon alone, and a tower's has its words", () => { assert.equal(sig({ status: 'working', parentId: 'p' }).bubble.terse, true); assert.equal(sig({ status: 'permission', parentId: 'p' }).bubble.terse, true); assert.ok(!sig({ status: 'working' }).bubble.terse); });
 test('helpers only speak when working or waiting on you', () => { assert.equal(sig({ status: 'idle', parentId: 'p' }).bubble, null); assert.ok(sig({ status: 'permission', parentId: 'p' }).bubble); });
 
 const planOf = (...ids) => ({ buildings: ids.map(id => ({ id, storeys: 8, subagents: [], overflow: 0 })) });
