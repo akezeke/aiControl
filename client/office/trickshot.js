@@ -17,8 +17,8 @@ import { WALL_H } from './furniture.js';
 const NAMES = { sink: 'Sink', bucket: 'Bucket', bin: 'Bin', basket: 'Basket', shelf: 'Shelf', tableMug: 'Mug' };
 const HAND_BACK = 1, PARTY = 1.2, BITS = 24, GROUND = 0.008; // seconds the camera stays on where a shot ended; of confetti; how many; the tape's height
 const ZERO = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
-// The camera on a shot: how far behind and above the item, how fast it and its look catch up (m/s at most, for it), and how fast "behind" comes round after a bounce (per second); how much room it keeps.
-const TRAIL = 1.5, RISE = 0.6, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, IN_LINE = { radius: 0.03, low: 0.03 }, CLEAR = 1e-3;
+// The camera on a shot: where it would like to be, [behind, above, to the side of] the item; how near it may be; how fast it and its look catch up (m/s at most, for it), and how fast "behind" comes round after a bounce (per second); how much room it keeps.
+const VIEWS = [[1.5, 0.6, 0], [1.2, 1, 0], [0.6, 1.4, 0], [0.9, 0.9, 0.9], [0.9, 0.9, -0.9], [-0.9, 0.9, 0], [0, 1.4, 0.5], [0, 1.4, -0.5]], NEAREST = 0.7, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, CLEAR = 1e-3;
 let world; const flightWorld = () => world ??= levelWorld(); // ponytail: read only, the same boxes shot.js flies through (it keeps its own copy)
 
 // Each centred where flight.js has it, resting `low` over what it's on.
@@ -97,15 +97,21 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   const stop = () => { hush(); kitchen.pans?.rest(); party.visible = false; partyLeft = 0; handBack = 0; moved = false; angle = 0; view?.play(null); if (view) view.gameAmount = 0; };
 
   // From the eyes on, it goes only through free space: it's walked to where it wants to be, one axis at a time so it slides along what's in the
-  // way. So it can't be in anything, whatever the bounce. Where it wants to be is behind and above, in the room, and in sight of the item.
+  // way. So it can't be in anything, whatever the bounce.
   const followNow = dt => {
     const { at, look, ahead, spot, step, from } = follow, { colliders } = flightWorld();
     spot.subVectors(flying, now).setY(0);
     if (spot.lengthSq() > 1e-8) { spot.normalize(); ahead.lerp(spot, 1 - Math.exp(-dt * COMES_ROUND)); if (ahead.lengthSq() < 1e-4) ahead.copy(spot); else ahead.normalize(); }
-    from.copy(flying); from.y = Math.min(from.y + RISE, WALL_H - CAMERA.radius);
-    spot.copy(from).addScaledVector(ahead, -TRAIL);
-    spot.x = THREE.MathUtils.clamp(spot.x, CAMERA.radius - KITCHEN.width, -CAMERA.radius); spot.z = THREE.MathUtils.clamp(spot.z, KITCHEN.back + CAMERA.radius, KITCHEN.front - CAMERA.radius);
-    stopShort(from, spot, IN_LINE, colliders);
+    from.copy(flying); from.y += 0.05;
+    // The first view with nothing between it and the item, or the best there is. A straight line out from the item, so what it's clear of it can see past.
+    let most = -1;
+    for (const [back, rise, side] of VIEWS) {
+      step.set(flying.x - ahead.x * back + ahead.z * side, Math.min(flying.y + rise, WALL_H - CAMERA.radius), flying.z - ahead.z * back - ahead.x * side);
+      step.x = THREE.MathUtils.clamp(step.x, CAMERA.radius - KITCHEN.width, -CAMERA.radius); step.z = THREE.MathUtils.clamp(step.z, KITCHEN.back + CAMERA.radius, KITCHEN.front - CAMERA.radius);
+      const whole = from.distanceToSquared(step), got = from.distanceToSquared(stopShort(from, step, CAMERA, colliders));
+      if (got > most) { most = got; spot.copy(step); }
+      if (got > 0.99 * whole && got > NEAREST * NEAREST) { spot.copy(step); break; }
+    }
     spot.sub(at).multiplyScalar(1 - Math.exp(-dt * CATCH)).clampLength(0, FASTEST * dt).add(at); // coming free of what held it back, it doesn't leap
     for (const axis of ['x', 'z', 'y']) { // never right up to what it hit: stopShort doesn't count a box it starts in
       step.copy(at); step[axis] = spot[axis]; stopShort(at, step, CAMERA, colliders);

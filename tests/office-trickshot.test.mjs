@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTrickshot } from '../client/office/trickshot.js';
 import { BLEND, arcPoints, blendLeft, createArc, drawnAt, launch } from '../client/office/throwing.js';
-import { makeBody, simulate } from '../client/office/flight.js';
-import { levelWorld } from '../client/office/kitchen-plan.js';
+import { makeBody, simulate, stopShort } from '../client/office/flight.js';
+import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
 import { EYE, Player } from '../client/office/player.js';
 import { ITEMS, MONDAY, STARTS } from '../client/office/levels.js';
 import { loadProgress } from '../client/office/progress.js';
-import { FLIGHT, SLOW } from '../client/office/shot.js';
+import { FLIGHT, SLOW, inZone } from '../client/office/shot.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z), rad = d => d * Math.PI / 180;
 const look = (yaw, pitch) => V(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
@@ -428,6 +428,20 @@ test('nor on any other throw, wherever it goes', () => {
       assert.ok(!inBox(from), `${id} from ${start}, throw ${n}: in ${inBox(from)?.surface}, ${from.toArray()}`);
       assert.ok(from.x > -10 && from.x < 0 && from.z > -8 && from.z < 1 && from.y > 0 && from.y < 3, `${id}, throw ${n}: left the room, ${from.toArray()}`);
     }
+  }
+});
+
+test('the item stays in sight, unless it\'s down in what it was thrown at', () => {
+  const world = levelWorld().colliders, truly = V(0, 0, 0), spare = V(0, 0, 0);
+  for (const id of Object.keys(SHOTS)) {
+    const t = setup(), zone = ZONES[MONDAY.find(e => e.id === id).target]; begin(t, id); throwIt(t, SHOTS[id]);
+    let run = 0, longest = 0;
+    while (t.game.run.state === 'flying') {
+      t.game.update(DT, null, false, true); t.game.run.at(truly);
+      const seen = stopShort(poseLocal(t, 'from'), spare.copy(truly), { radius: 0.005, low: 0.005 }, world).distanceTo(truly) < 0.15;
+      run = seen || inZone(truly.toArray(), zone) ? 0 : run + 1; longest = Math.max(longest, run);
+    }
+    assert.ok(longest <= 15, `${id}: out of sight for ${longest} frames`);
   }
 });
 
