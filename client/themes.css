@@ -88,7 +88,7 @@
 }
 
 :root[data-theme=city] {
-  /* A building site's materials, not a colour scheme: concrete, steel plate, plywood, red primer, a street sign's green and hi-vis orange. Yellow is left to whatever needs you. */
+  /* A building site's materials, not a colour scheme: concrete, steel plate, red primer, a street sign's green and hi-vis orange. Yellow is left to whatever needs you. */
   color-scheme: dark;
   --display: 'Silkscreen', ui-monospace, monospace;
   --bg: #4d4a44; --panel: #454c4e; --panel-2: #565e60; --sunken: #2c3032;

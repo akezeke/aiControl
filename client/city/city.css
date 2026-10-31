@@ -21,17 +21,17 @@
 .city-lost { padding: 9px 8px; background-color: #e83b3b; color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); white-space: nowrap; }
 @media (pointer: coarse) { .city-controls button { min-width: 44px; height: 44px; } }
 
-.office-card { position: absolute; left: 0; top: 0; z-index: 2000; width: max-content; max-width: min(300px, calc(100% - 16px)); padding: 8px 10px; background-color: #fbf5ef; color: #2e222f; font: 600 13px/1.35 system-ui, sans-serif; box-shadow: inset 0 -2px 0 #c7dcd0; pointer-events: none; }
+.office-card { position: absolute; left: 0; top: 0; z-index: 2000; width: max-content; max-width: min(300px, calc(100% - 16px)); padding: 12px 10px 8px; background-color: var(--panel); background-image: var(--barrier), var(--rivet), var(--rivet); background-position: 0 0, 3px calc(100% - 3px), calc(100% - 3px) calc(100% - 3px); background-size: 8px 4px, 3px 3px, 3px 3px; background-repeat: repeat-x, no-repeat, no-repeat; color: #fff; font: 500 13px/1.35 var(--font); box-shadow: var(--px-raised); pointer-events: none; image-rendering: pixelated; }
 .office-card > div + div { margin-top: 4px; }
 .office-card .title, .office-card .detail { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
-.office-card .title { font-size: 14px; font-weight: 800; }
-.office-card .where, .office-card .state { color: #625565; }
+.office-card .title { font-size: 14px; font-weight: 700; }
+.office-card .where, .office-card .state { color: #c7dcd0; }
 .office-card .branch { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .office-card .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; }
-.office-card .chip { padding: 0 6px; border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; font-size: 11px; }
-.office-card .chip.plan { background: #c7dcd0; }
-.office-card .chip.bypass, .office-card .chip.full { background: #f68181; }
-.office-card .detail { color: #3e3546; -webkit-line-clamp: 3; }
+.office-card .chip { padding: 0 6px; border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background: var(--sunken) padding-box; color: #fff; font-size: 11px; font-weight: 700; }
+.office-card .chip.plan { background-color: var(--sign); }
+.office-card .chip.bypass, .office-card .chip.full { background-color: #ae2334; }
+.office-card .detail { color: #d9e2dc; -webkit-line-clamp: 3; }
 
 .city-labels { position: absolute; inset: 0; z-index: 1000; overflow: hidden; pointer-events: none; }
 .city-labels > * { position: absolute; left: 0; top: 0; width: max-content; pointer-events: auto; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); will-change: transform; }

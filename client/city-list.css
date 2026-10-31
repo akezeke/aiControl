@@ -1,4 +1,4 @@
-/* City's list and panel, as the site office of the city going up: a plywood hoarding, poured concrete, riveted steel, girders for projects, a lot for each session with its tower on it, and the map's speech bubbles for what's said. */
+/* City's list and panel, as the site office of the city going up: poured concrete, riveted steel, girders for projects, a lot for each session with its tower on it, and the map's speech bubbles for what's said. */
 .city-portrait, .city-map, .city-view { display: none; }
 :root[data-theme=city] {
   .city-portrait { display: block; width: var(--w); height: var(--h); overflow: hidden; flex: none; pointer-events: none; }
@@ -47,9 +47,8 @@
   .session-card:is([data-status=idle], [data-status=offline]) { background-color: #3f4648; box-shadow: inset 2px 2px 0 #4d5456, inset -2px -2px 0 #33383a; --text: #d9e2dc; }
   .session-card:is([data-status=idle], [data-status=offline]) .session-title { color: #d9e2dc; }
 
-  /* The sidebar: the site's hoarding, stencilled, with the site plan pinned up and steel plates for the tools. */
-  .sidebar { --text: var(--ink); --text-2: var(--ink); --text-3: var(--ink); background: #b3966c url('/city-plywood.svg') 0 0 / 128px 64px; border-right: 2px solid var(--ink); box-shadow: inset -2px 0 0 #7a6240; color: var(--ink); }
-  .sidebar :is(.nav-item, button, select, input) { --text: #fff; --text-2: #d9e2dc; --text-3: #c7dcd0; }
+  /* The sidebar: the same poured wall as the panel beside it, with the site plan and steel plates for the tools bolted on. */
+  .sidebar { background: var(--bg) url('/city-formwork.svg') 0 0 / 96px 48px; border-right: 2px solid var(--ink); }
   .brand-variant.city .brand-mark { width: 32px; height: 32px; padding: 0; background: url('/city-mark.svg') center / 100% 100%; image-rendering: pixelated; box-shadow: none; }
   .brand-variant.city .brand-mark i { display: none; }
   .brand-variant.city .brand-name { font-size: 15px; }
@@ -60,7 +59,7 @@
   .nav-item.active .nav-count { background: var(--ink); color: #fff; }
   .project-dot { border-radius: 0; }
 
-  /* The site plan, bolted to the hoarding in a steel frame. */
+  /* The site plan, bolted to the wall in a steel frame. */
   .theme-console { position: relative; display: block; margin: 10px 0 0; padding: 6px; background-color: var(--panel); border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; box-shadow: var(--px-raised), 2px 2px 0 #0005; }
   .console-lamps, .console-vector, .console-sweep, .console-signal, .console-power, .console-heading { display: none; }
   .console-screen { position: relative; height: 128px; overflow: hidden; isolation: isolate; border: 2px solid var(--ink); background: #0b5e65 url('/city-map.svg') center / 100% 100%; image-rendering: pixelated; }
