@@ -20,8 +20,9 @@ const COARSE = { yaw: 4, pitch: 5, charges: [0.25, 0.625, 1] }, FINE = { yaw: 1,
 const CAP = LOOK_UP * 180 / Math.PI, bearingOf = ({ start, target }) => { const { x, z } = STARTS[start], { centre } = ZONES[target]; return Math.atan2(centre.x - x, centre.z - z); };
 const throwAt = ({ kind, start }, yaw, pitch, charge, launcher = launch) => { const { x, z } = STARTS[start]; return { yaw, pitch, charge, ...launcher(kind, charge, { position: V(x, EYE, z) }, look(yaw, pitch), V(0, 0, 0)) }; };
 function* throwsOf(grid, shot, launcher) {
-  const bearing = bearingOf(shot);
-  for (let yaw = -Math.floor(45 / grid.yaw) * grid.yaw; yaw <= 45; yaw += grid.yaw) for (let pitch = -10; pitch <= CAP; pitch += grid.pitch) for (const charge of grid.charges) yield throwAt(shot, bearing + rad(yaw), rad(pitch), charge, launcher);
+  const bearing = bearingOf(shot), yaws = [0]; // from the straight throw outward: what's looked for is usually near it, and a whole fine grid's 20,000 throws
+  for (let yaw = grid.yaw; yaw <= 45; yaw += grid.yaw) yaws.push(yaw, -yaw);
+  for (const yaw of yaws) for (let pitch = -10; pitch <= CAP; pitch += grid.pitch) for (const charge of grid.charges) yield throwAt(shot, bearing + rad(yaw), rad(pitch), charge, launcher);
 }
 const shoot = ({ kind, target }, { pos, vel }) => runShot(makeBody(kind, pos, vel), ZONES[target]);
 const search = (grid, shot, predicate, launcher) => { for (const t of throwsOf(grid, shot, launcher)) { const result = shoot(shot, t); if (predicate(result)) return { ...t, result }; } return null; };
@@ -234,8 +235,14 @@ test('every clipboard level and trick is found on the coarse grid', OPTIONS, () 
   assert.deepEqual(failed, []);
 });
 
-test('every start and target pair can be made with its item', OPTIONS, () => {
-  const failed = Object.entries(PAIRS).flatMap(([item, pairs]) => pairs.filter(([start, target]) => !findThrow(item, start, target, r => r.made)).map(p => `${item} ${p.join(' to ')}`));
+// The daily and random shots are held to what the clipboard's lines are: a throw that goes in isn't a shot unless the throws around it do too. It stops at the first that clears the bar.
+const pocketOf = (item, start, target) => {
+  const shot = { kind: ITEMS[item], start, target }; let best = 0;
+  for (const grid of [COARSE, FINE]) for (const t of throwsOf(grid, shot)) if (shoot(shot, t).made) { best = Math.max(best, shareAround(shot, t, r => r.made)); if (best >= POCKET) return best; }
+  return best;
+};
+test('every start and target pair has a pocket for its item, from its mark', OPTIONS, () => {
+  const failed = Object.entries(PAIRS).flatMap(([item, pairs]) => pairs.map(([start, target]) => [`${item} ${start} to ${target}`, pocketOf(item, start, target)])).filter(([, share]) => share < POCKET);
   assert.deepEqual(failed, []);
 });
 

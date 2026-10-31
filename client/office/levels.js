@@ -35,9 +35,9 @@ export const MONDAY = [
 export const PAIRS = {
   paper: [['doors', 'bin'], ['stove', 'bucket'], ['island', 'sink'], ['island', 'basket'], ['fridge', 'shelf'], ['farTable', 'tableMug']],
   rubber: [['doors', 'bucket'], ['stove', 'bucket'], ['fridge', 'bucket'], ['island', 'bucket']],
-  roll: [['doors', 'bin'], ['stove', 'sink'], ['island', 'basket'], ['fridge', 'shelf'], ['farTable', 'tableMug']],
-  mug: [['doors', 'bin'], ['stove', 'bucket'], ['island', 'sink'], ['vending', 'shelf'], ['farTable', 'tableMug']],
-  plate: [['doors', 'bucket'], ['island', 'bin'], ['fridge', 'sink'], ['fridge', 'shelf'], ['farTable', 'sink']],
+  roll: [['doors', 'bin'], ['stove', 'sink'], ['island', 'basket'], ['fridge', 'shelf']],
+  mug: [['doors', 'bin'], ['stove', 'bucket'], ['island', 'sink'], ['vending', 'shelf']],
+  plate: [['doors', 'bucket'], ['vending', 'bin'], ['fridge', 'sink']],
   teabag: [['stove', 'bin'], ['stove', 'bucket'], ['island', 'basket'], ['island', 'sink'], ['vending', 'shelf'], ['farTable', 'tableMug']],
 };
 

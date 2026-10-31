@@ -7,9 +7,9 @@ import { loadProgress, saveProgress, recordLevel, recordDaily } from '../client/
 const store = (init) => { const m = new Map(init ? [['aiControl.trickshot', init]] : []); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
 // Pinned as generated, so a change to the generator shows up.
 const PIN = {
-  '2026-10-30': [{ item: 'plate', start: 'doors', target: 'bucket' }, { item: 'teabag', start: 'stove', target: 'bin' }, { item: 'roll', start: 'farTable', target: 'tableMug' }],
-  '2027-01-01': [{ item: 'plate', start: 'fridge', target: 'shelf' }, { item: 'paper', start: 'doors', target: 'bin' }, { item: 'rubber', start: 'island', target: 'bucket' }],
-  '2028-02-29': [{ item: 'plate', start: 'fridge', target: 'shelf' }, { item: 'teabag', start: 'farTable', target: 'tableMug' }, { item: 'mug', start: 'stove', target: 'bucket' }],
+  '2026-10-30': [{ item: 'plate', start: 'doors', target: 'bucket' }, { item: 'teabag', start: 'stove', target: 'bin' }, { item: 'roll', start: 'fridge', target: 'shelf' }],
+  '2027-01-01': [{ item: 'plate', start: 'fridge', target: 'sink' }, { item: 'paper', start: 'doors', target: 'bin' }, { item: 'rubber', start: 'island', target: 'bucket' }],
+  '2028-02-29': [{ item: 'plate', start: 'vending', target: 'bin' }, { item: 'teabag', start: 'farTable', target: 'tableMug' }, { item: 'mug', start: 'island', target: 'sink' }],
 };
 const miss = { made: false, score: 0, surfaces: [] };
 
@@ -29,7 +29,7 @@ test('a day never repeats a target, and every shot is a real pair', () => {
   let d = Date.UTC(2026, 0, 1), repeatedItems = 0;
   for (let i = 0; i < 400; i++, d += 86400000) {
     const cs = challenges(dayKey(new Date(d)));
-    assert.equal(new Set(cs.map(c => c.target)).size, 3);
+    assert.equal(cs.length, 3); assert.equal(new Set(cs.map(c => c.target)).size, 3);
     repeatedItems += 3 - new Set(cs.map(c => c.item)).size;
     for (const c of cs) assert.ok(PAIRS[c.item].some(([s, t]) => s === c.start && t === c.target));
   }
