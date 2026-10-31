@@ -43,3 +43,15 @@ test('the throw button goes with the hand empty, whose holding is null', t => {
   overlays.showThrow({}); assert.equal(button.hidden, false);
   overlays.showThrow(undefined); assert.equal(button.hidden, true);
 });
+
+test('with the item away the throw button is another go, and a throw again once it\'s back', t => {
+  const was = globalThis.document;
+  globalThis.document = { createElement: element, createElementNS: (_, tag) => element(tag) };
+  t.after(() => { globalThis.document = was; });
+  const container = element('div'), noop = () => {}, overlays = createOverlays(container, { onNext: noop, onList: noop, onOverview: noop, onNew: noop, onLeave: noop, onCopy: noop, onThrow: { press: () => true, release: noop, cancel: noop } });
+  const button = container.children.find(kid => kid.className === 'office-throw'), classes = new Set();
+  button.classList = { contains: name => classes.has(name), toggle: (name, on) => { if (on) classes.add(name); else classes.delete(name); } };
+  overlays.showThrow(true); assert.equal(button.textContent, 'Throw');
+  overlays.showThrow(true, true); assert.equal(button.textContent, '↻'); assert.equal(button.getAttribute('aria-label'), 'Try again'); assert.equal(button.hidden, false);
+  overlays.showThrow(true, false); assert.equal(button.textContent, 'Throw'); assert.equal(button.getAttribute('aria-label'), 'Throw');
+});

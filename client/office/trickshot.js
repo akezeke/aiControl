@@ -175,16 +175,19 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     partyShape.attributes.position.needsUpdate = true;
   };
 
-  // The moment a shot is decided, whatever the item's still doing: saved once, here.
-  const verdict = r => {
+  // Saved once a shot, at its end; its result's known from the release, so going again doesn't lose a made one.
+  const record = r => {
     if (entry.day) { recordDaily(progress, entry.day, entry.index, r); saveProgress(progress, store); game.saved++; }
     else if (entry.id) { recordLevel(progress, entry.id, r); saveProgress(progress, store); game.saved++; if (r.made) rested[entry.id] = r.pos; }
-    game.score = r.made ? `${r.points} × ${r.multiplier} = ${r.score}` : 'Miss'; label();
+  };
+  const says = r => r.made ? `${r.points} × ${r.multiplier} = ${r.score}` : 'Miss';
+  const verdict = r => {
+    record(r); game.score = says(r); label();
     if (r.made) celebrate(r.pos); else tone(190, 110, 0.28, 'sawtooth', 0.1);
   };
-  // The moment it really stops. Out of time and still up on something, or wedged: not left hanging there.
+  // The moment it really stops. Out of time and still up on something, or wedged, or a long miss cut off mid-air: not left hanging there.
   const stopped = r => {
-    if (!r.rest && r.time >= MOST_TIME - 1e-6 && r.pos[1] > kind.low + 0.02) handBackNow();
+    if (game.run.time < r.time || !r.rest && r.time >= MOST_TIME - 1e-6 && r.pos[1] > kind.low + 0.02) handBackNow();
     else handBack = HAND_BACK;
   };
 
@@ -192,6 +195,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     free: true, progress, arc, party, marker, score: null, run: null, saved: 0, // `saved`: how many times progress has changed, for the boards
     item: id => items[id],
     get holding() { return !!entry && game.run.state === 'aiming'; },
+    get retrying() { return !!entry && game.run.retrying; }, // a click, or the throw button, is another go
     get heldKind() { return kind; },
     // A shot's camera has the view, from the throw until it's handed back: your own aim waits, so you come back to the one you threw with.
     get following() { return moved; },
@@ -249,9 +253,10 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     abort() { hand.pull(0); },
     reset() {
       if (!entry) return;
-      stop(); game.run.reset(); game.score = null; inHand(); label();
+      const r = game.run.state === 'flying' && game.run.result.made ? game.run.result : null; if (r) record(r);
+      stop(); game.run.reset(); game.score = r?.made ? says(r) : null; inHand(); label();
     },
-    click() { if (game.run?.decided) game.reset(); },
+    click() { if (game.retrying) game.reset(); },
     key(code, down) {
       if (!entry || !down) return false;
       if (code === 'KeyR') { game.reset(); return true; }
@@ -280,8 +285,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
         return;
       }
       for (const event of run.advance(dt)) {
-        if (event.type === 'verdict') { verdict(event.result); continue; }
-        if (event.type === 'end') { stopped(event.result); continue; }
+        if (event.type === 'end') { verdict(event.result); stopped(event.result); continue; }
         knock(event.surface, event.speed);
         if (event.surface.startsWith('pan-') && !reducedMotion()) kitchen.pans?.hit(+event.surface.slice(4), event.speed);
       }

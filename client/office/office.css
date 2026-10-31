@@ -91,6 +91,7 @@ body.panel-open .office-hint { display: none; }
 .office-throw[hidden] { display: none; }
 .office-throw.held { background: #ffd166; transform: translateY(2px); box-shadow: 0 1px 0 #1b1a1f; }
 .office-throw.off { background: #ff8f7a; font-size: 26px; }
+.office-throw.again { font-size: 30px; }
 body.panel-open .office-throw { display: none; }
 /* It fades in gently as the view settles on whoever you're talking to. */
 @media (prefers-reduced-motion: no-preference) {

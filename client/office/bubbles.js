@@ -121,7 +121,8 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     setPlaying(on) { leave.hidden = !on; },
     showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
-    showThrow(on) { if (thrower.hidden === !!on) thrower.hidden = !on; }, // on: truthy; an empty hand's holding is null
+    // on: truthy, an empty hand's holding being null; again: the item's away, so it's another go instead of a throw
+    showThrow(on, again = false) { if (thrower.hidden === !!on) thrower.hidden = !on; if (thrower.classList.contains('again') !== again) { thrower.classList.toggle('again', again); thrower.textContent = again ? '↻' : 'Throw'; thrower.setAttribute('aria-label', again ? 'Try again' : 'Throw'); } },
     dropThrow() { throwing.drop(); },
     setCharge: createGauge(container, meter, meter.querySelector('.fill')),
     // What a shot asks (goalOf's list, a ticked line struck through) and, beside it, how it went; a null goal hides it.

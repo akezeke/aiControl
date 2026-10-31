@@ -182,7 +182,7 @@ export function mountOffice(container, hooks) {
   // Nothing else wants the mouse: no panel, menu or dialog up, not on the way to someone, not in the overview or a game, the window focused.
   const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !overlays.copying && !view.overview && !office.talking && (!playing || playing.free) && document.hasFocus();
   let wasFree = true;
-  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview), onLeave: () => play(null), onCopy: () => trickshot.copy(), onThrow: { press: () => { if (!startCharge()) return false; keyed = true; player.aimFine(true); return true; }, release: () => letGo(player.centre), cancel: () => callOff() },
+  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview), onLeave: () => play(null), onCopy: () => trickshot.copy(), onThrow: { press: () => { if (playing?.retrying) { playing.click(); return false; } if (!startCharge()) return false; keyed = true; player.aimFine(true); return true; }, release: () => letGo(player.centre), cancel: () => callOff() },
     onNew: anchor => {
       const r = anchor.getBoundingClientRect();
       const known = [...new Set((office.snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort();
@@ -269,7 +269,8 @@ export function mountOffice(container, hooks) {
       if (!canCharge() || !officeHasKeys(noEvent)) callOff();
       else { const level = charge.level(clock()); overlays.setCharge(level, throwAt()); if (!reducedMotion?.matches) hand.pull(level); }
     }
-    overlays.showThrow(touched && canCharge() && officeHasKeys(noEvent) && !overlays.copying && !office.talking && !player.flight);
+    const again = !!playing?.retrying && !view.overview && !menu.open;
+    overlays.showThrow(touched && (canCharge() || again) && officeHasKeys(noEvent) && !overlays.copying && !office.talking && !player.flight, again);
     // Whatever took the mouse is done with it.
     const now = free(); if (now && !wasFree) player.resume(); wasFree = now;
     // The overview has the keys and drags while it's up: you stay where you were.

@@ -12,7 +12,7 @@ import { WALL_H } from '../client/office/furniture.js';
 import { BALLS, LOOSE } from '../client/office/props.js';
 import { ITEMS, MONDAY, PAIRS, STARTS } from '../client/office/levels.js';
 import { loadProgress } from '../client/office/progress.js';
-import { FLIGHT, SLOW, inZone } from '../client/office/shot.js';
+import { FLIGHT, SLOW, inZone, LONGEST } from '../client/office/shot.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z), rad = d => d * Math.PI / 180;
 const look = (yaw, pitch) => V(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
@@ -20,8 +20,8 @@ const ORIGIN = { x: -0.2, z: 5 }, DT = 1 / 60;
 // Throws that do it, from tests/office-levels.test.mjs's search: yaw and pitch in radians.
 const IN = { yaw: 2.416772208600941, pitch: 0.17453292519943295, charge: 0.625 }; // the paper ball into the sink, off a cupboard and the wall
 const WEDGED = { yaw: rad(-129), pitch: rad(17), charge: 1 }; // a rubber ball from the far table, still a metre up at 8 s
-const SKIDS = { yaw: STARTS.island.stand, pitch: rad(-30), charge: 1 }; // the paper ball at the floor: decided well before it stops
-const toVerdict = t => { for (let i = 0; i < 2000 && !t.game.run.decided; i++) t.game.update(DT, null, false, true); assert.ok(t.game.run.decided); };
+const SKIDS = { yaw: STARTS.island.stand, pitch: rad(-30), charge: 1 }; // the paper ball at the floor: a miss
+const aRetry = t => { for (let i = 0; i < 2000 && !t.game.retrying; i++) t.game.update(DT, null, false, true); assert.ok(t.game.retrying); };
 
 function setup({ aim, reduced = false, holding = false, store, score, share } = {}) {
   const calls = [], saved = [], group = new THREE.Group(), camera = { position: V(0, EYE, 0) };
@@ -124,7 +124,7 @@ test('R resets to the start mark with the score cleared', () => {
 test('R resets a shot still in the air, and it stays reset', () => {
   const t = setup();
   begin(t, 'paper');
-  throwIt(t, IN);
+  throwIt(t, SKIDS);
   for (let i = 0; i < 20; i++) t.game.update(DT, null, false, true);
   assert.equal(t.game.run.state, 'flying');
   assert.equal(t.hand.held, null);
@@ -137,7 +137,7 @@ test('R resets a shot still in the air, and it stays reset', () => {
   assert.equal(t.saved.length, saves);
 });
 
-test('a click after the shot goes again, for a finger with no R; in the air it does nothing', () => {
+test('a click after the shot goes again, for a finger with no R; in its first second it does nothing', () => {
   const t = setup();
   begin(t, 'paper');
   t.game.click(look(0, 0));
@@ -251,38 +251,61 @@ test('a miss scores nothing and says so; a made shot says its points and multipl
   assert.equal(t.game.score, 'Miss');
 });
 
-test('the verdict shows when the shot\'s decided, saved once, while the item keeps moving', () => {
+test('the verdict shows when the item stops, saved once', () => {
   const t = setup();
   begin(t, 'paper'); throwIt(t, SKIDS);
-  const { decided, time } = t.game.run.result; assert.ok(time > decided + 0.3, `${decided} to ${time}`);
-  while (t.game.run.time < decided - 0.02) { t.game.update(DT, null, false, true); assert.equal(t.game.score, null); assert.equal(t.saved.length, 0); }
-  toVerdict(t);
-  assert.equal(t.game.score, 'Miss'); assert.equal(t.game.run.state, 'flying'); assert.equal(t.saved.length, 1); assert.equal(t.game.saved, 1);
-  const was = item(t, 'paper').position.clone();
-  for (let i = 0; i < 5; i++) t.game.update(DT, null, false, true);
-  assert.ok(item(t, 'paper').position.distanceTo(was) > 0.01, 'still going');
+  const { time } = t.game.run.result;
+  while (t.game.run.time < time - 0.02) { t.game.update(DT, null, false, true); assert.equal(t.game.score, null); assert.equal(t.saved.length, 0); }
   play(t, 40);
-  assert.equal(t.game.run.state, 'done'); assert.equal(t.saved.length, 1, 'not saved again at the end'); assert.equal(t.game.score, 'Miss');
+  assert.equal(t.game.run.state, 'done'); assert.equal(t.saved.length, 1); assert.equal(t.game.score, 'Miss');
 });
 
-test('from the verdict R or a click goes again, mid-roll, and nothing of the old shot comes back', () => {
+test('from a second after the release R or a click goes again, mid-flight, and nothing of the old shot comes back', () => {
   for (const again of [t => t.game.key('KeyR', true), t => t.game.click(look(0, 0))]) {
     const t = setup();
     begin(t, 'paper'); throwIt(t, SKIDS);
-    t.game.click(look(0, 0)); assert.equal(t.game.run.state, 'flying', 'not undecided');
-    toVerdict(t); assert.equal(t.game.run.state, 'flying');
+    assert.equal(t.game.retrying, false);
+    aRetry(t); assert.equal(t.game.run.state, 'flying');
     again(t);
-    assert.equal(t.game.run.state, 'aiming'); assert.equal(t.game.score, null); assert.equal(t.game.following, false); assert.equal(t.view.plays.at(-1), null);
+    assert.equal(t.game.run.state, 'aiming'); assert.equal(t.game.retrying, false); assert.equal(t.game.score, null); assert.equal(t.game.following, false); assert.equal(t.view.plays.at(-1), null);
     assert.equal(t.hand.held, item(t, 'paper'));
-    const saves = t.saved.length;
     for (let i = 0; i < 400; i++) t.game.update(DT, null, false, true);
-    assert.equal(t.game.score, null); assert.equal(t.saved.length, saves); assert.equal(t.hand.held, item(t, 'paper'));
+    assert.equal(t.game.score, null); assert.equal(t.saved.length, 0); assert.equal(t.hand.held, item(t, 'paper'));
   }
 });
 
-test('the camera\'s hand-back counts from when the item really stops, not from the verdict', () => {
+test('a stray tap in the first second cancels nothing; R does, any time', () => {
   const t = setup();
-  begin(t, 'paper'); throwIt(t, SKIDS); toVerdict(t);
+  begin(t, 'paper'); throwIt(t, SKIDS);
+  for (let i = 0; i < 50; i++) { t.game.click(look(0, 0)); t.game.update(DT, null, false, true); assert.equal(t.game.run.state, 'flying'); }
+  t.game.key('KeyR', true); assert.equal(t.game.run.state, 'aiming');
+});
+
+test('going again on a shot that\'s made still counts it: a stray tap can\'t lose it', () => {
+  for (const again of [t => t.game.key('KeyR', true), t => { aRetry(t); t.game.click(look(0, 0)); }]) {
+    const t = setup();
+    begin(t, 'paper'); throwIt(t, IN); assert.ok(t.game.run.result.made);
+    const r = t.game.run.result;
+    again(t);
+    assert.equal(t.game.run.state, 'aiming'); assert.equal(t.saved.length, 1); assert.equal(t.game.progress.best.paper, r.score); assert.equal(t.game.score, `${r.points} × ${r.multiplier} = ${r.score}`);
+    assert.equal(t.hand.held, item(t, 'paper'));
+  }
+});
+
+test('a long miss, cut off mid-air, comes straight back to hand and says so', () => {
+  const t = setup();
+  begin(t, 'rubber'); throwIt(t, WEDGED);
+  const r = t.game.run.result; assert.ok(!r.made);
+  let real = 0; while (t.game.run.state === 'flying' && real < 60) { t.game.update(DT, null, false, true); real += DT; }
+  assert.ok(real < LONGEST + 0.1, `${real}`);
+  assert.equal(t.game.score, 'Miss'); assert.equal(t.saved.length, 1);
+  assert.equal(t.game.run.state, 'aiming'); assert.equal(t.game.following, false);
+  assert.equal(t.hand.held, item(t, 'rubber'));
+});
+
+test('the camera\'s hand-back counts from when the item really stops', () => {
+  const t = setup();
+  begin(t, 'paper'); throwIt(t, SKIDS);
   const { time } = t.game.run.result;
   while (t.game.run.state === 'flying') { t.game.update(DT, null, false, true); assert.ok(t.view.plays.at(-1), `still on it at ${t.game.run.time} of ${time}`); }
   for (let i = 0; i < 50; i++) t.game.update(DT, null, false, true);
