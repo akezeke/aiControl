@@ -4,6 +4,7 @@ import { Player, menuOpen, officeHasKeys, sceneFocused } from '../office/player.
 import { walkGrid, findPath } from '../office/path.js';
 import { VACANT_MS } from '../office/layout.js';
 import { createScreenshots } from '../office/screenshots.js';
+import { createBoard } from './board.js';
 import { createBrackets } from './brackets.js';
 import { BridgeCamera } from './camera.js';
 import { CENTER, CHAIR_Z, ROOM, SEAT, deckColliders, stationAt } from './deck.js';
@@ -15,7 +16,7 @@ import { PALETTES, SIGNALS, paletteFor, saveColour, savedColour } from './palett
 import { createPost } from './post.js';
 import { createReticle } from './reticle.js';
 import { buildRoom } from './room.js';
-import { aimPoint, clickAction, keyAction, screenPose } from './seat.js';
+import { aimPoint, clickAction, keyAction, screenPose, tapUsesAim } from './seat.js';
 import { assignStations, displayState, shipState, signalOf, stationSignals } from './ship.js';
 import { createSpace } from './space.js';
 import { frameTime } from '../scene-ui.js';
@@ -68,16 +69,19 @@ export function mountBridge(container, hooks = {}, options = {}) {
   // Walking: the way round the deck is worked out once, as it never changes.
   const colliders = deckColliders(), grid = walkGrid(colliders, ROOM);
   const player = new Player(el, { colliders: () => colliders, room: () => ROOM, route: (from, to) => findPath(grid, from, to), onPick: (at, mouse) => {
+    const aimed = mouse ? null : aimedAt();
+    if (tapUsesAim({ mouse, zoomed: !!zoomed, panelOpen: Object.values(holograms).some(({ open }) => open), seated, aimed, tapped: under(at) })) return useTarget(aimed);
     if (!zoomed && !look.overview && clickHologram(at)) return;
     const hit = under(at); act(clickAction(hit, { seated, zoomed: !!zoomed, overview: look.overview, locked: player.locked, mouse }), hit);
   },
   // Esc while captured reaches us only as this. The window losing focus also calls it, and that shouldn't lose your place.
   onCancel: () => { if (!zoomed || !document.hasFocus()) return false; back(); return true; } });
   player.place(SEAT.x, SEAT.z, Math.PI); player.pitch = SEAT.pitch;
-  const look = new BridgeCamera(camera, player, { reducedMotion: still, container });
+  const look = new BridgeCamera(camera, player, { reducedMotion: still });
 
   function act(action, hit) {
     if (action === 'back') back();
+    else if (action === 'close') setOverview(false);
     else if (action === 'talk') bridge.talkTo(hit.id);
     else if (action === 'zoom') zoom(hit.mesh);
     else if (action === 'sit') sit();
@@ -91,7 +95,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
   function sit() { closeHolograms(); player.flyTo(new THREE.Vector3(SEAT.x, 0, SEAT.z), new THREE.Vector3(CENTER, 0, 0), () => { seated = true; }, still, SEAT.pitch); }
   const leaveChair = () => { seated = false; player.walkTo(new THREE.Vector3(CENTER, 0, SEAT.z - .95)); };
 
-  const reticle = createReticle(camera, still), brackets = createBrackets(camera); world.add(camera);
+  const reticle = createReticle(camera, still), brackets = createBrackets(camera), board = createBoard(camera, room.stations, still); world.add(camera);
   const displays = createDisplays(room), shots = createScreenshots({ room: displays, ...SHOT_SIZE }), figures = room.stations.map(station => { const figure = createCrew(station, { still }); station.crew = figure; return figure; }), seatedAt = [], looks = new Map();
   let crewStarted = false, wasOffline = false;
   function repaint(palette) { room.repaint(palette); figures.forEach(figure => figure.paint(palette)); lights.repaint(palette); space.repaint(palette); displays.repaint(palette); container.style.setProperty('--bridge-accent', palette.trim); for (const painted of [...Object.values(holograms), reticle]) painted.paint(palette.tones[2], palette.tones[0]); }
@@ -106,7 +110,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
     renderer.setPixelRatio(Math.min(devicePixelRatio, w < 700 ? 1.25 : 1.5)); renderer.setSize(w, h, false);
     const drawn = renderer.getDrawingBufferSize(new THREE.Vector2());
     post.resize(drawn.x, drawn.y); space.resize(drawn.x, drawn.y);
-    camera.aspect = w / h; camera.fov = look.above.fov = h > w ? 90 : 68; camera.updateProjectionMatrix();
+    camera.aspect = w / h; camera.fov = h > w ? 90 : 68; camera.updateProjectionMatrix();
   };
   const observer = new ResizeObserver(resize); observer.observe(container); resize();
 
@@ -115,10 +119,11 @@ export function mountBridge(container, hooks = {}, options = {}) {
     const box = el.getBoundingClientRect(); ndc.set((event.clientX - box.left) / box.width * 2 - 1, -(event.clientY - box.top) / box.height * 2 + 1);
     ray.setFromCamera(ndc, camera);
   };
-  // What's under a screen point: a screenshot on a display, a screen, the session at a station, the chair, the floor, or nothing. Hidden things (the ceiling in
-  // the overview, an empty station's chair) and glass and glow are looked past. Office's `pick` stops at anything inside something hidden.
+  // What's under a screen point: a screenshot on a display, a screen, the session at a station, the chair, the floor, or nothing. In the overview only
+  // its screens are there. Hidden things (an empty station's chair) and glass and glow are looked past. Office's `pick` stops at anything inside something hidden.
   function under(event) {
     aim(event);
+    if (look.overview) { const card = board.at(ray); return card && { kind: 'character', id: card.id, object: card.object }; }
     for (const { object, point, uv } of ray.intersectObject(room.group, true)) {
       if (!shown(object)) continue;
       if (object.userData.station != null && object.userData.screen && displays.shotAt(object.userData.station, uv.x, uv.y)) return { kind: 'shot', id: seats[object.userData.station].id, corners: displays.shotCorners(object.userData.station) };
@@ -164,6 +169,9 @@ export function mountBridge(container, hooks = {}, options = {}) {
   function pressE() {
     const target = aimedAt();
     if (zoomed && !target) return back();
+    useTarget(target);
+  }
+  function useTarget(target) {
     if (target?.kind === 'row') chosen[target.hologram](target.row);
     else if (target?.kind === 'button') toggleHologram(target.button);
     else if (target) act(keyAction(target.hit, { seated, zoomed: false, overview: look.overview, locked: player.locked }), target.hit);
@@ -183,7 +191,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
     if (state === leaveShows) return; leaveShows = state;
     leave.textContent = LEAVE[state][0]; leave.title = LEAVE[state][1]; leave.setAttribute('aria-label', LEAVE[state][1]);
   }
-  function setOverview(on) { if (on) { closeHolograms(); back(); player.unlock(); } look.setOverview(on); eye.setAttribute('aria-pressed', String(on)); }
+  function setOverview(on) { if (on) { closeHolograms(); back(); player.unlock(); } look.setOverview(on); board.show(on); eye.setAttribute('aria-pressed', String(on)); }
   // The mouse is yours to take back when nothing else needs it (office.js does the same).
   const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !look.overview && document.hasFocus();
   let wasFree = true;
@@ -204,6 +212,8 @@ export function mountBridge(container, hooks = {}, options = {}) {
   const mark = () => {
     const taken = picked && new Set((last?.sessions || []).filter(picked).map(session => session.parentId || session.id));
     room.stations.forEach((station, i) => { const marked = !taken ? null : taken.has(seats?.[i]?.id); room.setMarked(i, marked); figures[i].setMarked(marked); });
+    // The overview shows who's left in: everyone, or those the filter takes in.
+    board.fill(room.stations.flatMap(({ group, status }, index) => { const id = group.userData.sessionId; return id && (!taken || taken.has(id)) ? [{ index, id, status }] : []; }));
   };
 
   let raf = 0, lastFrame = performance.now(), T = 0;
@@ -227,9 +237,8 @@ export function mountBridge(container, hooks = {}, options = {}) {
       if (!look.overview && !zoomed) player.update(dt);
       look.update(dt);
       if (options.view) place();
-      room.ceiling.visible = !look.amount;
       showLeave(); hover(dt);
-      reticle.show((player.aiming || touch) && !zoomed && !look.overview); reticle.tick(dt, container.clientHeight || 1); brackets.tick(container.clientHeight || 1);
+      reticle.show((player.aiming || touch) && !zoomed && !look.overview); reticle.tick(dt, container.clientHeight || 1); board.tick(dt, container.clientWidth || 1, container.clientHeight || 1); brackets.tick(container.clientHeight || 1);
       for (const hologram of Object.values(holograms)) hologram.tick(dt, T, camera);
       space.tick(dt); lights.tick(dt, T, space); room.tick(dt, T, camera); figures.forEach(figure => figure.tick(dt, T));
       post.flash = space.flash; post.render(world, space.scene, camera);
@@ -273,14 +282,14 @@ export function mountBridge(container, hooks = {}, options = {}) {
     unmount() {
       stop(); shots.dispose(); observer.disconnect(); el.removeEventListener('webglcontextlost', onLost);
       document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKeyUp); el.removeEventListener('pointermove', onMove); el.removeEventListener('pointerleave', onLeave); el.removeEventListener('pointerdown', onDown);
-      player.dispose(); look.dispose(); bar.remove();
+      player.dispose(); bar.remove();
       for (const scene of [world, space.scene]) scene.traverse(object => {
         object.geometry?.dispose();
         for (const material of [object.material].flat()) { if (!material) continue; for (const value of Object.values(material)) if (value?.isTexture) value.dispose(); material.dispose(); }
       });
       post.dispose(); renderer.dispose(); el.remove();
     },
-    // main.js: a filter or project was picked in the sidebar (null: all sessions); from a click, rise to see them.
+    // main.js: a filter or project was picked in the sidebar (null: all sessions); from a click, bring up their screens.
     pick(test, open) { picked = test; mark(); if (open) setOverview(true); },
     // main.js calls this when the session panel closes.
     panelClosed() { look.turnTo(null); },

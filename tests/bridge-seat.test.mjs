@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { aimPoint, clickAction, keyAction, screenPose } from '../client/bridge/seat.js';
+import { aimPoint, clickAction, keyAction, screenPose, tapUsesAim } from '../client/bridge/seat.js';
 import { roster, shipState } from '../client/bridge/ship.js';
 import { ROSTER, carryHover, hologramLayout } from '../client/bridge/hologram.js';
 
@@ -38,7 +38,7 @@ test('zoomed on a screen, any click comes back, whatever is under it', () => {
 test('in the overview, only sessions answer', () => {
   const overview = { ...standing, overview: true, locked: false };
   assert.equal(clickAction(person, overview), 'talk');
-  for (const hit of [floor, screen, chair, null]) assert.equal(clickAction(hit, overview), null);
+  for (const hit of [floor, screen, chair]) assert.equal(clickAction(hit, overview), null);
 });
 test('E does what a click does on what can be used', () => {
   assert.equal(keyAction(person, seated), 'talk');
@@ -113,4 +113,19 @@ test('what is aimed at: the sight when captured or by touch, otherwise the mouse
   assert.equal(aimPoint({ aiming: false, touch: false, overview: false }, centre, mouse), mouse);
   assert.equal(aimPoint({ aiming: false, touch: true, overview: false }, centre, null), centre);
   assert.equal(aimPoint({ aiming: false, touch: true, overview: true }, centre, null), null);
+});
+test('a tap does what is highlighted, wherever the finger lands', () => {
+  const tap = { mouse: false, zoomed: false, panelOpen: false, seated: true, aimed: { kind: 'hit' }, tapped: { kind: 'chair' } };
+  assert.equal(tapUsesAim(tap), true);
+  assert.equal(tapUsesAim({ ...tap, tapped: null }), true);
+  assert.equal(tapUsesAim({ ...tap, tapped: { kind: 'floor' } }), true); // seated, the floor means nothing
+  assert.equal(tapUsesAim({ ...tap, aimed: null }), false); // nothing highlighted: it's what the finger is on
+  assert.equal(tapUsesAim({ ...tap, mouse: true }), false);
+});
+test('a tap still means what it did close up, over an open list, and on the floor when walking', () => {
+  const tap = { mouse: false, zoomed: false, panelOpen: false, seated: false, aimed: { kind: 'hit' }, tapped: null };
+  assert.equal(tapUsesAim({ ...tap, zoomed: true }), false);
+  assert.equal(tapUsesAim({ ...tap, panelOpen: true }), false);
+  assert.equal(tapUsesAim({ ...tap, tapped: { kind: 'floor' } }), false);
+  assert.equal(tapUsesAim(tap), true);
 });
