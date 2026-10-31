@@ -73,3 +73,35 @@ test('boats move, whole cells at a time, and never run into each other', () => {
   for (const { x, z } of b) { assert.equal(x, Math.round(x)); assert.equal(z, Math.round(z)); }
   for (let now = 0; now < 2e6; now += 9973) { const boats = boatsAt(plan.bounds, now); for (let i = 0; i < boats.length; i++) for (let j = 0; j < i; j++) assert.ok(Math.hypot(boats[i].x - boats[j].x, boats[i].z - boats[j].z) > 20); }
 });
+
+// ---- Lamplight
+const cellAt = (c, x, z) => { const i = (x - c.x0 + (z - c.z0) * c.w) * 3; return [c.rgb[i], c.rgb[i + 1], c.rgb[i + 2]]; };
+test('at night each lamp lights the ground round it, and by day none does', () => {
+  const night = groundCells(plan, 'night'), day = groundCells(plan, 'day');
+  assert.ok(night.lights.length >= 10);
+  assert.deepEqual(night.lights, day.lights);
+  const [x, z] = night.lights.find(([, b]) => b === plan.hoods[0].z - 1), warm = c => c[0] - c[2];
+  assert.ok(warm(cellAt(night, x + 1, z - 3)) > warm(cellAt(day, x + 1, z - 3)), 'warmer by the lamp');
+});
+test('light falls away with distance, and stops', () => {
+  const night = groundCells(plan, 'night'), day = groundCells(plan, 'day'), reachFrom = (x, z) => Math.min(...night.lights.map(([a, b]) => Math.hypot(a - x, b - z)));
+  const walks = [];
+  for (let z = plan.roads.zs[0]; z < plan.roads.zs[0] + 14; z++) for (let x = 0; x < plan.bounds.w; x++) { const c = cellAt(day, x, z); if (c.join() === cellAt(day, 20, plan.roads.zs[0] + 1).join()) walks.push([x, z]); }
+  const changed = ([x, z]) => cellAt(night, x, z).join() !== cellAt(day, x, z).join();
+  assert.ok(walks.filter(([x, z]) => reachFrom(x, z) > 11).every(c => !changed(c)), 'tarmac out of reach of every lamp is as it was');
+  assert.ok(walks.filter(([x, z]) => reachFrom(x, z) < 3).some(changed), 'tarmac beside one is not');
+});
+test('parks have lamps, on their paths and out of the way of the trees', () => {
+  const parkLayout = { pods: [{ key: 'a', name: 'alpha', cwd: '/a', col: 0, row: 0 }, { key: 'b', name: 'beta', cwd: '/b', col: 1, row: 1 }, { key: 'c', name: 'gamma', cwd: '/c', col: 2, row: 0 }], desks: new Map(desks), grid: { cols: 3 } };
+  const city = cityPlan(parkLayout, {}, null, providers, [], ['']), night = groundCells(city, 'night'), inside = ({ x, z, w, d }) => night.lights.filter(([a, b]) => a >= x && b >= z && a < x + w && b < z + d);
+  assert.ok(city.parks.length, 'this city needs a park');
+  for (const park of city.parks) assert.ok(inside(park).length >= 4, `${inside(park).length} in ${park.seed}`);
+  const trees = night.props.filter(({ stack }) => stack.h > 9);
+  for (const [a, b] of night.lights) for (const { x, z } of trees) assert.ok(Math.hypot(a - x, b - z) > 2.5, `a lamp in a tree at ${a},${b}`);
+  for (const parcel of city.parcels.filter(({ kind }) => kind === 'park' || kind === 'plaza' || kind === 'pond')) assert.ok(inside(parcel).length, `no lamp in a ${parcel.kind}`);
+});
+test('the pier and the island are lit', () => {
+  const { w: W, d: D } = plan.bounds, { pier, isle } = coastOf(W, D), { lights } = groundCells(plan, 'night');
+  assert.ok(lights.some(([x, z]) => Math.abs(x - pier.x) < 8 && z > pier.z0 && z <= pier.z1));
+  assert.ok(lights.some(([x, z]) => Math.hypot(x - isle.x, z - isle.z) < isle.r));
+});

@@ -69,6 +69,7 @@ export function groundCells(plan, time = 'day') {
   const set = (x, z, c) => { const a = Math.floor(x) - x0, b = Math.floor(z) - z0; if (a < 0 || b < 0 || a >= w || b >= d) return; const i = (a + b * w) * 3; rgb[i] = c[0]; rgb[i + 1] = c[1]; rgb[i + 2] = c[2]; };
   const rect = (x, z, W2, D2, c) => { for (let b = 0; b < D2; b++) for (let a = 0; a < W2; a++) { const colour = typeof c === 'function' ? c(a, b) : c; if (colour) set(x + a, z + b, colour); } };
   const prop = (stack, x, z) => props.push({ stack, x, z });
+  const lights = [], light = (x, z) => { const X = Math.round(x), Z = Math.round(z); prop(lamp(), X, Z); lights.push([X, Z]); };
   const coast = landscape(W, D, x0, z0, w, d, time);
   rgb.set(coast.rgb);
   const reach = reachOf(W, D);
@@ -88,8 +89,8 @@ export function groundCells(plan, time = 'day') {
     if (x < plan.roads.xs.at(-1)) rect(x + ROAD, z, WALK, ROAD, down);
   }
 
-  for (const { kind, x, z, w: W2, d: D2, seed } of plan.parcels) PARCELS[kind]({ rect, prop, lawn, h: n => fnv(`${seed}:${n}`) }, x, z, W2, D2);
-  for (const park of plan.parks) bigPark({ rect, prop, lawn, h: n => fnv(`${park.seed}:${n}`) }, park.x, park.z, park.w, park.d);
+  for (const { kind, x, z, w: W2, d: D2, seed } of plan.parcels) PARCELS[kind]({ rect, prop, light, lawn, h: n => fnv(`${seed}:${n}`) }, x, z, W2, D2);
+  for (const park of plan.parks) bigPark({ rect, prop, light, lawn, h: n => fnv(`${park.seed}:${n}`) }, park.x, park.z, park.w, park.d);
 
   // Paved where someone's building; corner ticks where one could go.
   for (const hood of plan.hoods) for (const lot of hood.lots) {
@@ -108,8 +109,8 @@ export function groundCells(plan, time = 'day') {
 
   // A lamp at each corner of each lot, on the pavement: enough to read the streets by at night, too short to hide anything.
   for (const hood of plan.hoods) {
-    for (let i = 0; i <= hood.cols; i++) prop(lamp(), hood.x + i * LOT, hood.z - 1);
-    for (const r of [1, 2]) prop(lamp(), hood.x - 1, hood.z + r * LOT);
+    for (let i = 0; i <= hood.cols; i++) light(hood.x + i * LOT, hood.z - 1);
+    for (const r of [1, 2]) light(hood.x - 1, hood.z + r * LOT);
   }
 
   // Trees on the outskirts, in the meadow's patches, never in front of a plant or its road.
@@ -143,13 +144,16 @@ export function groundCells(plan, time = 'day') {
   for (let i = 0; i < 2; i++) rect(pier.x - (PIER_W >> 1) + (i ? PIER_W : -1), pier.z0, 1, pier.z1 - pier.z0, (a, b) => reach(pier.x, pier.z0 + b) >= 4 && b % 6 === 0 ? post : null);
   rect(pier.x - (PIER_W >> 1), pier.z0, PIER_W, pier.z1 - pier.z0, (a, b) => b % 2 ? plank : hex('#966c6c'));
   prop(lighthouse(), isle.x + 13, isle.z - 3);
-  prop(lamp(), pier.x + (PIER_W >> 1) - 1, pier.z1 - 1);
+  light(pier.x + (PIER_W >> 1) - 1, pier.z1 - 1);
+  light(isle.x - 4, isle.z);
   prop(once('moored', () => boat('#e83b3b', false, 1, false)), pier.x - 12, pier.z1 - 12);
   for (let i = 0; i < 9; i++) {
     const n = mix(i, 11), a = i * 2.4 + n % 6, r = isle.r - 7 - n % 5, X = Math.round(isle.x + Math.cos(a) * r), Z = Math.round(isle.z + Math.sin(a) * r);
     if (X < isle.x - 16 && Math.abs(Z - isle.z) < half + 6 || Math.hypot(X - isle.x + 4, Z - isle.z) < 16 || Math.hypot(X - isle.x - 13, Z - isle.z + 3) < 11 || reach(X, Z) > -4) continue;
     const seed = n % 9; prop(once(`tree${seed}`, () => tree(seed)), X, Z);
   }
+
+  if (time === 'night') pools(rgb, lights, x0, z0, w, d);
 
   // The props' shadows lie on the ground for good. A building's is its own sprite, because it changes height.
   const shaded = new Uint8Array(w * d);
@@ -169,26 +173,48 @@ export function groundCells(plan, time = 'day') {
   const water = { shore: [], past: [], glint: [] };
   for (let i = 0; i < coast.shore.length; i += 2) if (stillWet(coast.shore[i], coast.shore[i + 1])) { water.shore.push(coast.shore[i], coast.shore[i + 1]); water.past.push(coast.past[i / 2]); }
   for (let i = 0; i < coast.glint.length; i += 2) if (stillWet(coast.glint[i], coast.glint[i + 1])) water.glint.push(coast.glint[i], coast.glint[i + 1]);
-  return { x0, z0, w, d, rgb, props, water };
+  return { x0, z0, w, d, rgb, props, water, lights };
+}
+
+// A pool of warm light under each lamp, in rings with a dithered edge. The ground is the same palette as ever, just nearer the lamp's colour.
+const POOL = [[4, .52], [7, .34], [9.5, .17]], LAMPLIGHT = hex('#fbb954');
+function pools(rgb, lights, x0, z0, w, d) {
+  const level = new Uint8Array(w * d), R = Math.ceil(POOL.at(-1)[0]) + 1;
+  for (const [lx, lz] of lights) for (let b = -R; b <= R; b++) for (let a = -R; a <= R; a++) {
+    const X = lx + a - x0, Z = lz + b - z0; if (X < 0 || Z < 0 || X >= w || Z >= d) continue;
+    const far = Math.hypot(a, b) + ((X + Z) & 1) * .9, ring = POOL.findIndex(([r]) => far < r);
+    if (ring >= 0) level[X + Z * w] = Math.max(level[X + Z * w], POOL.length - ring);
+  }
+  const tinted = new Map();
+  for (let i = 0; i < level.length; i++) if (level[i]) {
+    const key = rgb[i * 3] << 18 | rgb[i * 3 + 1] << 10 | rgb[i * 3 + 2] << 2 | level[i] - 1;
+    let c = tinted.get(key);
+    if (!c) { const k = POOL[POOL.length - level[i]][1]; c = nearest([0, 1, 2].map(n => rgb[i * 3 + n] + (LAMPLIGHT[n] - rgb[i * 3 + n]) * k)); tinted.set(key, c); }
+    rgb[i * 3] = c[0]; rgb[i * 3 + 1] = c[1]; rgb[i * 3 + 2] = c[2];
+  }
 }
 
 // Parcels are flat or nearly so: nothing here is ever tall enough to get in a building's way.
 const PARCELS = {
-  park({ rect, prop, lawn, h }, x, z, W, D) {
+  park({ rect, prop, light, lawn, h }, x, z, W, D) {
     rect(x, z, W, D, lawn);
-    const mid = D > W;
-    for (let i = 0; i < Math.max(W, D); i++) { const j = Math.round(Math.min(W, D) / 2 + Math.sin(i / 7 + h(1) % 6) * 4); rect(x + (mid ? j : i), z + (mid ? i : j), 2, 2, C.trail); }
+    const mid = D > W, along = Math.max(W, D), trail = i => Math.round(Math.min(W, D) / 2 + Math.sin(i / 7 + h(1) % 6) * 4);
+    for (let i = 0; i < along; i++) { const j = trail(i); rect(x + (mid ? j : i), z + (mid ? i : j), 2, 2, C.trail); }
+    // Beside the trail, on the side away from the trees.
+    for (const i of along > 40 ? [.25, .75].map(t => Math.round(along * t)) : [along >> 1]) { const j = trail(i) - 2; light(x + (mid ? j : i), z + (mid ? i : j)); }
     const n = 2 + h(2) % 3;
     for (let i = 0; i < n; i++) { const a = (i + .5) / n, side = i % 2 ? .62 : .88, seed = h(3 + i) % 9; prop(once(`tree${seed}`, () => tree(seed)), x + (mid ? W * side : W * a), z + (mid ? D * a : D * side)); }
   },
-  pond({ rect, prop, lawn, h }, x, z, W, D) {
+  pond({ rect, prop, light, lawn, h }, x, z, W, D) {
     const cx = W / 2, cz = D / 2, ra = W / 2 - 3, rb = D / 2 - 3;
     rect(x, z, W, D, (a, b) => { const q = ((a - cx) / ra) ** 2 + ((b - cz) / rb) ** 2; return q < .72 ? (a * 3 + b * 5) % 23 === 0 ? C.water2 : C.water : q < 1 ? C.water2 : lawn; });
     const seed = h(1) % 9; prop(once(`tree${seed}`, () => tree(seed)), x + W - 3, z + D - 3);
+    light(x + 2, z + 2);
   },
-  plaza({ rect, prop }, x, z, W, D) {
+  plaza({ rect, prop, light }, x, z, W, D) {
     rect(x, z, W, D, (a, b) => (a >> 2) % 2 === (b >> 2) % 2 ? C.paving : C.block);
     prop(once('fountain', fountain), x + W / 2, z + D / 2);
+    light(x + 2, z + 2); light(x + W - 3, z + D - 3);
   },
   court({ rect, lawn }, x, z, W, D) {
     const I = 3, A = W - I * 2, B = D - I * 2;
@@ -211,9 +237,11 @@ const PARCELS = {
     for (let i = 0; i < n; i++) { const seed = h(i + 2) % 9, u = (i + .5) * L / n, v = Math.min(W, D) / 2; prop(once(`tree${seed}`, () => tree(seed)), x + (mid ? v : u), z + (mid ? u : v)); }
   },
 };
-function bigPark({ rect, prop, lawn, h }, x, z, W, D) {
+function bigPark({ rect, prop, light, lawn, h }, x, z, W, D) {
   const cx = W * .56, cz = D * .46;
   rect(x, z, W, D, (a, b) => { const q = ((a - cx) / (W * .24)) ** 2 + ((b - cz) / (D * .2)) ** 2; if (q < .78) return (a * 3 + b * 5) % 29 === 0 ? C.water2 : C.water; if (q < 1) return C.water2; return Math.abs(((a - cx) / (W * .34)) ** 2 + ((b - cz) / (D * .3)) ** 2 - 1) < .05 ? C.trail : lawn; });
+  // Round the path by the pond. The trees keep clear of all of it.
+  for (let i = 0; i < 6; i++) { const a = (i + .5) * Math.PI / 3; light(x + cx + Math.cos(a) * W * .34, z + cz + Math.sin(a) * D * .3); }
   for (let i = 0; i < 14; i++) {
     const X = 8 + h(i * 2) % 1000 / 1000 * (W - 16), Z = 8 + h(i * 2 + 1) % 1000 / 1000 * (D - 16);
     if (((X - cx) / (W * .4)) ** 2 + ((Z - cz) / (D * .36)) ** 2 < 1) continue;
