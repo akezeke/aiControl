@@ -1,6 +1,6 @@
 // The DOM laid over the city: its buttons, and everything that talks or names a place.
 import { glyph } from './glyphs.js';
-import { placeBubble } from './view.js';
+import { clearOf, placeBubble } from './view.js';
 
 const TAIL = 6, OFF_SIDE = 24, OFF_TOP = 48, INK = '#2e222f';
 
@@ -26,7 +26,7 @@ export function createLabels(box, { onSession, onHood }) {
     shown.set(key, entry); layer.append(node);
     return entry;
   };
-  const place = entry => {
+  const place = (entry, taken = []) => {
     const [ax, ay] = project(entry.ax, entry.ay), off = ax < -OFF_SIDE || ax > width + OFF_SIDE || ay < -OFF_TOP || ay > height + OFF_SIDE;
     if (off !== entry.off) { entry.off = off; entry.node.hidden = off; }
     if (off) return;
@@ -36,7 +36,7 @@ export function createLabels(box, { onSession, onHood }) {
       const spot = placeBubble(ax, ay, entry.w, entry.h + TAIL, width, height);
       x = spot.x; y = spot.y;
       if (spot.tail !== entry.tail) { entry.tail = spot.tail; entry.bubble.style.left = `${Math.round(spot.tail)}px`; }
-    } else { x = ax - entry.w / 2; y = ay - entry.h / 2; }
+    } else ({ x, y } = clearOf({ x: ax - entry.w / 2, y: ay - entry.h / 2, w: entry.w, h: entry.h }, taken, width, height));
     x = Math.round(x); y = Math.round(y);
     if (x !== entry.x || y !== entry.y) { entry.x = x; entry.y = y; entry.node.style.transform = `translate(${x}px, ${y}px)`; }
   };
@@ -93,7 +93,17 @@ export function createLabels(box, { onSession, onHood }) {
       }
       sweep('t:', keep);
     },
-    move(next, boxW, boxH) { project = next; width = boxW; height = boxH; shown.forEach(place); },
+    // Bubbles first, then the signs around them: nothing that talks may hide a project's name, nor one name another.
+    move(next, boxW, boxH) {
+      project = next; width = boxW; height = boxH;
+      const taken = [], signs = [];
+      for (const entry of shown.values()) {
+        if (entry.key.startsWith('s:')) { signs.push(entry); continue; }
+        place(entry);
+        if (entry.bubble && !entry.off) taken.push({ x: entry.x, y: entry.y, w: entry.w, h: entry.h + TAIL });
+      }
+      for (const entry of signs) { place(entry, taken); if (!entry.off) taken.push({ x: entry.x, y: entry.y, w: entry.w, h: entry.h }); }
+    },
     dispose() { layer.remove(); shown.clear(); },
   };
 }

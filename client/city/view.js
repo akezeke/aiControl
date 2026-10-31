@@ -70,3 +70,16 @@ export function placeBubble(ax, ay, w, h, boxW, boxH, margin = 4) {
   const x = Math.max(margin, Math.min(boxW - w - margin, ax - w / 2)), y = Math.max(margin, Math.min(boxH - h - margin, ay - h));
   return { x, y, tail: Math.max(0, Math.min(w, ax - x)) };
 }
+
+// The nearest spot for a sign that touches nothing in `taken`, or where it is if there is none. Only a side of something it would touch can be nearest.
+export function clearOf(rect, taken, boxW, boxH, gap = 2) {
+  const { x, y, w, h } = rect, solid = taken.filter(a => a.w > 0 && a.h > 0);
+  const hits = (px, py) => solid.some(a => px < a.x + a.w && px + w > a.x && py < a.y + a.h && py + h > a.y);
+  if (!hits(x, y)) return { x, y };
+  let best = { x, y }, near = Infinity;
+  for (const a of solid) for (const [px, py] of [[x, a.y + a.h + gap], [x, a.y - h - gap], [a.x - w - gap, y], [a.x + a.w + gap, y]]) {
+    const cost = Math.abs(px - x) + Math.abs(py - y);
+    if (cost < near && px >= 0 && py >= 0 && px + w <= boxW && py + h <= boxH && !hits(px, py)) { best = { x: px, y: py }; near = cost; }
+  }
+  return best;
+}

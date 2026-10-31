@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutOffice } from '../client/office/layout.js';
 import { cityPlan, screen, LOT } from '../client/city/plan.js';
-import { ZOOMS, fitCanvas, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings } from '../client/city/view.js';
+import { ZOOMS, fitCanvas, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings, clearOf } from '../client/city/view.js';
 
 test('art pixels are whole device pixels at any DPR', () => {
   for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) for (const step of ZOOMS) {
@@ -48,4 +48,26 @@ test('focusBuildings centres on the buildings it is given, close enough to hold 
   assert.ok(Math.abs(one.cx - ax) < 2, `${one.cx} against ${ax}`);
   assert.ok(one.step >= both.step);
   assert.ok(Math.abs(both.cx - (ax + bx) / 2) < 2 && both.cy > Math.min(ay, by) - 80 && both.cy < Math.max(ay, by));
+});
+
+test('a sign clear of the bubbles stays where it is', () => {
+  assert.deepEqual(clearOf({ x: 100, y: 100, w: 80, h: 20 }, [{ x: 300, y: 100, w: 80, h: 30 }], 800, 600), { x: 100, y: 100 });
+});
+
+test('a sign under a bubble steps to the nearest side that is clear', () => {
+  const bubble = { x: 90, y: 90, w: 200, h: 30 }, sign = { x: 100, y: 105, w: 80, h: 20 }, spot = clearOf(sign, [bubble], 800, 600);
+  assert.deepEqual(spot, { x: 100, y: 122 });
+});
+
+test('a sign steps past a second bubble and past the edge of the box', () => {
+  const sign = { x: 100, y: 105, w: 80, h: 20 }, top = { x: 90, y: 90, w: 200, h: 30 }, below = { x: 90, y: 122, w: 200, h: 30 };
+  assert.deepEqual(clearOf(sign, [top, below], 800, 600), { x: 100, y: 68 });
+  assert.deepEqual(clearOf({ x: 0, y: 5, w: 80, h: 20 }, [{ x: 0, y: 0, w: 60, h: 30 }], 800, 600), { x: 0, y: 32 });
+  assert.deepEqual(clearOf({ x: 700, y: 580, w: 80, h: 20 }, [{ x: 690, y: 560, w: 110, h: 30 }], 800, 600), { x: 700, y: 538 });
+});
+
+test('with nowhere clear a sign stays put, and an empty rect takes no room', () => {
+  const sign = { x: 10, y: 10, w: 80, h: 20 };
+  assert.deepEqual(clearOf(sign, [{ x: 0, y: 0, w: 100, h: 40 }], 100, 40), { x: 10, y: 10 });
+  assert.deepEqual(clearOf(sign, [{ x: 20, y: 15, w: 0, h: 0 }], 800, 600), { x: 10, y: 10 });
 });
