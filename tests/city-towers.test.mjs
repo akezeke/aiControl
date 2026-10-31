@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CityTowers, PRUNE_MS, SHOWN_MS } from '../server/towers.mjs';
@@ -53,6 +53,16 @@ test('an ended session stays listed briefly; a stale one is pruned', () => {
 test('a restart during a compaction does not count it twice', () => {
   const f = file(), a = new CityTowers(f); a.update([s('a', 200_000)], 1); assert.equal(a.update([s('a', 200_000, { activity: 'compacting' })], 2).a.storeys, 7);
   const b = new CityTowers(f); assert.equal(b.update([s('a', 200_000, { activity: 'compacting' })], 3).a.storeys, 7); assert.equal(b.update([s('a', 60_000)], 4).a.storeys, 7);
+});
+test('growth inside a storey leaves the file alone, and a restart still counts it', () => {
+  const f = file(), a = new CityTowers(f); a.update([s('a', 200_000)], 1);
+  const before = readFileSync(f, 'utf8');
+  a.update([s('a', 215_000)], 2);
+  assert.equal(readFileSync(f, 'utf8'), before);
+  assert.equal(new CityTowers(f).update([s('a', 250_000)], 3).a.storeys, 10);
+  const restarted = readFileSync(f, 'utf8');
+  a.update([s('a', 240_000)], 4);
+  assert.notEqual(readFileSync(f, 'utf8'), restarted);
 });
 test('a write failure keeps memory', () => { const t = new CityTowers('/nonexistent/dir/towers.json'); assert.equal(t.update([s('a', 200_000)], 1).a.storeys, 9); });
 test('a corrupt file starts fresh', () => { const f = file(); writeFileSync(f, '{nope'); assert.equal(new CityTowers(f).update([s('a')], 1).a.storeys, 4); });

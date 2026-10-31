@@ -13,9 +13,7 @@ export class CityTowers {
     this.#file = file;
     try {
       if (!file) return;
-      const text = readFileSync(file, 'utf8');
-      for (const [id, saved] of Object.entries(JSON.parse(text))) if (Number.isFinite(saved?.tokens)) this.#entries.set(id, { ...saved, seen: (saved.hour || 0) * HOUR });
-      this.#written = text;
+      for (const [id, saved] of Object.entries(JSON.parse(readFileSync(file, 'utf8')))) if (Number.isFinite(saved?.tokens)) this.#entries.set(id, { ...saved, seen: (saved.hour || 0) * HOUR });
     } catch { this.#entries.clear(); }
   }
   update(sessions, now = Date.now()) {
@@ -52,11 +50,13 @@ export class CityTowers {
   }
   #save() {
     if (!this.#file) return;
-    // `seen` to the hour: it only has to outlast a week, and exact times would rewrite the file on every poll.
-    const text = JSON.stringify(Object.fromEntries([...this.#entries].map(([id, { seen, ...entry }]) => [id, { ...entry, hour: Math.floor(seen / HOUR) }])));
-    if (text === this.#written) return;
-    this.#written = text;
+    // `seen` to the hour: it only has to outlast a week.
+    const rows = [...this.#entries].map(([id, { seen, ...entry }]) => [id, { ...entry, hour: Math.floor(seen / HOUR) }]);
+    // Writes only when a restart would show something different, not on every poll a session works. `tokens` and `last` go stale together, so the first poll after a restart still counts the growth the file missed.
+    const shown = JSON.stringify(rows.map(([id, { tokens, last, ...entry }]) => [id, Math.floor(tokens / PER_STOREY), entry]));
+    if (shown === this.#written) return;
+    this.#written = shown;
     // Write then rename, so a crash never leaves half a file. Failing only costs the heights at the next restart.
-    try { writeFileSync(`${this.#file}.tmp`, text, { mode: 0o600 }); renameSync(`${this.#file}.tmp`, this.#file); } catch { /* memory still holds */ }
+    try { writeFileSync(`${this.#file}.tmp`, JSON.stringify(Object.fromEntries(rows)), { mode: 0o600 }); renameSync(`${this.#file}.tmp`, this.#file); } catch { /* memory still holds */ }
   }
 }
