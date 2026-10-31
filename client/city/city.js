@@ -6,20 +6,22 @@ import { officeHasKeys, sceneFocused } from '../scene-keys.js';
 import { createCard, createMenu } from '../scene-ui.js';
 import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
-import { groundCells, paintGround } from './ground.js';
+import { groundCells, paintGround, paintHood } from './ground.js';
 import { buildTower, annex, dust, crane, coolingPlant, stackPlant } from './generator.js';
-import { Bloom, glowPixels } from './bloom.js';
+import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
-import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf } from './view.js';
+import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf, keyPan } from './view.js';
 import { createControls, createLabels } from './labels.js';
 
 const TAG_X = 16, TAG_Y = 6;
-const DRAG_SLOP = 6, PAN_KEY = 8, GLIDE_MS = 220, KEY_GLIDE_MS = 120, NOTCH = 50, WHEEL_REST = 200;
+const DRAG_SLOP = 6, GLIDE_MS = 220, NOTCH = 50, WHEEL_REST = 200;
 // A flick carries on: how long it takes to lose most of its speed, and what still counts as moving in CSS pixels per ms.
-const COAST_MS = 220, COAST_MIN = .03;
+const COAST_MS = 220, KEY_COAST_MS = 110, COAST_MIN = .03;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], a: [-1, 0], d: [1, 0], w: [0, -1], s: [0, 1] };
 const STEP_MS = 125, TWINKLE_MS = 1500, CACHE = 256, FLOOR = '#323353', HIGHLIGHT = { hover: '#f9c22b', selected: '#fbff86', cursor: '#4d9be6', asked: '#f9c22b' };
+// Everything but a chosen neighbourhood falls into shadow.
+const DUSK = 'rgba(46, 34, 47, .55)';
 // A sprite this far off the canvas can't reach it, so it isn't baked until it might.
 const CULL_X = 90, CULL_UP = 40, CULL_DOWN = 170;
 const BEACON = '#f9c22b', BEACON_INK = '#2e222f', BLINK_MS = 500, CRANE_AT = 20;
@@ -41,6 +43,9 @@ const toImage = ({ width, height, rgba }) => {
   canvas.getContext('2d').putImageData(new ImageData(rgba, width, height), 0, 0);
   return canvas;
 };
+// A stack is the same picture wherever it stands, so every tree of a kind shares one sprite.
+const stackIds = new WeakMap(); let stacksSeen = 0;
+const stackId = stack => { if (!stackIds.has(stack)) stackIds.set(stack, ++stacksSeen); return stackIds.get(stack); };
 // What the ground is painted from: anything else in the plan can change without repainting it.
 const groundKey = plan => JSON.stringify([plan.bounds, plan.roads, plan.parcels, plan.parks, plan.hoods.map(hood => [hood.key, hood.x, hood.z, hood.cols, hood.lots.map(lot => lot.sessionId ? 1 : 0)])]);
 
@@ -54,11 +59,12 @@ export function mountCity(box, hooks = {}) {
   glowCanvas.className = 'city-glow';
   if (bloom) box.append(glowCanvas);
 
-  const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
+  const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), litHoods = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
   const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(); // ghosts: what has left the plan but is still going up in dust.
   let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '';
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [];
+  const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
   let glide = null, coast = null, drawn = [], selectedHood = null, card = null, labels = null, menu = null, animating = false, test = null, slot, dismissed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
@@ -68,7 +74,7 @@ export function mountCity(box, hooks = {}) {
     boxW = rect.width; boxH = rect.height;
     if (next.width === size.width && next.height === size.height && next.scale === size.scale && dpr() === ratio) return;
     size = next; ratio = dpr(); canvas.width = next.width; canvas.height = next.height; canvas.style.width = `${next.cssW}px`; canvas.style.height = `${next.cssH}px`;
-    lamps.width = next.width; lamps.height = next.height; glowCanvas.width = Math.ceil(next.cssW); glowCanvas.height = Math.ceil(next.cssH); glowCanvas.style.width = `${next.cssW}px`; glowCanvas.style.height = `${next.cssH}px`;
+    lamps.width = lampSize(next.width); lamps.height = lampSize(next.height); glowCanvas.width = Math.ceil(next.cssW); glowCanvas.height = Math.ceil(next.cssH); glowCanvas.style.width = `${next.cssW}px`; glowCanvas.style.height = `${next.cssH}px`;
     ctx.imageSmoothingEnabled = false; dirty = true;
   };
   const place = () => {
@@ -110,7 +116,7 @@ export function mountCity(box, hooks = {}) {
       const signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(id), { windows } = signal, phase = phaseOf(id, signal, now), dim = dimmed(building);
       if (signal.twinkle && !reduced) animating = true;
       stand(`${id}|${stage.storeys}|${windows}|${phase}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { beacon: signal.beacon && !dim && blink, named: true });
-      if (stage.crane) stand('crane', `crane:${id}`, x + CRANE_AT, z - CRANE_AT, () => ({ stack: crane(true) }));
+      if (stage.crane) stand('crane', `crane:${id}`, x + CRANE_AT, z - CRANE_AT, () => ({ stack: crane(true) }), null, dim);
       effects(id, x, z, signal, stage, dim);
       return true;
     };
@@ -123,10 +129,11 @@ export function mountCity(box, hooks = {}) {
       return true;
     };
     animating = false;
-    cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${i}:${x}:${z}`, `prop:${i}`, x, z, () => ({ stack })));
+    const quiet = !!selectedHood;
+    cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${stackId(stack)}`, `prop:${i}`, x, z, () => ({ stack }), null, quiet));
     for (const { provider, x, z, connected } of plan.plants) {
       const [make, stripe] = PLANTS[provider], lit = connected && !error, on = lit && !reduced;
-      stand(`plant:${provider}|${on}|${lit}`, `plant:${provider}`, x, z, () => ({ stack: make(stripe, on, lit) }));
+      stand(`plant:${provider}|${on}|${lit}`, `plant:${provider}`, x, z, () => ({ stack: make(stripe, on, lit) }), null, quiet);
     }
     for (const building of plan.buildings) if (towerOf(building)) building.subagents.forEach((kid, i) => annexOf(building, i, kid));
     for (const [id, ghost] of ghosts) if (!(ghost.kid ? annexOf(ghost.building, ghost.i, ghost.kid) : towerOf(ghost.building))) ghosts.delete(id);
@@ -147,6 +154,12 @@ export function mountCity(box, hooks = {}) {
     if (!ground) { const started = performance.now(), painted = paintGround(cells, view); ground = { ...painted, image: toImage(painted) }; grounds.set(view, ground); groundMs.push(performance.now() - started); }
     return ground;
   };
+  const litHood = hood => {
+    const key = `${hood.key}|${view}`;
+    let lit = litHoods.get(key);
+    if (!lit) { const painted = paintHood(cells, hood, view); lit = { ...painted, image: toImage(painted), edgeImage: toImage({ width: painted.width, height: painted.height, rgba: painted.edge }) }; litHoods.set(key, lit); }
+    return lit;
+  };
   // A lot's outline, walked on the ground so that it's the same shape in every view.
   const outline = (lot, colour) => {
     const half = LOT / 2 - PLOT;
@@ -162,6 +175,8 @@ export function mountCity(box, hooks = {}) {
     const ground = groundImage(), [gx, gy] = toCanvas(camera, size, 0, 0);
     ctx.fillStyle = FLOOR; ctx.fillRect(0, 0, size.width, size.height);
     ctx.drawImage(ground.image, gx - ground.originX, gy - ground.originY);
+    const chosen = selectedHood && plan.hoods.find(hood => hood.key === selectedHood), lit = chosen && litHood(chosen);
+    if (lit) { ctx.fillStyle = DUSK; ctx.fillRect(0, 0, size.width, size.height); ctx.drawImage(lit.image, gx - lit.originX, gy - lit.originY); }
     for (const kind of Object.keys(lots)) { const lot = lots[kind] && lotOf(lots[kind]); if (lot) outline(lot, HIGHLIGHT[kind]); }
     const placed = list.filter(({ item }) => !item.over).map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, item, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
     drawn = placed.filter(item => item.opens);
@@ -183,11 +198,13 @@ export function mountCity(box, hooks = {}) {
       ctx.drawImage(sprite.image, x - sprite.originX, rest - item.lift - sprite.originY);
     }
     if (bloom) {
-      lampsCtx.clearRect(0, 0, lamps.width, lamps.height);
+      const shiftX = lampOffset(gx), shiftY = lampOffset(gy), kx = glowCanvas.width / size.width, ky = glowCanvas.height / size.height;
+      lampsCtx.setTransform(1, 0, 0, 1, 0, 0); lampsCtx.clearRect(0, 0, lamps.width, lamps.height); lampsCtx.setTransform(1, 0, 0, 1, shiftX, shiftY);
+      if (lit) lampsCtx.drawImage(lit.edgeImage, gx - lit.originX, gy - lit.originY);
       for (const { sprite, x, y } of placed) if (sprite.glowImage) lampsCtx.drawImage(sprite.glowImage, x - sprite.originX, y - sprite.originY);
       lampsCtx.fillStyle = BEACON;
       for (const entry of placed) if (entry.item.beacon) { const [x, y] = crown(entry); lampsCtx.fillRect(x - 1, y - 3, 3, 3); }
-      bloom.draw(glowCtx, lamps, glowCanvas.width, glowCanvas.height);
+      bloom.draw(glowCtx, lamps, -shiftX * kx, -shiftY * ky, lamps.width * kx, lamps.height * ky);
     }
     followMenu();
   };
@@ -242,8 +259,12 @@ export function mountCity(box, hooks = {}) {
       const t = Math.min(1, Math.max(0, now - glide.start) / glide.ms);
       look(between(glide.from, glide.to, 1 - (1 - t) ** 3));
       if (t === 1) glide = null;
+    } else if (keysDown.size) {
+      const dt = Math.min(50, Math.max(0, now - keysAt));
+      keysAt = now; keysGoing = keyPan([...keysDown.values()], now - keysFrom);
+      if (keysGoing) look(held({ ...eye, cx: eye.cx + keysGoing.vx * dt / eye.r, cy: eye.cy + keysGoing.vy * dt / eye.r }));
     } else if (coast) {
-      const dt = Math.min(50, Math.max(0, now - coast.at)), keep = Math.exp(-dt / COAST_MS); coast.at = now;
+      const dt = Math.min(50, Math.max(0, now - coast.at)), keep = Math.exp(-dt / (coast.ms ?? COAST_MS)); coast.at = now;
       look(held({ ...eye, cx: eye.cx - coast.vx * dt / eye.r, cy: eye.cy - coast.vy * dt / eye.r }));
       coast.vx *= keep; coast.vy *= keep;
       if (Math.hypot(coast.vx, coast.vy) < COAST_MIN) coast = null;
@@ -269,7 +290,7 @@ export function mountCity(box, hooks = {}) {
     if (gone || document.hidden) return;
     try {
       const more = step(now);
-      if (more || dirty || glide || coast) schedule(); else if (moving()) timer = setTimeout(() => { timer = 0; schedule(); }, STEP_MS);
+      if (more || dirty || glide || coast || keysDown.size) schedule(); else if (moving()) timer = setTimeout(() => { timer = 0; schedule(); }, STEP_MS);
     } catch (problem) { failure = problem; } // The next update throws it, and syncScene falls back to the list.
   };
   const schedule = () => { if (!raf && !gone && !document.hidden) raf = requestAnimationFrame(frame); };
@@ -289,12 +310,11 @@ export function mountCity(box, hooks = {}) {
     const step = next.step ?? glide?.to.step ?? camera.step, at = clampCamera({ cx: next.cx ?? eye.cx, cy: next.cy ?? eye.cy, step }, cityBox(plan, view), overscanned(boxW, boxH, dpr(), step));
     return { ...eyeOf({ ...at, cx: Math.round(at.cx), cy: Math.round(at.cy) }, boxW, boxH, dpr()), step };
   };
-  const glideTo = (next, ms = GLIDE_MS) => {
+  const glideTo = next => {
     const to = restAt(next);
     if (reducedMotion()) { jump(cameraFor(to, boxW, boxH, dpr())); return; }
-    coast = null; glide = { from: eye, to, start: performance.now(), ms }; schedule();
+    coast = null; glide = { from: eye, to, start: performance.now(), ms: GLIDE_MS }; schedule();
   };
-  const panBy = (dx, dy) => { const from = glide?.to ?? eye; glideTo({ cx: from.cx + dx, cy: from.cy + dy }, KEY_GLIDE_MS); };
   const artAt = event => { const rect = canvas.getBoundingClientRect(); return [Math.floor((event.clientX - rect.left) * canvas.width / rect.width), Math.floor((event.clientY - rect.top) * canvas.height / rect.height)]; };
   const boxPoint = event => { const rect = box.getBoundingClientRect(); return [event.clientX - rect.left, event.clientY - rect.top]; };
   const centreOfBox = () => { const rect = box.getBoundingClientRect(); return { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }; };
@@ -446,6 +466,23 @@ export function mountCity(box, hooks = {}) {
     if (!inView(here[next].x, here[next].z)) panToWorld(here[next].x, here[next].z);
     return true;
   };
+  // A pan key moves the view for as long as it's down. Waiting on keydown would stop after the first step, for as long as the keyboard takes to start repeating.
+  const holdKey = (key, pan) => {
+    if (keysDown.has(key)) return;
+    const at = performance.now();
+    if (!keysDown.size) { keysFrom = at; keysAt = at - 16; coast = null; }
+    // A zoom on its way finishes first; a pan on its way gives way to this one.
+    if (glide && glide.from.r === glide.to.r) glide = null;
+    keysDown.set(key, pan); schedule();
+  };
+  const dropKeys = key => {
+    if (key === undefined) keysDown.clear(); else if (!keysDown.delete(key)) return;
+    if (keysDown.size) return;
+    if (keysGoing && !reducedMotion()) { coast = { vx: -keysGoing.vx, vy: -keysGoing.vy, at: performance.now(), ms: KEY_COAST_MS }; schedule(); }
+    keysGoing = null;
+  };
+  const onKeyUp = event => dropKeys(event.key.length === 1 ? event.key.toLowerCase() : event.key);
+  const onBlur = () => dropKeys();
   const onKey = event => {
     if (!plan || !camera || !officeHasKeys(event)) return;
     if (event.key === 'Tab') { if (sceneFocused(canvas) && moveCursor(event.shiftKey ? -1 : 1)) event.preventDefault(); return; }
@@ -456,7 +493,7 @@ export function mountCity(box, hooks = {}) {
     }
     if (isTypingTarget(event.target)) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key, pan = PAN_KEYS[key];
-    if (pan) panBy(pan[0] * PAN_KEY, pan[1] * PAN_KEY);
+    if (pan) holdKey(key, pan);
     else if (key === '+' || key === '=') zoom(1);
     else if (key === '-' || key === '_') zoom(-1);
     else if (key === 'q') turn(-1);
@@ -475,7 +512,7 @@ export function mountCity(box, hooks = {}) {
   menu = createMenu(box, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item, slot), () => { if (lots.asked) { lots.asked = null; wake(); } });
   labels = createLabels(box, { onSession: talkTo, onHood: selectHood });
   const controls = createControls(box, { onFit: () => { if (camera) { clearHood(); fitCity(); } }, onNext: () => talkTo(hooks.nextWaiting?.()?.id), onList: () => hooks.showList?.(), onNew: askAnywhere });
-  const listening = [[canvas, 'pointerdown', onDown], [canvas, 'pointermove', onMove], [canvas, 'pointerup', onUp], [canvas, 'pointercancel', onUp], [canvas, 'pointerleave', onLeave], [window, 'keydown', onKey], [document, 'click', onClick]];
+  const listening = [[canvas, 'pointerdown', onDown], [canvas, 'pointermove', onMove], [canvas, 'pointerup', onUp], [canvas, 'pointercancel', onUp], [canvas, 'pointerleave', onLeave], [window, 'keydown', onKey], [window, 'keyup', onKeyUp], [window, 'blur', onBlur], [document, 'click', onClick]];
   for (const [target, type, listener] of listening) target.addEventListener(type, listener);
   box.addEventListener('wheel', onWheel, { passive: false }); // On the box: over a bubble it should still zoom.
   document.addEventListener('pointerdown', onPress, true); // Before anything under the press can act on it.
@@ -501,7 +538,7 @@ export function mountCity(box, hooks = {}) {
       }
       lifecycle.update(plan, fired, now);
       const key = groundKey(plan);
-      if (key !== cellsKey) { cells = groundCells(plan); cellsKey = key; grounds.clear(); dirty = true; }
+      if (key !== cellsKey) { cells = groundCells(plan); cellsKey = key; grounds.clear(); litHoods.clear(); dirty = true; }
       if (selectedHood && !plan.hoods.some(hood => hood.key === selectedHood)) selectedHood = null;
       // Someone else may have just taken the lot it was asking about.
       if (lots.asked && menu.open && !menu.asking) { const lot = lotOf(lots.asked); if (!lot || lot.sessionId) menu.close(); }

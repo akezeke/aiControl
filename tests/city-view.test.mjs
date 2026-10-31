@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutOffice } from '../client/office/layout.js';
 import { cityPlan, screen, LOT } from '../client/city/plan.js';
-import { ZOOMS, OVERSCAN, fitCanvas, overscanned, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings, clearOf, stopRatio, baseStep, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf } from '../client/city/view.js';
+import { keyPan, ZOOMS, OVERSCAN, fitCanvas, overscanned, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings, clearOf, stopRatio, baseStep, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf } from '../client/city/view.js';
 
 test('art pixels are whole device pixels at any DPR', () => {
   for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) for (const step of ZOOMS) {
@@ -148,4 +148,26 @@ test('a drag that stopped before letting go is no flick', () => {
 });
 test('a flick still reads on a slow screen, with one sample inside the window', () => {
   assert.deepEqual(flickOf([[0, 0, 0], [80, 40, 0], [160, 80, 0]], 170), { vx: .5, vy: 0 });
+});
+
+test('a held key moves from its first frame, not when the keyboard starts repeating', () => {
+  const v = keyPan([[1, 0]], 0);
+  assert.ok(v.vx > 0); assert.equal(v.vy, 0);
+});
+test('a held key builds to full speed, and stays there', () => {
+  const start = keyPan([[-1, 0]], 0).vx, later = keyPan([[-1, 0]], 100).vx, full = keyPan([[-1, 0]], 5000).vx;
+  assert.ok(Math.abs(later) > Math.abs(start));
+  assert.ok(Math.abs(full) > Math.abs(later));
+  assert.equal(keyPan([[-1, 0]], 9000).vx, full);
+});
+test('two keys together move no faster than one', () => {
+  const one = keyPan([[1, 0]], 5000), two = keyPan([[1, 0], [0, 1]], 5000);
+  assert.ok(Math.abs(Math.hypot(two.vx, two.vy) - one.vx) < 1e-9);
+});
+test('opposite keys cancel, and so does holding nothing', () => {
+  assert.equal(keyPan([[1, 0], [-1, 0]], 5000), null);
+  assert.equal(keyPan([], 5000), null);
+});
+test('a key held before the frame clock starts counts as just pressed', () => {
+  assert.deepEqual(keyPan([[0, 1]], -30), keyPan([[0, 1]], 0));
 });

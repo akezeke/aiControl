@@ -113,6 +113,27 @@ function bigPark({ rect, prop, h }, x, z, W, D) {
   }
 }
 
+// A chosen neighbourhood lit up, to lay over the ground: its own cells brighter, a line between them, and a rim round the lot.
+// `edge` is the rim alone, which is the part that glows.
+const LIT = new Map([[C.floor, '#4d65b4'], [C.block, '#4d65b4'], [C.plot, '#4d9be6'], [C.tick, '#8fd3ff']].map(([from, to]) => [from.join(), hex(to)]));
+const RIM = 3, LINE = hex('#8fd3ff'), RIM_LIGHT = hex('#fbff86');
+export function paintHood({ x0, z0, w, rgb }, hood, view) {
+  const W = hood.cols * LOT, D = 2 * LOT, corners = [[0, 0], [W, 0], [0, D], [W, D]].map(([x, z]) => screen(hood.x + x, hood.z + z, view));
+  const minX = Math.floor(Math.min(...corners.map(c => c[0]))), maxX = Math.ceil(Math.max(...corners.map(c => c[0]))), minY = Math.floor(Math.min(...corners.map(c => c[1]))), maxY = Math.ceil(Math.max(...corners.map(c => c[1])));
+  const width = maxX - minX + 1, height = maxY - minY + 1, rgba = new Uint8ClampedArray(width * height * 4), edge = new Uint8ClampedArray(width * height * 4);
+  const seam = v => v % LOT === 0 || v % LOT === LOT - 1;
+  for (let py = 0; py < height; py++) for (let px = 0; px < width; px++) {
+    const [x, z] = unproject(px + minX, py + minY, view), a = Math.floor(x) - hood.x, b = Math.floor(z) - hood.z;
+    if (a < 0 || b < 0 || a >= W || b >= D) continue;
+    const i = (px + py * width) * 4, rim = a < RIM || b < RIM || a >= W - RIM || b >= D - RIM;
+    let colour = rim ? RIM_LIGHT : seam(a) || seam(b) ? LINE : null;
+    if (!colour) { const c = (Math.floor(x) - x0 + (Math.floor(z) - z0) * w) * 3, here = [rgb[c], rgb[c + 1], rgb[c + 2]]; colour = LIT.get(here.join()) || here; }
+    rgba[i] = colour[0]; rgba[i + 1] = colour[1]; rgba[i + 2] = colour[2]; rgba[i + 3] = 255;
+    if (rim) { edge[i] = colour[0]; edge[i + 1] = colour[1]; edge[i + 2] = colour[2]; edge[i + 3] = 255; }
+  }
+  return { width, height, rgba, edge, originX: -minX, originY: -minY };
+}
+
 // World (x, z) lands on pixel (screen x + originX, screen y + originY).
 export function paintGround({ x0, z0, w, d, rgb }, view) {
   const corners = [[x0, z0], [x0 + w, z0], [x0, z0 + d], [x0 + w, z0 + d]].map(([x, z]) => screen(x, z, view));
