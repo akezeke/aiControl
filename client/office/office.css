@@ -73,6 +73,8 @@
 body.panel-open .office-hint { display: none; }
 /* It fades in gently as the view settles on whoever you're talking to. */
 @media (prefers-reduced-motion: no-preference) {
+/* Quit, Copy, the waiting count and the three buttons don't all fit on a phone in words: Quit is its ✕ there, and its title keeps the words. */
+@media (max-width: 640px) { .office-overlay { gap: 6px; } .office-overlay button { padding: 0 10px; white-space: nowrap; } .office-overlay .office-leave { font-size: 0; } .office-overlay .office-leave::before { content: '✕'; font-size: 16px; } }
   :root[data-theme-choice=office]:not([data-scene-fallback], [data-scene-list]) .detail-panel { animation: office-panel-in .4s ease; }
 }
 @keyframes office-panel-in { from { opacity: 0; transform: translateX(12px); } }
