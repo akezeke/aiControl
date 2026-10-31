@@ -142,13 +142,17 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     partyShape.attributes.position.needsUpdate = true;
   };
 
-  const finish = r => {
+  // The moment a shot is decided, whatever the item's still doing: saved once, here.
+  const verdict = r => {
     if (entry.day) { recordDaily(progress, entry.day, entry.index, r); saveProgress(progress, store); game.saved++; }
     else if (entry.id) { recordLevel(progress, entry.id, r); saveProgress(progress, store); game.saved++; if (r.made) rested[entry.id] = r.pos; }
     game.score = r.made ? `${r.points} × ${r.multiplier} = ${r.score}` : 'Miss'; label();
     if (r.made) celebrate(r.pos); else tone(190, 110, 0.28, 'sawtooth', 0.1);
-    // Out of time and still up on something, or wedged: not left hanging there.
+  };
+  // The moment it really stops. Out of time and still up on something, or wedged: not left hanging there.
+  const stopped = r => {
     if (!r.rest && r.time >= MOST_TIME - 1e-6 && r.pos[1] > kind.low + 0.02) { game.run.reset(); inHand(); if (moved) handBackNow(); }
+    else if (moved) handBack = HAND_BACK;
   };
 
   const game = {
@@ -212,7 +216,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       if (!entry) return;
       stop(); game.run.reset(); game.score = null; inHand(); label();
     },
-    click() { if (game.run?.state === 'done') game.reset(); },
+    click() { if (game.run?.decided) game.reset(); },
     key(code, down) {
       if (!entry || !down) return false;
       if (code === 'KeyR') { game.reset(); return true; }
@@ -239,7 +243,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
         return;
       }
       for (const event of run.advance(dt)) {
-        if (event.type === 'end') { finish(event.result); if (moved) handBack = HAND_BACK; continue; }
+        if (event.type === 'verdict') { verdict(event.result); continue; }
+        if (event.type === 'end') { stopped(event.result); continue; }
         knock(event.surface, event.speed);
         if (event.surface.startsWith('pan-') && !reducedMotion()) kitchen.pans?.hit(+event.surface.slice(4), event.speed);
       }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { makeBody, simulate } from '../client/office/flight.js';
 import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
-import { FLIGHT, SLOW, SLOW_FOR, scoreContacts, inZone, runShot, createRun } from '../client/office/shot.js';
+import { FLIGHT, SLOW, SLOW_FOR, SOFT, scoreContacts, inZone, runShot, createRun } from '../client/office/shot.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const kind = (bounce, extra = {}) => ({ radius: 0.05, low: 0.05, bounce, roll: 1, drag: 0.1, upright: false, ...extra });
@@ -11,6 +11,7 @@ const ball = kind(0.5), rubber = kind(0.95), dead = kind(0.1);
 const hit = (surface, speed = 3) => ({ surface, speed }), pick = ({ points, multiplier }) => ({ points, multiplier });
 const onBin = () => makeBody(ball, V(-0.5, 1, -2.5), V(0, 8, 0)); // up to the ceiling, then down into the bin
 const count = (r, surface) => r.contacts.filter(c => c.surface === surface).length;
+const everywhere = { centre: V(-5, 1.5, -3), half: V(6, 2, 4) }; // a zone no end can miss: only the end itself decides
 
 test('a surface is worth its size', () => {
   assert.deepEqual(pick(scoreContacts([hit('fridge'), hit('pan-1'), hit('ceiling')])), { points: 350, multiplier: 3 });
@@ -62,10 +63,29 @@ test('a ball rolling across the floor from one touch is one touch', () => {
   assert.ok(Math.abs(r.path.at(-3) - -2) > 0.5, 'and it rolled');
 });
 
-test('the shot ends on its second floor touch', () => {
+test('a second floor touch decides the shot there, and it plays on to rest, scoring nothing more', () => {
   const r = runShot(makeBody(ball, V(-2, 1.5, -2.5), V(0, 0, 0)), ZONES.bin);
-  assert.deepEqual(r.contacts.map(c => c.surface), ['floor', 'floor']);
-  assert.ok(!r.rest && !r.made && r.time < 2 && r.score === 0);
+  assert.deepEqual(r.contacts.map(c => c.surface), ['floor', 'floor'], 'what scores');
+  assert.equal(r.decided, r.contacts[1].time);
+  assert.ok(r.rest && !r.made && r.score === 0 && r.time > r.decided + 0.1 && r.time < 8);
+  assert.ok(r.later.length && r.later.every(c => c.time > r.decided && c.surface === 'floor'), 'what it does after is only played');
+});
+
+test('a verdict is what it\'d be if the shot had stopped at the second floor touch', () => {
+  const stops = () => { const last = new Map(), kept = []; let floors = 0; return { kept, stop(c) { const before = last.get(c.surface); if (before !== undefined && c.time - before < 2.5 / 240) { last.set(c.surface, c.time); return false; } if (c.speed < SOFT) return false; last.set(c.surface, c.time); kept.push(c); return c.surface === 'floor' && ++floors >= 2; } }; };
+  let longer = 0;
+  for (let i = 0; i < 40; i++) {
+    const a = i * 0.7, body = () => makeBody(kind(0.3 + i * 0.015), V(-4 + Math.cos(i) * 2, 1 + (i % 4) * 0.5, -3 + Math.sin(i) * 2), V(Math.cos(a) * (2 + i % 6), 1 + i % 3, Math.sin(a) * (2 + i % 6)));
+    const r = runShot(body(), everywhere), { kept, stop } = stops(), cut = simulate(body(), levelWorld(), { maxTime: 8, stop });
+    assert.deepEqual(r.contacts.map(c => [c.surface, c.time]), kept.map(c => [c.surface, c.time]));
+    const scored = scoreContacts(kept); assert.deepEqual(pick(r), pick(scored)); assert.deepEqual(r.surfaces, scored.surfaces);
+    const floors = kept.filter(c => c.surface === 'floor').length;
+    assert.equal(r.made, floors < 2 && cut.rest && inZone(cut.pos, everywhere));
+    assert.equal(r.decided, cut.time);
+    assert.deepEqual([...r.path.slice(0, cut.path.length)], [...cut.path]);
+    if (r.time > r.decided) longer++;
+  }
+  assert.ok(longer > 5, `${longer} of them played on`);
 });
 
 test('a shot is cut off after 8 s and isn\'t made', () => {
@@ -74,21 +94,22 @@ test('a shot is cut off after 8 s and isn\'t made', () => {
 });
 
 test('runShot agrees with simulate on the path, and leaves the shared world alone', () => {
-  const a = runShot(onBin(), ZONES.bin), b = simulate(onBin(), levelWorld(), { maxTime: 8, stop: (() => { let f = 0; return c => c.surface === 'floor' && ++f > 1; })() });
-  assert.deepEqual(a.path, b.path.slice(0, a.path.length));
+  const a = runShot(onBin(), ZONES.bin), b = simulate(onBin(), levelWorld(), { maxTime: 8 });
+  assert.deepEqual(a.path, b.path); assert.equal(a.time, b.time);
   assert.deepEqual(runShot(onBin(), ZONES.bin).path, a.path, 'twice the same');
 });
 
-const play = (run, dt = 1 / 60) => { const events = []; for (let i = 0; i < 2000 && run.state === 'flying'; i++) events.push(...run.advance(dt)); return events; };
+const play = (run, dt = 1 / 60) => { const events = []; for (let i = 0; i < 3000 && run.state === 'flying'; i++) events.push(...run.advance(dt)); return events; };
 const start = V(-1, 1.2, -1);
 
-test('playback emits each contact in order and the end once, at the shot\'s end', () => {
+test('playback emits each contact in order, then the verdict and the end once, at the shot\'s end', () => {
   const run = createRun({ start }), at = V();
   assert.equal(run.state, 'aiming'); assert.deepEqual(run.advance(1), []); assert.deepEqual(run.at(at).toArray(), start.toArray());
   run.shoot(onBin(), ZONES.bin);
   assert.equal(run.state, 'flying');
   const events = play(run), contacts = events.filter(e => e.type === 'contact'), ends = events.filter(e => e.type === 'end');
   assert.equal(ends.length, 1); assert.equal(events.at(-1), ends[0]); assert.equal(ends[0].result, run.result);
+  assert.equal(events.at(-2).type, 'verdict', 'a made shot rests undecided, so its verdict is its end'); assert.equal(events.at(-2).result, run.result); assert.equal(run.decided, true);
   assert.deepEqual(contacts.map(e => e.surface), run.result.contacts.map(c => c.surface));
   assert.ok(contacts.every(e => e.pos.length === 3 && e.speed > 0));
   assert.equal(run.state, 'done'); assert.deepEqual(run.advance(1), []);
@@ -98,9 +119,22 @@ test('playback emits each contact in order and the end once, at the shot\'s end'
 test('one huge dt (a stalled tab) emits every contact in order and the end once', () => {
   const run = createRun({ start }); run.shoot(onBin(), ZONES.bin);
   const events = run.advance(1e6);
-  assert.deepEqual(events.slice(0, -1).map(e => e.surface), run.result.contacts.map(c => c.surface));
-  assert.deepEqual(events.map(e => e.type).filter(t => t === 'end'), ['end']);
+  assert.deepEqual(events.slice(0, -2).map(e => e.surface), run.result.contacts.map(c => c.surface));
+  assert.deepEqual(events.slice(-2).map(e => e.type), ['verdict', 'end']);
   assert.equal(run.state, 'done');
+});
+
+test('a miss is decided mid-bounce: the verdict, then the rest of it played, then the end', () => {
+  const run = createRun({ start }), at = V(); run.shoot(makeBody(ball, V(-2, 1.5, -2.5), V(0, 0, 0)), ZONES.bin);
+  const r = run.result, seen = [];
+  while (run.state === 'flying') { const was = run.time; for (const e of run.advance(1 / 60)) { seen.push(e); if (e.type === 'verdict') { assert.ok(was < r.decided && run.time >= r.decided, 'at the second floor touch'); assert.equal(run.state, r.time > run.time ? 'flying' : 'done'); assert.equal(run.decided, true); } } assert.equal(run.decided, run.time >= r.decided); if (run.state === 'flying') assert.equal(run.timeScale, FLIGHT); }
+  assert.deepEqual(seen.map(e => e.type).filter(t => t !== 'contact'), ['verdict', 'end']);
+  assert.deepEqual(seen.slice(0, 3).map(e => e.type), ['contact', 'contact', 'verdict'], 'after the touch that decides it');
+  assert.deepEqual(seen.filter(e => e.type === 'contact').map(e => e.time), [...r.contacts, ...r.later].map(c => c.time), 'every knock is heard');
+  run.at(at); assert.ok(at.distanceTo(V(...r.pos)) < 1e-6, 'and it stops where the shot did');
+  run.reset(); assert.equal(run.decided, false);
+  const big = createRun({ start }); big.shoot(makeBody(ball, V(-2, 1.5, -2.5), V(0, 0, 0)), ZONES.bin);
+  assert.deepEqual(big.advance(1e6).map(e => e.type), seen.map(e => e.type), 'in one huge step too');
 });
 
 test('playback follows the path between samples', () => {
@@ -122,7 +156,7 @@ test('slow motion covers the last of a made shot, and never under reduced motion
     assert.equal(slow > 0, !reducedMotion); assert.ok(reducedMotion || scaled > 0);
   }
   const run = createRun({ start }); run.shoot(makeBody(ball, V(-2, 1.5, -2.5), V(0, 0, 0)), ZONES.bin);
-  run.advance(1 / 60); for (let i = 0; i < 2000 && run.state === 'flying'; i++) { assert.equal(run.timeScale, FLIGHT, 'a miss never slows further'); run.advance(1 / 60); }
+  run.advance(1 / 60); for (let i = 0; i < 3000 && run.state === 'flying'; i++) { assert.equal(run.timeScale, FLIGHT, 'a miss never slows further'); run.advance(1 / 60); }
   assert.equal(run.state, 'done');
 });
 
@@ -149,12 +183,11 @@ test('a second shot after done or reset plays on its own', () => {
   assert.equal(run.advance(1e6).filter(e => e.type === 'end').length, 1);
 });
 
-const everywhere = { centre: V(-5, 1.5, -3), half: V(6, 2, 4) }; // a zone no end can miss: only the end itself decides
-test('a shot still moving at 8 s, or ended by a second floor touch inside a zone, isn\'t made', () => {
+test('a shot still moving at 8 s, or at rest in a zone after a second floor touch, isn\'t made', () => {
   const long = runShot(makeBody(kind(0.995), V(-0.5, 2.5, -2.5), V(0, 0, 0)), everywhere);
   assert.ok(!long.rest && long.time === 8 && inZone(long.pos, everywhere) && !long.made);
   const twice = runShot(makeBody(ball, V(-2, 1.5, -2.5), V(0, 0, 0)), everywhere);
-  assert.ok(!twice.rest && inZone(twice.pos, everywhere) && !twice.made && twice.score === 0);
+  assert.ok(twice.rest && inZone(twice.pos, everywhere) && !twice.made && twice.score === 0);
 });
 
 test('a door rattling in its frame is a few touches, not one per bounce between its faces', () => {

@@ -18,6 +18,8 @@ const ORIGIN = { x: -0.2, z: 5 }, DT = 1 / 60;
 // Throws that do it, from tests/office-levels.test.mjs's search: yaw and pitch in radians.
 const IN = { yaw: 2.416772208600941, pitch: 0.17453292519943295, charge: 0.625 }; // the paper ball into the sink, off a cupboard and the wall
 const WEDGED = { yaw: rad(-129), pitch: rad(17), charge: 1 }; // a rubber ball from the far table, still a metre up at 8 s
+const SKIDS = { yaw: STARTS.island.stand, pitch: rad(-30), charge: 1 }; // the paper ball at the floor: decided well before it stops
+const toVerdict = t => { for (let i = 0; i < 2000 && !t.game.run.decided; i++) t.game.update(DT, null, false, true); assert.ok(t.game.run.decided); };
 
 function setup({ aim, reduced = false, holding = false, store, score, share } = {}) {
   const calls = [], saved = [], group = new THREE.Group(), camera = { position: V(0, EYE, 0) };
@@ -33,7 +35,7 @@ function setup({ aim, reduced = false, holding = false, store, score, share } = 
 }
 // Started the way a click starts it: walked to the mark, then in.
 const begin = (t, id) => { t.game.start(t.game.entry(id)); t.game.enter(); const { x, z } = t.game.stand(); t.hand.palm.position.set(x - 0.2, EYE - 0.27, z + 0.2); };
-const play = (t, seconds = 20) => { for (let i = 0; i < seconds * 60 && t.game.run.state === 'flying'; i++) t.game.update(DT, null, false, true); };
+const play = (t, seconds = 40) => { for (let i = 0; i < seconds * 60 && t.game.run.state === 'flying'; i++) t.game.update(DT, null, false, true); };
 const throwIt = (t, { yaw, pitch, charge }) => t.game.release(charge, look(yaw, pitch));
 const item = (t, id) => t.game.item(id);
 // How far `p` is from the part of a flat list of points that starts at `i`.
@@ -245,6 +247,46 @@ test('a miss scores nothing and says so; a made shot says its points and multipl
   t.game.release(0, look(STARTS.island.stand, 0)); play(t);
   assert.equal(t.game.run.result.made, false);
   assert.equal(t.game.score, 'Miss');
+});
+
+test('the verdict shows when the shot\'s decided, saved once, while the item keeps moving', () => {
+  const t = setup();
+  begin(t, 'paper'); throwIt(t, SKIDS);
+  const { decided, time } = t.game.run.result; assert.ok(time > decided + 0.3, `${decided} to ${time}`);
+  while (t.game.run.time < decided - 0.02) { t.game.update(DT, null, false, true); assert.equal(t.game.score, null); assert.equal(t.saved.length, 0); }
+  toVerdict(t);
+  assert.equal(t.game.score, 'Miss'); assert.equal(t.game.run.state, 'flying'); assert.equal(t.saved.length, 1); assert.equal(t.game.saved, 1);
+  const was = item(t, 'paper').position.clone();
+  for (let i = 0; i < 5; i++) t.game.update(DT, null, false, true);
+  assert.ok(item(t, 'paper').position.distanceTo(was) > 0.01, 'still going');
+  play(t, 40);
+  assert.equal(t.game.run.state, 'done'); assert.equal(t.saved.length, 1, 'not saved again at the end'); assert.equal(t.game.score, 'Miss');
+});
+
+test('from the verdict R or a click goes again, mid-roll, and nothing of the old shot comes back', () => {
+  for (const again of [t => t.game.key('KeyR', true), t => t.game.click(look(0, 0))]) {
+    const t = setup();
+    begin(t, 'paper'); throwIt(t, SKIDS);
+    t.game.click(look(0, 0)); assert.equal(t.game.run.state, 'flying', 'not undecided');
+    toVerdict(t); assert.equal(t.game.run.state, 'flying');
+    again(t);
+    assert.equal(t.game.run.state, 'aiming'); assert.equal(t.game.score, null); assert.equal(t.game.following, false); assert.equal(t.view.plays.at(-1), null);
+    assert.equal(t.hand.held, item(t, 'paper'));
+    const saves = t.saved.length;
+    for (let i = 0; i < 400; i++) t.game.update(DT, null, false, true);
+    assert.equal(t.game.score, null); assert.equal(t.saved.length, saves); assert.equal(t.hand.held, item(t, 'paper'));
+  }
+});
+
+test('the camera\'s hand-back counts from when the item really stops, not from the verdict', () => {
+  const t = setup();
+  begin(t, 'paper'); throwIt(t, SKIDS); toVerdict(t);
+  const { time } = t.game.run.result;
+  while (t.game.run.state === 'flying') { t.game.update(DT, null, false, true); assert.ok(t.view.plays.at(-1), `still on it at ${t.game.run.time} of ${time}`); }
+  for (let i = 0; i < 50; i++) t.game.update(DT, null, false, true);
+  assert.ok(t.view.plays.at(-1), 'holds');
+  for (let i = 0; i < 20; i++) t.game.update(DT, null, false, true);
+  assert.equal(t.view.plays.at(-1), null, 'back after about a second');
 });
 
 test('a shot stopped in mid-air isn\'t left floating', () => {

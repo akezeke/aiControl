@@ -32,31 +32,34 @@ export const inZone = (pos, { centre, half }) => {
 // back, a vessel's corner) can rebound in 3-4 steps and count as two touches; accepted.
 const SAME = 2.5 * STEP;
 
-// Simulates `body` to its end, consuming it (stepped in place: each shot takes a fresh body): rest, a second floor touch, or 8 s. Made: at rest inside `zone`.
+// Simulates `body` to its end, consuming it (stepped in place: each shot takes a fresh body): rest or 8 s. A second floor touch decides it there and then:
+// what the item does after that (`later`) is only played, and scores nothing even at rest in `zone`. `decided`: the time of that touch, or of the end. Made: at rest inside `zone`, undecided till then.
 export function runShot(body, zone) {
-  const last = new Map(), contacts = []; let floors = 0;
+  const last = new Map(), contacts = [], later = []; let floors = 0, decided = null;
   const out = simulate(body, shared(), { maxTime: MOST_TIME, stop(c) {
     const before = last.get(c.surface);
     if (before !== undefined && c.time - before < SAME) { last.set(c.surface, c.time); return false; }
     if (c.speed < SOFT) return false; // settling, not a hit: scores nothing, isn't a floor touch and opens no run
     last.set(c.surface, c.time);
-    contacts.push({ time: c.time, surface: c.surface, speed: c.speed, pos: body.pos.toArray() });
-    return c.surface === 'floor' && ++floors >= 2;
+    (decided === null ? contacts : later).push({ time: c.time, surface: c.surface, speed: c.speed, pos: body.pos.toArray() });
+    if (decided === null && c.surface === 'floor' && ++floors >= 2) decided = c.time;
+    return false;
   } });
-  const made = out.rest && !!zone && inZone(out.pos, zone), { points, multiplier, surfaces } = scoreContacts(contacts);
-  return { path: out.path, contacts, time: out.time, made, rest: out.rest, pos: out.pos, points, multiplier, score: made ? points * multiplier : 0, surfaces };
+  const made = decided === null && out.rest && !!zone && inZone(out.pos, zone), { points, multiplier, surfaces } = scoreContacts(contacts);
+  return { path: out.path, contacts, later, time: out.time, decided: decided ?? out.time, made, rest: out.rest, pos: out.pos, points, multiplier, score: made ? points * multiplier : 0, surfaces };
 }
 
 const RATE = 1 / (4 * STEP); // path samples per second
 const EMPTY = Object.freeze([]);
+const touch = c => ({ type: 'contact', surface: c.surface, speed: c.speed, pos: c.pos, time: c.time });
 
 export function createRun({ start, reducedMotion = false }) {
-  let from = null, clock = 0, next = 0; // from: where the item was let go; next: the first contact not yet emitted
+  let from = null, clock = 0, next = 0, hits = EMPTY; // from: where the item was let go; next: the first of hits not yet emitted
   const rate = reducedMotion ? 1 : FLIGHT;
   const run = {
-    state: 'aiming', timeScale: 1, result: null, time: 0,
-    shoot(body, zone) { from = body.pos.toArray(); run.result = runShot(body, zone); run.state = 'flying'; run.time = clock = 0; next = 0; run.timeScale = rate; },
-    reset() { run.state = 'aiming'; run.timeScale = 1; run.result = null; run.time = clock = 0; next = 0; from = null; },
+    state: 'aiming', timeScale: 1, result: null, time: 0, decided: false, // decided: the verdict's out, while the item may still be moving
+    shoot(body, zone) { from = body.pos.toArray(); run.result = runShot(body, zone); hits = [...run.result.contacts, ...run.result.later]; run.state = 'flying'; run.decided = false; run.time = clock = 0; next = 0; run.timeScale = rate; },
+    reset() { run.state = 'aiming'; run.timeScale = 1; run.result = null; run.decided = false; run.time = clock = 0; next = 0; hits = EMPTY; from = null; },
     // The item's place now: aiming, at `start`; flying, along the path (the throw point, a sample every 1/60 s, then where it ended).
     at(out) {
       const r = run.result;
@@ -66,7 +69,8 @@ export function createRun({ start, reducedMotion = false }) {
       const a = p(k), b = p(k + 1);
       return out.set(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f);
     },
-    // dt real seconds; returns the contacts passed and, once, the end. Slow motion is a rate change at a fixed time, split here so a big dt keeps it.
+    // dt real seconds; returns the contacts passed and, once each and in that order, the verdict and the end. Slow motion is a rate change at a fixed time, split here so a big dt keeps it.
+    // Only a made shot has it: that one rests undecided, so its verdict and its end are one moment.
     advance(dt) {
       const r = run.result; if (run.state !== 'flying') return EMPTY;
       const slowAt = r.made && !reducedMotion ? r.time - SLOW_FOR : Infinity, events = [];
@@ -74,7 +78,9 @@ export function createRun({ start, reducedMotion = false }) {
       if (t < slowAt) { const till = (slowAt - t) / rate; if (left < till) { t += left * rate; left = 0; } else { t = slowAt; left -= till; } }
       t += left * SLOW;
       clock = Math.min(t, r.time); run.time = clock;
-      for (; next < r.contacts.length && r.contacts[next].time <= clock; next++) { const c = r.contacts[next]; events.push({ type: 'contact', surface: c.surface, speed: c.speed, pos: c.pos, time: c.time }); }
+      const verdict = () => { run.decided = true; events.push({ type: 'verdict', result: r }); };
+      for (; next < hits.length && hits[next].time <= clock; next++) { if (!run.decided && hits[next].time > r.decided) verdict(); events.push(touch(hits[next])); }
+      if (!run.decided && clock >= r.decided) verdict();
       const over = clock >= r.time;
       if (over) { run.state = 'done'; events.push({ type: 'end', result: r }); }
       run.timeScale = over ? 1 : clock > slowAt ? SLOW : rate;
