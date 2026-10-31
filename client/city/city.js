@@ -8,6 +8,7 @@ import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
 import { groundCells, paintGround } from './ground.js';
 import { buildTower, annex, dust, crane, coolingPlant, stackPlant } from './generator.js';
+import { Bloom, glowPixels } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, Lifecycle } from './signals.js';
 import { ZOOMS, fitCanvas, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites } from './view.js';
@@ -46,6 +47,10 @@ export function mountCity(box, hooks = {}) {
   if (!ctx) throw new Error('City needs a 2D canvas');
   box.append(canvas);
   ctx.imageSmoothingEnabled = false;
+  // The glow lies over the sharp image on a canvas of its own, soft at screen scale. Without one the city is only less pretty.
+  const glowCanvas = document.createElement('canvas'), glowCtx = glowCanvas.getContext('2d'), lamps = document.createElement('canvas'), lampsCtx = lamps.getContext('2d'), bloom = glowCtx && lampsCtx ? new Bloom() : null;
+  glowCanvas.className = 'city-glow';
+  if (bloom) box.append(glowCanvas);
 
   const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
   const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(); // ghosts: what has left the plan but is still going up in dust.
@@ -60,6 +65,7 @@ export function mountCity(box, hooks = {}) {
     const rect = box.getBoundingClientRect(), next = fitCanvas(rect.width, rect.height, dpr(), camera.step);
     if (next.width === size.width && next.height === size.height && next.scale === size.scale && dpr() === ratio) return;
     size = next; ratio = dpr(); canvas.width = next.width; canvas.height = next.height; canvas.style.width = `${next.cssW}px`; canvas.style.height = `${next.cssH}px`;
+    lamps.width = next.width; lamps.height = next.height; glowCanvas.width = Math.ceil(next.cssW); glowCanvas.height = Math.ceil(next.cssH); glowCanvas.style.width = `${next.cssW}px`; glowCanvas.style.height = `${next.cssH}px`;
     ctx.imageSmoothingEnabled = false; dirty = true;
   };
   const place = () => {
@@ -116,8 +122,8 @@ export function mountCity(box, hooks = {}) {
     animating = false;
     cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${i}:${x}:${z}`, `prop:${i}`, x, z, () => ({ stack })));
     for (const { provider, x, z, connected } of plan.plants) {
-      const [make, stripe] = PLANTS[provider], on = connected && !error && !reduced;
-      stand(`plant:${provider}|${on}`, `plant:${provider}`, x, z, () => ({ stack: make(stripe, on) }));
+      const [make, stripe] = PLANTS[provider], lit = connected && !error, on = lit && !reduced;
+      stand(`plant:${provider}|${on}|${lit}`, `plant:${provider}`, x, z, () => ({ stack: make(stripe, on, lit) }));
     }
     for (const building of plan.buildings) if (towerOf(building)) building.subagents.forEach((kid, i) => annexOf(building, i, kid));
     for (const [id, ghost] of ghosts) if (!(ghost.kid ? annexOf(ghost.building, ghost.i, ghost.kid) : towerOf(ghost.building))) ghosts.delete(id);
@@ -127,6 +133,7 @@ export function mountCity(box, hooks = {}) {
   const bake = item => {
     const started = performance.now(), made = item.build(), sprite = renderSprite(made.stack, view, { dim: item.dim });
     sprite.top = made.top ?? 0; sprite.cx = made.cx ?? 0; sprite.image = toImage(sprite); sprite.shadowImage = toImage(sprite.shadow);
+    sprite.glowImage = bloom && sprite.lit.includes(1) ? toImage({ width: sprite.width, height: sprite.height, rgba: glowPixels(sprite.rgba, sprite.width, sprite.height, sprite.lit) }) : null;
     sprites.set(item.key, sprite);
     bakeMs.push(performance.now() - started); if (bakeMs.length > 500) bakeMs.shift();
     return sprite;
@@ -171,6 +178,13 @@ export function mountCity(box, hooks = {}) {
       if (!parent || !sprite.image) continue;
       const [x, y] = crown(parent), rest = parent.y + Math.round((y - parent.y) * item.rise);
       ctx.drawImage(sprite.image, x - sprite.originX, rest - item.lift - sprite.originY);
+    }
+    if (bloom) {
+      lampsCtx.clearRect(0, 0, lamps.width, lamps.height);
+      for (const { sprite, x, y } of placed) if (sprite.glowImage) lampsCtx.drawImage(sprite.glowImage, x - sprite.originX, y - sprite.originY);
+      lampsCtx.fillStyle = BEACON;
+      for (const entry of placed) if (entry.item.beacon) { const [x, y] = crown(entry); lampsCtx.fillRect(x - 1, y - 3, 3, 3); }
+      bloom.draw(glowCtx, lamps, glowCanvas.width, glowCanvas.height);
     }
     followMenu();
   };
@@ -467,7 +481,7 @@ export function mountCity(box, hooks = {}) {
       gone = true; cancel(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('pointerdown', onPress, true);
       for (const [target, type, listener] of listening) target.removeEventListener(type, listener);
       box.removeEventListener('wheel', onWheel); controls.dispose(); card.dispose(); labels.dispose(); menu.dispose();
-      sprites.clear(); shown.clear(); grounds.clear(); ghosts.clear(); fired.clear(); canvas.remove(); plan = null;
+      sprites.clear(); shown.clear(); grounds.clear(); ghosts.clear(); fired.clear(); canvas.remove(); glowCanvas.remove(); plan = null;
     },
     // For the local harness: no cost unless something calls it.
     inspect: () => ({ camera, size, view, frames, bakeMs: [...bakeMs], groundMs: [...groundMs], cached: sprites.size, plan, lots: { ...lots }, drawn, ghosts: ghosts.size, animating }),

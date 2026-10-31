@@ -1,5 +1,6 @@
 // A baked stack drawn from one of the four views: opaque pixels only, an outline round the silhouette, and a shadow for the ground. Pure.
 import { OUTLINE, hex, nearest } from './palette.js';
+import { LIT } from './stack.js';
 
 // World x, z to screen for yaw 45 + 90·view, and back. One layer is one pixel up the screen.
 export const SCREEN = [(x, z) => [x - z, (x + z) / 2], (x, z) => [-x - z, (x - z) / 2], (x, z) => [z - x, -(x + z) / 2], (x, z) => [x + z, (z - x) / 2]];
@@ -46,10 +47,10 @@ function renderShadow(stack, view) {
 export function renderSprite(stack, view, { dim = false } = {}) {
   const { w, d, h, layers } = stack, world = WORLD[view], used = [];
   for (let y = 0; y < h; y++) { const L = layers[y]; if (L) used.push(...box(L.x0 - w / 2, L.x1 + 1 - w / 2, L.z0 - d / 2, L.z1 + 1 - d / 2, y)); }
-  if (!used.length) return { width: 0, height: 0, rgba: new Uint8ClampedArray(0), originX: 0, originY: 0, mask: new Uint8Array(0), shadow: renderShadow(stack, view) };
+  if (!used.length) return { width: 0, height: 0, rgba: new Uint8ClampedArray(0), originX: 0, originY: 0, mask: new Uint8Array(0), lit: new Uint8Array(0), shadow: renderShadow(stack, view) };
   // One clear pixel all round for the outline.
   const [bx0, bx1, by0, by1] = bounds(view, used), x0 = bx0 - 1, y0 = by0 - 1, width = bx1 - bx0 + 2, height = by1 - by0 + 2, n = width * height;
-  const rgba = new Uint8ClampedArray(n * 4), mask = new Uint8Array(n), depth = new Float32Array(n).fill(-Infinity);
+  const rgba = new Uint8ClampedArray(n * 4), mask = new Uint8Array(n), lit = new Uint8Array(n), depth = new Float32Array(n).fill(-Infinity);
   for (let y = 0; y < h; y++) {
     const L = layers[y]; if (!L) continue;
     const [lx0, lx1, ly0, ly1] = bounds(view, box(L.x0 - w / 2, L.x1 + 1 - w / 2, L.z0 - d / 2, L.z1 + 1 - d / 2, y));
@@ -61,11 +62,12 @@ export function renderSprite(stack, view, { dim = false } = {}) {
         const i = (X + Z * w) * 4; if (!L.data[i + 3]) continue;
         const px = sx - x0 + (sy - y0) * width;
         if (near < depth[px]) continue;
-        depth[px] = near; mask[px] = 1;
+        depth[px] = near; mask[px] = 1; lit[px] = L.data[i + 3] === LIT ? 1 : 0;
         rgba[px * 4] = L.data[i]; rgba[px * 4 + 1] = L.data[i + 1]; rgba[px * 4 + 2] = L.data[i + 2]; rgba[px * 4 + 3] = 255;
       }
     }
   }
+  if (dim) lit.fill(0);
   if (dim) for (let i = 0; i < n; i++) if (mask[i]) {
     const P = nearest([0, 1, 2].map(k => rgba[i * 4 + k] + (DIM_TO[k] - rgba[i * 4 + k]) * .6));
     rgba[i * 4] = P[0]; rgba[i * 4 + 1] = P[1]; rgba[i * 4 + 2] = P[2];
@@ -76,8 +78,8 @@ export function renderSprite(stack, view, { dim = false } = {}) {
     const o = x + y * width;
     if ((x + 1 < width && mask[o + 1] && (!mask[o] || depth[o + 1] - depth[o] > GAP)) || (x > 0 && mask[o - 1] && (!mask[o] || depth[o - 1] - depth[o] > GAP)) || (y + 1 < height && mask[o + width] && (!mask[o] || depth[o + width] - depth[o] > GAP)) || (y > 0 && mask[o - width] && (!mask[o] || depth[o - width] - depth[o] > GAP))) lines.push(o);
   }
-  for (const o of lines) { mask[o] = 1; rgba[o * 4] = INK[0]; rgba[o * 4 + 1] = INK[1]; rgba[o * 4 + 2] = INK[2]; rgba[o * 4 + 3] = 255; }
-  return { width, height, rgba, originX: -x0, originY: -y0, mask, shadow: renderShadow(stack, view) };
+  for (const o of lines) { mask[o] = 1; lit[o] = 0; rgba[o * 4] = INK[0]; rgba[o * 4 + 1] = INK[1]; rgba[o * 4 + 2] = INK[2]; rgba[o * 4 + 3] = 255; }
+  return { width, height, rgba, originX: -x0, originY: -y0, mask, lit, shadow: renderShadow(stack, view) };
 }
 
 // Recently used sprites stay; the rest get rebuilt when they're next on screen.

@@ -103,17 +103,18 @@ export function crane(on) {
 }
 const puffs = (S, x, y, z, seed, n = 7) => { const c = [hex('#f6f0e0'), hex('#e0dccf')]; for (let i = 0; i < n; i++) { const a = i / n, r = 1.4 + a * 2, X = x + a * 5, Y = y + a * 13, Z = z + (hash(i, seed) - .5) * 2; S.shape(Math.floor(X - r), Math.ceil(X + r), Math.floor(Y - r), Math.ceil(Y + r), Math.floor(Z - r), Math.ceil(Z + r), (p, q, u) => Math.hypot(p - X, q - Y, u - Z) <= r ? c[i % 2] : null); } };
 // Two cooling towers. Their stripe and steam show the Claude limit.
-export function coolingPlant(stripe, steam = true) {
-  const S = new Stack(36, 26, 50), c = hex('#9babb2'), st = hex(stripe);
+// `lit` while the agent is connected: stripes glow whether or not reduced motion took the steam away.
+export function coolingPlant(stripe, steam = true, lit = steam) {
+  const S = new Stack(36, 26, 50), c = hex('#9babb2'), st = lit ? glow(stripe) : hex(stripe);
   S.box(0, 0, 0, 30, 1, 20, hex('#9babb2'));
   for (const x of [-7, 7]) { for (let y = 0; y < 24; y++) { const a = y / 23, r = 6.6 - 3 * Math.sin(a * Math.PI * .72); S.cyl(x, y + 1, 0, r, 1, y > 16 && y < 21 ? st : c); } S.cyl(x, 25, 0, 3, 1, hex('#2b3040')); if (steam) puffs(S, x, 28, 0, x + 40); }
   return S.bake();
 }
 // A turbine hall and two striped stacks for the Codex limit.
-export function stackPlant(stripe, steam = true) {
-  const S = new Stack(36, 26, 54), g = hex('#9aa0b4'), st = hex(stripe);
+export function stackPlant(stripe, steam = true, lit = steam) {
+  const S = new Stack(36, 26, 54), g = hex('#9aa0b4'), st = hex(stripe), band = lit ? glow(stripe) : st;
   S.box(0, 0, 0, 30, 1, 20, hex('#9babb2'));
   S.box(0, 1, 2, 24, 9, 13, (X, Y, Z, f) => f === 'top' ? st : Y % 3 === 0 ? mul(g, .85) : g);
-  for (const x of [-7, 5]) { for (let y = 0; y < 28; y++) S.cyl(x, y + 1, -7, 2.4, 1, Math.floor(y / 5) % 2 ? hex('#fdcbb0') : st); if (steam) puffs(S, x, 31, -7, x + 80); }
+  for (const x of [-7, 5]) { for (let y = 0; y < 28; y++) S.cyl(x, y + 1, -7, 2.4, 1, Math.floor(y / 5) % 2 ? hex('#fdcbb0') : band); if (steam) puffs(S, x, 31, -7, x + 80); }
   return S.bake();
 }

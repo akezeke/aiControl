@@ -1,6 +1,8 @@
 // Sprite stacking: every object is a pile of horizontal slices, each lifted a pixel when drawn. Pure.
 import { nearest, RAMPS } from './palette.js';
 
+// In a baked layer's alpha: solid, and a lamp rather than a surface the sun falls on.
+export const LIT = 254;
 const CREAM = [255, 244, 214], INDIGO = [46, 42, 96], mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 
 export class Stack {
@@ -32,7 +34,7 @@ export class Stack {
         }
         const i = (x + z * w) * 4;
         const P = nearest(out); for (let n = 0; n < 3; n++) data[i + n] = P[n];
-        data[i + 3] = 255;
+        data[i + 3] = c.unlit ? LIT : 255;
         if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z;
       }
       this.layers.push(x1 < 0 ? null : { data, x0, x1, z0, z1 });
