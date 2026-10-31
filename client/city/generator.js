@@ -95,6 +95,24 @@ export function car(colour, along) {
   return S.bake();
 }
 
+// A little sailing boat, pointed at both ends so it reads as one from any side. `dir` is which way along its axis it's heading: the wake is behind it and the sail leans ahead of the mast.
+export function boat(colour, along, dir, wake = true) {
+  const S = new Stack(26, 26, 15), put = (u, y, v, w, h, d, c) => along ? S.box(u, y, v, w, h, d, c) : S.box(v, y, u, d, h, w, c), foam = hex('#8ff8e2');
+  for (let u = -6; u <= 6; u++) { const w = Math.abs(u) > 5 ? 1 : Math.abs(u) > 3 ? 3 : 5; put(u, 0, 0, 1, 3, w, hex(colour)); if (w > 1) put(u, 3, 0, 1, 1, w - 2, hex('#966c6c')); }
+  put(0, 3, 0, 1, 10, 1, hex('#45293f'));
+  for (let y = 0; y < 9; y++) { const w = 8 - y; put(dir * (1 + w / 2), 4 + y, 0, w, 1, 1, hex('#f6f0e0')); }
+  if (wake) for (let i = 1; i <= 5; i++) { if (i % 2) put(-dir * (6 + i), 0, -2 - (i >> 1), 1, 1, 1, foam); put(-dir * (6 + i), 0, 2 + (i >> 1), 1, 1, 1, foam); }
+  return S.bake();
+}
+// The one thing on the island. Striped and windowless, so nobody takes it for a session's tower.
+export function lighthouse() {
+  const S = new Stack(14, 14, 30);
+  S.cyl(0, 0, 0, 5, 2, hex('#9babb2'));
+  for (let y = 0; y < 20; y++) S.cyl(0, y + 2, 0, 3.4 - y * .05, 1, hex(Math.floor(y / 5) % 2 ? '#f6f0e0' : '#e83b3b'));
+  S.cyl(0, 22, 0, 4, 1, hex('#3e3546')); S.cyl(0, 23, 0, 2.4, 3, glow('#fbff86')); S.cyl(0, 26, 0, 3.2, 1, hex('#e83b3b')); S.cyl(0, 27, 0, 1.6, 1, hex('#e83b3b'));
+  return S.bake();
+}
+
 // Compacting: the top storeys come off in a cloud of dust.
 export function dust(w) {
   const R = Math.ceil(w / 2) + 6, S = new Stack(R * 2, R * 2, 16), c = [hex('#f6f0e0'), hex('#dcd5c6')];

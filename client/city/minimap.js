@@ -1,7 +1,7 @@
 // The sidebar's site plan: the real island, roads and lots from the camera's angle, each session's tower on its own lot, and a box round what the camera sees.
 import { screen, annexAt, lotAt, unproject, LOT, ROAD, WALK } from './plan.js';
 import { hex } from './palette.js';
-import { LAND, LAND_FAR, lotLook, reachOf, soilOf } from './ground.js';
+import { LAND, LAND_EAST, LAND_FAR, lotLook, reachOf, soilOf } from './ground.js';
 
 export const MAP_PX = 2;
 const SEA = hex('#0b5e65'), RIPPLE = hex('#0b8a8f'), SAND = hex('#c9a98e'), TARMAC = hex('#2e222f'), POND = hex('#0b8a8f'), PAVED = hex('#7f5f5a'), PLANT = hex('#9babb2'), INK = hex('#2e222f');
@@ -10,7 +10,7 @@ const blend = (a, b, t) => [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1
 const riseOf = storeys => Math.max(MIN_H, Math.min(MAX_H, Math.round(storeys * .6) + 1));
 
 export function mapFit(plan, view, width, height) {
-  const { w, d } = plan.bounds, at = [[-LAND, -LAND], [w + LAND_FAR, -LAND], [-LAND, d + LAND_FAR], [w + LAND_FAR, d + LAND_FAR]].map(([x, z]) => screen(x, z, view));
+  const { w, d } = plan.bounds, at = [[-LAND, -LAND], [w + LAND_EAST, -LAND], [-LAND, d + LAND_FAR], [w + LAND_EAST, d + LAND_FAR]].map(([x, z]) => screen(x, z, view));
   const xs = at.map(p => p[0]), ys = at.map(p => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const scale = Math.min(width / (x1 - x0), height / (y1 - y0));
   return { scale, ox: (width - (x0 + x1) * scale) / 2, oy: (height - (y0 + y1) * scale) / 2 };

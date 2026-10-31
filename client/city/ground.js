@@ -1,7 +1,7 @@
 // The ground the city stands on: every road, parcel and lot in a flat grid of cells, baked once per view. Pure.
 import { hex, nearest } from './palette.js';
 import { fnv } from './identity.js';
-import { fountain, car, tree, lamp } from './generator.js';
+import { fountain, car, tree, lamp, boat, lighthouse } from './generator.js';
 import { LOT, PLOT, ROAD, WALK, PLANT, unproject, screen } from './plan.js';
 import { SHADOW } from './sprite.js';
 
@@ -36,8 +36,17 @@ const meadow = (x, z, soil) => { const n = mix(x, z); return patch(x, z) > .55 ?
 // Rebuilding a stack is the slow part and only a few dozen ever exist, so the same tree is the same object.
 const stacks = new Map(), once = (key, make) => { if (!stacks.has(key)) stacks.set(key, make()); return stacks.get(key); };
 
-// An island: the distance past the edge of a rounded box, made uneven by a couple of slow waves.
-export const reachOf = (W, D) => (x, z) => { const qx = Math.abs(x - (W + LAND_FAR - LAND) / 2) - (W + LAND_FAR + LAND) / 2 + CORNER, qz = Math.abs(z - (D + LAND_FAR - LAND) / 2) - (D + LAND_FAR + LAND) / 2 + CORNER; return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - CORNER + Math.sin(x / 23) * 3 + Math.sin(z / 17) * 2; };
+// Off the east shore a little island with a bridge to it, and a pier from the south shore. Where they are, for the ground, the map and whatever sails past.
+const ISLE_OFF = 70, ISLE_R = 27, DECK = 12, PIER_W = 8, PIER_OUT = 46;
+export const coastOf = (W, D) => {
+  const x = W + LAND_FAR + ISLE_OFF, z = Math.round(D * .38), px = Math.round(W * .4);
+  return { isle: { x, z, r: ISLE_R }, bridge: { x0: W + LAND_FAR - 8, x1: x - ISLE_R + 6, z, deck: DECK }, pier: { x: px, z0: D + LAND_FAR - 2, z1: D + LAND_FAR + PIER_OUT, w: PIER_W } };
+};
+// How far the east of the land reaches now, island and all.
+export const LAND_EAST = LAND_FAR + ISLE_OFF + ISLE_R + 8;
+// The land: the distance past the edge of a rounded box, made uneven by a couple of slow waves, or past the island's, whichever is nearer.
+export const reachOf = (W, D) => { const main = mainReach(W, D), { isle } = coastOf(W, D); return (x, z) => Math.min(main(x, z), Math.hypot(x - isle.x, (z - isle.z) * 1.08) - isle.r + Math.sin(x / 7) * 1.5 + Math.sin(z / 5) * 1.2); };
+const mainReach = (W, D) => (x, z) => { const qx = Math.abs(x - (W + LAND_FAR - LAND) / 2) - (W + LAND_FAR + LAND) / 2 + CORNER, qz = Math.abs(z - (D + LAND_FAR - LAND) / 2) - (D + LAND_FAR + LAND) / 2 + CORNER; return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - CORNER + Math.sin(x / 23) * 3 + Math.sin(z / 17) * 2; };
 // The slow part of the ground, and the part a new session doesn't change, so it's only painted when the city changes size.
 let land = { key: '', rgb: null, shore: [], past: [], glint: [] };
 function landscape(W, D, x0, z0, w, d, time) {
@@ -58,10 +67,11 @@ function landscape(W, D, x0, z0, w, d, time) {
 export function groundCells(plan, time = 'day') {
   const { w: W, d: D } = plan.bounds, x0 = -MARGIN, z0 = -MARGIN, w = W + MARGIN * 2, d = D + MARGIN * 2, rgb = new Uint8Array(w * d * 3), props = [], soil = soilOf(time), lawn = soil.land;
   const set = (x, z, c) => { const a = Math.floor(x) - x0, b = Math.floor(z) - z0; if (a < 0 || b < 0 || a >= w || b >= d) return; const i = (a + b * w) * 3; rgb[i] = c[0]; rgb[i + 1] = c[1]; rgb[i + 2] = c[2]; };
-  const rect = (x, z, W2, D2, c) => { for (let b = 0; b < D2; b++) for (let a = 0; a < W2; a++) set(x + a, z + b, typeof c === 'function' ? c(a, b) : c); };
+  const rect = (x, z, W2, D2, c) => { for (let b = 0; b < D2; b++) for (let a = 0; a < W2; a++) { const colour = typeof c === 'function' ? c(a, b) : c; if (colour) set(x + a, z + b, colour); } };
   const prop = (stack, x, z) => props.push({ stack, x, z });
   const coast = landscape(W, D, x0, z0, w, d, time);
   rgb.set(coast.rgb);
+  const reach = reachOf(W, D);
   rect(0, 0, W, D, C.block);
 
   // Roads run the length of the city; a walk either side, dashes down the middle, a crossing at each junction.
@@ -106,7 +116,8 @@ export function groundCells(plan, time = 'day') {
   for (let z = -LAND; z < D + LAND_FAR; z += TREE_GRID) for (let x = -LAND; x < W + LAND_FAR; x += TREE_GRID) {
     const n = mix(x, z), X = x + n % 9, Z = z + (n >>> 8) % 9;
     if (X > -12 && Z > -12 && X < W + 12 && Z < D + 12) continue;
-    if (reachOf(W, D)(X, Z) > -10 || patch(X, Z) < .1 || n % 3 === 0) continue;
+    if (reach(X, Z) > -10 || patch(X, Z) < .1 || n % 3 === 0) continue;
+    { const { bridge: b, pier: q } = coastOf(W, D); if (X > W && Math.abs(Z - b.z) < 14 || Z > D && Math.abs(X - q.x) < 14) continue; }
     if (plan.plants.some(plant => Math.hypot(X - plant.x, Z - plant.z) < 36 || (plant.provider === 'claude' ? X < 0 && Math.abs(Z - plant.z) < 16 : Z < 0 && Math.abs(X - plant.x) < 16))) continue;
     const seed = n % 9; prop(once(`tree${seed}`, () => tree(seed)), X, Z);
   }
@@ -116,6 +127,28 @@ export function groundCells(plan, time = 'day') {
     if (plant.provider === 'claude') road(-PLANT + 16, plant.z - 9, PLANT - 16, ROADW);
     else road(plant.x - 9, -PLANT + 12, ROADW, PLANT - 12);
     rect(plant.x - 18, plant.z - 14, 36, 28, C.walk);
+  }
+
+  // The bridge and the pier: laid over everything, so a spur of road reaches each. Their shadows on the water are painted, since they aren't standing on anything.
+  const { isle, bridge, pier } = coastOf(W, D), half = DECK >> 1, plank = hex('#7f5f5a'), rail = hex('#c7dcd0'), post = hex('#45293f');
+  const onLand = (a0, n) => rect(a0, bridge.z - half, n, DECK, (a, b) => b === 0 || b === DECK - 1 ? C.walk : b === half - 1 || b === half ? (a % 8 < 4 ? C.dash : C.road) : C.road);
+  onLand(W, bridge.x0 - W); onLand(bridge.x1, isle.x - 10 - bridge.x1);
+  rect(bridge.x0, bridge.z + half, bridge.x1 - bridge.x0, 2, (a, b) => reach(bridge.x0 + a, bridge.z + half + b) >= 4 ? C.shadow : null);
+  rect(bridge.x0, bridge.z - half, bridge.x1 - bridge.x0, DECK, (a, b) => b === 0 || b === DECK - 1 ? (a % 4 ? rail : post) : b === half - 1 || b === half ? (a % 8 < 4 ? C.dash : C.road) : C.road);
+  // The island's end of it: a turning circle, with a lighthouse beyond and a few trees round about.
+  const round = (cx, cz, r, c) => { for (let b = -r; b <= r; b++) for (let a = -r; a <= r; a++) if (a * a + b * b <= r * r) set(cx + a, cz + b, c); };
+  round(isle.x - 4, isle.z, 12, C.walk); round(isle.x - 4, isle.z, 9, C.road); round(isle.x - 4, isle.z, 4, soil.land2);
+  rect(pier.x - 1, D, 3, pier.z0 - D, C.trail);
+  rect(pier.x + (PIER_W >> 1), pier.z0, 2, pier.z1 - pier.z0, (a, b) => reach(pier.x, pier.z0 + b) >= 4 ? C.shadow : null);
+  for (let i = 0; i < 2; i++) rect(pier.x - (PIER_W >> 1) + (i ? PIER_W : -1), pier.z0, 1, pier.z1 - pier.z0, (a, b) => reach(pier.x, pier.z0 + b) >= 4 && b % 6 === 0 ? post : null);
+  rect(pier.x - (PIER_W >> 1), pier.z0, PIER_W, pier.z1 - pier.z0, (a, b) => b % 2 ? plank : hex('#966c6c'));
+  prop(lighthouse(), isle.x + 13, isle.z - 3);
+  prop(lamp(), pier.x + (PIER_W >> 1) - 1, pier.z1 - 1);
+  prop(once('moored', () => boat('#e83b3b', false, 1, false)), pier.x - 12, pier.z1 - 12);
+  for (let i = 0; i < 9; i++) {
+    const n = mix(i, 11), a = i * 2.4 + n % 6, r = isle.r - 7 - n % 5, X = Math.round(isle.x + Math.cos(a) * r), Z = Math.round(isle.z + Math.sin(a) * r);
+    if (X < isle.x - 16 && Math.abs(Z - isle.z) < half + 6 || Math.hypot(X - isle.x + 4, Z - isle.z) < 16 || Math.hypot(X - isle.x - 13, Z - isle.z + 3) < 11 || reach(X, Z) > -4) continue;
+    const seed = n % 9; prop(once(`tree${seed}`, () => tree(seed)), X, Z);
   }
 
   // The props' shadows lie on the ground for good. A building's is its own sprite, because it changes height.
