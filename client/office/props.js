@@ -214,7 +214,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     grab(b) {
       if (holding || b.held || b.pos.distanceTo(player.position) > REACH) return;
       if (!b.free) free(b);
-      holding = b; b.held = true; b.carried = null; b.fromHand = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); hand.hold(null, b.kind.radius);
+      holding = b; b.held = true; b.carried = null; b.fromHand = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); hand.hold(null, b.kind.radius, b.kind.low);
       b.grip.setFromAxisAngle(UP, -player.yaw).multiply(b.turn);
       if (aimed === b) props.aim(null);
     },

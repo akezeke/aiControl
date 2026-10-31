@@ -1,6 +1,7 @@
 // One way of throwing, for the office's loose things and whatever else you can have in hand: hold to charge, let go to throw, in
 // a hand built like the one that throws darts. No document or window here, so what a throw does can be tested in Node.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { STEP, makeBody, simulate, stopShort } from './flight.js';
 import { toonMaterial } from './toon.js';
 
@@ -154,21 +155,44 @@ export function handModel() {
   return { arm, grip, fist };
 }
 
-// What you're holding sits at `palm`, the fist under it, sized to it. A real mesh goes with the hand, and clicks go through it
+// The hand round something `radius` wide, reaching `low` below its middle (which is at the origin): as chunky to look at as the mug's hand (camera.js), for
+// being further off. All one draw, in the mug's ink, so a finger only shows by its outline: each ends at its own place up the right, a bump apiece. They're arcs round the
+// thing, seen across it, from the palm under it, their ends turned in over its edge towards you. The thumb's a short one the other way up the left, hugging it too, so it never stands up by itself. The arm runs off the bottom left, the mug's mirrored.
+const SEEN = 0.8 / 0.62, TUBE = 0.0105 * SEEN, THUMB = 0.011 * SEEN, ARM = 0.02 * SEEN * 0.9, ANGLE = Math.PI / 180;
+const PALM_AT = -115 * ANGLE, TIP = 25 * ANGLE, FINGER_LONG = 0.27, THUMB_LONG = 0.15, FINGERS_Z = [2.4, 1.2, 0].map(z => z * TUBE);
+const curled = (ax, ay, z, over, from, to, tube) => {
+  const at = u => { const t = from + (to - from) * u, turn = Math.max(0, (u - 0.5) * 2) ** 2, near = 1 - 0.12 * turn; return new THREE.Vector3(ax * Math.cos(t) * near, ay * Math.sin(t) * near, z + over * turn); };
+  const end = at(1);
+  return [new THREE.TubeGeometry(new THREE.CatmullRomCurve3(Array.from({ length: 9 }, (_, i) => at(i / 8))), 14, tube, 8), new THREE.SphereGeometry(tube, 8, 6).translate(end.x, end.y, end.z)];
+};
+function gripping(radius, low) {
+  const across = radius + TUBE * 0.7, under = low + TUBE * 0.7, over = radius * 0.5;
+  const top = Math.min(TIP, PALM_AT + FINGER_LONG / across), apart = Math.min(32 * ANGLE, 2.1 * TUBE / across); // each a finger's width below the last
+  const fingers = FINGERS_Z.flatMap((z, i) => curled(across, under, z, over, PALM_AT, top - i * apart, TUBE));
+  const thumb = curled(across + (THUMB - TUBE) * 0.7, under, TUBE * 2, over, PALM_AT - 12 * ANGLE, Math.max(-210 * ANGLE, PALM_AT - 12 * ANGLE - THUMB_LONG / across), THUMB);
+  const palm = new THREE.Vector3(across * Math.cos(PALM_AT), under * Math.sin(PALM_AT) - 0.022, TUBE * 2), wrist = palm.clone().add(new THREE.Vector3(-0.034, -0.03, 0.03));
+  const here = HOLD.clone().negate(), arm = new THREE.QuadraticBezierCurve3(wrist, new THREE.Vector3(-0.42, -0.34, -0.55).add(here), new THREE.Vector3(-0.62, -0.75, -0.25).add(here));
+  const parts = [...fingers, ...thumb, new THREE.SphereGeometry(0.038 * SEEN, 14, 10).scale(1.1, 0.8, 1.15).rotateZ(0.5).translate(palm.x, palm.y, palm.z), new THREE.TubeGeometry(arm, 16, ARM, 8), new THREE.SphereGeometry(ARM * 1.05, 12, 8).translate(wrist.x, wrist.y, wrist.z)];
+  const whole = mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g)); parts.forEach(g => g.dispose());
+  return whole;
+}
+
+// What you're holding sits at `palm`, the hand round it, fitted to it. A real mesh goes with the hand, and clicks go through it
 // till it's let go of. A thing that isn't one (null: an instance of a mesh of balls) is kept at `palm` by its owner.
 // `hands.userData.full`: you don't sip from your mug with it.
 export function createHand(hands) {
-  const palm = new THREE.Group(), { arm, fist } = handModel();
-  palm.position.copy(HOLD); palm.visible = false; palm.add(arm); hands.add(palm);
+  const palm = new THREE.Group(), fits = new Map(), body = new THREE.Mesh(new THREE.BufferGeometry(), toonMaterial('#26252b'));
+  palm.position.copy(HOLD); palm.visible = false; palm.add(body); hands.add(palm);
   const ignored = () => {}, ignore = node => { if (!Object.hasOwn(node, 'raycast')) node.raycast = ignored; }, notice = node => { if (node.raycast === ignored) delete node.raycast; };
   palm.traverse(ignore);
   let held = null;
   const letGo = () => { if (!held) return; held.traverse(notice); held.removeFromParent(); held = null; };
   const hand = {
     palm,
-    hold(mesh, radius) {
-      const size = 1.6 + radius * 12;
-      arm.scale.setScalar(size); arm.position.set(0, -radius - FINGERS * size * 0.4, radius * 0.2).addScaledVector(fist, -size);
+    // `low`: how far it reaches below its middle, for what's flatter than it's wide.
+    hold(mesh, radius, low = radius) {
+      const key = `${radius}:${low}`; if (!fits.has(key)) fits.set(key, gripping(radius, low));
+      body.geometry = fits.get(key);
       letGo(); held = mesh; if (mesh) { palm.add(mesh); mesh.position.set(0, 0, 0); mesh.traverse(ignore); }
       palm.visible = hands.userData.full = true;
     },

@@ -63,7 +63,23 @@ test('the hand keeps out of what a click finds', () => {
     ray.set(centre.clone().setZ(centre.z + 5), new THREE.Vector3(0, 0, -1));
     assert.equal(ray.intersectObject(node, false).length, 0);
   });
-  assert.ok(meshes > 3);
+  assert.ok(meshes >= 1);
+});
+const ITEMS = [[0.03, 0.015], [0.04, 0.04], [0.045, 0.045], [0.06, 0.05], [0.07, 0.05], [0.08, 0.012], [0.11, 0.11], [0.12, 0.054], [0.16, 0.13]];
+const handBody = (radius, low) => { const hand = createHand(new THREE.Group()); hand.hold(null, radius, low); let body; hand.palm.traverse(n => { if (n.isMesh) body = n; }); return body.geometry; };
+test('the hand holds round what it holds, whatever its size: palm under it, fingers up the right, thumb up the left, the arm off the bottom left', () => {
+  for (const [radius, low] of ITEMS) {
+    const at = handBody(radius, low).attributes.position, v = new THREE.Vector3(); let right = -9, left = 9, top = -9;
+    for (let i = 0; i < at.count; i++) { v.fromBufferAttribute(at, i); if (v.y > -low * 0.5) { right = Math.max(right, v.x); left = Math.min(left, v.x); top = Math.max(top, v.y); } }
+    assert.ok(right > radius * 0.5 && left < -radius * 0.5, `round both sides of ${radius}: ${left}, ${right}`);
+    assert.ok(top < radius + 0.03, `nothing stands up over it: ${top}`);
+    const box = new THREE.Box3().setFromBufferAttribute(at);
+    assert.ok(box.min.x < -0.3 && box.min.y < -0.45, `the arm goes off the bottom left: ${box.min.x}, ${box.min.y}`);
+  }
+});
+test('a hand fitted once is kept, and what\'s flatter than it\'s wide gets a flatter one', () => {
+  const hand = createHand(new THREE.Group()); let body; hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });
+  const flat = body.geometry; hand.hold(null, 0.08); assert.ok(body.geometry !== flat); hand.hold(null, 0.08, 0.012); assert.ok(body.geometry === flat);
 });
 test('the arm runs off to the bottom left of the fist, for the darts as it did', () => {
   const { arm, grip, fist } = handModel(), box = new THREE.Box3().setFromObject(arm);

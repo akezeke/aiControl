@@ -103,7 +103,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   // Your eyes, in the room's frame: on the mark, where a shot's camera move has no say.
   const eyeNow = () => { const { x, z } = STARTS[entry.start]; return eye.set(x, EYE, z); };
   const palmNow = () => { const { x, z } = kitchen.origin; hand.palm.getWorldPosition(palm); palm.x -= x; palm.z -= z; return palm; };
-  const inHand = () => { mesh.rotation.set(0, 0, 0); hand.hold(mesh, kind.radius); };
+  const inHand = () => { mesh.rotation.set(0, 0, 0); hand.hold(mesh, kind.radius, kind.low); };
   // The marker: over the target, under what's over that (a sink's cupboards), and higher if that's what it takes to see its tip from the mark (the bin's behind the orange from the stove).
   const overTarget = () => {
     const { centre, half } = ZONES[entry.target], top = centre.y + half.y, x = centre.x + (entry.target === 'sink' ? TAP_ASIDE : 0), { colliders } = flightWorld(); bob = 0; eyeNow();
