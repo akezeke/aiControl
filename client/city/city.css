@@ -36,24 +36,25 @@
 .city-labels { position: absolute; inset: 0; z-index: 1000; overflow: hidden; pointer-events: none; }
 .city-labels > * { position: absolute; left: 0; top: 0; width: max-content; pointer-events: auto; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); will-change: transform; }
 .city-labels > [hidden] { display: none; }
-.city-bubble { --bubble: #fbf5ef; --bubble-edge: #c7dcd0; display: flex; align-items: center; gap: 4px; max-width: 132px; min-height: 24px; padding: 2px 6px 4px; background-color: var(--bubble); box-shadow: inset 0 -2px 0 var(--bubble-edge); color: #2e222f; cursor: pointer; z-index: 2; }
+.city-bubble { --bubble: #fbf5ef; --bubble-edge: #c7dcd0; display: flex; align-items: center; gap: 4px; max-width: 176px; min-height: 24px; padding: 2px 6px 4px; background-color: var(--bubble); box-shadow: inset 0 -2px 0 var(--bubble-edge); color: #2e222f; cursor: pointer; z-index: 2; }
 .city-bubble .icon { flex: none; width: 14px; height: 14px; image-rendering: pixelated; }
 .city-bubble .body { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
 .city-bubble .name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 700 12px/1.25 var(--font, system-ui, sans-serif); }
 .city-bubble .said { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.city-bubble .text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.city-bubble .text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 12px/1.25 var(--font, system-ui, sans-serif); }
 /* Stairs, 10 px wide over the bubble's bottom edge and down to 2: the dark outline, and the fill inside it. */
 .city-bubble .tail { position: absolute; top: 100%; width: 10px; height: 6px; margin-left: -5px; background: #2e222f; clip-path: polygon(0 0, 10px 0, 10px 2px, 8px 2px, 8px 4px, 6px 4px, 6px 6px, 4px 6px, 4px 4px, 2px 4px, 2px 2px, 0 2px); }
 .city-bubble .tail::after { content: ''; position: absolute; inset: 0; background: var(--bubble); clip-path: polygon(2px 0, 8px 0, 8px 2px, 6px 2px, 6px 4px, 4px 4px, 4px 2px, 2px 2px); }
 .city-bubble .dot { display: none; flex: none; width: 6px; height: 6px; background: #e83b3b; box-shadow: 0 0 0 2px #2e222f; margin: 0 2px; }
 .city-bubble.unread .dot { display: block; }
 .city-bubble.working { --bubble: #91db69; --bubble-edge: #1ebc73; z-index: 2; }
-.city-bubble.asleep { --bubble: #8b93af; --bubble-edge: #6d758d; }
+.city-bubble.asleep { --bubble: #a9b1c6; --bubble-edge: #8b93af; }
 .city-bubble.high { --bubble: #f9c22b; --bubble-edge: #f79617; z-index: 3; }
+/* Set back in grey, never faded: it still has to be read, over whatever is behind it. */
+.city-bubble.dim { --bubble: #9babb2; --bubble-edge: #7f8b92; }
 .city-bubble:hover { --bubble: #fff; --bubble-edge: #9babb2; z-index: 4; }
 .city-bubble:focus-visible, .city-sign:focus-visible { outline: 2px solid #fff; outline-offset: 1px; z-index: 4; }
-.city-bubble.dim { opacity: .55; }
-.city-labels.near .city-bubble { max-width: 208px; }
+.city-labels.near .city-bubble { max-width: 248px; }
 .city-bubble.terse .text { display: none; }
 .city-labels.icons .city-bubble:not(.high) :is(.text, .name) { display: none; }
 .city-labels.icons .city-bubble.bare:not(.high) { display: none; }
