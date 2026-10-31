@@ -20,7 +20,7 @@ const pixels = path => `<svg viewBox="0 0 16 16" width="16" height="16" fill="cu
 const FOLDER = 'M1 3h6v2h8v9H1zM3 7v5h10V7z';
 
 // Anchors are in the city's screen coordinates: `project` turns them into CSS pixels, so a pan only has to rewrite transforms.
-export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, inTheWay = () => [] }) {
+export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, onPlantHover = () => {}, onPlantTap = () => {}, inTheWay = () => [] }) {
   const layer = document.createElement('div'); layer.className = 'city-labels'; box.append(layer);
   const shown = new Map();
   let project = null, width = 0, height = 0;
@@ -107,12 +107,17 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, i
       }
       sweep('s:', keep);
     },
-    // tags: [{ key, text, title, high, ax, ay }]
+    // tags: [{ key, text, title, high, ax, ay, plant }]. A plant's stands over its chimneys, so it answers for the plant.
     tags(list) {
       const keep = new Set();
-      for (const { key, text, title, high, meter, ax, ay } of list) {
+      for (const { key, text, title, high, meter, ax, ay, plant } of list) {
         const id = `t:${key}`; keep.add(id);
         const entry = shown.get(id) || add(id, 'div', 'city-tag');
+        if (plant) {
+          entry.node.onpointerenter = event => { if (event.pointerType === 'mouse') onPlantHover(plant); };
+          entry.node.onpointerleave = () => onPlantHover(null);
+          entry.node.onclick = event => { if (event.pointerType !== 'mouse') onPlantTap(plant); };
+        }
         if (entry.sig !== text) { entry.sig = text; entry.w = null; entry.node.textContent = text; }
         entry.node.title = title; entry.node.classList.toggle('high', !!high); entry.node.classList.toggle('gauge', meter !== undefined);
         if (meter !== undefined) entry.node.style.setProperty('--used', `${Math.min(100, Math.max(0, meter))}%`);

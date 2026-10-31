@@ -13,6 +13,7 @@ import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
 import { hop, hum, phaseAt, sparks, STEAM_MS, traffic, BURSTS, burst, momentOf, jibBeat } from './juice.js';
 import { boatsAt, seaFrame, SEA_FRAMES, SEA_KINDS } from './surroundings.js';
+import { powerRoutes, pulsesAt, routeDots } from './power.js';
 import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf, keyPan } from './view.js';
 import { createControls, createLabels } from './labels.js';
 import { paintMap, trackMap, steerMap } from './minimap.js';
@@ -33,6 +34,7 @@ const PLUME = [6, 10, 14, 18], PLUME_LIFT = 3, PUFF = [14, 22, 30, 36];
 // A session the server won't let go of comes back rather than leaving a lot that looks empty and isn't.
 const FIRED_MS = VACANT_MS + 10_000;
 const BOAT_SAILS = ['#e83b3b', '#0eaf9b', '#f9c22b'];
+const POWER = { claude: '#e83b3b', codex: '#0eaf9b' }, POWER_HEAD = '#fbff86', POWER_DOTS = 6;
 const PLANTS = { claude: [coolingPlant, '#e83b3b'], codex: [stackPlant, '#0eaf9b'] };
 
 export function webglAvailable() {
@@ -73,7 +75,7 @@ export function mountCity(box, hooks = {}) {
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', glowDrawn = '', seaNow = null, seaFrameDrawn = 0, failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
-  let glide = null, coast = null, drawn = [], selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
+  let glide = null, coast = null, drawn = [], plantsDrawn = [], routes = [], pulses = [], litPlant = null, selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
   const fit = () => {
@@ -95,6 +97,7 @@ export function mountCity(box, hooks = {}) {
 
   const passes = id => { const session = sessions.get(id); return !!session && test(session); };
   const dimmed = (building, id = building.id) => !!selectedHood && building.hoodKey !== selectedHood || !!test && !passes(id);
+  const dimmedId = id => { const building = plan.buildings.find(b => b.id === id); return !building || dimmed(building); };
   const signalOf = id => {
     const session = sessions.get(id), plant = plan.plants.find(p => p.provider === session?.provider);
     return session ? citySignal(session, { connected: !error && plant?.connected !== false }) : { windows: 'dark', twinkle: false };
@@ -174,7 +177,7 @@ export function mountCity(box, hooks = {}) {
     for (const { provider, key, x, z, connected } of plan.plants) {
       const [make, stripe] = PLANTS[provider], lit = connected && !error, on = lit && !reduced, phase = on ? Math.floor(now / STEAM_MS) % 4 : 0;
       if (on) steaming = true;
-      stand(`plant:${provider}|${on}|${lit}|${phase}`, `plant:${key}`, x, z, () => ({ stack: make(stripe, on, lit, phase) }), null, quiet);
+      stand(`plant:${provider}|${on}|${lit}|${phase}`, `plant:${key}`, x, z, () => ({ stack: make(stripe, on, lit, phase) }), null, quiet, { plant: key });
     }
     for (const building of plan.buildings) if (towerOf(building)) building.subagents.forEach((kid, i) => annexOf(building, i, kid));
     if (!reduced) {
@@ -253,6 +256,16 @@ export function mountCity(box, hooks = {}) {
       for (const pixel of pixels) { target.fillStyle = pixel.colour; target.fillRect(ax + pixel.x, ay + pixel.y, pixel.size, pixel.size); }
     }
   };
+  // On the road, under everything standing. A plant being looked at shows every tower it feeds; otherwise only those drawing power show, as sparks.
+  const paintPower = () => {
+    const [gx, gy] = toCanvas(camera, size, 0, 0), at = (x, z) => { const [sx, sy] = screen(x, z, view); return [Math.floor(sx) + gx, Math.floor(sy) + gy]; };
+    if (litPlant) {
+      const plant = plan.plants.find(({ key }) => key === litPlant);
+      if (plant) ctx.fillStyle = POWER[plant.provider];
+      if (plant) for (const route of routes) if (route.plant === litPlant) for (const [x, z] of routeDots(route.points, POWER_DOTS)) { const [px, py] = at(x, z); ctx.fillRect(px - 1, py, 3, 2); }
+    }
+    for (const { x, z, head, provider } of pulses) { const [px, py] = at(x, z); ctx.fillStyle = head ? POWER_HEAD : POWER[provider]; ctx.fillRect(px - 1, py, head ? 3 : 2, head ? 2 : 1); }
+  };
   const paint = list => {
     frames++;
     const ground = groundImage(), [gx, gy] = toCanvas(camera, size, 0, 0);
@@ -270,8 +283,9 @@ export function mountCity(box, hooks = {}) {
     for (const over of [lit, hinted]) if (over) ctx.drawImage(over.edgeImage, gx - over.originX, gy - over.originY);
     for (const kind of Object.keys(lots)) { const lot = lots[kind] && lotOf(lots[kind]); if (lot) outline(lot, HIGHLIGHT[kind]); }
     flash(ctx, true);
+    paintPower();
     const placed = list.filter(({ item }) => !item.over).map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, item, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
-    drawn = placed.filter(item => item.opens);
+    drawn = placed.filter(item => item.opens); plantsDrawn = placed.filter(({ item }) => item.plant);
     syncLabels(placed);
     for (const { sprite, x, y, item } of placed) if (sprite.shadowImage && !item.baked) ctx.drawImage(sprite.shadowImage, x - sprite.shadow.originX, y - sprite.shadow.originY);
     // A hop lifts and squashes the picture and leaves the shadow on the ground.
@@ -330,7 +344,7 @@ export function mountCity(box, hooks = {}) {
     }
     for (const plant of plan.plants) {
       const spot = at.get(`plant:${plant.key}`);
-      if (spot) tags.push({ key: plant.key, ...plantTag(plant, snapshot.usage), ax: spot.item.sx, ay: spot.item.sy - spot.sprite.originY - TAG_Y });
+      if (spot) tags.push({ key: plant.key, plant: plant.key, ...plantTag(plant, snapshot.usage), ax: spot.item.sx, ay: spot.item.sy - spot.sprite.originY - TAG_Y });
     }
     labels.tags(tags);
     moveLabels();
@@ -365,6 +379,11 @@ export function mountCity(box, hooks = {}) {
     trackMap(el, eye, boxW, boxH);
   };
 
+  const powerNow = now => {
+    if (reducedMotion()) return [];
+    const [gx, gy] = toCanvas(camera, size, 0, 0), wanted = routes.filter(({ id, plant }) => plant === litPlant || (signalOf(id).mood === 'working' && !dimmedId(id)));
+    return pulsesAt(wanted, now).filter(({ x, z }) => { const [sx, sy] = screen(x, z, view), px = sx + gx, py = sy + gy; return px > -4 && py > -4 && px < size.width + 4 && py < size.height + 4; });
+  };
   // One sprite baked per frame at most; until it's ready a building shows what it last looked like.
   const step = now => {
     if (!plan || !camera) return false;
@@ -387,6 +406,8 @@ export function mountCity(box, hooks = {}) {
       if (Math.hypot(coast.vx, coast.vy) < COAST_MIN) coast = null;
     }
     const items = standing(now).filter(visible), ready = [];
+    pulses = powerNow(now);
+    if (pulses.length) animating = true;
     if (items.some(item => item.moves)) animating = true;
     if (items.length * 6 > sprites.max) sprites.max = items.length * 6;
     let baked = false, waiting = false;
@@ -401,7 +422,7 @@ export function mountCity(box, hooks = {}) {
     if (frameOfSea >= 0) steaming = true;
     seaNow = frameOfSea >= 0 ? seaList(frameOfSea) : null; seaFrameDrawn = frameOfSea;
     if (seaNow && !seaShows(seaNow)) seaNow = null;
-    const drawing = (seaNow ? `sea${frameOfSea},` : '') + ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.moves ? `${item.sx},${item.sy}` : ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
+    const drawing = (seaNow ? `sea${frameOfSea},` : '') + pulses.map(({ x, z }) => `${x},${z}`).join(' ') + ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.moves ? `${item.sx},${item.sy}` : ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
     if (dirty || baked || drawing !== lastDrawn) { paint(ready); lastDrawn = drawing; dirty = false; }
     if (labelsStale) { moveLabels(); followMenu(); }
     return waiting || baked;
@@ -492,6 +513,8 @@ export function mountCity(box, hooks = {}) {
     const [sx, sy] = fromCanvas(camera, size, px, py), [x, z] = unproject(sx, sy, view), lot = lotAt(plan, x, z);
     return lot ? { id: lot.sessionId, lot } : null;
   };
+  const plantAt = event => { const [px, py] = artAt(event); return hitSprites(plantsDrawn, px, py)?.item.plant ?? null; };
+  const lightPlant = key => { if (key !== litPlant) { litPlant = key; wake(); } };
   const talkTo = id => {
     const building = id && sessions.has(id) && !fired.has(id) && plan?.buildings.find(b => b.id === id || b.subagents.some(kid => kid.id === id));
     if (!building) return;
@@ -504,7 +527,8 @@ export function mountCity(box, hooks = {}) {
     const [sx, sy] = fromCanvas(camera, size, ...artAt(event)), [x, z] = unproject(sx, sy, view), now = performance.now();
     bursts.delete('tap:tap'); fire('tap', 'tap', x, z, now); schedule();
   };
-  const clickAt = event => { const hit = pickAt(event); if (hit?.lot) tapped(event); if (hit?.id) talkTo(hit.id); else if (hit?.lot && !hit.lot.sessionId) askLot(hit.lot, false); };
+  // A pointer shows a plant's towers by being on it; a finger has to tap it, and tap again or elsewhere to stop.
+  const clickAt = event => { const hit = pickAt(event), plant = hit ? null : plantAt(event); if (event.pointerType !== 'mouse') lightPlant(plant === litPlant ? null : plant); if (hit?.lot) tapped(event); if (hit?.id) talkTo(hit.id); else if (hit?.lot && !hit.lot.sessionId) askLot(hit.lot, false); };
 
   // ---- Starting an agent: on an empty lot, or through + wherever the server puts it. The lot stays lit until the menu closes.
   const lotPoint = lot => { const [sx, sy] = screen(lot.x, lot.z, view), [px, py] = toCanvas(camera, size, sx, sy), rect = canvas.getBoundingClientRect(); return { clientX: rect.left + px * rect.width / canvas.width, clientY: rect.top + py * rect.height / canvas.height }; };
@@ -534,7 +558,9 @@ export function mountCity(box, hooks = {}) {
   const lotKeyOf = id => { const building = plan.buildings.find(b => b.id === id || b.subagents.some(kid => kid.id === id)); return building ? plan.hoods.find(h => h.key === building.hoodKey)?.lots[building.slot]?.key : null; };
   const hover = event => {
     const hit = pickAt(event), session = hit?.id ? sessions.get(hit.id) : null;
-    canvas.style.cursor = hit ? 'pointer' : 'grab';
+    const plant = hit ? null : plantAt(event);
+    canvas.style.cursor = hit || plant ? 'pointer' : 'grab';
+    lightPlant(plant);
     setLot('hover', hit?.lot?.key ?? (hit?.id ? lotKeyOf(hit.id) : null));
     card.show(session ? hooks.describe?.(session) ?? null : null); card.move(event);
   };
@@ -586,7 +612,7 @@ export function mountCity(box, hooks = {}) {
     press = null; canvas.style.cursor = 'grab';
     if (clicked) clickAt(event);
   };
-  const onLeave = () => { if (!pointers.size) { setLot('hover', null); card.show(null); } };
+  const onLeave = () => { if (!pointers.size) { setLot('hover', null); lightPlant(null); card.show(null); } };
   let wheelTotal = 0, wheelAt = 0;
   const onWheel = event => {
     event.preventDefault();
@@ -651,7 +677,7 @@ export function mountCity(box, hooks = {}) {
 
   card = createCard(box);
   menu = createMenu(box, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item, slot), () => { if (lots.asked) { lots.asked = null; wake(); } });
-  labels = createLabels(box, { onSession: talkTo, onHood: selectHood, onHoodHover: key => { if (key !== hoveredHood) { hoveredHood = key; dirty = true; wake(); } }, inTheWay: () => controls.rects() });
+  labels = createLabels(box, { onSession: talkTo, onHood: selectHood, onHoodHover: key => { if (key !== hoveredHood) { hoveredHood = key; dirty = true; wake(); } }, onPlantHover: key => lightPlant(key), onPlantTap: key => lightPlant(key === litPlant ? null : key), inTheWay: () => controls.rects() });
   const controls = createControls(box, { onFit: () => { if (camera) { clearHood(); fitCity(); } }, onNext: () => talkTo(hooks.nextWaiting?.()?.id), onList: () => hooks.showList?.(), onNew: askAnywhere });
   const listening = [[canvas, 'pointerdown', onDown], [canvas, 'pointermove', onMove], [canvas, 'pointerup', onUp], [canvas, 'pointercancel', onUp], [canvas, 'pointerleave', onLeave], [window, 'keydown', onKey], [window, 'keyup', onKeyUp], [window, 'blur', onBlur], [document, 'click', onClick]];
   for (const [target, type, listener] of listening) target.addEventListener(type, listener);
@@ -668,6 +694,7 @@ export function mountCity(box, hooks = {}) {
       layout = snapshot.office ? sharedLayout(snapshot.office) : layoutOffice(snapshot.sessions, layout);
       const before = plan, now = performance.now();
       plan = cityPlan(layout, snapshot.towers, plan, snapshot.providers, snapshot.sessions, snapshot.claudeAccounts);
+      routes = powerRoutes(plan, snapshot.sessions);
       const here = new Set(plan.buildings.flatMap(building => [building.id, ...building.subagents.map(kid => kid.id)]));
       // Still fired while it stands: a vacant lot keeps its building a while, and clearing early would bring it back.
       for (const [id, at] of fired) if (!here.has(id) && !sessions.has(id) || now - at > FIRED_MS) fired.delete(id);

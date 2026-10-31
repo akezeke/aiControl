@@ -1,7 +1,8 @@
 // The ground the city stands on: every road, parcel and lot in a flat grid of cells, baked once per view. Pure.
 import { hex, nearest } from './palette.js';
 import { fnv } from './identity.js';
-import { fountain, car, tree, lamp, boat, lighthouse } from './generator.js';
+import { fountain, car, tree, lamp, boat, lighthouse, pylon, PYLON_ARM, PYLON_REACH } from './generator.js';
+import { powerLines } from './power.js';
 import { LOT, PLOT, ROAD, WALK, PLANT, unproject, screen } from './plan.js';
 import { SHADOW } from './sprite.js';
 
@@ -153,6 +154,9 @@ export function groundCells(plan, time = 'day') {
     const seed = n % 9; prop(once(`tree${seed}`, () => tree(seed)), X, Z);
   }
 
+  const lines = powerLines(plan);
+  for (const { x, z, along } of lines.poles) prop(pylon(along), x, z);
+
   if (time === 'night') pools(rgb, lights, x0, z0, w, d);
 
   // The props' shadows lie on the ground for good. A building's is its own sprite, because it changes height.
@@ -173,7 +177,7 @@ export function groundCells(plan, time = 'day') {
   const water = { shore: [], past: [], glint: [] };
   for (let i = 0; i < coast.shore.length; i += 2) if (stillWet(coast.shore[i], coast.shore[i + 1])) { water.shore.push(coast.shore[i], coast.shore[i + 1]); water.past.push(coast.past[i / 2]); }
   for (let i = 0; i < coast.glint.length; i += 2) if (stillWet(coast.glint[i], coast.glint[i + 1])) water.glint.push(coast.glint[i], coast.glint[i + 1]);
-  return { x0, z0, w, d, rgb, props, water, lights };
+  return { x0, z0, w, d, rgb, props, water, lights, wires: [...lines.wires, ...lines.feeds], wireInk: hex(time === 'night' ? '#7f708a' : '#3e3546') };
 }
 
 // A pool of warm light under each lamp, in rings with a dithered edge. The ground is the same palette as ever, just nearer the lamp's colour.
@@ -286,8 +290,9 @@ export function paintLotShade(view, time = 'day') {
   return { width, height, rgba, originX: -minX, originY: -minY };
 }
 
+const WIRE_SAG = 3;
 // World (x, z) lands on pixel (screen x + originX, screen y + originY).
-export function paintGround({ x0, z0, w, d, rgb }, view) {
+export function paintGround({ x0, z0, w, d, rgb, wires = [], wireInk }, view) {
   const corners = [[x0, z0], [x0 + w, z0], [x0, z0 + d], [x0 + w, z0 + d]].map(([x, z]) => screen(x, z, view));
   const minX = Math.floor(Math.min(...corners.map(c => c[0]))), maxX = Math.ceil(Math.max(...corners.map(c => c[0]))), minY = Math.floor(Math.min(...corners.map(c => c[1]))), maxY = Math.ceil(Math.max(...corners.map(c => c[1])));
   const width = maxX - minX + 1, height = maxY - minY + 1, rgba = new Uint8ClampedArray(width * height * 4);
@@ -296,6 +301,16 @@ export function paintGround({ x0, z0, w, d, rgb }, view) {
     if (a < 0 || b < 0 || a >= w || b >= d) continue;
     const c = (a + b * w) * 3, i = (px + py * width) * 4;
     rgba[i] = rgb[c]; rgba[i + 1] = rgb[c + 1]; rgba[i + 2] = rgb[c + 2]; rgba[i + 3] = 255;
+  }
+  // The wires hang in the air but are painted with the ground: they never change, and anything standing in front is drawn over them.
+  for (const [ax, az, bx, bz] of wires) for (const side of [-PYLON_REACH, PYLON_REACH]) {
+    const along = az === bz, [sx, sy] = screen(ax + (along ? 0 : side), az + (along ? side : 0), view), [tx, ty] = screen(bx + (along ? 0 : side), bz + (along ? side : 0), view), n = Math.ceil(Math.max(Math.abs(tx - sx), Math.abs(ty - sy)));
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, px = Math.round(sx + (tx - sx) * t) - minX, py = Math.round(sy + (ty - sy) * t - PYLON_ARM + WIRE_SAG * 4 * t * (1 - t)) - minY;
+      if (px < 0 || py < 0 || px >= width || py >= height) continue;
+      const i = (px + py * width) * 4;
+      rgba[i] = wireInk[0]; rgba[i + 1] = wireInk[1]; rgba[i + 2] = wireInk[2]; rgba[i + 3] = 255;
+    }
   }
   return { width, height, rgba, originX: -minX, originY: -minY };
 }

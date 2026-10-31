@@ -88,6 +88,21 @@ export function lamp() {
   S.box(0, 0, 0, 1, 7, 1, hex('#3e3546')); S.box(0, 7, 0, 2, 2, 2, glow('#fbff86'));
   return streetLamp = S.bake();
 }
+// A pylon, lean enough not to count as a building: a pale banded lattice tapering to a mast, with its arms across the line it carries and an insulator hanging off each end. Two voxels thick, or a view can lose it between its samples.
+const pylons = new Map();
+export const PYLON_ARM = 19, PYLON_REACH = 5;
+export function pylon(along) {
+  if (pylons.has(along)) return pylons.get(along);
+  const S = new Stack(14, 14, 22), pale = hex('#c7dcd0'), steel = hex('#9babb2'), band = y => y % 4 < 2 ? pale : steel;
+  const across = (y, reach, h, colour) => along ? S.box(0, y, 0, 2, h, reach * 2 + 2, colour) : S.box(0, y, 0, reach * 2 + 2, h, 2, colour);
+  const ends = (y, reach, h, colour) => { for (const side of [-reach, reach]) along ? S.box(0, y, side, 2, h, 2, colour) : S.box(side, y, 0, 2, h, 2, colour); };
+  for (let y = 0; y < 6; y++) { const out = 3 - (y >> 1); for (const u of [-out, out]) for (const v of [-out, out]) S.box(u, y, v, 2, 1, 2, band(y)); }
+  for (let y = 6; y < 22; y++) S.box(0, y, 0, 2, 1, 2, band(y));
+  across(13, PYLON_REACH - 2, 1, pale); ends(11, PYLON_REACH - 2, 2, hex('#3e3546'));
+  across(PYLON_ARM + 1, PYLON_REACH, 1, pale); ends(PYLON_ARM - 1, PYLON_REACH, 2, hex('#3e3546'));
+  S.bake(); pylons.set(along, S);
+  return S;
+}
 // `along` lays a car along the world's x axis, otherwise along z.
 export function car(colour, along) {
   const S = new Stack(10, 10, 4);
