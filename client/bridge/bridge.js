@@ -18,6 +18,7 @@ import { buildRoom } from './room.js';
 import { aimPoint, clickAction, keyAction, screenPose } from './seat.js';
 import { assignStations, displayState, shipState, signalOf, stationSignals } from './ship.js';
 import { createSpace } from './space.js';
+import { frameTime } from '../scene-ui.js';
 
 export function webglAvailable() {
   // three.js needs WebGL 2; the probe's context is released straight away.
@@ -212,7 +213,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
   function frame(now) {
     raf = requestAnimationFrame(frame);
     if (document.hidden) { lastFrame = now; return; }
-    const dt = Math.min(.05, (now - lastFrame) / 1000); lastFrame = now; if (!still) T += dt;
+    const dt = frameTime(now, lastFrame, .05); lastFrame = now; if (!still) T += dt;
     try {
       if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
       const nowFree = free(); if (nowFree && !wasFree) player.resume(); wasFree = nowFree;

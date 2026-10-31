@@ -8,6 +8,7 @@ import { Cast } from './animation.js';
 import { Player, pick, rayAt, officeHasKeys, gameKey, menuOpen, sceneFocused, standNear, standBefore, EYE } from './player.js';
 import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createMenu, createOverlays } from './bubbles.js';
+import { frameTime } from '../scene-ui.js';
 import { copyText, createBoards, createKitchenBoards } from './boards.js';
 import { highlight, showOutlines } from './toon.js';
 import { shared } from './furniture.js';
@@ -299,11 +300,11 @@ export function mountOffice(container, hooks) {
   let raf = 0, last = performance.now(), previous = last, gap = 1000 / 60, tick = 0;
   const loop = now => {
     raf = requestAnimationFrame(loop);
-    gap += (Math.min(50, now - previous) - gap) * 0.05; previous = now;
+    gap += (Math.min(50, Math.max(0, now - previous)) - gap) * 0.05; previous = now;
     if (++tick % Math.max(1, Math.round(1000 / 60 / gap))) return;
     // On a phone the open panel covers the whole office.
     if (phone?.matches && document.body.classList.contains('panel-open')) return;
-    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    const dt = frameTime(now, last, 0.1); last = now;
     for (const fn of frames) fn(dt, now);
     renderer.render(scene, office.camera);
   };
