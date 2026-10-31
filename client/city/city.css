@@ -73,15 +73,16 @@
 .city-tag.gauge::after { content: ''; display: block; height: 4px; margin-top: 2px; background: linear-gradient(90deg, transparent var(--used), #565e60 0), repeating-linear-gradient(90deg, #c7dcd0 0 4px, transparent 4px 5px); }
 .city-tag.gauge.high::after { background: linear-gradient(90deg, transparent var(--used), #f79617 0), repeating-linear-gradient(90deg, #2e222f 0 4px, transparent 4px 5px); }
 
-.office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; padding: 4px; background-color: #fbf5ef; color: #2e222f; }
+.office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; padding: 12px 4px 7px; background-color: var(--panel); background-image: var(--barrier), var(--rivet), var(--rivet); background-position: 0 0, 3px calc(100% - 3px), calc(100% - 3px) calc(100% - 3px); background-size: 8px 4px, 3px 3px, 3px 3px; background-repeat: repeat-x, no-repeat, no-repeat; color: #fff; box-shadow: var(--px-raised); image-rendering: pixelated; }
 .office-menu[hidden] { display: none; }
-.office-menu button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 0; background: none; color: #2e222f; font: 700 14px system-ui, sans-serif; cursor: pointer; }
-.office-menu button:hover, .office-menu button:focus-visible { background: #c7dcd0; outline: none; }
+.office-menu button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 0; background: none; color: #fff; font: 700 14px/1.2 var(--font); cursor: pointer; }
+.office-menu button:hover, .office-menu button:focus-visible { background: var(--sunken); box-shadow: var(--px-sunk); outline: none; }
 .office-menu button:disabled { opacity: .5; cursor: progress; }
 .office-menu .provider-icon { width: 18px; height: 18px; image-rendering: pixelated; }
-.office-menu .office-folder { width: 220px; min-height: 36px; margin-bottom: 2px; padding: 0 10px; border-radius: 0; background-color: #fff; color: #2e222f; font: 600 14px ui-monospace, monospace; }
+.office-menu .office-folder { width: 220px; min-height: 36px; margin-bottom: 2px; padding: 0 10px; border-radius: 0; background-color: var(--sunken); box-shadow: var(--px-sunk); color: #fff; font: 600 14px ui-monospace, monospace; }
+.office-menu .office-folder::placeholder { color: #9babb2; opacity: 1; }
 .office-menu .office-folder:focus-visible { outline: none; border-image-source: var(--px-warn); }
-.office-menu .last { margin-left: auto; padding-left: 12px; color: #625565; font-size: 11px; font-weight: 600; }
+.office-menu .last { margin-left: auto; padding-left: 12px; color: #c7dcd0; font-size: 11px; font-weight: 600; }
 @media (pointer: coarse) { .office-menu button { min-height: 44px; } }
 @media (prefers-reduced-motion: no-preference) { .office-menu { animation: city-menu-in .12s steps(2); } }
 @keyframes city-menu-in { from { opacity: 0; } }
