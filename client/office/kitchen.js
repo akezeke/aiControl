@@ -1,13 +1,13 @@
 // The kitchen and lunch room, through swinging doors in the office's left wall. Everything thrown at in here is drawn where
-// kitchen-plan.js says it is, with those boxes' shapes. Nothing but the doors is even built until they first open; after that, shut
-// (or in the overview) it's skipped whole, like the games room (secret.js): not drawn, its matrices not kept up and no ray tested on it.
+// kitchen-plan.js says it is, with those boxes' shapes. It's built ahead of the doors, a slice at a time between frames (prepare, driven by office.js), so they
+// open with nothing left to do; shut (or in the overview) it's skipped whole, like the games room (secret.js): not drawn, its matrices not kept up and no ray tested on it.
 // The doors swing open as you come near, jump with reduced motion, and stop being a box to thrown things as soon as they start.
 // Fruit and the goose stay out (their paths only know the office).
 // ponytail: no lamp lights of its own, unlike the games room. The office's fill and daylight already reach in here and follow the switch,
 // and a spot light would cost every lit pixel of the office with the doors shut (lights.js). Its lamps are only drawn.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { WALL_H, WALL_T, canvasTexture, floorShadow, glowTexture, once, paint, painted, piece, swingDoor } from './furniture.js';
+import { WALL_H, WALL_T, canvasTexture, floorShadow, glowTexture, once, paint, painted, piece, shared, swingDoor } from './furniture.js';
 import { COPY, INK, cardsMesh, face, fit, lines, printOn } from './cutouts.js';
 import { DOOR_H, DOOR_W, KITCHEN, PAN, SPOTS, VESSELS, behind, flightBoxes, walkBoxes } from './kitchen-plan.js';
 import { kitchenDoor, kitchenShift } from './layout.js';
@@ -134,23 +134,22 @@ function createPans(group) {
   };
 }
 
-// What's printed on this room's own canvas, so one draw, and only built when the room is; the cutouts' cards are on a sheet of their own (cutouts.js).
+// What's printed on this room's own canvas, so one draw, each cell a step of its own; the cutouts' cards are on a sheet of their own (cutouts.js).
 const JUICER = { x: -4.7, z: -7.62 }, isCard = b => /^cutout/.test(b.surface) && b.half.y > 0.7 && b.half.x > 0.4;
 const ATLAS = [1156, 892], CELLS = { banner: [0, 0, 1024, 240], juicer: [1028, 0, 128, 128], motto: [0, 244, 1144, 134], wet: [0, 382, 300, 506], special: [304, 382, 340, 510] };
 const { fromCell, onFace } = printOn(ATLAS);
-function drawPrint(g, W, H) {
-  g.clearRect(0, 0, W, H);
-  { const [x, y, w, h] = CELLS.banner; g.fillStyle = LOOK.banner; g.fillRect(x, y, w, h); g.strokeStyle = '#f2c230'; g.lineWidth = 8; g.strokeRect(x + 12, y + 12, w - 24, h - 24); g.fillStyle = '#fbf6e8'; const big = fit(g, COPY.company, w - 70, 120, 104); g.font = face(big.size); lines(g, big.lines, x + w / 2, y + 88, big.size); g.fillStyle = '#f2c230'; g.font = face(58); lines(g, [COPY.motto], x + w / 2, y + 176, 58); }
-  { const [x, y, w, h] = CELLS.motto, { size } = fit(g, COPY.wall, w - 8, h, 124); g.fillStyle = '#2f6b66'; g.font = face(size); lines(g, [COPY.wall], x + w / 2, y + h / 2 + 4, size); }
-  { const [x, y, w, h] = CELLS.wet; g.fillStyle = LOOK['sign-1']; g.fillRect(x, y, w, h); g.fillStyle = INK; for (const [text, mid, tall] of [[COPY.wet[0], 126, 190], [COPY.wet[1], 358, 358]]) { const { size } = fit(g, text, w - 44, h, 200); g.save(); g.translate(x + w / 2, y + mid); g.scale(1, tall / size); g.font = face(size); lines(g, [text], 0, 0, size); g.restore(); } g.lineWidth = 10; g.strokeStyle = INK; g.strokeRect(x + 7, y + 7, w - 14, h - 14); }
-  { const [x, y, w, h] = CELLS.special; g.fillStyle = LOOK['sign-2']; g.fillRect(x, y, w, h); g.strokeStyle = '#a87b4f'; g.lineWidth = 16; g.strokeRect(x + 8, y + 8, w - 16, h - 16); g.fillStyle = '#fbf6e8'; const top = COPY.special.slice(0, 2), a = fit(g, top.join(' '), w - 56, 170, 72), b = fit(g, COPY.special[2], w - 50, 120, 80); g.font = face(a.size); lines(g, top, x + w / 2, y + 150, a.size); g.fillStyle = '#f2c230'; g.font = face(b.size); lines(g, [COPY.special[2]], x + w / 2, y + 340, b.size); }
-  { const [x, y, w, h] = CELLS.juicer; g.fillStyle = '#ffe873'; g.fillRect(x, y, w, h); g.fillStyle = INK; const { size } = fit(g, COPY.juicer[1], w - 14, 44, 34); g.font = face(size); lines(g, COPY.juicer, x + w / 2, y + h / 2, size); }
-}
-function printed() {
+const PRINTS = [
+  g => { const [x, y, w, h] = CELLS.banner; g.fillStyle = LOOK.banner; g.fillRect(x, y, w, h); g.strokeStyle = '#f2c230'; g.lineWidth = 8; g.strokeRect(x + 12, y + 12, w - 24, h - 24); g.fillStyle = '#fbf6e8'; const big = fit(g, COPY.company, w - 70, 120, 104); g.font = face(big.size); lines(g, big.lines, x + w / 2, y + 88, big.size); g.fillStyle = '#f2c230'; g.font = face(58); lines(g, [COPY.motto], x + w / 2, y + 176, 58); },
+  g => { const [x, y, w, h] = CELLS.motto, { size } = fit(g, COPY.wall, w - 8, h, 124); g.fillStyle = '#2f6b66'; g.font = face(size); lines(g, [COPY.wall], x + w / 2, y + h / 2 + 4, size); },
+  g => { const [x, y, w, h] = CELLS.wet; g.fillStyle = LOOK['sign-1']; g.fillRect(x, y, w, h); g.fillStyle = INK; for (const [text, mid, tall] of [[COPY.wet[0], 126, 190], [COPY.wet[1], 358, 358]]) { const { size } = fit(g, text, w - 44, h, 200); g.save(); g.translate(x + w / 2, y + mid); g.scale(1, tall / size); g.font = face(size); lines(g, [text], 0, 0, size); g.restore(); } g.lineWidth = 10; g.strokeStyle = INK; g.strokeRect(x + 7, y + 7, w - 14, h - 14); },
+  g => { const [x, y, w, h] = CELLS.special; g.fillStyle = LOOK['sign-2']; g.fillRect(x, y, w, h); g.strokeStyle = '#a87b4f'; g.lineWidth = 16; g.strokeRect(x + 8, y + 8, w - 16, h - 16); g.fillStyle = '#fbf6e8'; const top = COPY.special.slice(0, 2), a = fit(g, top.join(' '), w - 56, 170, 72), b = fit(g, COPY.special[2], w - 50, 120, 80); g.font = face(a.size); lines(g, top, x + w / 2, y + 150, a.size); g.fillStyle = '#f2c230'; g.font = face(b.size); lines(g, [COPY.special[2]], x + w / 2, y + 340, b.size); },
+  g => { const [x, y, w, h] = CELLS.juicer; g.fillStyle = '#ffe873'; g.fillRect(x, y, w, h); g.fillStyle = INK; const { size } = fit(g, COPY.juicer[1], w - 14, 44, 34); g.font = face(size); lines(g, COPY.juicer, x + w / 2, y + h / 2, size); },
+];
+function printed(sheet) {
   const of = name => flightBoxes().filter(b => b.surface === name), cards = [1, 2, 3, 4].map(n => of(`cutout-${n}`).find(isCard)), [banner] = of('banner'), [jx, jz] = [JUICER.x, JUICER.z];
   const motto = new THREE.PlaneGeometry(SPOTS.motto.w, SPOTS.motto.h).rotateY(Math.PI / 2).translate(-KITCHEN.width + 0.006, SPOTS.motto.y, SPOTS.motto.z), note = new THREE.PlaneGeometry(0.11, 0.11).translate(jx, 0.985, jz + 0.092);
   const all = [onFace(banner, CELLS.banner), onFace(banner, CELLS.banner, true), ...of('sign-1').map(b => onFace(b, CELLS.wet)), ...of('sign-2').map(b => onFace(b, CELLS.special)), fromCell(motto, CELLS.motto), fromCell(note, CELLS.juicer)];
-  const print = new THREE.Mesh(mergeGeometries(all), toonMaterial('#ffffff', { map: canvasTexture(...ATLAS, drawPrint), alphaTest: 0.5, alphaToCoverage: true }));
+  const print = new THREE.Mesh(mergeGeometries(all), toonMaterial('#ffffff', { map: sheet, alphaTest: 0.5, alphaToCoverage: true }));
   print.raycast = () => {};
   return [print, cardsMesh(cards.map((card, look) => ({ card, look })))];
 }
@@ -183,25 +182,33 @@ const repeating = (draw, u, v) => { const t = canvasTexture(128, 128, draw); t.w
 const LAMPS = [-7.8, -5, -2.2].flatMap(x => [[x, -5.2], [x, -2.3], [x, 0]]);
 const SHADOWS = () => [[-9.4, -7.5, 1, 1], [-5, -7.6, 7.4, 1], [-5, -3.6, 3.3, 1.4], ...SPOTS.lunchTables.map(({ x, z, w, d }) => [x, z, w + 0.3, d + 0.3]), [-9.6, 0.4, 1, 1], ...flightBoxes().filter(isCard).map(b => [b.centre.x, b.centre.z, 0.85, 0.6]), ...['sign-1', 'sign-2'].map(name => flightBoxes().filter(b => b.surface === name)).map(([a, b]) => [(a.centre.x + b.centre.x) / 2, (a.centre.z + b.centre.z) / 2, 0.75, 0.55])];
 
-// The room in its own frame (kitchen-plan.js's).
-function buildRoom(group) {
+// The room in its own frame (kitchen-plan.js's), as steps to run in order, each small enough to go between frames.
+function roomSteps(group, done) {
   const { width: w, back, front } = KITCHEN, long = front - back, mid = (front + back) / 2;
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, long).rotateX(-Math.PI / 2), toonMaterial('#ffffff', { map: repeating(vinyl, w, long) }));
-  floor.position.set(-w / 2, 0, mid); floor.userData.floor = true; group.add(floor);
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(w, long).rotateX(Math.PI / 2), dims(new THREE.MeshBasicMaterial({ map: repeating(tile, w / 1.2, long / 1.2), color: '#dfe2e7' }), 0.3));
-  ceiling.position.set(-w / 2, WALL_H, mid); group.add(ceiling);
-  group.add(piece('kitchenShell', shellParts, 0), piece('kitchenRoom', roomParts), ...printed());
-  // Switched off, the lamps go grey and their glow goes out (black adds nothing). A ray goes through what only shines.
-  const shine = new THREE.Mesh(once('kitchenGlow', () => paint(glowParts())), new THREE.MeshBasicMaterial({ vertexColors: true })); shine.raycast = () => {}; group.add(shine);
-  const lamps = new THREE.Mesh(mergeGeometries(LAMPS.map(([x, z]) => B(x - 0.6, WALL_H - 0.05, z - 0.18, x + 0.6, WALL_H, z + 0.18))), dims(new THREE.MeshBasicMaterial({ color: '#fff8e2' }), 0.3)); lamps.raycast = () => {}; group.add(lamps);
-  const glow = new THREE.Mesh(mergeGeometries(LAMPS.map(([x, z]) => new THREE.PlaneGeometry(3, 2).rotateX(Math.PI / 2).translate(x, WALL_H - 0.005, z))), dims(new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0)); glow.raycast = () => {}; group.add(glow);
-  const shadows = floorShadow(1, 1, 0.3); shadows.geometry = mergeGeometries(SHADOWS().map(([x, z, sx, sz]) => new THREE.PlaneGeometry(sx, sz).rotateX(-Math.PI / 2).translate(x, 0, z))); group.add(shadows);
-  const windows = createWindows([-0.8]); windows.position.set(0, WALL_H / 2, back - WALL_T / 2); group.add(windows);
-  return createPans(group);
+  let parts, sheet;
+  return [
+    () => { const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, long).rotateX(-Math.PI / 2), toonMaterial('#ffffff', { map: repeating(vinyl, w, long) })); floor.position.set(-w / 2, 0, mid); floor.userData.floor = true; group.add(floor); },
+    () => { const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(w, long).rotateX(Math.PI / 2), dims(new THREE.MeshBasicMaterial({ map: repeating(tile, w / 1.2, long / 1.2), color: '#dfe2e7' }), 0.3)); ceiling.position.set(-w / 2, WALL_H, mid); group.add(ceiling); },
+    () => group.add(piece('kitchenShell', shellParts, 0)),
+    () => { parts = shared.kitchenRoom ? null : roomParts(); },
+    () => { once('kitchenRoom', () => paint(parts)); },
+    () => group.add(piece('kitchenRoom', roomParts)),
+    () => { sheet = canvasTexture(...ATLAS, (g, W, H, draw) => draw?.(g)); },
+    ...PRINTS.map(draw => () => sheet.redraw(draw)),
+    () => group.add(...printed(sheet)),
+    // Switched off, the lamps go grey and their glow goes out (black adds nothing). A ray goes through what only shines.
+    () => { const shine = new THREE.Mesh(once('kitchenGlow', () => paint(glowParts())), new THREE.MeshBasicMaterial({ vertexColors: true })); shine.raycast = () => {}; group.add(shine); },
+    () => { const lamps = new THREE.Mesh(mergeGeometries(LAMPS.map(([x, z]) => B(x - 0.6, WALL_H - 0.05, z - 0.18, x + 0.6, WALL_H, z + 0.18))), dims(new THREE.MeshBasicMaterial({ color: '#fff8e2' }), 0.3)); lamps.raycast = () => {}; group.add(lamps); },
+    () => { const glow = new THREE.Mesh(mergeGeometries(LAMPS.map(([x, z]) => new THREE.PlaneGeometry(3, 2).rotateX(Math.PI / 2).translate(x, WALL_H - 0.005, z))), dims(new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0)); glow.raycast = () => {}; group.add(glow); },
+    () => { const shadows = floorShadow(1, 1, 0.3); shadows.geometry = mergeGeometries(SHADOWS().map(([x, z, sx, sz]) => new THREE.PlaneGeometry(sx, sz).rotateX(-Math.PI / 2).translate(x, 0, z))); group.add(shadows); },
+    () => { const windows = createWindows([-0.8]); windows.position.set(0, WALL_H / 2, back - WALL_T / 2); group.add(windows); },
+    () => { once('kitchenPan', () => paint(panParts())); },
+    () => done(createPans(group)),
+  ];
 }
 
 export function createKitchen({ onMove } = {}) {
-  let origin = null, depth = 0, t = 0, held = false, built = false, fill = null, stood = [];
+  let origin = null, depth = 0, t = 0, held = false, opened = false, fill = null, stood = [];
   const games = [];
   const group = new THREE.Group(); group.userData.kitchen = 'room'; group.visible = group.matrixWorldAutoUpdate = false;
   group.raycast = () => group.visible; // hidden, a ray (the pointer's, every hover) skips all of it
@@ -210,8 +217,10 @@ export function createKitchen({ onMove } = {}) {
   const leaves = [-1, 1].map(side => { const leaf = swingDoor(); leaf.userData.leaf = true; leaf.position.set(0.03, 0, side * DOOR_W / 2); doors.add(leaf); return leaf; });
   const swing = open => { const e = open * open * (3 - 2 * open) * SWUNG; leaves[0].rotation.y = -e; leaves[1].rotation.y = Math.PI + e; };
   swing(0);
-  // Where things are now, for thrown things and the doors: what's built, and the shut door while it is.
-  const refresh = () => { kitchen.flight = [...(built ? stood : []), ...(t === 0 && fill ? [fill] : [])]; onMove?.(); };
+  // Where things are now, for thrown things and the doors: the room once they've first opened, and the shut door while it is.
+  const refresh = () => { kitchen.flight = [...(opened ? stood : []), ...(t === 0 && fill ? [fill] : [])]; onMove?.(); };
+  // What's still to build, in order, games last. A step's gone before it runs, so whoever gets to it first, nothing's built twice.
+  const steps = roomSteps(group, pans => { kitchen.pans = pans; });
 
   const kitchen = {
     group, doors, flight: [],
@@ -220,7 +229,20 @@ export function createKitchen({ onMove } = {}) {
     // Inside the kitchen (past the middle of the wall), at `p`.
     inside(p) { return !!origin && p.x < origin.x + WALL_T / 2 && p.x > origin.x - KITCHEN.width && p.z > origin.z + KITCHEN.back && p.z < origin.z + KITCHEN.front; },
     shut(on) { held = on; },
-    add(game) { games.push(game); if (built) game.build(group); },
+    add(game) { games.push(game); const build = () => game.build(group); if (steps.length) steps.push(build); else build(); },
+    // Getting ready before anyone's near: each next() is a slice of work, and what it yields is to be waited for. The shaders are compiled with the
+    // scene's lights, and hidden doesn't stop them (compile goes through all of it), so the room's first frame finds its programs; then each texture.
+    // Update finishes the building if the doors get there first, and the rest is still worth doing then, for what that first frame didn't look at.
+    * prepare(renderer, camera, scene) {
+      while (steps.length) { steps.shift()(); yield; }
+      if (!renderer) return;
+      const known = new Set(renderer.info.programs);
+      yield renderer.compileAsync(group, camera, scene);
+      // A program's first use is what waits for its link, where the browser can't say it's finished. Better here than in the frame the doors open.
+      for (const program of renderer.info.programs) if (!known.has(program)) { program.getUniforms(); program.getAttributes(); yield; }
+      const maps = new Set(); group.traverse(node => { for (const material of [node.material].flat()) for (const value of Object.values(material ?? {})) if (value?.isTexture) maps.add(value); });
+      for (const map of maps) { const had = renderer.info.memory.textures; renderer.initTexture(map); if (renderer.info.memory.textures > had) yield; } // one that's up already is nothing
+    },
     // The room's `depth` (a new shell, `wall` being its left wall): the same kitchen moves with the door, telling kitchen.moved first, while
     // inside() still means where it was. Returns what blocks walking: its walls, what stands on the floor, and the floor behind it.
     build({ depth: now, shell, wall }) {
@@ -245,10 +267,10 @@ export function createKitchen({ onMove } = {}) {
       if (!origin) return;
       const inside = kitchen.inside(at), far = Math.hypot(at.x - (origin.x + WALL_T / 2), at.z - origin.z), goal = !held && (inside || far < (t > 0 ? DOOR_FAR : DOOR_NEAR)) ? 1 : 0, was = t;
       if (t !== goal) t = still ? goal : THREE.MathUtils.clamp(t + (goal ? dt : -dt) / MOVE, 0, 1);
-      const shown = (t > 0 || inside) && overview < 0.01, building = !built && (t > 0 || inside);
-      // The first time it opens, the room and its games are built. Things can be thrown at it from then on, whether the doors are open or not.
-      if (building) { built = true; kitchen.pans = buildRoom(group); for (const game of games) game.build(group); }
-      if (building || (was === 0) !== (t === 0)) refresh();
+      const shown = (t > 0 || inside) && overview < 0.01, opening = !opened && (t > 0 || inside);
+      // The first time it opens, whatever isn't built yet is. Things can be thrown at it from then on, whether the doors are open or not.
+      if (opening) { opened = true; while (steps.length) steps.shift()(); }
+      if (opening || (was === 0) !== (t === 0)) refresh();
       group.visible = group.matrixWorldAutoUpdate = shown;
       swing(overview < 0.01 ? t : 0); // the overview doesn't draw the room: nothing to see through
       if (shown) kitchen.pans?.update(dt);

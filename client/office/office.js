@@ -280,6 +280,14 @@ export function mountOffice(container, hooks) {
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });
+  // Once the office has drawn a few frames the kitchen gets ready, a slice each time the browser's idle, so its doors have nothing left to do (kitchen.prepare).
+  // So does the dotted arc, which an office throw shows first. ponytail: Safari has no idle callback, so a short wait between slices instead.
+  let readying = true, untilReady = 10;
+  const whenIdle = fn => globalThis.requestIdleCallback ? requestIdleCallback(fn, { timeout: 500 }) : setTimeout(fn, 50);
+  const getReady = (function* () { yield* room.kitchen.prepare(renderer, camera, scene); yield renderer.compileAsync(arc.mesh, camera, scene); })();
+  const slice = async () => { if (!readying) return; const { done, value } = getReady.next(); await value; if (!done) whenIdle(slice); };
+  const drawn = () => { if (layout && !--untilReady) { frames.delete(drawn); whenIdle(slice); } };
+  frames.add(drawn);
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;
@@ -418,7 +426,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => { readying = false; }, () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => props.dispose(), () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }

@@ -40,7 +40,7 @@ test('sits at the left wall with the door in the middle of its door side, inside
   assert.ok(!kitchen.inside(V(-WALL_T - KITCHEN.width - 0.5, 1.6, door)), 'past its west wall');
 });
 
-test('nothing is built until you first go near, and the doorway is solid to thrown things till then', t => {
+test('left to itself nothing is built until you first go near, and the doorway is solid to thrown things till then', t => {
   const { kitchen } = setup(t);
   run(kitchen, far);
   assert.equal(kitchen.group.children.length, 0);
@@ -167,6 +167,138 @@ test('a game gets the group when it is built, is updated with it, and what it st
   assert.equal(calls.at(-1)[1], true);
   const late = []; kitchen.add({ build: group => late.push(group), update() {} });
   assert.deepEqual(late, [kitchen.group], 'added after it was built: at once');
+});
+
+// What a built room is made of, in the order it's added: how it's drawn doesn't depend on how it got ready.
+const made = kitchen => { const all = []; for (const child of kitchen.group.children) child.traverse(n => all.push([n.type, n.geometry?.attributes.position.count ?? 0, n.material?.type ?? '', n.visible])); return all; };
+const drain = (steps, each = () => {}) => { let n = 0; for (let s = steps.next(); !s.done; s = steps.next()) { n++; each(); } return n; };
+
+test('getting ready goes in steps, with the same room as the doors would have built, and only once', t => {
+  const { kitchen, events } = setup(t), { kitchen: opened } = setup(t), builds = [], sizes = [];
+  kitchen.add({ build: group => builds.push(group), update() {} });
+  run(opened, near, 0.1);
+  const steps = kitchen.prepare(), moves = events.moves;
+  assert.equal(kitchen.group.children.length, 0, 'asking does nothing yet');
+  const n = drain(steps, () => sizes.push(kitchen.group.children.length));
+  assert.ok(n >= 8, `in ${n} steps`);
+  assert.ok(sizes[0] <= 1, 'one thing at a time');
+  assert.deepEqual(builds, [kitchen.group], 'the game once');
+  assert.deepEqual(made(kitchen), made(opened));
+  assert.equal(events.moves, moves, "nobody's told: nothing has changed for anything out there");
+  const again = kitchen.group.children[0];
+  assert.equal(drain(kitchen.prepare()), 0, 'nothing left');
+  run(kitchen, near, 0.5);
+  assert.deepEqual(builds, [kitchen.group]);
+  assert.equal(kitchen.group.children[0], again);
+  assert.deepEqual(made(kitchen), made(opened), 'and opening builds nothing more');
+});
+
+test('the doors opening part way through get the rest in that one update, and the steps then have nothing left', t => {
+  for (const at of [near, inRoom]) {
+    const { kitchen } = setup(t), { kitchen: opened } = setup(t), builds = [];
+    kitchen.add({ build: group => builds.push(group), update() {} });
+    run(opened, near, 0.1);
+    const steps = kitchen.prepare();
+    for (let i = 0; i < 3; i++) steps.next();
+    kitchen.update(1 / 60, at, true, 0);
+    assert.equal(kitchen.group.visible, true);
+    assert.deepEqual(builds, [kitchen.group]);
+    assert.deepEqual(made(kitchen), made(opened));
+    assert.ok(kitchen.pans);
+    assert.equal(drain(steps), 0);
+    assert.deepEqual(builds, [kitchen.group]);
+  }
+});
+
+test('a game added part way through is built after the room, and one added after that at once', t => {
+  const { kitchen } = setup(t), order = [], steps = kitchen.prepare();
+  steps.next();
+  kitchen.add({ build: group => order.push(['middle', group.children.length]), update() {} });
+  assert.deepEqual(order, []);
+  drain(steps);
+  assert.equal(order.length, 1);
+  assert.ok(order[0][1] > 10, 'the room is there by then');
+  kitchen.add({ build: () => order.push(['last']), update() {} });
+  assert.equal(order.at(-1)[0], 'last');
+});
+
+test('prepared and hidden it costs nothing: not shown, no matrices, no ray, no pan moved, and thrown things still meet the shut door', t => {
+  const { kitchen, events } = setup(t), shown = [];
+  kitchen.add({ build() {}, update: (dt, at, still, on) => shown.push(on) });
+  drain(kitchen.prepare());
+  let moves = 0; const { update } = kitchen.pans; kitchen.pans.update = dt => { moves++; update(dt); };
+  const list = kitchen.flight, told = events.moves;
+  run(kitchen, far);
+  assert.equal(kitchen.group.visible, false);
+  assert.equal(kitchen.shown, false);
+  assert.equal(kitchen.group.matrixWorldAutoUpdate, false);
+  assert.equal(kitchen.group.raycast(), false);
+  assert.equal(moves, 0, 'pans only while shown');
+  assert.ok(shown.length && shown.every(on => !on));
+  assert.equal(kitchen.flight, list, 'the same list: nothing wakes');
+  assert.equal(events.moves, told);
+  assert.equal(fill(kitchen).length, 1, 'the shut door');
+  assert.equal(kitchen.flight.length, 1, 'and nothing of the room, till the doors first open');
+  run(kitchen, near, 0.1);
+  assert.equal(fill(kitchen).length, 0);
+  assert.ok(kitchen.flight.length > 50);
+  assert.ok(moves > 0);
+});
+
+test('growing the room part way through getting ready builds nothing again and moves what there is', t => {
+  const { kitchen } = setup(t, 8), steps = kitchen.prepare(), builds = [];
+  kitchen.add({ build: group => builds.push(group), update() {} });
+  for (let i = 0; i < 3; i++) steps.next();
+  const first = kitchen.group.children[0];
+  kitchen.build({ depth: 10, shell: new THREE.Group(), wall: leftWall(10) });
+  assert.equal(kitchen.group.position.z, kitchenDoor(10));
+  drain(steps);
+  assert.equal(kitchen.group.children[0], first);
+  assert.deepEqual(builds, [kitchen.group]);
+  assert.equal(fill(kitchen).length, 1);
+  assert.equal(kitchen.flight.length, 1);
+});
+
+// A renderer as far as getting ready goes: what it's asked for, and the textures it has already.
+const fakeProgram = calls => { const program = { getUniforms: () => calls.push(['use', program]), getAttributes() {} }; return program; };
+const fakeRenderer = (uploaded = new Set()) => {
+  const calls = [], renderer = {
+    calls, info: { memory: { textures: 0 }, programs: [] },
+    compileAsync: (...args) => { calls.push(['compile', ...args]); renderer.info.programs.push(fakeProgram(calls)); return Promise.resolve(); },
+    initTexture: texture => { calls.push(['texture', texture]); if (!uploaded.has(texture)) { uploaded.add(texture); renderer.info.memory.textures++; } },
+  };
+  return renderer;
+};
+
+test('after the room: its shaders, hidden as it is and with the scene it will be lit in, then each texture a step of its own, skipping what is there', t => {
+  const { kitchen } = setup(t), renderer = fakeRenderer(), camera = new THREE.PerspectiveCamera(), scene = new THREE.Scene(), waits = [];
+  kitchen.add({ build() {}, update() {} });
+  for (const value of kitchen.prepare(renderer, camera, scene)) {
+    waits.push(value);
+    if (renderer.calls.length === 1 && renderer.calls[0][0] === 'compile') assert.ok(kitchen.group.children.length > 10 && kitchen.pans, 'with all of it built');
+  }
+  const [compile, use, ...textures] = renderer.calls;
+  assert.equal(compile[0], 'compile');
+  assert.deepEqual(use, ['use', renderer.info.programs[0]], "the program's first use, not left for the first draw");
+  assert.equal(compile[1], kitchen.group); assert.equal(compile[2], camera); assert.equal(compile[3], scene);
+  assert.equal(kitchen.group.visible, false);
+  assert.ok(textures.length >= 3 && textures.every(([what, texture]) => what === 'texture' && texture.isTexture));
+  assert.equal(new Set(textures.map(c => c[1])).size, textures.length, 'each once');
+  assert.ok(waits.some(v => v instanceof Promise), 'the compile is waited for');
+  const hasFloor = new Set(); kitchen.group.traverse(n => { if (n.userData.floor) hasFloor.add(n.material.map); });
+  assert.ok(textures.some(c => hasFloor.has(c[1])), 'the floor among them');
+  const old = renderer.info.programs[0]; renderer.calls.length = 0;
+  assert.equal([...kitchen.prepare(renderer, camera, scene)].length, 2, "asked again: the compile, its one new program, and no slice for a texture that's up");
+  assert.ok(renderer.calls.every(c => c[1] !== old), 'a program from before is left alone');
+});
+
+test('the doors opening before the shaders are done still leave them to be prepared, for what the first draw would not see', t => {
+  const { kitchen } = setup(t), renderer = fakeRenderer(), steps = kitchen.prepare(renderer, new THREE.PerspectiveCamera(), new THREE.Scene());
+  steps.next();
+  kitchen.update(1 / 60, near, true, 0);
+  drain(steps);
+  assert.equal(renderer.calls.filter(c => c[0] === 'compile').length, 1);
+  assert.ok(renderer.calls.some(c => c[0] === 'texture'));
 });
 
 // The kitchen reaches 9.5 m back from the room's front, so in a room shallower than that its back is behind the office's windows wall, where nothing else is built.
