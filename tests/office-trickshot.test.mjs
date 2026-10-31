@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTrickshot } from '../client/office/trickshot.js';
-import { BLEND, GAUGE_SIZE, arcPoints, blendLeft, createArc, drawnAt, gaugeAt, gaugeColour, launch } from '../client/office/throwing.js';
+import { BLEND, GAUGE_SIZE, arcPoints, blendLeft, createArc, createCharge, createGauge, drawnAt, gaugeAt, gaugeColour, launch } from '../client/office/throwing.js';
 import { TiltedBox, makeBody, simulate, stepBody, stopShort } from '../client/office/flight.js';
 import { SPOTS, ZONES, levelWorld } from '../client/office/kitchen-plan.js';
 import { EYE, Player } from '../client/office/player.js';
@@ -378,11 +378,13 @@ test('the arc follows the shot\'s real path', () => {
 
 test('the arc starts at the hand and is on the true path by the blend\'s end', () => {
   const aim = { direction: look(IN.yaw, IN.pitch), charge: IN.charge }, t = setup({ aim: () => aim });
+  const { x, z } = STARTS.island;
   begin(t, 'paper');
+  t.hand.palm.position.set(x + ORIGIN.x, EYE - 0.3, z + ORIGIN.z).addScaledVector(aim.direction, 0.7); // ahead of you, where a real hand is
   t.game.update(DT, null, false, true);
   const { arc } = t.game, palm = t.hand.palm.getWorldPosition(V(0, 0, 0)).sub(V(ORIGIN.x, 0, ORIGIN.z));
   assert.ok(V(...arc.points.subarray(0, 3)).distanceTo(palm) < 0.2, `first dot ${V(...arc.points.subarray(0, 3)).distanceTo(palm)} m from the palm`);
-  const { x, z } = STARTS.island, pure = arcPoints(ITEMS.paper, launch(ITEMS.paper, IN.charge, { position: V(x, EYE, z) }, aim.direction, V(0, 0, 0)), levelWorld(), V(x, EYE, z));
+  const pure = arcPoints(ITEMS.paper, launch(ITEMS.paper, IN.charge, { position: V(x, EYE, z) }, aim.direction, V(0, 0, 0)), levelWorld(), V(x, EYE, z));
   assert.equal(pure.length, arc.points.length);
   let gap = Infinity;
   for (let i = 0; i < pure.length; i += 3) {
@@ -457,6 +459,56 @@ test('dots are evenly spaced in the world, and a long way gets a wider gap, not 
   const open = { colliders: [], columns: [], ceiling: 50 }, far = arcPoints(ITEMS.rubber, launch(ITEMS.rubber, 1, { position: eye }, V(0, 1, 0.1).normalize(), V(0, 0, 0)), open, eye);
   assert.equal(far.length / 3, 24);
   assert.ok(Math.hypot(far[0] - far[3], far[1] - far[4], far[2] - far[5]) > 0.3);
+});
+
+test("close to a wall, what comes back doesn't reach your eyes: no dot's within .3 m, where it would be a big disc", () => {
+  const eye = V(0, EYE, 0), wall = Object.assign(new THREE.Box3(V(-9, 0, 0.8), V(9, 3, 1)), { surface: 'wall' }), world = { colliders: [wall], columns: [], ceiling: 50 }, palm = V(0.3, EYE - 0.27, 0.8);
+  for (const kind of [...Object.values(ITEMS), ...BALLS, LOOSE.mug]) for (const charge of [0, 0.3, 0.6, 1]) for (const lift of [0, 0.1]) {
+    const thrown = launch(kind, charge, { position: eye }, V(0, lift, 1).normalize(), V(0, 0, 0)), arc = createArc(), say = `radius ${kind.radius}, charge ${charge}, lift ${lift}`;
+    const dots = arcPoints(kind, thrown, world, eye), near = at => { for (let i = 0; i < at.length; i += 3) assert.ok(Math.hypot(at[i] - eye.x, at[i + 1] - eye.y, at[i + 2] - eye.z) >= 0.3 - 1e-5, `${say}: dot ${i / 3}`); };
+    near(dots); assert.ok(dots.length > 0, say);
+    arc.show(kind, thrown, world, eye, palm); near(arc.points);
+    assert.equal(arc.times.length, arc.points.length / 3, say);
+  }
+});
+
+test("a far wall's hit has its stretch: the gaps open before it, not past it", () => {
+  const eye = V(0, EYE, 0), kind = ITEMS.rubber;
+  for (const far of [12, 20]) {
+    const wall = Object.assign(new THREE.Box3(V(-9, 0, far), V(9, 30, far + 0.2)), { surface: 'wall' }), world = { colliders: [wall], columns: [], ceiling: 50 }, thrown = launch(kind, 1, { position: eye }, V(0, 0.2, 1).normalize(), V(0, 0, 0));
+    const dots = arcPoints(kind, thrown, world, eye), hit = far - kind.radius;
+    assert.ok(dots.length / 3 <= 24, `${dots.length / 3} dots`);
+    assert.ok(Math.max(...dots.filter((_, i) => i % 3 === 2)) >= hit - 1e-3, `${far} m: it gets there`);
+    const after = []; let turned = false;
+    for (let i = 3; i < dots.length; i += 3) { turned ||= dots[i + 2] < dots[i - 1]; if (turned) after.push(i); }
+    assert.ok(after.length >= 3, `${far} m: ${after.length} past the hit`);
+    for (const i of after.slice(1)) assert.ok(Math.abs(Math.hypot(dots[i] - dots[i - 3], dots[i + 1] - dots[i - 2], dots[i + 2] - dots[i - 1]) - 0.3) < 0.05, `${far} m: stretch gap before dot ${i / 3}`);
+  }
+});
+
+test('the gauge goes when a press ends, thrown or called off, and writes and reads only what changed', () => {
+  let rects = 0, writes = 0, hides = 0;
+  const classes = new Set(), classList = { add: c => { classes.add(c); writes++; }, remove: (...c) => { c.forEach(x => classes.delete(x)); writes++; }, toggle: (c, on) => { on ? classes.add(c) : classes.delete(c); writes++; } };
+  const meter = { classList, style: { set transform(v) { meter.at = v; writes++; } } }, fill = { setAttribute: () => { writes++; }, style: { set stroke(_) { writes++; } } };
+  const box = { left: 10, top: 20, width: 400, height: 800 }, container = { getBoundingClientRect: () => { rects++; return box; } };
+  const setCharge = createGauge(container, meter, fill), charge = createCharge(() => { hides++; setCharge(null); }), at = { clientX: 210, clientY: 420 };
+
+  setCharge(null); assert.equal(writes, 0, 'nothing up: nothing to hide');
+  charge.press(0); setCharge(0.5, at);
+  assert.ok(classes.has('shown')); assert.equal(meter.at, 'translate(200px, 400px)'); assert.equal(rects, 1);
+  const wrote = writes;
+  setCharge(0.5, at); setCharge(0.501, { ...at }); assert.equal(writes, wrote, 'the same level and point write nothing'); assert.equal(rects, 1, 'nor read the page');
+  setCharge(0.6, at); assert.ok(writes > wrote); assert.equal(rects, 1, 'a new level only');
+
+  box.width = 300; setCharge(0.6, { clientX: 110, clientY: 420 }); assert.equal(meter.at, 'translate(100px, 400px)', 'a resize is seen as soon as the point moves'); assert.equal(rects, 2);
+
+  setCharge(1, at); assert.ok(classes.has('full'));
+  assert.equal(charge.release(9) > 0, true); assert.equal(hides, 1); assert.equal(classes.size, 0, 'thrown: gone');
+  const after = writes; setCharge(null); assert.equal(writes, after, 'and hidden twice writes once');
+
+  charge.press(10); setCharge(0.2, at); assert.ok(classes.has('shown')); assert.ok(meter.at, 'comes back in place');
+  charge.cancel(); assert.equal(hides, 2); assert.equal(classes.size, 0, 'called off: gone');
+  charge.cancel(); assert.equal(charge.release(11), null); assert.equal(hides, 2, 'no press, nothing ended');
 });
 
 test('dots are one size and one flat colour, however far they are', () => {

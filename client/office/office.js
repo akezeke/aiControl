@@ -97,15 +97,15 @@ export function mountOffice(container, hooks) {
   const hand = createHand(view.hands), palm = new THREE.Vector3();
   const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches, onHit, others: () => [goose.column], hand });
   // A throw: pressed, it charges while it's all still yours (no panel or menu's come up, no overview); let go, it flies along `at`.
-  const charge = createCharge(), clock = () => performance.now() / 1000, noEvent = {};
+  const charge = createCharge(() => overlays.setCharge(null)), clock = () => performance.now() / 1000, noEvent = {};
   const thrower = () => playing?.free ? playing : props;
   const canCharge = () => (!playing || playing.free) && thrower().holding && !view.overview && !menu.open;
   const startCharge = () => { if (!canCharge()) return false; charge.press(clock()); return true; };
-  const callOff = () => { keyed = false; if (!charge.active) return false; charge.cancel(); overlays.setCharge(null); thrower().abort(); return true; };
+  const callOff = () => { keyed = false; if (!charge.active) return false; charge.cancel(); thrower().abort(); return true; };
   const letGo = at => {
     if (!canCharge() || !officeHasKeys(noEvent)) { callOff(); return; }
     const level = charge.release(clock()); keyed = false; if (level === null) return;
-    overlays.setCharge(null); thrower().release(level, rayAt(at, renderer.domElement, camera));
+    thrower().release(level, rayAt(at, renderer.domElement, camera));
   };
   // Where a throw would go if let go now: E and a finger throw along the centre, whatever else the pointer's doing. And a level's item, with something else in hand,
   // is a click: that's dropped when the level starts.

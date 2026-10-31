@@ -27,10 +27,11 @@ export const blendLeft = t => { const u = THREE.MathUtils.clamp(t / BLEND, 0, 1)
 export const drawnAt = (out, pos, offset, t, kind, colliders) => t >= BLEND ? out.copy(pos) : stopShort(pos, out.copy(pos).addScaledVector(offset, blendLeft(t)), kind, colliders);
 
 // A charged throw's way to the first thing it hits and a bit over a metre on, so you see the angle it leaves at, as dots: places it really passes,
-// evenly apart in the world from where it starts, so the gaps shrink into the distance; a longer way than DOTS can do opens the gaps. And how far
-// into the flight each is. The stretch ends early at a second hit; what's after that stays unshown: that's the puzzle. A soft landing just stops,
-// and has next to no stretch. Thrown from `eye`, like the throw (stopShort): so a wall right in front of you shows.
-const ARC_TIME = 2.5, AFTER = 1.2, GAP = 0.3, DOTS = 24, SAMPLE = 4 * STEP; // simulate's path has every fourth step
+// evenly apart in the world from where it starts, so the gaps shrink into the distance; a longer way to the hit than DOTS can do opens the gaps
+// up to it, and a few are kept for the stretch, always GAP apart. And how far into the flight each is. The stretch ends early at a second hit;
+// what's after that stays unshown: that's the puzzle. A soft landing just stops, and has next to no stretch. Thrown from `eye`, like the throw
+// (stopShort): so a wall right in front of you shows. None closer to `eye` than CLOSE: coming back off that wall, one would be a big disc.
+const ARC_TIME = 2.5, AFTER = 1.2, GAP = 0.3, DOTS = 24, STRETCH = 4, CLOSE = 0.3, SAMPLE = 4 * STEP; // simulate's path has every fourth step
 const AFTER_TIME = 0.9; // Only to bound it: falling, the stretch is gone by then.
 const first = () => true, LIFT = 0.003, SIGHT = { radius: 1e-3, low: 1e-3 };
 // A piece of flight's corners and times: the samples from before its hit (the step that hits goes on after it, so not that one's), then the hit.
@@ -43,6 +44,7 @@ function arcWay(kind, launched, world, eye) {
   const start = stopShort(eye, launched.pos.clone(), kind, world.colliders), body = makeBody(kind, start, launched.vel), corners = [start.x, start.y, start.z], clock = [0];
   const flight = simulate(body, world, { maxTime: ARC_TIME, stop: first }), [hit, next] = flight.contacts;
   addFlight(corners, clock, 0, flight);
+  const upTo = corners.length;
   if (next) { corners.push(...next.pos); clock.push(next.time); } // a second hit in the same step
   else if (hit && !body.rest) {
     corners.push(body.pos.x, body.pos.y, body.pos.z); clock.push(hit.time);
@@ -51,16 +53,18 @@ function arcWay(kind, launched, world, eye) {
     addFlight(corners, clock, hit.time, after);
     if (!after.contacts.length) { corners.push(body.pos.x, body.pos.y, body.pos.z); clock.push(hit.time + after.time); }
   }
-  let length = 0;
-  for (let i = 3; i < corners.length; i += 3) length += Math.hypot(corners[i] - corners[i - 3], corners[i + 1] - corners[i - 2], corners[i + 2] - corners[i - 1]);
-  const gap = Math.max(GAP, length / (DOTS - 1)), points = [start.x, start.y, start.z], times = [0];
+  let length = 0, run = 0;
+  for (let i = 3; i < corners.length; i += 3) { length += Math.hypot(corners[i] - corners[i - 3], corners[i + 1] - corners[i - 2], corners[i + 2] - corners[i - 1]); if (i < upTo) run = length; }
+  const gap = Math.max(GAP, run / (DOTS - 1 - (length > run ? STRETCH : 0))), points = [], times = [];
+  const put = (x, y, z, t) => { if (Math.hypot(x - eye.x, y - eye.y, z - eye.z) < CLOSE) return; points.push(x, y, z); times.push(t); };
+  const nextMark = m => m + gap <= run ? m + gap : m > run || gap === GAP ? m + GAP : run + GAP;
+  put(start.x, start.y, start.z, 0);
   let along = 0, mark = gap;
   for (let i = 3; i < corners.length; i += 3) {
     const piece = Math.hypot(corners[i] - corners[i - 3], corners[i + 1] - corners[i - 2], corners[i + 2] - corners[i - 1]);
-    for (; mark <= along + piece && times.length < DOTS; mark += gap) {
+    for (; mark <= along + piece && times.length < DOTS; mark = nextMark(mark)) {
       const u = (mark - along) / piece;
-      points.push(corners[i - 3] + (corners[i] - corners[i - 3]) * u, corners[i - 2] + (corners[i + 1] - corners[i - 2]) * u, corners[i - 1] + (corners[i + 2] - corners[i - 1]) * u);
-      times.push(clock[i / 3 - 1] + (clock[i / 3] - clock[i / 3 - 1]) * u);
+      put(corners[i - 3] + (corners[i] - corners[i - 3]) * u, corners[i - 2] + (corners[i + 1] - corners[i - 2]) * u, corners[i - 1] + (corners[i + 2] - corners[i - 1]) * u, clock[i / 3 - 1] + (clock[i / 3] - clock[i / 3 - 1]) * u);
     }
     along += piece;
   }
@@ -102,11 +106,13 @@ export function createArc() {
         ring.visible = !!way.ring;
         if (way.ring) { ring.position.copy(way.ring.at); ring.quaternion.setFromUnitVectors(FACING, way.ring.n); }
       }
-      offset.subVectors(palm, way.start); arc.times = way.times; arc.points = way.points.slice(); mesh.count = arc.points.length / 3;
-      for (let i = 0; i < mesh.count; i++) {
-        drawnAt(near, real.fromArray(way.points, i * 3), offset, way.times[i], kind, world.colliders).toArray(arc.points, i * 3);
-        mesh.setMatrixAt(i, placed.makeTranslation(near));
+      offset.subVectors(palm, way.start); arc.times = []; arc.points = way.points.slice(); mesh.count = 0;
+      for (let i = 0; i < way.times.length; i++) {
+        drawnAt(near, real.fromArray(way.points, i * 3), offset, way.times[i], kind, world.colliders);
+        if (near.distanceTo(eye) < CLOSE) continue; // drawn on its way from the hand, it can come closer than it really is
+        near.toArray(arc.points, mesh.count * 3); arc.times.push(way.times[i]); mesh.setMatrixAt(mesh.count++, placed.makeTranslation(near));
       }
+      arc.points = arc.points.subarray(0, mesh.count * 3);
       mesh.instanceMatrix.needsUpdate = true;
     },
     hide() { mesh.visible = false; was.kind = null; },
@@ -114,15 +120,15 @@ export function createArc() {
   return arc;
 }
 
-// `t` in seconds. A release with no press (or after a cancel) throws nothing.
-export function createCharge() {
+// `t` in seconds. A release with no press (or after a cancel) throws nothing. `hide`: a press has ended, either way.
+export function createCharge(hide = () => {}) {
   let from = null;
   return {
     get active() { return from !== null; },
     press(t) { from ??= t; },
     level(t) { return from === null ? 0 : chargeAt(t - from); },
-    release(t) { if (from === null) return null; const charge = chargeAt(t - from); from = null; return charge; },
-    cancel() { from = null; },
+    release(t) { if (from === null) return null; const charge = chargeAt(t - from); from = null; hide(); return charge; },
+    cancel() { if (from === null) return; from = null; hide(); },
   };
 }
 
@@ -137,6 +143,22 @@ export const GAUGE_SIZE = 76;
 export function gaugeAt(x, y, width, height) {
   const out = GAUGE_SIZE / 2;
   return { x: THREE.MathUtils.clamp(x, out, width - out), y: THREE.MathUtils.clamp(y, out, height - out) };
+}
+
+// The gauge on screen: how far a throw's charged, 0 to 1, and the screen point it aims at; null hides it. Once a frame while it's up: it only
+// writes when the level or the point moved, and only reads the container's place when the point did.
+export function createGauge(container, meter, fill) {
+  let charged = null, gaugeX = null, gaugeY = null;
+  return (level, at) => {
+    if (level === null) { if (charged !== null) { charged = gaugeX = gaugeY = null; meter.classList.remove('shown', 'full'); } return; }
+    if (charged === null) meter.classList.add('shown');
+    const step = Math.round(level * 100);
+    if (step !== charged) { charged = step; fill.setAttribute('stroke-dasharray', `${step / 100} 2`); fill.style.stroke = gaugeColour(step / 100); meter.classList.toggle('full', step === 100); }
+    if (at.clientX === gaugeX && at.clientY === gaugeY) return;
+    gaugeX = at.clientX; gaugeY = at.clientY;
+    const box = container.getBoundingClientRect(), { x, y } = gaugeAt(gaugeX - box.left, gaugeY - box.top, box.width, box.height);
+    meter.style.transform = `translate(${x}px, ${y}px)`;
+  };
 }
 
 // The arm and grip, with `fist` where the fist is on the arm: the arm runs off the bottom left, like the mug's (camera.js).
