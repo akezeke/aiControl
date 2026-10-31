@@ -18,13 +18,19 @@ function saturation(hex) {
 const hueDistance = (a, b) => { const d = Math.abs(a - b) % 360; return Math.min(d, 360 - d); };
 const linear = c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
 const maxLinear = hex => Math.max(...rgb(hex).map(linear));
-const KEYS = ['wall', 'ceiling', 'bay', 'trim', 'console', 'mount', 'rail', 'door', 'pit', 'deck', 'neon', 'lamp'];
-const decorative = p => [...KEYS.map(key => p[key]), ...p.tones];
-const allColours = p => [...decorative(p), p.chair, p.seat];
+const SIGNAL_HUES = ['#ff4a33', '#39e0c8', '#ff8426'].map(hue);
+const nearSignal = c => saturation(c) >= .15 && SIGNAL_HUES.some(signal => hueDistance(hue(c), signal) < 20);
+// What catches the eye, as against what fills the room behind it.
+const bright = p => [p.trim, p.rail, p.neon, p.lamp, ...p.tones];
+const surfaces = p => ['wall', 'ceiling', 'bay', 'console', 'mount', 'door', 'pit', 'deck'].map(key => p[key]);
+const allColours = p => [...bright(p), ...surfaces(p), p.chair, p.seat, ...p.space];
 
 for (const [id, p] of Object.entries(PALETTES)) {
-  test(`${id}: decoration keeps clear of the signals`, () => {
-    for (const c of decorative(p)) for (const signal of ['#ff4a33', '#39e0c8', '#ff8426'].map(hue)) assert.ok(saturation(c) < .15 || hueDistance(hue(c), signal) >= 20, `${c} near ${signal}`);
+  test(`${id}: what catches the eye keeps clear of the signals`, () => {
+    for (const c of bright(p)) assert.ok(!nearSignal(c), c);
+  });
+  test(`${id}: a surface on a signal's hue is too dark to compete with it`, () => {
+    for (const c of surfaces(p)) if (nearSignal(c)) assert.ok(maxLinear(c) <= .2, c);
   });
   test(`${id}: no gold`, () => {
     for (const c of allColours(p)) assert.ok(saturation(c) < .15 || hue(c) < 35 || hue(c) > 65, c);
@@ -37,10 +43,19 @@ for (const [id, p] of Object.entries(PALETTES)) {
   });
   test(`${id}: has every colour`, () => {
     assert.equal(p.tones.length, 3);
+    assert.equal(p.space.length, 6);
     for (const c of allColours(p)) assert.match(c, /^#[0-9a-f]{6}$/);
     assert.equal(typeof p.ambient, 'number');
   });
 }
+test('the Lospec colours have their own view outside, and walls that are not purple or pink', () => {
+  const lospec = Object.entries(PALETTES).filter(([id]) => !['neon', 'violet', 'arctic'].includes(id));
+  assert.equal(lospec.length, 5);
+  for (const [id, p] of lospec) {
+    assert.notDeepEqual(p.space, PALETTES.neon.space, id);
+    assert.ok(hue(p.wall) < 260 || hue(p.wall) > 345, `${id} ${p.wall}`);
+  }
+});
 test('the menu has one Bridge theme; colours are chosen inside it', () => {
   const source = readFileSync('client/themes.js', 'utf8');
   assert.ok(source.includes("id: 'bridge', scheme: 'dark'"));

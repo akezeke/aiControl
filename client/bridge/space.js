@@ -38,9 +38,10 @@ export function createSpace(still = false) {
   const sun = new THREE.DirectionalLight(C('#f2f5ff'), 2.2 * LIGHT_SCALE); sun.position.copy(SUN).multiplyScalar(100); scene.add(sun);
   scene.add(new THREE.AmbientLight(C('#31405a'), .55 * LIGHT_SCALE));
   const sky = new THREE.Group(); scene.add(sky);
-  const nebulaU = { uGain: { value: 1 }, uBlue: { value: 0 } };
+  const tint = Array.from({ length: 6 }, () => ({ value: new THREE.Color() }));
+  const nebulaU = { uGain: { value: 1 }, uBlue: { value: 0 }, uWash: tint[0], uCloudDark: tint[1], uCloudBright: tint[2] };
   add(new THREE.SphereGeometry(5200, 32, 20), new THREE.ShaderMaterial({ uniforms: nebulaU, side: THREE.BackSide, depthWrite: false, vertexShader: 'varying vec3 v;void main(){v=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `varying vec3 v;uniform float uGain,uBlue;${NOISE}void main(){float n=fbm(v*3.4+1.7),m=fbm(v*7.+n*2.);float a=smoothstep(.42,.78,n);vec3 c=mix(vec3(.06,.02,.2),vec3(.46,.08,.5),m)*a+vec3(.01,.05,.12)*smoothstep(.3,.7,m);c=mix(c,vec3(.03,.08,.22)*(.5+n),uBlue);gl_FragColor=vec4(c*uGain+vec3(.002,.002,.005),1.);}` }), sky);
+    fragmentShader: `varying vec3 v;uniform float uGain,uBlue;uniform vec3 uWash,uCloudDark,uCloudBright;${NOISE}void main(){float n=fbm(v*3.4+1.7),m=fbm(v*7.+n*2.);float a=smoothstep(.42,.78,n);vec3 c=mix(uCloudDark,uCloudBright,m)*a+uWash*.5*smoothstep(.3,.7,m);c=mix(c,uWash*(.5+n),uBlue);gl_FragColor=vec4(c*uGain+vec3(.002,.002,.005),1.);}` }), sky);
   {
     const n = 3600, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), rnd = seeded('stars'), tint = new THREE.Color();
     for (let i = 0; i < n; i++) { const u = rnd() * 2 - 1, a = rnd() * 6.283, r = Math.sqrt(1 - u * u); pos.set([r * Math.cos(a) * 4800, u * 4800, r * Math.sin(a) * 4800], i * 3); tint.setHSL(rnd() > .7 ? .75 : .6, .5, .5 + rnd() * .5).multiplyScalar(.25 + Math.pow(rnd(), 4) * 2.6); col.set([tint.r, tint.g, tint.b], i * 3); }
@@ -48,13 +49,13 @@ export function createSpace(still = false) {
     sky.add(new THREE.Points(geometry, new THREE.PointsMaterial({ size: 2.1, sizeAttenuation: false, vertexColors: true, depthWrite: false })));
   }
   const planet = new THREE.Group(); planet.position.set(-640, -150, -1500); sky.add(planet);
-  add(new THREE.SphereGeometry(PLANET_R, 64, 44), new THREE.ShaderMaterial({ uniforms: { uSun: { value: SUN } }, vertexShader: 'varying vec3 vN,vW,vO;void main(){vO=position/470.;vN=normalize(mat3(modelMatrix)*normal);vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}',
-    fragmentShader: `varying vec3 vN,vW,vO;uniform vec3 uSun;${NOISE}void main(){vec3 N=normalize(vN),V=normalize(cameraPosition-vW);float wob=fbm(vO*vec3(3.,10.,3.))*1.6,b=sin((vO.y*.92+.1)*17.+wob*2.4);
-    vec3 c=mix(vec3(.16,.2,.62),vec3(.5,.66,.98),smoothstep(-.7,.7,b));c=mix(c,vec3(.42,.2,.66),smoothstep(.55,.95,sin(vO.y*6.+wob*1.2)));c=mix(c,vec3(.9,.94,1.),smoothstep(.62,.8,fbm(vO*vec3(5.,22.,5.)+3.))*.7);
-    float l=dot(N,uSun),d=smoothstep(-.06,.5,l),rim=pow(1.-max(dot(N,V),0.),3.2);gl_FragColor=vec4(c*d*1.15+vec3(.25,.55,.9)*rim*smoothstep(-.2,.35,l)*1.3,1.);}` }), planet);
-  add(new THREE.RingGeometry(PLANET_R * 1.32, PLANET_R * 2.3, 128, 4), new THREE.ShaderMaterial({ uniforms: { uSun: { value: SUN } }, transparent: true, depthWrite: false, side: THREE.DoubleSide, vertexShader: 'varying float r;varying vec3 vL;void main(){r=length(position.xy)/470.;vL=mat3(modelMatrix)*position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `varying float r;varying vec3 vL;uniform vec3 uSun;float h(float x){return fract(sin(x*91.7)*437.5);}float n1(float x){float i=floor(x),f=fract(x);return mix(h(i),h(i+1.),f);}void main(){float t=(r-1.32)/.98;float d=n1(r*38.)*.55+n1(r*11.)*.45,gap=smoothstep(.42,.45,t)*(1.-smoothstep(.5,.53,t));float a=d*smoothstep(0.,.05,t)*(1.-smoothstep(.93,1.,t))*(1.-gap*.92);
-    vec3 p=vL/470.;float along=dot(p,uSun),off=length(p-uSun*along),shadow=along<0.?smoothstep(.97,1.03,off):1.;gl_FragColor=vec4(mix(vec3(.52,.58,.82),vec3(.92,.95,1.),d)*(.1+.95*shadow),a*.9);}` }), planet, 0, 0, 0, Math.PI / 2 - .22, .1, .32).renderOrder = 2;
+  add(new THREE.SphereGeometry(PLANET_R, 64, 44), new THREE.ShaderMaterial({ uniforms: { uSun: { value: SUN }, uLow: tint[3], uHigh: tint[4], uBand: tint[5] }, vertexShader: 'varying vec3 vN,vW,vO;void main(){vO=position/470.;vN=normalize(mat3(modelMatrix)*normal);vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}',
+    fragmentShader: `varying vec3 vN,vW,vO;uniform vec3 uSun,uLow,uHigh,uBand;${NOISE}void main(){vec3 N=normalize(vN),V=normalize(cameraPosition-vW);float wob=fbm(vO*vec3(3.,10.,3.))*1.6,b=sin((vO.y*.92+.1)*17.+wob*2.4);
+    vec3 c=mix(uLow,uHigh,smoothstep(-.7,.7,b));c=mix(c,uBand,smoothstep(.55,.95,sin(vO.y*6.+wob*1.2)));c=mix(c,vec3(.9,.94,1.),smoothstep(.62,.8,fbm(vO*vec3(5.,22.,5.)+3.))*.7);
+    float l=dot(N,uSun),d=smoothstep(-.06,.5,l),rim=pow(1.-max(dot(N,V),0.),3.2);gl_FragColor=vec4(c*d*1.15+uHigh*.7*rim*smoothstep(-.2,.35,l)*1.3,1.);}` }), planet);
+  add(new THREE.RingGeometry(PLANET_R * 1.32, PLANET_R * 2.3, 128, 4), new THREE.ShaderMaterial({ uniforms: { uSun: { value: SUN }, uHigh: tint[4] }, transparent: true, depthWrite: false, side: THREE.DoubleSide, vertexShader: 'varying float r;varying vec3 vL;void main(){r=length(position.xy)/470.;vL=mat3(modelMatrix)*position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader: `varying float r;varying vec3 vL;uniform vec3 uSun,uHigh;float h(float x){return fract(sin(x*91.7)*437.5);}float n1(float x){float i=floor(x),f=fract(x);return mix(h(i),h(i+1.),f);}void main(){float t=(r-1.32)/.98;float d=n1(r*38.)*.55+n1(r*11.)*.45,gap=smoothstep(.42,.45,t)*(1.-smoothstep(.5,.53,t));float a=d*smoothstep(0.,.05,t)*(1.-smoothstep(.93,1.,t))*(1.-gap*.92);
+    vec3 p=vL/470.;float along=dot(p,uSun),off=length(p-uSun*along),shadow=along<0.?smoothstep(.97,1.03,off):1.;gl_FragColor=vec4(mix(uHigh*.85,vec3(.92,.95,1.),d)*(.1+.95*shadow),a*.9);}` }), planet, 0, 0, 0, Math.PI / 2 - .22, .1, .32).renderOrder = 2;
   const moon = canvasTexture(canvas(512, 256, (g, w, h) => { const rnd = seeded('moon'); g.fillStyle = '#8a8d94'; g.fillRect(0, 0, w, h); for (let i = 0; i < 180; i++) { const x = rnd() * w, y = rnd() * h, r = 2 + Math.pow(rnd(), 3) * 26; g.fillStyle = rnd() > .5 ? '#696c74' : '#a2a5ac'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }));
   add(new THREE.SphereGeometry(58, 32, 20), new THREE.MeshStandardMaterial({ map: moon, roughness: 1 }), planet, 1120, 410, 80);
 
@@ -131,7 +132,7 @@ export function createSpace(still = false) {
       goal = limit || state.offline || !state.warp ? 0 : Math.min(1, .55 + state.warp * .12);
       if (!started) { started = true; this.warpLevel = goal; wasWarp = goal > .05; }
     },
-    repaint(palette) { stripeMat.color.copy(C(palette.console)); },
+    repaint(palette) { stripeMat.color.copy(C(palette.console)); palette.space.forEach((hex, i) => tint[i].value.set(hex)); },
     resize(w, h) { streakU.uRes.value.set(w, h); },
     tick(dt) {
       this.warpLevel += (goal - this.warpLevel) * (still ? 1 : 1 - Math.pow(.25, dt));
