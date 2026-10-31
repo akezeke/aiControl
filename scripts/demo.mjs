@@ -10,6 +10,7 @@ import { Auth, savePassword } from '../server/auth.mjs';
 import { RequestStore, fail } from '../server/requests.mjs';
 import { createHandler } from '../server/http.mjs';
 import { OfficeSeats } from '../server/seats.mjs';
+import { CityTowers } from '../server/towers.mjs';
 import { claudeRequest } from '../server/claude.mjs';
 import { codexRequest } from '../server/codex.mjs';
 import { root } from '../server/config.mjs';
@@ -54,7 +55,7 @@ const sessions = [
   claude('2d4f6a8c-1e3b-4c5d-9f7a-8b6c4d2e0f1a', 'weather-station', 'Fix flaky timezone test', 'idle', 95, [
     msg('user', 'The nightly summary test fails around midnight UTC. Fix it.', 120),
     msg('assistant', 'The test used the local clock. It now freezes time at `2026-03-01T23:59:30Z` and passes in every timezone. The full nightly suite is running in the background.', 95),
-  ], { waitingOn: 'shell' }),
+  ], { waitingOn: 'shell', context: { used: 60_000 } }),
   codex('019a4c2e-7b1d-7e3f-a5c6-2d8e9f0a1b2c', 'recipe-api', 'Add pagination to /recipes', 'working', 1, [
     msg('user', 'Add cursor pagination to GET /recipes, 20 per page, and update the OpenAPI spec.', 8),
     tool('Shell · pnpm test -- recipes', 3), tool('Edit · src/routes/recipes.ts, openapi.yaml', 2),
@@ -64,11 +65,11 @@ const sessions = [
     msg('user', 'Review the ingredient parser for edge cases.', 260),
     msg('assistant', '| Input | Parsed | Issue |\n| --- | --- | --- |\n| `1 1/2 cups flour` | 1.5 cup flour | — |\n| `salt to taste` | salt | no quantity |\n| `2-3 eggs` | 2 eggs | range dropped |', 241),
     msg('assistant', 'Only ranges like `2-3 eggs` lose information; the other edge cases parse correctly.', 240),
-  ], { branch: 'main' }),
+  ], { branch: 'main', context: { used: 20_000 } }),
   claude('5e7a9c1b-3d5f-4a6b-8c0d-2e4f6a8b0c1d', 'pixel-garden', 'Seasonal tile palette', 'working', 3, [
     msg('user', 'Make the garden tiles change with the seasons.', 20),
     msg('assistant', 'I drafted spring, summer, autumn and winter palettes. Which style should winter use?', 3),
-  ]),
+  ], { context: { used: 90_000 } }),
   codex('019a4c2f-1d2e-7a3b-c4d5-e6f708192a3b', 'home-lab', 'Upgrade Grafana dashboards', 'working', 0.5, [
     msg('user', 'Upgrade the Grafana dashboards to the new panel format and fix the broken disk usage panel.', 25),
     { ...msg('notice', 'stream disconnected before completion · retrying', 6), error: false },
@@ -77,7 +78,7 @@ const sessions = [
   claude('8a0c2e4f-6b8d-4f1a-9c3e-5d7f9b1d3f5a', 'dotfiles', 'Tidy shell startup', 'idle', 600, [
     msg('user', 'Shell startup takes 1.2 s. Make it faster.', 640),
     msg('assistant', 'Startup is down to **180 ms**: `nvm` now loads lazily and completions are cached.', 600),
-  ], { permissionMode: 'bypassPermissions' }),
+  ], { permissionMode: 'bypassPermissions', context: { used: 40_000 } }),
 ];
 
 const store = new RequestStore();
@@ -94,12 +95,13 @@ const usage = [
   { provider: 'claude', name: 'Claude Code', windows: [usageWindow('five_hour', '5-hour', 64, 71), usageWindow('seven_day', 'Weekly', 47, 2 * 1440)], updatedAt: now, status: 'ready', detail: '' },
 ];
 // Same merge as server/main.mjs: a pending request sets the session status.
-const seats = new OfficeSeats();
+const seats = new OfficeSeats(), towers = new CityTowers();
 const snapshot = () => {
   const requests = store.list();
   return {
     sessions: sessions.map(s => { const own = requests.filter(r => r.sessionId === s.id); return { ...s, ...(own.length ? { status: own[0].kind === 'question' ? 'question' : 'permission' } : {}), requests: own }; }),
     office: seats.update(sessions),
+    towers: towers.update(sessions),
     usage, features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: 'demo',
     providers: [{ name: 'Codex', connected: true, detail: 'Demo data' }, { name: 'Claude Code', connected: true, detail: 'Demo data' }],
   };
