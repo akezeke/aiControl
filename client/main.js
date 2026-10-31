@@ -7,6 +7,7 @@ import './simpsons.css';
 import './diablo.css';
 import './heroes.css';
 import './city-list.css';
+import './bridge-list.css';
 import './provider-icons.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
@@ -22,6 +23,7 @@ import { renderMessageMarkdown, renderDocument } from './message-markdown.js';
 import { documentSegments, matchDocument } from './document-links.js';
 import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
+import { paletteFor, savedColour, wearColours } from './bridge/palettes.js';
 import { sceneFor, sceneAction } from './scenes.js';
 import { hireChoices } from './hire.js';
 import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
@@ -181,7 +183,8 @@ function alertsMenu() {
   return menu;
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
-const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis' };
+wearColours(paletteFor(savedColour()));
+const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {

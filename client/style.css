@@ -56,7 +56,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* Brand */
 .brand { display: flex; align-items: center; gap: 10px; font: 700 16px/1 var(--display); letter-spacing: -.02em; white-space: nowrap; color: var(--text); }
 .brand-variant { display: none; align-items: center; gap: inherit; min-width: 0; }
-:root:is(:not([data-theme]), [data-theme=modern], [data-theme=office], [data-theme=bridge]) .brand-variant.modern, :root[data-theme=city] .brand-variant.city, :root[data-theme=alien] .brand-variant.alien, :root[data-theme=command] .brand-variant.command { display: flex; }
+:root:is(:not([data-theme]), [data-theme=modern], [data-theme=office]) .brand-variant.modern, :root[data-theme=bridge] .brand-variant.bridge, :root[data-theme=city] .brand-variant.city, :root[data-theme=alien] .brand-variant.alien, :root[data-theme=command] .brand-variant.command { display: flex; }
 .brand-name { overflow: hidden; text-overflow: ellipsis; }
 .brand-mark { position: relative; flex: none; width: 30px; height: 30px; display: flex; align-items: flex-end; justify-content: center; gap: 3px; padding: 8px 7px; border-radius: 9px; background: linear-gradient(140deg, #6366f1, #7c3aed 60%, #a855f7); box-shadow: 0 6px 14px -6px #6d28d9; }
 .brand-mark i { width: 4px; height: 10px; border-radius: 1px; background: #fff; }

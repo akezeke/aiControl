@@ -71,7 +71,7 @@
 }
 
 /* OFFICE: paper pinned to a corkboard, inked like the scene's speech bubbles. */
-/* BRIDGE: the holograms on the bridge, as a list: dark glass and a thin blue edge, with the bridge's signal colours. */
+/* BRIDGE: the fallbacks and the signals; bridge-list.css repaints the rest in the room's chosen colours. */
 :root[data-theme=bridge] {
   color-scheme: dark;
   --display: 'Antonio', 'Arial Narrow', 'Liberation Sans Narrow', sans-serif;

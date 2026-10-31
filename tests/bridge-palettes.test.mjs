@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { summary } from '../client/theme-console.js';
 import { readFileSync } from 'node:fs';
-import { PALETTES, paletteFor, savedColour, saveColour } from '../client/bridge/palettes.js';
+import { PALETTES, paletteFor, savedColour, saveColour, shipColours, wearColours } from '../client/bridge/palettes.js';
 
 const rgb = hex => [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16) / 255);
 function hue(hex) {
@@ -101,4 +101,47 @@ test('the status line says what the bridge says: ALL STOP is the rate limit, not
 test('chrome tokens use no gold', () => {
   const block = readFileSync('client/themes.css', 'utf8').match(/\[data-theme=['"]?bridge[^{]*\{[^}]*\}/)[0];
   for (const c of block.match(/#[0-9a-f]{6}/gi)) assert.ok(saturation(c) < .15 || hue(c) < 35 || hue(c) > 65, c);
+});
+
+const ratio = (a, b) => {
+  const lum = hex => { const [r, g, b] = rgb(hex).map(linear); return .2126 * r + .7152 * g + .0722 * b; };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + .05) / (lo + .05);
+};
+for (const [id, p] of Object.entries(PALETTES)) {
+  const ship = shipColours(p);
+  test(`${id}: the list wears the room's colours and stays readable`, () => {
+    for (const c of Object.values(ship)) assert.match(c, /^#[0-9a-f]{6}$/);
+    for (const ground of [ship.hull, ship.plate, ship.raised, ship.sunk]) {
+      assert.ok(ratio(ship.text, ground) >= 7, `text on ${ground}`);
+      assert.ok(ratio(ship.quiet, ground) >= 4.5, `quiet text on ${ground}`);
+    }
+    assert.ok(ratio(ship.ink, ship.light) >= 4.5, `ink on ${ship.light}`);
+    assert.ok(ratio(ship.light, ship.sunk) >= 3, `${ship.light} on sunk`);
+    assert.ok(ratio(ship.light, ship.soft) >= 3, `${ship.light} on its own tint ${ship.soft}`);
+    assert.ok(ratio(ship.text, ship.soft) >= 7, `text on ${ship.soft}`);
+  });
+  test(`${id}: the list has no gold, and nothing bright on a signal's hue`, () => {
+    for (const c of Object.values(ship)) assert.ok(saturation(c) < .15 || hue(c) < 35 || hue(c) > 65, c);
+    assert.ok(!nearSignal(ship.light) && !nearSignal(ship.trim), 'lights');
+  });
+  test(`${id}: the hull is coloured, not grey`, () => assert.ok(saturation(ship.hull) >= .15, ship.hull));
+  test(`${id}: the ship's lights are a colour, not white`, () => assert.ok(saturation(ship.light) >= .3, ship.light));
+}
+test('each colour gives the list its own hull', () => {
+  assert.equal(new Set(Object.values(PALETTES).map(p => shipColours(p).hull)).size, Object.keys(PALETTES).length);
+});
+test('the colours go on the page as --ship-*, which only the Bridge reads', () => {
+  const set = new Map();
+  wearColours(PALETTES.rust, { style: { setProperty: (name, value) => set.set(name, value) } });
+  assert.equal(set.get('--ship-hull'), shipColours(PALETTES.rust).hull);
+  for (const name of set.keys()) assert.match(name, /^--ship-/);
+});
+test('the list has its own look: starship chrome, motion only if allowed, and its own name', () => {
+  const css = readFileSync('client/bridge-list.css', 'utf8'), main = readFileSync('client/main.js', 'utf8');
+  assert.match(main, /import '\.\/bridge-list\.css'/);
+  assert.match(main, /bridge: '[A-Z]/);
+  for (const c of css.match(/#[0-9a-f]{6}/gi) || []) assert.ok(saturation(c) < .15 || hue(c) < 35 || hue(c) > 65, c);
+  const still = css.replace(/@media \(prefers-reduced-motion: no-preference\) \{[\s\S]*?\n\}/g, '').replace(/@keyframes[^\n]*/g, '');
+  assert.doesNotMatch(still, /animation:/);
 });

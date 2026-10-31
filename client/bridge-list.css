@@ -1,0 +1,164 @@
+/* The Bridge's list and panels: out of the ship's window, stars and a planet's edge; in front of them, hull plating with the corners cut and the room's own lights.
+   Every colour is the room's (--ship-*, set from the chosen colours); red and teal are kept for the signals. */
+:root[data-theme=bridge] {
+  --ship-space: #070a22; --ship-hull: #162462; --ship-plate: #0c1338; --ship-raised: #101a4a; --ship-sunk: #080c26; --ship-seam: #1f2a63; --ship-edge: #3749a0; --ship-light: #ff5ad2; --ship-trim: #4d6be0; --ship-soft: #5f2a7a; --ship-ink: #04050e; --ship-text: #eef2fb; --ship-quiet: #b4bfd4; --ship-nebula: #20356a; --ship-haze: #65306e; --ship-limb: #bcd4fd;
+  --bg: var(--ship-space); --panel: var(--ship-plate); --panel-2: var(--ship-raised); --sunken: var(--ship-sunk);
+  --text: var(--ship-text); --text-2: #d3dbea; --text-3: var(--ship-quiet);
+  --line: var(--ship-seam); --line-2: var(--ship-edge);
+  --accent: var(--ship-light); --accent-2: var(--ship-light); --accent-ink: var(--ship-ink); --accent-soft: var(--ship-soft); --focus: var(--ship-light);
+  --radius: 0px; --radius-sm: 0px; --shadow: none; --shadow-lg: 0 0 0 1px var(--ship-edge), 0 18px 50px #000c;
+  --edge: var(--ship-seam);
+  --scroll-track: var(--ship-sunk); --scroll-thumb: var(--ship-edge);
+  scrollbar-color: var(--ship-edge) var(--ship-sunk);
+
+  /* Outside: fixed, so the list slides past it. */
+  --limb-r: 700px; --limb-x: calc(100% + 120px); --limb-y: -520px;
+  body { background: var(--ship-space); }
+  .login-screen { isolation: isolate; background: var(--ship-space); }
+  .login-symbol { border-radius: 0; background: var(--ship-sunk); color: var(--ship-light); clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+  .shell::before, .login-screen::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(circle var(--limb-r) at var(--limb-x) var(--limb-y), transparent 0 calc(100% - 26px), color-mix(in srgb, var(--ship-limb) 75%, transparent) calc(100% - 3px), color-mix(in srgb, var(--ship-limb) 26%, transparent) 100%, transparent calc(100% + 46px)), radial-gradient(circle var(--limb-r) at var(--limb-x) var(--limb-y), color-mix(in srgb, var(--ship-haze) 80%, var(--ship-space)) 0, var(--ship-nebula) 100%, transparent 100%), radial-gradient(ellipse 60% 70% at 18% 92%, color-mix(in srgb, var(--ship-haze) 22%, transparent), transparent), radial-gradient(ellipse 80% 60% at 70% 60%, color-mix(in srgb, var(--ship-nebula) 40%, transparent), transparent), url('/bridge-stars.svg'); }
+  .main-content, .history-viewport { background: none; }
+
+  /* The cut: one corner each way, the shape of a plate on the hull, with its edge drawn across the cut. */
+  --plate: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+  --key: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+  :is(.session-card:not(.subagent), .usage-accounts, .empty, .login-card, .request-box, .recent-message:not(.tool, .notice), .toast) { clip-path: var(--plate); border: 1px solid var(--edge); border-radius: 0; background: linear-gradient(225deg, transparent 8.5px, var(--edge) 0 9.9px, transparent 0) 100% 0 / 16px 16px no-repeat, linear-gradient(45deg, transparent 8.5px, var(--edge) 0 9.9px, transparent 0) 0 100% / 16px 16px no-repeat, color-mix(in srgb, var(--ship-plate) 92%, transparent); box-shadow: none; }
+  :is(.quiet-button, .secondary, .primary, .spawn-button, .stop-button, .clear-button, .shot-button, .next-button, .fire-button, .nav-item, .search, .stat, input:not([type=checkbox], [type=radio], .search input), textarea) { clip-path: var(--key); border-radius: 0; }
+  :is(.quiet-button, .secondary, .spawn-button, .stop-button, .clear-button, .shot-button, .next-button, .fire-button, .stat) { --edge: var(--ship-edge); border: 1px solid var(--edge); background: linear-gradient(225deg, transparent 4.9px, var(--edge) 0 6.3px, transparent 0) 100% 0 / 10px 10px no-repeat, linear-gradient(45deg, transparent 4.9px, var(--edge) 0 6.3px, transparent 0) 0 100% / 10px 10px no-repeat, var(--ship-raised); color: var(--text); }
+  :is(.quiet-button, .secondary, .spawn-button, .stop-button, .clear-button, .shot-button, .next-button, .fire-button, .stat):hover:not(:disabled) { --edge: var(--ship-light); background-color: var(--ship-soft); }
+  .stat.selected { --edge: var(--ship-light); background: var(--ship-light); color: var(--ship-ink); }
+  /* A cut would hide a ring outside the corners. */
+  :is(.session-card, .quiet-button, .secondary, .primary, .spawn-button, .nav-item, input, textarea):focus-visible { outline-offset: -2px; }
+
+  /* Labels are stencilled on, in the room's type. */
+  :is(.brand-name, .panel-title, .sidebar-label, .status-line, .page-heading h1, .group-title h2, .empty h2) { font-family: var(--display); }
+  :is(.brand-name, .sidebar-label, .status-line, .page-heading h1) { text-transform: uppercase; }
+
+  /* The sidebar: a bulkhead, with a light strip where it meets the window. */
+  .sidebar { background: url('/bridge-plate.svg') 0 0 / 240px 320px, var(--ship-hull); border-right: 2px solid var(--ship-light); box-shadow: 0 0 16px color-mix(in srgb, var(--ship-light) 45%, transparent); }
+  .brand-variant.bridge .brand-mark { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 0; background: var(--ship-light); box-shadow: none; -webkit-mask: url('/bridge-mark.svg') center / contain no-repeat; mask: url('/bridge-mark.svg') center / contain no-repeat; }
+  .brand-variant.bridge .brand-mark i { display: none; }
+  .brand-variant.bridge .brand-name { font-size: 24px; font-weight: 600; letter-spacing: .16em; }
+  .sidebar-label { display: flex; align-items: center; gap: 8px; margin-inline: 2px; color: var(--ship-light); font-size: 12px; font-weight: 500; letter-spacing: .14em; }
+  .sidebar-label::after { content: ''; flex: 1; height: 5px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--ship-light) 55%, transparent) 0 2px, transparent 2px 6px); }
+  /* Console keys: dark until lit. */
+  .nav-item { background: var(--ship-sunk); color: var(--text-2); }
+  .nav-item + .nav-item { margin-top: 3px; }
+  .nav-item:hover { background: var(--ship-raised); color: var(--text); }
+  .nav-item.active { background: var(--ship-light); color: var(--ship-ink); font-weight: 650; }
+  .nav-count { border-radius: 0; background: var(--ship-raised); }
+  .nav-item.active .nav-count { background: var(--ship-ink); color: var(--ship-text); }
+
+  /* The plot: the ship at the middle, sessions round it, and whoever's waiting closing in. */
+  .theme-console { display: block; margin: 0 0 4px; }
+  .console-lamps, .console-vector, .console-sweep, .console-signal, .console-power { display: none; }
+  .console-heading { display: none; }
+  .console-screen { position: relative; height: 150px; overflow: hidden; isolation: isolate; clip-path: var(--plate); background: url('/bridge-stars.svg') 40px 20px / 320px, var(--ship-ink); }
+  .console-screen::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(color-mix(in srgb, var(--ship-trim) 50%, transparent) 0 0) center / 100% 1px no-repeat, linear-gradient(color-mix(in srgb, var(--ship-trim) 50%, transparent) 0 0) center / 1px 100% no-repeat, radial-gradient(circle at center, transparent 0 31px, color-mix(in srgb, var(--ship-trim) 70%, transparent) 31.5px 32.5px, transparent 33px 63px, color-mix(in srgb, var(--ship-trim) 60%, transparent) 63.5px 64.5px, transparent 65px 95px, color-mix(in srgb, var(--ship-trim) 45%, transparent) 95.5px 96.5px, transparent 97px); }
+  .console-screen::after { content: ''; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px; pointer-events: none; background: var(--ship-light); -webkit-mask: url('/bridge-mark.svg') center / contain no-repeat; mask: url('/bridge-mark.svg') center / contain no-repeat; }
+  .console-contacts { position: absolute; inset: 0; z-index: 1; }
+  /* Squares on their corners; size and colour say what they are. */
+  .console-contact { position: absolute; width: 22px; height: 22px; padding: 0; border: 0; background: none; color: var(--ship-quiet); transform: translate(-50%, -50%); }
+  .console-contact::before { content: ''; position: absolute; inset: 7.5px; background: currentColor; rotate: 45deg; }
+  .console-contact[data-status=working] { color: var(--ok); }
+  .console-contact:is([data-status=question], [data-status=permission]) { color: var(--warn); }
+  .console-contact:is([data-status=question], [data-status=permission])::before { inset: 5.5px; }
+  .console-contact:is([data-status=offline], [data-status=error]) { color: var(--danger); }
+  .console-contact:is(:hover, :focus-visible, [data-tracked]) { z-index: 1; outline: 1px solid currentColor; outline-offset: -2px; }
+  .console-readout { position: absolute; left: 6px; right: 6px; bottom: 4px; z-index: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 0 12px 0 4px; pointer-events: none; }
+  .theme-console { position: relative; }
+  .console-track-label { flex: none; color: var(--ship-light); font: 500 12px/1.4 var(--display); letter-spacing: .08em; text-transform: uppercase; }
+  .console-track-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ship-text); }
+  .console-readout:is([data-status=question], [data-status=permission]) .console-track-label { color: var(--warn); }
+  .console-readout[data-status=working] .console-track-label { color: var(--ok); }
+  .console-empty { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: color-mix(in srgb, var(--ship-ink) 80%, transparent); color: var(--ship-text); font: 500 15px var(--display); letter-spacing: .1em; }
+  .theme-console[data-disconnected=true] .console-contacts { opacity: .3; }
+
+  /* The page's name, and a scale under it. */
+  .page-heading { position: relative; align-items: center; margin-bottom: 18px; padding-bottom: 10px; }
+  .page-heading::after { content: ''; position: absolute; inset: auto 0 0; height: 6px; background: linear-gradient(var(--ship-light) 0 0) 0 100% / 72px 2px no-repeat, repeating-linear-gradient(90deg, color-mix(in srgb, var(--ship-text) 45%, transparent) 0 1px, transparent 1px 8px); }
+  .page-heading h1 { font-size: 30px; font-weight: 500; letter-spacing: .14em; color: var(--ship-text); }
+  .machine-label { padding: 1px 8px; background: var(--ship-sunk); color: var(--text-3); clip-path: var(--key); }
+  .status-line { width: fit-content; margin-bottom: 6px; font-size: 13px; font-weight: 500; letter-spacing: .12em; color: var(--ship-light); }
+  .status-line::before { content: ''; flex: none; width: 8px; height: 8px; background: currentColor; rotate: 45deg; }
+  &:has(.session-card.needs-input) .status-line { color: var(--warn); }
+
+  /* Power gauges: a lit bar in a dark trough, on a scale. */
+  .usage-account + .usage-account { border-top-color: var(--line); }
+  .usage-meter { position: relative; height: 8px; border-radius: 0; background: var(--ship-sunk); color: var(--ship-light); }
+  .usage-meter::-webkit-progress-bar { background: repeating-linear-gradient(90deg, transparent 0 7px, var(--ship-plate) 7px 8px), var(--ship-sunk); border-radius: 0; }
+  .usage-meter::-webkit-progress-value { background: repeating-linear-gradient(90deg, transparent 0 7px, var(--ship-plate) 7px 8px), currentColor; border-radius: 0; }
+  .usage-meter::-moz-progress-bar { background: repeating-linear-gradient(90deg, transparent 0 7px, var(--ship-plate) 7px 8px), currentColor; border-radius: 0; }
+
+  /* A project is a deck: its name on an angled tab, the deck's line running off from it. */
+  .group-heading { position: relative; min-height: 30px; margin: 0 0 6px; background: linear-gradient(var(--ship-trim) 0 0) 0 100% / 100% 1px no-repeat; }
+  .group-title { align-self: stretch; padding: 3px 22px 3px 10px; background: var(--ship-hull); box-shadow: inset 3px 0 var(--ship-light); clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%); }
+  .group-title .icon { display: none; }
+  .group-title h2 { font-size: 16px; font-weight: 500; letter-spacing: .06em; }
+  .group-count { border-radius: 0; background: var(--ship-sunk); }
+  .project-path { padding: 0 6px; background: color-mix(in srgb, var(--ship-space) 70%, transparent); }
+
+  /* A session is a plate; its mount holds the agent's mark. */
+  .session-card { --edge: var(--ship-seam); transition: border-color .15s, background-color .15s; }
+  .session-card:is(:hover, :focus-visible) { --edge: var(--ship-light); }
+  .agent-mark, .session-card.subagent .agent-mark { border: 0; border-radius: 0; background: var(--ship-sunk); clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+  .agent-mark.claude { background: var(--ship-sunk); }
+  .session-card:not(.subagent) { grid-template-columns: 36px minmax(0, 1fr) auto; }
+  .session-card:not(.subagent) .agent-mark { width: 36px; height: 32px; }
+  .session-card.subagent { border: 1px solid var(--edge); border-radius: 0; background: color-mix(in srgb, var(--ship-plate) 92%, transparent); box-shadow: none; }
+  .session-card.subagent::before { border-radius: 0; border-color: var(--ship-trim); }
+  .session-card.subagent:has(+ .subagent)::before { background: none; }
+  /* Signals are what's lit: a bar at the plate's edge, and the plate warmed behind what needs you. */
+  .session-card[data-status=working] { --edge: color-mix(in srgb, var(--ok) 50%, var(--ship-seam)); box-shadow: inset 3px 0 var(--ok); }
+  .session-card.needs-input { --edge: var(--warn); box-shadow: inset 5px 0 var(--warn); background-color: var(--warn-soft); }
+  .session-card.needs-input:not(.subagent) { background-image: linear-gradient(225deg, transparent 8.5px, var(--edge) 0 9.9px, transparent 0), linear-gradient(45deg, transparent 8.5px, var(--edge) 0 9.9px, transparent 0), linear-gradient(90deg, color-mix(in srgb, var(--warn) 24%, transparent), transparent 40%); background-position: 100% 0, 0 100%, 0 0; background-size: 16px 16px, 16px 16px, auto; background-repeat: no-repeat; }
+  .session-card:is([data-status=idle], [data-status=offline]) .session-title { color: var(--text-2); }
+  .badge { border-radius: 0; font-family: var(--display); font-size: 13px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px)); }
+  .badge:not(.green, .amber, .red) { background: var(--ship-sunk); color: var(--ship-quiet); }
+  .badge .dot { border-radius: 0; rotate: 45deg; }
+  .badge.amber { background: var(--warn); color: var(--ship-ink); }
+  .badge.green { background: color-mix(in srgb, var(--ok) 22%, var(--ship-sunk)); color: var(--ok); }
+  :is(.chip, .subagent-tag, .project-tag) { border-radius: 0; }
+
+  /* Fields are recesses in the plate. */
+  :is(input:not([type=checkbox], [type=radio], .search input), textarea, .search) { background: var(--ship-sunk); border-color: var(--ship-seam); box-shadow: none; }
+  .search:focus-within { border-color: var(--ship-light); background-color: var(--ship-raised); box-shadow: none; }
+  :is(.theme-options, .filter-options) { background: var(--ship-plate); border-color: var(--ship-edge); }
+  :is(.connection-dot, .live-label::before) { border-radius: 0; rotate: 45deg; }
+
+  /* The panel: a comm channel, hull above and below, what's said on plates between. */
+  .detail-panel { background: url('/bridge-stars.svg'), var(--ship-space); border-left: 2px solid var(--ship-light); box-shadow: 0 0 22px color-mix(in srgb, var(--ship-light) 40%, transparent); }
+  .chat-header, .message-composer { background: url('/bridge-plate.svg') 0 0 / 240px 320px, var(--ship-hull); border-color: var(--ship-trim); }
+  .panel-title { font-size: 19px; font-weight: 500; letter-spacing: .04em; }
+  .panel-backdrop { background: color-mix(in srgb, var(--ship-ink) 60%, transparent); }
+  .recent-message:not(.tool, .notice) { box-shadow: inset 2px 0 var(--ship-trim); }
+  .recent-message.user:not(.tool, .notice) { --edge: var(--ship-soft); background-color: var(--ship-soft); box-shadow: inset -2px 0 var(--ship-light); }
+  .tool-call::before { color: var(--ship-trim); }
+  .request-box { --edge: var(--warn); background-color: var(--warn-soft); box-shadow: inset 5px 0 var(--warn); }
+  .toast { --edge: var(--ship-light); background-color: var(--ship-sunk); color: var(--ship-text); }
+  .primary { background: var(--ship-light); color: var(--ship-ink); box-shadow: none; }
+  .primary:hover:not(:disabled) { background: color-mix(in srgb, var(--ship-light) 80%, var(--ship-text)); }
+  .quiet-button.office-button { --edge: var(--ship-light); color: var(--ship-text); }
+  .shot-viewer { background: var(--ship-plate); box-shadow: var(--shadow-lg); }
+  .shot-viewer::backdrop { background: color-mix(in srgb, var(--ship-ink) 85%, transparent); }
+
+  /* A phone has no sidebar to run a light along: it runs under the top bar. */
+  .topbar { background: url('/bridge-plate.svg') 0 0 / 240px 320px, var(--ship-hull); border-bottom: 2px solid var(--ship-light); }
+}
+@media (min-width: 641px) and (max-width: 900px) { :root[data-theme=bridge] .theme-console { display: none; } }
+@media (max-width: 640px) { :root[data-theme=bridge] { --limb-r: 400px; --limb-x: calc(100% + 60px); --limb-y: -260px; } }
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme=bridge] {
+    /* Past the window, stars at warp while anything's working; a waiting plate breathing on the 3 s poll clock; a working one's edge running. */
+    &:is([data-scene-list], [data-scene-fallback]):has(.session-card[data-status=working]) .shell::after { content: ''; position: fixed; inset: 0 -960px 0 0; z-index: -1; pointer-events: none; opacity: .3; background: url('/bridge-warp.svg'); animation: ship-warp 2.4s linear infinite; }
+    .session-card.needs-input:not(.subagent)::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 34%, transparent), transparent 55%); animation: ship-breathe 3s ease-in-out infinite; animation-delay: var(--since-load, 0s); }
+    .session-card[data-status=working]:not(.subagent)::after { content: ''; position: absolute; left: 0; bottom: 0; width: 28%; height: 2px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--ok)); animation: ship-run 2.8s linear infinite; }
+    .console-contact:is([data-status=question], [data-status=permission])::before { animation: ship-contact 1.5s steps(1) infinite; }
+    .console-contact.blip::after { content: ''; position: absolute; inset: 2px; border: 1px solid currentColor; rotate: 45deg; animation: ship-blip .7s ease-out both; }
+  }
+}
+@keyframes ship-warp { to { transform: translateX(-960px); } }
+@keyframes ship-breathe { 50% { opacity: .1; } }
+@keyframes ship-run { from { transform: translateX(-100%); } to { transform: translateX(360%); } }
+@keyframes ship-contact { 50% { opacity: .35; } }
+@keyframes ship-blip { to { scale: 2.2; opacity: 0; } }

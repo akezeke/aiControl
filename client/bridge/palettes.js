@@ -25,5 +25,23 @@ export function savedColour() {
 export function saveColour(name) {
   try { localStorage.setItem(storageKey, name); } catch { /* Private browsing can disable storage. */ }
 }
+const mix = (a, b, amount) => '#' + [1, 3, 5].map(at => {
+  const from = parseInt(a.slice(at, at + 2), 16), to = parseInt(b.slice(at, at + 2), 16);
+  return Math.round(from + (to - from) * amount).toString(16).padStart(2, '0');
+}).join('');
+const luminance = hex => { const [r, g, b] = [1, 3, 5].map(at => { const c = parseInt(hex.slice(at, at + 2), 16) / 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+// A room lit white still has a colour: the one on its button.
+const isWhite = hex => { const c = [1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16)); return Math.max(...c) - Math.min(...c) < 30; };
+const SPACE = '#04050e', TEXT = '#eef2fb', QUIET = '#b4bfd4';
+// Dim enough that the quiet text still reads on it. A pale wall keeps its tint by taking on the room's console colour first.
+function hullOf(colour) { let hull = colour; while (luminance(hull) > .065) hull = mix(hull, SPACE, .06); return hull; }
+// The list and panels are the same ship as the room: its hull and lights in the colours chosen on the arm.
+export function shipColours(p) {
+  const pale = luminance(p.wall) > .4, hull = hullOf(pale ? mix(p.wall, p.console, .75) : mix(p.wall, SPACE, .3)), light = isWhite(p.neon) ? p.lamp : mix(p.neon, p.tones[0], .08);
+  return { space: mix(p.ceiling, SPACE, pale ? .9 : .86), hull, plate: mix(hull, SPACE, .55), raised: mix(hull, SPACE, .3), sunk: mix(hull, SPACE, .78), seam: mix(p.trim, SPACE, .62), edge: mix(p.trim, SPACE, .3), light, trim: p.trim, soft: mix(light, mix(hull, SPACE, .55), .78), ink: SPACE, text: TEXT, quiet: QUIET, nebula: mix(p.space[0], SPACE, .35), haze: mix(p.space[2], SPACE, .45), limb: p.space[4] };
+}
+export function wearColours(palette, root = document.documentElement) {
+  for (const [name, colour] of Object.entries(shipColours(palette))) root.style.setProperty(`--ship-${name}`, colour);
+}
 // The only colours allowed to compete for attention.
 export const SIGNALS = { need: '#ff4a33', working: '#39e0c8', idle: '#9fb4e0', near: '#ff8426' };

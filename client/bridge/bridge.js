@@ -12,7 +12,7 @@ import { createCrew, crewArrival, crewLook } from './crew.js';
 import { SHOT_SIZE, createDisplays, stationName } from './displays.js';
 import { ROSTER, createHologram, listHeight } from './hologram.js';
 import { createLights } from './lights.js';
-import { PALETTES, SIGNALS, paletteFor, saveColour, savedColour } from './palettes.js';
+import { PALETTES, SIGNALS, paletteFor, saveColour, savedColour, wearColours } from './palettes.js';
 import { createPost } from './post.js';
 import { createReticle } from './reticle.js';
 import { buildRoom } from './room.js';
@@ -53,7 +53,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
   const showCrew = () => holograms.crew.show(crew.length ? `${crew.length} SESSIONS` : 'NO SESSIONS', crew.map(session => ({ id: session.id, label: stationName(session), swatch: [SIGNALS[signalOf(session)]] })));
   const showHologram = { colour: showColours, crew: showCrew };
   const closeHolograms = () => { for (const hologram of Object.values(holograms)) hologram.hide(); };
-  const chosen = { colour: ({ id }) => { colour = id; saveColour(id); repaint(paletteFor(id)); showColours(); }, crew: ({ id }) => bridge.talkTo(id) };
+  const chosen = { colour: ({ id }) => { colour = id; saveColour(id); repaint(paletteFor(id)); wearColours(paletteFor(id)); showColours(); }, crew: ({ id }) => bridge.talkTo(id) };
   const toggleHologram = button => { const wasOpen = holograms[button].open; closeHolograms(); if (!wasOpen) showHologram[button](); };
   // A click belongs to an open hologram first, then to a projector's button; anywhere else it just closes what's open.
   function clickHologram(at) {
