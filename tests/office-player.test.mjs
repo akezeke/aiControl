@@ -129,7 +129,7 @@ test('untouched, the view turns to face the way it walks; a twitch of the mouse 
   player.locked = true; player.yaw = Math.PI;
   player.walkTo(beyond);
   handlers.pointermove({ movementX: 2, movementY: -1, pointerId: 1 });
-  run(0.6);
+  run(0.9);
   assert.ok(Math.abs(Math.sin(player.yaw)) < 0.05 && Math.cos(player.yaw) > 0.95, `yaw ${player.yaw}`);
 });
 
@@ -199,4 +199,22 @@ test('free and resolveStep respect a left edge', () => {
   assert.equal(resolveStep(west, new THREE.Vector3(-1, 0, 0), [], wide).x, -6);
   assert.ok(Math.abs(resolveStep(new THREE.Vector3(-9.5, 1.5, 5), new THREE.Vector3(-2, 0, 0), [], wide).x + 9.7) < 1e-9, 'stopped a body short of it');
   assert.ok(resolveStep(new THREE.Vector3(1, 1.5, 5), new THREE.Vector3(-3, 0, 0), [], room).x > 0, 'no left edge: stopped at the old wall');
+});
+
+test('round the furniture the walk bends and the view turns without a jerk, and it slows to a stop', t => {
+  const { player, run } = walker(t, pod);
+  player.walkTo(beyond);
+  run(0.3); // the view's first turn onto the way
+  let pos = player.position.clone(), yaw = player.yaw, step = null, rate = null, bend = 0, kick = 0, last = 0;
+  run(8, () => {
+    if (!player.target && !last) last = step.length();
+    const now = player.position.clone().sub(pos).setY(0), turn = (player.yaw - yaw) * 60;
+    if (step && now.length() > 0.02 && step.length() > 0.02) bend = Math.max(bend, now.angleTo(step));
+    if (rate !== null) kick = Math.max(kick, Math.abs(turn - rate) * 60);
+    pos.copy(player.position); yaw = player.yaw; step = now; rate = turn;
+  });
+  assert.ok(at(player, 5, 8) < 0.1, 'got there');
+  assert.ok(bend < 0.15, `no sharp corner: ${bend.toFixed(3)} rad in a frame`);
+  assert.ok(kick < 30, `the view picks up its turns: ${kick.toFixed(1)} rad/s²`);
+  assert.ok(last < 0.02, `and comes to a stop: ${last.toFixed(3)} m in its last frame`);
 });

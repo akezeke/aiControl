@@ -18,6 +18,10 @@ export const DRAG_SLOP = 6;
 const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, TOUCH_LOOK = 0.006, LOCKED_LOOK = 0.0022, AIM_HOLD = 200, JUMP = 4.2, FLING = 0.3, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
 // How far (radians) you have to look on a walk for the view to stay yours; less is a twitch of the mouse as it clicks.
 const TAKE_VIEW = 0.05;
+// A walk by a click: it picks up speed (m/s²) and slows to a stop at the end; each corner is rounded off from up to ROUND (m)
+// before it, in BEND straight bits, where there's room; the view turns toward a point AHEAD (m) on along the way, on a spring
+// that settles in about TURN_TIME (s), so it starts round a corner before you get there and never jerks.
+const ACCEL = 14, BRAKE = 11, ROUND = 0.8, BEND = 16, AHEAD = 1.5, TURN_TIME = 0.22;
 const keys = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] };
 const turns = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 const turnTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
@@ -139,10 +143,13 @@ export class Player {
 
   // Walks to a floor point round the furniture (`route`), or straight there sliding along what's in the way if there's no way
   // through; `then` runs on arrival, or when stuck if `always`. The view turns to face the way until you look somewhere yourself.
+  // Stopping short is of the last leg: through a desk, the end can be near long before you are. A new walk on the way keeps its pace.
   walkTo(point, then, stopShort = 0, always = false) {
     if (this.pinned) return;
-    const way = this.route?.(this.position, point) || [point];
-    this.target = { way: way.map(at => at.clone().setY(EYE)), then, stopShort, always, stuck: 0, looked: 0 };
+    if (!this.target) this.pace = this.turning = 0;
+    const start = this.position.clone().setY(0), way = rounded([start, ...(this.route?.(this.position, point) || [point]).map(at => at.clone().setY(0))], this.colliders(), this.room()).slice(1);
+    const end = way.at(-1), leg = end.clone().sub(way.at(-2) ?? start);
+    this.target = { way, then, stopShort: Math.min(stopShort, leg.length()), ahead: leg.normalize(), always, stuck: 0, looked: 0 };
   }
 
   // Flies to a spot, turning to face `look` (clicking someone or a board) and tilting to `pitch`: quick and eased, with a small arc over the desks.
@@ -173,18 +180,33 @@ export class Player {
       return;
     }
     const target = this.target; if (!target) return;
-    const flat = at => at.clone().sub(this.position).setY(0), { way } = target;
-    while (way.length > 1 && flat(way[0]).length() <= 0.05) way.shift();
-    // Stopping short is of the last leg: through a desk, the end can be near long before you are.
-    const to = flat(way[0]), distance = to.length(), stopShort = way.length > 1 ? 0 : target.stopShort;
-    if (way.length === 1 && distance <= stopShort + 0.05) { this.target = null; target.then?.(); return; }
-    if (target.looked < TAKE_VIEW) this.yaw += turnTo(this.yaw, Math.atan2(to.x, to.z)) * Math.min(1, dt * 8);
-    const before = this.position.clone();
-    this.step(to.normalize().multiplyScalar(Math.min(speed * dt, distance - stopShort)));
+    const { way } = target, here = this.position.clone().setY(0);
+    while (way.length > 1 && here.distanceTo(way[0]) <= 0.01) way.shift();
+    let left = -target.stopShort;
+    for (let i = 0, from = here; i < way.length; from = way[i++]) left += from.distanceTo(way[i]);
+    if (left <= 0.01) { this.target = null; this.pace = this.turning = 0; target.then?.(); return; }
+    // Up to speed and back down, braking to arrive at no speed at all.
+    this.pace = Math.min(this.pace + THREE.MathUtils.clamp(speed - this.pace, -ACCEL * dt, ACCEL * dt), Math.sqrt(2 * BRAKE * left));
+    const go = Math.min(this.pace * dt, left), to = here.clone();
+    let rest = go;
+    while (way.length > 1 && to.distanceTo(way[0]) <= rest) { rest -= to.distanceTo(way[0]); to.copy(way.shift()); }
+    const d = to.distanceTo(way[0]); if (d > 0) to.lerp(way[0], Math.min(1, rest / d));
+    this.step(to.sub(here));
     this.running = this.shift;
-    target.stuck = this.position.distanceTo(before) < speed * dt * 0.2 ? target.stuck + dt : 0;
+    if (target.looked < TAKE_VIEW) {
+      const look = along(this.position.clone().setY(0), way, AHEAD, target.ahead).sub(this.position).setY(0);
+      if (look.lengthSq() > 1e-6) this.turnToward(Math.atan2(look.x, look.z), dt);
+    } else this.turning = 0;
+    target.stuck = this.position.clone().setY(0).distanceTo(here) < go * 0.2 ? target.stuck + dt : 0;
     // Blocked by a desk: stop here; a talk still goes ahead from as close as we got.
-    if (target.stuck > 0.4) { this.target = null; if (target.always) target.then?.(); }
+    if (target.stuck > 0.4) { this.target = null; this.pace = this.turning = 0; if (target.always) target.then?.(); }
+  }
+
+  // Eases the view's yaw toward `aim` on a critically damped spring (`turning` its speed, as Unity's SmoothDamp): when the
+  // aim jumps, the turn picks up speed rather than starting at full tilt.
+  turnToward(aim, dt) {
+    const w = 2 / TURN_TIME, x = w * dt, decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x), off = turnTo(aim, this.yaw), push = (this.turning + w * off) * dt;
+    this.turning = (this.turning - w * push) * decay; this.yaw += (off + push) * decay - off;
   }
 
   fly(dt) {
@@ -198,6 +220,31 @@ export class Player {
   step(delta) { this.position.copy(resolveStep(this.position, delta, this.colliders(), this.room())); }
 
   dispose() { this.unlock(); for (const fn of this.disposers) fn(); }
+}
+
+// The point `distance` on along a way (floor points) from `from`, carrying on past its end the way its last leg goes (`ahead`).
+function along(from, way, distance, ahead) {
+  const at = from.clone();
+  for (const to of way) { const d = at.distanceTo(to); if (d >= distance) return at.lerp(to, distance / d); at.copy(to); distance -= d; }
+  return at.addScaledVector(ahead, distance);
+}
+
+// A way (floor points) with each corner rounded off: a curve from up to ROUND before it to as far after, never more than half
+// of either leg so the next corner has its half, where the body fits all along it (free); else a tighter one, else the corner.
+function rounded(points, colliders, room) {
+  const out = [points[0]];
+  for (let i = 1; i < points.length - 1; i++) {
+    const corner = points[i], back = points[i - 1].clone().sub(corner), on = points[i + 1].clone().sub(corner);
+    let bend = null;
+    for (let r = Math.min(ROUND, back.length() / 2, on.length() / 2); r > 0.05 && !bend; r /= 2) {
+      const a = corner.clone().addScaledVector(back, r / back.length()), b = corner.clone().addScaledVector(on, r / on.length());
+      const curve = Array.from({ length: BEND + 1 }, (_, k) => { const t = k / BEND; return a.clone().multiplyScalar((1 - t) ** 2).addScaledVector(corner, 2 * t * (1 - t)).addScaledVector(b, t * t); });
+      if (curve.every(p => free(p, colliders, room))) bend = curve;
+    }
+    out.push(...(bend || [corner]));
+  }
+  if (points.length > 1) out.push(points.at(-1));
+  return out;
 }
 
 // Moves on x, then z, undoing an axis that would push the body into a collider it wasn't already in, so you slide along
