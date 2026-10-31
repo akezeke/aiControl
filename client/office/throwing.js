@@ -8,8 +8,9 @@ import { toonMaterial } from './toon.js';
 const HOLD = new THREE.Vector3(-0.3, -0.27, -0.8); // the palm, in front of the camera
 const FINGERS = 0.016; // the fist's radius, before it's scaled to what it holds
 
-// Full at a second, and it holds there. Even a tap throws: a quarter of what the thing can do.
-export const chargeAt = held => Math.max(0, Math.min(1, held));
+// Full at FULL_CHARGE seconds, and it holds there. Even a tap throws: a quarter of what the thing can do.
+export const FULL_CHARGE = 1.5;
+export const chargeAt = held => Math.max(0, Math.min(1, held / FULL_CHARGE));
 export const throwSpeed = (kind, charge) => kind.throw * (0.25 + 0.75 * charge);
 // It leaves on the line you look along, so it goes where you look, on top of how you're moving, with a little lift.
 export function launch(kind, charge, camera, direction, walk) {

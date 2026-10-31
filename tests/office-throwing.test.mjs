@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { chargeAt, createCharge, createHand, handModel, handParts, launch, throwSpeed } from '../client/office/throwing.js';
+import { FULL_CHARGE, chargeAt, createCharge, createHand, handModel, handParts, launch, throwSpeed } from '../client/office/throwing.js';
 import { Player } from '../client/office/player.js';
 
-test('a tap tosses at a quarter of full speed, a second gets all of it, and it holds', () => {
+test('a tap tosses at a quarter of full speed, a long hold gets all of it, and it holds', () => {
   const kind = { throw: 8 };
   assert.equal(throwSpeed(kind, chargeAt(0)), 2);
-  assert.equal(throwSpeed(kind, chargeAt(1)), 8);
-  assert.equal(chargeAt(3), 1);
+  assert.equal(FULL_CHARGE, 1.5);
+  assert.ok(chargeAt(FULL_CHARGE * 0.9) < 1, 'not there yet');
+  assert.equal(throwSpeed(kind, chargeAt(FULL_CHARGE)), 8);
+  assert.equal(chargeAt(FULL_CHARGE * 3), 1);
 });
 test('a cancelled charge throws nothing when the button comes up', () => {
   const c = createCharge(); c.press(10); c.cancel();
