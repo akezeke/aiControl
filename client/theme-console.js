@@ -103,7 +103,7 @@ export function renderThemeConsole(container, sessions, { disconnected = false, 
   for (const { session, x, y } of sessionMapPoints(sessions)) {
     let button = console.buttons.get(session.id);
     if (!button) {
-      button = element('button', 'console-contact'); button.type = 'button';
+      button = element('button', 'console-contact'); button.type = 'button'; button.dataset.sessionId = session.id;
       console.buttons.set(session.id, button); console.contacts.append(button);
       button.onpointerenter = button.onfocus = () => inspectContact(console, session.id);
       button.onpointerleave = () => { if (container.ownerDocument.activeElement !== button) inspectContact(console, null); };

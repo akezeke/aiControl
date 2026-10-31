@@ -785,7 +785,7 @@
 }
 :root[data-theme=city] {
   /* The list as a game's menus: flat colour, square corners, a hard dark edge and pixel type on the labels. */
-  :is(.brand-name, .panel-title, .sidebar-label, .status-line, .page-heading h1, .empty h2) { font-family: var(--display); font-weight: 400; letter-spacing: 0; }
+  :is(.brand-name, .sidebar-label, .status-line, .page-heading h1, .empty h2) { font-family: var(--display); font-weight: 400; letter-spacing: 0; }
   & *, & ::before, & ::after { border-radius: 0 !important; }
   /* Corners cut by a border image and raised by a hard inner bevel. A drop shadow would fill the corners back in. */
   :is(.session-card, .usage-accounts, .empty, .login-card, .request-box, .quiet-button, .stop-button, .clear-button, .spawn-button, .shot-button, .next-button, .back-button, .fire-button, .toast) { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-raised); }
@@ -802,14 +802,12 @@
   :is(.usage-meter, .plan-meter)::-webkit-progress-value { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
   :is(.usage-meter, .plan-meter)::-moz-progress-bar { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
   .stat { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-raised); }
-  .stat.selected { border-image-source: var(--px-accent); background-color: #4d65b4; color: #fff; box-shadow: var(--px-sunk); }
+  .stat.selected { background-color: var(--hi-vis); color: var(--ink); box-shadow: inset 2px 2px 0 #fbb954, inset -2px -2px 0 #cd683d; }
   .session-card:is(:hover, :focus-visible) { border-image-source: var(--px-accent); }
   .session-card.needs-input { border-image-source: var(--px-warn); }
   .session-card[data-status=error] { border-image-source: var(--px-red); }
   :is(.badge, .chip, .ctx-chip, .compact-chip, .doc-chip, .mode-chip, .plan-chip, .project-tag, .subagent-tag, .workflow-tag, .nav-count, .group-count) { clip-path: var(--px-notch); }
-  scrollbar-color: #4d65b4 #323353;
-  .brand-mark { border-radius: 0; background: #4d9be6; box-shadow: none; }
-  .brand-mark i { background: #2e222f; }
+  scrollbar-color: #6f787a #2c3032;
   .toast { background: var(--panel); color: var(--text); }
   .shot-viewer::backdrop { background: #2e222fd9; }
 }

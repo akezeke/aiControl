@@ -18,7 +18,8 @@ const LOTS = [['#6e2727', '#7a3045', '#cd683d', '#e6904e', CHECK], ['#165a4c', '
 export const lotLook = id => LOTS[fnv(`lot:${id}`) % LOTS.length];
 const KERB = 2, PATH = 4, BUSH = 8, STAKE = 6;
 // How far the land runs past the city: its power plants stand north and west of it, so that's where it needs the room.
-const LAND = 98, LAND_FAR = 40, RIPPLES = 66, CORNER = 34, TREE_GRID = 21;
+export const LAND = 98, LAND_FAR = 40;
+const RIPPLES = 66, CORNER = 34, TREE_GRID = 21;
 // Cheap and without a visible grain, which a sum of multiples isn't: this runs for every cell of the map.
 const mix = (a, b) => { let n = Math.imul(a, 73856093) ^ Math.imul(b, 19349663); n = Math.imul(n ^ n >>> 13, 1274126177); return (n ^ n >>> 16) >>> 0; };
 // Slow waves, so that the meadow's lighter part comes in big soft patches and trees gather in them.
@@ -29,7 +30,7 @@ const meadow = (x, z) => { const n = mix(x, z); return patch(x, z) > .55 ? n % 4
 const stacks = new Map(), once = (key, make) => { if (!stacks.has(key)) stacks.set(key, make()); return stacks.get(key); };
 
 // An island: the distance past the edge of a rounded box, made uneven by a couple of slow waves.
-const reachOf = (W, D) => (x, z) => { const qx = Math.abs(x - (W + LAND_FAR - LAND) / 2) - (W + LAND_FAR + LAND) / 2 + CORNER, qz = Math.abs(z - (D + LAND_FAR - LAND) / 2) - (D + LAND_FAR + LAND) / 2 + CORNER; return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - CORNER + Math.sin(x / 23) * 3 + Math.sin(z / 17) * 2; };
+export const reachOf = (W, D) => (x, z) => { const qx = Math.abs(x - (W + LAND_FAR - LAND) / 2) - (W + LAND_FAR + LAND) / 2 + CORNER, qz = Math.abs(z - (D + LAND_FAR - LAND) / 2) - (D + LAND_FAR + LAND) / 2 + CORNER; return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - CORNER + Math.sin(x / 23) * 3 + Math.sin(z / 17) * 2; };
 // The slow part of the ground, and the part a new session doesn't change, so it's only painted when the city changes size.
 let land = { key: '', rgb: null };
 function landscape(W, D, x0, z0, w, d) {

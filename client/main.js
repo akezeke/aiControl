@@ -6,6 +6,7 @@ import './theme-access.css';
 import './simpsons.css';
 import './diablo.css';
 import './heroes.css';
+import './city-list.css';
 import './provider-icons.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
@@ -131,6 +132,7 @@ function chooseTheme(id) {
   for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
   // Picking a scene theme opens its scene, even if its list was showing last.
   if (sceneFor(document.documentElement.dataset.theme) && sceneList) setSceneList(false); else syncScene();
+  dressCity();
 }
 function themeMenu() {
   const menu = el('details', 'theme-menu');
@@ -179,7 +181,7 @@ function alertsMenu() {
   return menu;
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
-const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary' };
+const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {
@@ -304,6 +306,15 @@ function setSceneList(list) {
   syncScene(); renderData();
   if (list) document.querySelector('.office-button')?.focus();
 }
+// City's list and panel show each session's own tower, baked by the scene's generator, loaded only for this theme.
+let portraits = null, portraitsLoading = false;
+function dressCity() {
+  if (document.documentElement.dataset.theme !== 'city') return;
+  if (portraits) { portraits.dressList(document, state.snapshot, { error: !!state.error, reduced: reducedMotion.matches, selected: state.selected }); return; }
+  if (portraitsLoading) return;
+  portraitsLoading = true;
+  import('./city/portrait.js').then(module => { portraits = module; dressCity(); }).catch(() => { /* The list is complete without them. */ }).finally(() => { portraitsLoading = false; });
+}
 function closeScene() { scene?.unmount(); scene = null; sceneLook = null; document.querySelector('.main-content > .scene')?.remove(); }
 function syncScene() {
   const root = document.documentElement, main = document.querySelector('.main-content'), look = root.dataset.theme, entry = sceneFor(look);
@@ -326,7 +337,7 @@ function syncScene() {
   const box = el('div', 'scene'); box.id = look; main.append(box);
   try {
     sceneLook = look;
-    scene = module.mount(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, describe: sessionFacts, spawn: spawnAgent, showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
+    scene = module.mount(box, { mapScreen: () => document.querySelector('#theme-console .console-screen'), openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, describe: sessionFacts, spawn: spawnAgent, showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
     if (state.snapshot) scene.update(state.snapshot, { error: state.error });
     scene.pick(picked(), false); scene.outlines?.(outlined);
   } catch (error) { console.error(error); closeScene(); fallBack(`${entry.name} could not start; showing the list`); }
@@ -426,6 +437,7 @@ function renderData() {
       const row = el('div', 'integration'); const status = el('span', `connection-dot ${provider.connected ? 'online' : ''}`); row.title = provider.detail; row.append(status, el('strong', '', provider.name), el('span', 'muted', provider.detail)); integrations.append(row);
     }
   }
+  dressCity();
 }
 
 // One-line previews: drop code blocks and Markdown markers (keep snake_case underscores).
@@ -553,6 +565,7 @@ function renderPanel() {
   }
   renderRecentMessages(session);
   renderComposer(session);
+  dressCity();
 }
 
 // Triage: the next session waiting for you, in overview order.
@@ -1161,7 +1174,7 @@ function showThemePicker() {
     choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
   }
   dialog.append(el('h2', '', 'Pick a theme'), grid);
-  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncScene(); };
+  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncScene(); dressCity(); };
   document.body.append(dialog); dialog.showModal();
 }
 if (firstVisit) showThemePicker();
