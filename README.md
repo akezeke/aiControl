@@ -62,7 +62,7 @@ npm run build
 
 | Bridge | Bridge, on alert | Bridge's list |
 | --- | --- | --- |
-| ![Bridge at warp](docs/screenshots/bridge-warp.webp) | ![Bridge on alert with the colour hologram open](docs/screenshots/bridge-hail.webp) | ![Bridge's session list](docs/screenshots/bridge-list.webp) |
+| ![Bridge at warp](docs/screenshots/bridge-warp.webp) | ![Bridge on alert, in the Cobalt colours](docs/screenshots/bridge-hail.webp) | ![Bridge's session list](docs/screenshots/bridge-list.webp) |
 
 The Bridge theme is an original design and is not affiliated with any franchise.
 
