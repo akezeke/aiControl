@@ -539,7 +539,7 @@ export function mountCity(box, hooks = {}) {
 
   card = createCard(box);
   menu = createMenu(box, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item, slot), () => { if (lots.asked) { lots.asked = null; wake(); } });
-  labels = createLabels(box, { onSession: talkTo, onHood: selectHood });
+  labels = createLabels(box, { onSession: talkTo, onHood: selectHood, inTheWay: () => controls.rects() });
   const controls = createControls(box, { onFit: () => { if (camera) { clearHood(); fitCity(); } }, onNext: () => talkTo(hooks.nextWaiting?.()?.id), onList: () => hooks.showList?.(), onNew: askAnywhere });
   const listening = [[canvas, 'pointerdown', onDown], [canvas, 'pointermove', onMove], [canvas, 'pointerup', onUp], [canvas, 'pointercancel', onUp], [canvas, 'pointerleave', onLeave], [window, 'keydown', onKey], [window, 'keyup', onKeyUp], [window, 'blur', onBlur], [document, 'click', onClick]];
   for (const [target, type, listener] of listening) target.addEventListener(type, listener);

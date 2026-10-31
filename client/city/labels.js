@@ -15,7 +15,7 @@ function iconOf(emoji) {
 }
 
 // Anchors are in the city's screen coordinates: `project` turns them into CSS pixels, so a pan only has to rewrite transforms.
-export function createLabels(box, { onSession, onHood }) {
+export function createLabels(box, { onSession, onHood, inTheWay = () => [] }) {
   const layer = document.createElement('div'); layer.className = 'city-labels'; box.append(layer);
   const shown = new Map();
   let project = null, width = 0, height = 0;
@@ -97,16 +97,16 @@ export function createLabels(box, { onSession, onHood }) {
       }
       sweep('t:', keep);
     },
-    // Bubbles first, then the signs around them: nothing that talks may hide a project's name, nor one name another.
+    // Bubbles first, then the names around them: neither the controls nor anything that talks may hide a project's name or a plant's, nor one name another.
     move(next, boxW, boxH) {
       project = next; width = boxW; height = boxH;
-      const taken = [], signs = [];
+      const taken = inTheWay(), names = [];
       for (const entry of shown.values()) {
-        if (entry.key.startsWith('s:')) { signs.push(entry); continue; }
+        if (!entry.bubble) { names.push(entry); continue; }
         place(entry);
-        if (entry.bubble && !entry.off) taken.push({ x: entry.x, y: entry.y, w: entry.w, h: entry.h + TAIL });
+        if (!entry.off) taken.push({ x: entry.x, y: entry.y, w: entry.w, h: entry.h + TAIL });
       }
-      for (const entry of signs) { place(entry, taken); if (!entry.off) taken.push({ x: entry.x, y: entry.y, w: entry.w, h: entry.h }); }
+      for (const entry of names) { place(entry, taken); if (!entry.off) taken.push({ x: entry.x, y: entry.y, w: entry.w, h: entry.h }); }
     },
     dispose() { layer.remove(); shown.clear(); },
   };
@@ -124,6 +124,7 @@ export function createControls(box, { onFit, onNext, onList, onNew }) {
   button('', '', 'New project', event => onNew(event.currentTarget)).innerHTML = pixels('M7 2h2v5h5v2H9v5H7V9H2V7h5z');
   button('', '', 'Show the list', () => onList()).innerHTML = pixels('M2 3h12v2H2zM2 7h12v2H2zM2 11h12v2H2z');
   return {
+    rects() { return [{ x: bar.offsetLeft, y: bar.offsetTop, w: bar.offsetWidth, h: bar.offsetHeight }]; },
     setWaiting(n) { waiting.hidden = !n; waiting.lastChild.textContent = n; },
     setLost(on) { lost.hidden = !on; },
     dispose() { bar.remove(); },
