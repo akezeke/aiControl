@@ -6,6 +6,7 @@
 // window) gives it back when it's done (`wanted`, `resume`). Looking with the arrow keys aims with the dot too, until the mouse moves.
 // Touch drags the view along with the finger and taps to walk or pick someone. Holding something, a finger held a moment aims as it charges (`aimAt`); swiped straight away it's only looking. While the overview is up it has the keys and drags.
 // A click on the floor walks there round the furniture: a walking key calls it off, and looking around doesn't.
+// Pinned (`pin`), for a game played from your own eyes, you stay where you are and can still look.
 import * as THREE from 'three';
 import { isTypingTarget } from './status.js';
 
@@ -32,10 +33,10 @@ export function officeHasKeys(event) {
 export const sceneFocused = canvas => [document.body, canvas, null].includes(document.activeElement);
 
 export class Player {
-  constructor(canvas, { colliders, room, onPick, onPress = () => false, onRelease = () => {}, onCancel = () => false, route }) {
+  constructor(canvas, { colliders, room, onPick, onPress = () => false, onRelease = () => {}, onCancel = () => false, onLetGo = () => {}, route }) {
     this.canvas = canvas; this.position = new THREE.Vector3(0, EYE, 0); this.yaw = Math.PI; this.pitch = -0.08; this.spin = 0;
-    this.colliders = colliders; this.room = room; this.onPick = onPick; this.onPress = onPress; this.onRelease = onRelease; this.onCancel = onCancel; this.route = route; this.held = new Set(); this.target = null;
-    this.locked = this.wanted = this.releasing = this.asking = false; this.overview = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null; this.aimAt = null;
+    this.colliders = colliders; this.room = room; this.onPick = onPick; this.onPress = onPress; this.onRelease = onRelease; this.onCancel = onCancel; this.onLetGo = onLetGo; this.route = route; this.held = new Set(); this.target = null;
+    this.locked = this.wanted = this.releasing = this.asking = false; this.overview = this.pinned = false; this.keyLook = false; this.shift = false; this.running = false; this.height = 0; this.rise = 0; this.flight = null; this.aimAt = null;
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.disposers.push(() => target.removeEventListener(type, fn, options)); };
     this.disposers = [];
     // A drag; and `charging`: this press charged a throw, so its release is that throw's, even if it's been called off since, and
@@ -56,7 +57,7 @@ export class Player {
       const lost = this.locked && document.pointerLockElement !== canvas && !this.releasing;
       if (this.locked && document.pointerLockElement !== canvas) callOff();
       this.locked = document.pointerLockElement === canvas; this.releasing = this.asking = false;
-      if (lost) setTimeout(() => { if (document.hasFocus() && !document.hidden) this.wanted = false; }, 100);
+      if (lost) setTimeout(() => { if (document.hasFocus() && !document.hidden) { this.wanted = false; this.onLetGo(); } }, 100);
     });
     listen(document, 'pointerlockerror', () => { this.asking = false; });
     const look = (x, y, speed) => { this.yaw -= x * speed; this.pitch = THREE.MathUtils.clamp(this.pitch - y * speed, -1.1, LOOK_UP); if (this.target) this.target.looked += (Math.abs(x) + Math.abs(y)) * speed; };
@@ -108,6 +109,12 @@ export class Player {
 
   // You stop where you are while the overview is up.
   setOverview(on) { this.overview = on; this.spin = 0; this.held.clear(); this.target = null; this.keyLook = false; }
+  // No walking, on foot or by a click, and no jump. A walking key still down doesn't count afterwards.
+  pin(on) {
+    this.pinned = on; if (!on) return;
+    this.target = null; this.height = this.rise = 0; this.position.y = EYE;
+    for (const code of Object.keys(keys)) this.held.delete(code);
+  }
   // Browsers without pointer lock, or that refuse it, keep drag-to-look.
   lock() {
     this.wanted = true; if (this.locked || this.asking) return;
@@ -126,11 +133,12 @@ export class Player {
   place(x, z, yaw) { this.position.set(x, EYE, z); this.yaw = yaw; }
   face(point) { this.yaw = Math.atan2(point.x - this.position.x, point.z - this.position.z); }
   get forward() { return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
-  jump() { if (!this.height && !this.rise && !this.flight) this.rise = JUMP; }
+  jump() { if (!this.pinned && !this.height && !this.rise && !this.flight) this.rise = JUMP; }
 
   // Walks to a floor point round the furniture (`route`), or straight there sliding along what's in the way if there's no way
   // through; `then` runs on arrival, or when stuck if `always`. The view turns to face the way until you look somewhere yourself.
   walkTo(point, then, stopShort = 0, always = false) {
+    if (this.pinned) return;
     const way = this.route?.(this.position, point) || [point];
     this.target = { way: way.map(at => at.clone().setY(EYE)), then, stopShort, always, stuck: 0, looked: 0 };
   }
@@ -152,7 +160,7 @@ export class Player {
     const speed = SPEED * (this.shift ? RUN : 1), move = new THREE.Vector3();
     for (const code of this.held) {
       if (turns[code]) { const [yaw, pitch] = turns[code]; this.yaw += yaw * TURN * dt; this.pitch = THREE.MathUtils.clamp(this.pitch + pitch * TILT * dt, -1.1, LOOK_UP); if (this.target) this.target.looked += TURN * dt; }
-      else { const [x, z] = keys[code]; move.x += x; move.z += z; this.target = null; } // also a walk begun with this key already down
+      else if (!this.pinned) { const [x, z] = keys[code]; move.x += x; move.z += z; this.target = null; } // also a walk begun with this key already down
     }
     if (move.lengthSq()) {
       // Forward is where you look; strafe is to its right.

@@ -53,6 +53,8 @@
 .office-mark { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; box-sizing: border-box; border-radius: 50%; border: 2px solid #fffdf7; box-shadow: 0 0 0 1.5px #1b1a1f, inset 0 0 0 1.5px #1b1a1f; pointer-events: none; }
 .office-charge { position: absolute; left: 50%; top: 50%; width: 40px; height: 6px; margin: -3px 0 0 12px; border-radius: 3px; background: #fffdf7; box-shadow: 0 0 0 1.5px #1b1a1f; overflow: hidden; pointer-events: none; }
 .office-charge i { display: block; height: 100%; background: #e8574a; transform: scaleX(0); transform-origin: left; }
+.office-score { position: absolute; left: 50%; top: 68px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
+.office-score.done { padding: 8px 18px; background: #1b1a1fe6; color: #ffe14d; font-size: 22px; font-weight: 800; }
 .office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; width: max-content; max-width: calc(100% - 32px); pointer-events: none; transition: opacity .5s; }
 .office-hint.gone { opacity: 0; }
 @media (pointer: coarse) { .office-hint { display: none; } }

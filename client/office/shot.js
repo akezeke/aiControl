@@ -3,7 +3,7 @@ import { TIERS, surfaceTier, levelWorld } from './kitchen-plan.js';
 
 // Trickshot scoring and playback, Node-runnable. A shot is simulated whole at release (runShot), then played back (createRun), so slow
 // motion can start before the score is known to the player. Coordinates are kitchen-local, as in kitchen-plan.js.
-export const SOFT = 0.5, SLOW = 0.25, SLOW_FOR = 0.6, MOST_TIME = 8; // m/s under which a hit scores nothing; playback rate in the last SLOW_FOR s of a made shot
+export const SOFT = 0.5, FLIGHT = 0.7, SLOW = 0.25, SLOW_FOR = 0.6, MOST_TIME = 8; // m/s under which a hit scores nothing; playback rate of a whole flight, and in the last SLOW_FOR s of a made shot
 const REPEAT = [1, 0.5, 0.25, 0]; // what the 1st, 2nd, 3rd and later hit on one surface are worth
 
 // ponytail: one shared collider list for every shot (levelWorld builds them all each call); nothing writes to it.
@@ -52,9 +52,10 @@ const EMPTY = Object.freeze([]);
 
 export function createRun({ start, reducedMotion = false }) {
   let from = null, clock = 0, next = 0; // from: where the item was let go; next: the first contact not yet emitted
+  const rate = reducedMotion ? 1 : FLIGHT;
   const run = {
     state: 'aiming', timeScale: 1, result: null, time: 0,
-    shoot(body, zone) { from = body.pos.toArray(); run.result = runShot(body, zone); run.state = 'flying'; run.time = clock = 0; next = 0; run.timeScale = 1; },
+    shoot(body, zone) { from = body.pos.toArray(); run.result = runShot(body, zone); run.state = 'flying'; run.time = clock = 0; next = 0; run.timeScale = rate; },
     reset() { run.state = 'aiming'; run.timeScale = 1; run.result = null; run.time = clock = 0; next = 0; from = null; },
     // The item's place now: aiming, at `start`; flying, along the path (the throw point, a sample every 1/60 s, then where it ended).
     at(out) {
@@ -70,13 +71,13 @@ export function createRun({ start, reducedMotion = false }) {
       const r = run.result; if (run.state !== 'flying') return EMPTY;
       const slowAt = r.made && !reducedMotion ? r.time - SLOW_FOR : Infinity, events = [];
       let t = clock, left = dt > 0 ? dt : 0; // a negative or NaN dt waits
-      if (t < slowAt) { const d = Math.min(left, slowAt - t); t += d; left -= d; }
-      t += left * (t >= slowAt ? SLOW : 1);
+      if (t < slowAt) { const till = (slowAt - t) / rate; if (left < till) { t += left * rate; left = 0; } else { t = slowAt; left -= till; } }
+      t += left * SLOW;
       clock = Math.min(t, r.time); run.time = clock;
       for (; next < r.contacts.length && r.contacts[next].time <= clock; next++) { const c = r.contacts[next]; events.push({ type: 'contact', surface: c.surface, speed: c.speed, pos: c.pos, time: c.time }); }
       const over = clock >= r.time;
       if (over) { run.state = 'done'; events.push({ type: 'end', result: r }); }
-      run.timeScale = !over && clock > slowAt ? SLOW : 1;
+      run.timeScale = over ? 1 : clock > slowAt ? SLOW : rate;
       return events;
     },
   };

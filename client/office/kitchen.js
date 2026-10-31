@@ -7,13 +7,13 @@
 // and a spot light would cost every lit pixel of the office with the doors shut (lights.js). Its lamps are only drawn.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { WALL_H, WALL_T, canvasTexture, floorShadow, glowTexture, once, paint, piece, swingDoor } from './furniture.js';
+import { WALL_H, WALL_T, canvasTexture, floorShadow, glowTexture, once, paint, painted, piece, swingDoor } from './furniture.js';
 import { COPY, INK, cardsMesh, face, fit, lines, printOn } from './cutouts.js';
 import { DOOR_H, DOOR_W, KITCHEN, PAN, SPOTS, VESSELS, behind, flightBoxes, walkBoxes } from './kitchen-plan.js';
 import { kitchenDoor, kitchenShift } from './layout.js';
 import { dims } from './lights.js';
 import { createWindows } from './windows.js';
-import { toonMaterial } from './toon.js';
+import { instancedOutline, toonMaterial } from './toon.js';
 
 export const DOOR_NEAR = 2.5, DOOR_FAR = 3; // they open within the one, and once open they stay until past the other
 const MOVE = 0.45, SWUNG = 1.62; // seconds to swing; radians, a little past square to the wall
@@ -71,14 +71,10 @@ function roomParts() {
   const { x: rx, y: ry, z: rz, w: rw } = SPOTS.panRack;
   add(new THREE.CylinderGeometry(0.02, 0.02, rw, 10).rotateZ(Math.PI / 2).translate(rx, ry, rz), RAIL);
   for (const x of [rx - rw / 2 + 0.1, rx + rw / 2 - 0.1]) add(new THREE.CylinderGeometry(0.012, 0.012, WALL_H - ry, 8).translate(x, (WALL_H + ry) / 2, rz), RAIL);
-  const dish = points => new THREE.LatheGeometry(points.map(([r, y]) => new THREE.Vector2(r, y)), 28);
-  for (let n = 1; n <= 3; n++) {
-    const [pan] = of(`pan-${n}`), place = g => g.applyQuaternion(pan.quaternion).translate(pan.centre.x, pan.centre.y, pan.centre.z), { r, reach, drop } = PAN;
-    add(place(dish([[0, -0.012], [r - 0.02, -0.012], [r, 0.03], [r - 0.004, 0.034]])), COPPER); add(place(dish([[r - 0.004, 0.034], [r - 0.024, -0.005], [0, -0.005]])), TIN);
-    add(turned(pan, V((r + reach) / 2 - 0.01, 0.018, 0), V((reach - r) / 2 + 0.01, 0.006, 0.012)), METAL); // on the rim, not through it
-    const end = V(reach, 0.018, 0).applyQuaternion(pan.quaternion).add(pan.centre);
+  for (let n = 1; n <= 3; n++) { // the pans themselves swing, and are drawn on their own (createPans)
+    const [pan] = of(`pan-${n}`), end = panEnd(pan);
     add(new THREE.CylinderGeometry(0.005, 0.005, ry - end.y, 6).translate(end.x, (ry + end.y) / 2, end.z), RAIL);
-    add(new THREE.TorusGeometry(0.024, 0.005, 6, 14).rotateY(Math.PI / 2).translate(end.x, ry + 0.012, rz), RAIL); add(new THREE.TorusGeometry(0.018, 0.005, 6, 12).applyQuaternion(pan.quaternion).translate(end.x, end.y, end.z), RAIL);
+    add(new THREE.TorusGeometry(0.024, 0.005, 6, 14).rotateY(Math.PI / 2).translate(end.x, ry + 0.012, rz), RAIL);
   }
 
   // The banner's two cords, each a strand to its top edge and one to its bottom, which is what tips it. The juicer on the counter.
@@ -100,6 +96,42 @@ function roomParts() {
   { const { x, y, z, w, h } = SPOTS.clipboard; add(B(x - 0.012, y - h / 2, z - w / 2, x + 0.012, y + h / 2, z + w / 2), '#a87b4f'); add(B(x - 0.016, y - h / 2 + 0.02, z - w / 2 + 0.02, x - 0.012, y + h / 2 - 0.03, z + w / 2 - 0.02), '#fbfaf5'); add(B(x - 0.024, y + h / 2 - 0.05, z - 0.05, x - 0.012, y + h / 2 - 0.005, z + 0.05), METAL); }
   { const { x, y, z, w, h } = SPOTS.scores; add(B(x - w / 2 - 0.04, y - h / 2 - 0.04, z, x + w / 2 + 0.04, y + h / 2 + 0.04, z + 0.02), '#6d4a2b'); add(B(x - w / 2, y - h / 2, z - 0.004, x + w / 2, y + h / 2, z), '#fbfaf5'); }
   return parts;
+}
+
+// A pan in its own frame: a copper dish, tinned inside, a long handle (on the rim, not through it), and the ring it hangs by.
+const dish = points => new THREE.LatheGeometry(points.map(([r, y]) => new THREE.Vector2(r, y)), 28);
+const panEnd = pan => V(PAN.reach, 0.018, 0).applyQuaternion(pan.quaternion).add(pan.centre);
+const panParts = () => {
+  const { r, reach } = PAN;
+  return [[dish([[0, -0.012], [r - 0.02, -0.012], [r, 0.03], [r - 0.004, 0.034]]), COPPER], [dish([[r - 0.004, 0.034], [r - 0.024, -0.005], [0, -0.005]]), TIN],
+    [new THREE.BoxGeometry(reach - r + 0.02, 0.012, 0.024).translate((r + reach) / 2 - 0.01, 0.018, 0), METAL], [new THREE.TorusGeometry(0.018, 0.005, 6, 12).translate(reach, 0.018, 0), RAIL]];
+};
+// Hit, a pan swings from its hook on a spring and settles: one mesh, its matrices touched only while something moves. Only to look at: its
+// box in the plan stays where it is.
+function createPans(group) {
+  const pans = flightBoxes().filter(b => kind(b) === 'pan'), mesh = new THREE.InstancedMesh(once('kitchenPan', () => paint(panParts())), painted(), pans.length);
+  mesh.raycast = () => {};
+  instancedOutline(mesh, 0.008);
+  const swinging = pans.map(() => ({ angle: 0, speed: 0 })), rest = pans.map(pan => new THREE.Matrix4().compose(pan.centre, pan.quaternion, V(1, 1, 1))), ends = pans.map(panEnd);
+  const there = new THREE.Matrix4(), turn = new THREE.Matrix4(), back = new THREE.Matrix4(), out = new THREE.Matrix4();
+  const place = i => { const { x, y, z } = ends[i]; there.makeTranslation(x, y, z); back.makeTranslation(-x, -y, -z); turn.makeRotationX(swinging[i].angle); mesh.setMatrixAt(i, out.copy(there).multiply(turn).multiply(back).multiply(rest[i])); };
+  pans.forEach((_, i) => place(i));
+  group.add(mesh);
+  let moving = false;
+  return {
+    hit(n, speed) { const s = swinging[n - 1]; if (s) { s.speed += Math.min(speed, 10) * 0.5; moving = true; } },
+    update(dt) {
+      if (!moving) return;
+      moving = false;
+      swinging.forEach((s, i) => {
+        s.speed += (-30 * s.angle - 1.6 * s.speed) * dt; s.angle += s.speed * dt;
+        if (Math.abs(s.angle) < 0.002 && Math.abs(s.speed) < 0.02) s.angle = s.speed = 0; else moving = true;
+        place(i);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+    },
+    rest() { if (!moving) return; moving = false; swinging.forEach((s, i) => { s.angle = s.speed = 0; place(i); }); mesh.instanceMatrix.needsUpdate = true; },
+  };
 }
 
 // What's printed on this room's own canvas, so one draw, and only built when the room is; the cutouts' cards are on a sheet of their own (cutouts.js).
@@ -165,6 +197,7 @@ function buildRoom(group) {
   const glow = new THREE.Mesh(mergeGeometries(LAMPS.map(([x, z]) => new THREE.PlaneGeometry(3, 2).rotateX(Math.PI / 2).translate(x, WALL_H - 0.005, z))), dims(new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0)); glow.raycast = () => {}; group.add(glow);
   const shadows = floorShadow(1, 1, 0.3); shadows.geometry = mergeGeometries(SHADOWS().map(([x, z, sx, sz]) => new THREE.PlaneGeometry(sx, sz).rotateX(-Math.PI / 2).translate(x, 0, z))); group.add(shadows);
   const windows = createWindows([-0.8]); windows.position.set(0, WALL_H / 2, back - WALL_T / 2); group.add(windows);
+  return createPans(group);
 }
 
 export function createKitchen({ onMove } = {}) {
@@ -214,10 +247,11 @@ export function createKitchen({ onMove } = {}) {
       if (t !== goal) t = still ? goal : THREE.MathUtils.clamp(t + (goal ? dt : -dt) / MOVE, 0, 1);
       const shown = (t > 0 || inside) && overview < 0.01, building = !built && (t > 0 || inside);
       // The first time it opens, the room and its games are built. Things can be thrown at it from then on, whether the doors are open or not.
-      if (building) { built = true; buildRoom(group); for (const game of games) game.build(group); }
+      if (building) { built = true; kitchen.pans = buildRoom(group); for (const game of games) game.build(group); }
       if (building || (was === 0) !== (t === 0)) refresh();
       group.visible = group.matrixWorldAutoUpdate = shown;
       swing(overview < 0.01 ? t : 0); // the overview doesn't draw the room: nothing to see through
+      if (shown) kitchen.pans?.update(dt);
       for (const game of games) game.update(dt, at, still, shown);
     },
   };

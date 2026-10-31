@@ -12,7 +12,7 @@ import { WALL_H, WALL_T, canvasTexture } from './furniture.js';
 import { toonMaterial, instancedOutline, highlight } from './toon.js';
 import { EYE } from './player.js';
 import { GRAVITY, advance, contact, escaped, makeBody, stopShort } from './flight.js';
-import { launch } from './throwing.js';
+import { BLEND, drawnAt, launch } from './throwing.js';
 
 export const REACH = 2.6; // from your eyes
 const BODY = 0.3, KICK = 10; // the boss is a column this wide; the hardest kick, m/s
@@ -85,7 +85,7 @@ export const reachableIn = (room, { width, depth }, p) => (p.x >= -WALL_T / 2 &&
 
 export function createProps(scene, { room, cast, camera, player, view, bounds, reducedMotion, onHit, others = () => [], hand }) {
   const root = new THREE.Group(); scene.add(root);
-  const bodies = [], matrix = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), none = new THREE.Vector3(0, 0, 0);
+  const bodies = [], matrix = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), none = new THREE.Vector3(0, 0, 0), drawn = new THREE.Vector3();
   const near = new THREE.Vector3(), normal = new THREE.Vector3();
   // `free`: ours to move (a desk thing isn't until it's first picked up); `grip`: how it's turned in hand, from where you face.
   const body = (kind, extra) => ({ ...makeBody(kind), turn: new THREE.Quaternion(), grip: new THREE.Quaternion(), home: new THREE.Vector3(), held: false, off: false, grace: 0, hits: new Set(), ...extra });
@@ -97,9 +97,11 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     for (let i = 0; i < count; i++) bodies.push(body(kind, { mesh, hull, i, free: true }));
   }
   let placed = false, holding = null, aimed = null, boxes = null, building = null;
+  // Just thrown it's drawn coming out of your hand (`fromHand`, throwing.js). Everything else goes by where it really is.
   const show = b => {
-    if (b.obj) { b.obj.visible = !b.off; b.obj.quaternion.copy(b.turn); b.obj.position.copy(b.kind.centre).applyQuaternion(b.turn).negate().add(b.pos); return; }
-    b.mesh.setMatrixAt(b.i, matrix.compose(b.pos, b.turn, b.off ? none : one)); b.mesh.instanceMatrix.needsUpdate = true;
+    const at = b.fromHand ? drawnAt(drawn, b.pos, b.fromHand, b.flown, b.kind, world.colliders) : b.pos;
+    if (b.obj) { b.obj.visible = !b.off; b.obj.quaternion.copy(b.turn); b.obj.position.copy(b.kind.centre).applyQuaternion(b.turn).negate().add(at); return; }
+    b.mesh.setMatrixAt(b.i, matrix.compose(at, b.turn, b.off ? none : one)); b.mesh.instanceMatrix.needsUpdate = true;
     b.mesh.boundingSphere = b.hull.boundingSphere = null; // worked out again for culling and picking
   };
   const light = (b, on) => b.obj ? highlight(b.obj, on) : b.hull.light(b.i, on);
@@ -205,17 +207,21 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     get heldKind() { return holding?.kind; },
     release(charge, direction) { props.throw(direction, false, charge); },
     abort() { hand.pull(0); }, // it stays in your hand
+    // What `throw` would do with it, and the world it'd fly in without anyone minding: for the arc.
+    launch(charge, direction) { return launch(holding.kind, charge, camera, direction, walk); },
+    aimWorld() { return { colliders: world.colliders, columns: world.columns, ceiling: world.ceiling }; },
     // A thing comes to hand if it's within reach; it turns with you from then on.
     grab(b) {
       if (holding || b.held || b.pos.distanceTo(player.position) > REACH) return;
       if (!b.free) free(b);
-      holding = b; b.held = true; b.carried = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); hand.hold(null, b.kind.radius);
+      holding = b; b.held = true; b.carried = null; b.fromHand = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); hand.hold(null, b.kind.radius);
       b.grip.setFromAxisAngle(UP, -player.yaw).multiply(b.turn);
       if (aimed === b) props.aim(null);
     },
     // Where you look (or along `direction`), as hard as `charge` says; a let go drops it.
     throw(direction, drop = false, charge = 1) {
       const b = holding; if (!b) return;
+      if (!drop) hand.palm.getWorldPosition(drawn); // before it lets go, with the charge's pull still in it
       holding = null; b.held = false; b.grace = 0.3; b.hits.clear(); hand.free();
       if (drop) b.vel.set(0, 0, 0);
       else {
@@ -226,6 +232,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       // Let go, it's this side of any wall in front of you. Dropped and still in the games room (you're going through the secret
       // door with it) it stays in the office, by the door where the shelf isn't, open or shut.
       stopShort(player.position, b.pos, b.kind, world.colliders);
+      if (!drop) { b.fromHand = drawn.clone().sub(b.pos); b.flown = 0; show(b); }
       if (drop && room.secret.inside(b.pos)) { const { x, z } = room.secret.spot; b.pos.x = x; b.pos.z = z; }
       if (drop && reducedMotion() && building) { settle(b); show(b); }
     },
@@ -264,7 +271,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       camera.updateMatrixWorld();
       for (const b of bodies) {
         if (b.held) { hand.palm.getWorldPosition(b.pos); b.turn.setFromAxisAngle(UP, player.yaw).multiply(b.grip); show(b); continue; }
-        if (b.carried) { b.pos.copy(b.carried()); show(b); continue; }
+        if (b.carried) { b.fromHand = null; b.pos.copy(b.carried()); show(b); continue; }
         if (!Number.isFinite(b.pos.x + b.pos.y + b.pos.z)) { if (b.obj) b.pos.set(w / 2, 1, d / 2); else spawn(b, w, d); }
         if (b.grace) b.grace = Math.max(0, b.grace - dt);
         // You walk into it: a kick if you're moving and it's at your feet, else it's nudged aside.
@@ -282,7 +289,8 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
           } else contact(b, quiet, normal);
           b.rest = false;
         }
-        if (!b.rest) { moveBody(b, dt, world, building, reachable); show(b); }
+        if (b.fromHand && (b.flown += dt) >= BLEND) { b.fromHand = null; show(b); }
+        if (!b.rest) { moveBody(b, dt, world, building, reachable); show(b); } else if (b.fromHand) show(b); // at rest within the blend it still gets there
       }
       // Things knock into each other, the heavier pushing the lighter more.
       for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {

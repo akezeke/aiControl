@@ -15,7 +15,8 @@ import { PITCH } from './overview.js';
 import { createProps, REACH } from './props.js';
 import { createScreenshots } from './screenshots.js';
 import { createDarts } from './darts.js';
-import { createCharge, createHand } from './throwing.js';
+import { createArc, createCharge, createHand } from './throwing.js';
+import { createTrickshot } from './trickshot.js';
 import { createGolf } from './golf.js';
 import { createPinball } from './pinball.js';
 import { createGoose, GOOSE } from './goose.js';
@@ -69,9 +70,10 @@ export function mountOffice(container, hooks) {
     // In first person, a mouse click that isn't on someone (or a board, a pod's sign or a ball) captures the mouse; captured, a
     // click on the floor walks there. With something in hand a press charges a throw instead; playing a game, the game has the
     // click. A press that closes the sign's menu does nothing else.
-    onPress: () => !dismissed && startCharge(),
+    onPress: at => !dismissed && !dropsHeld(at) && startCharge(),
     onRelease: at => letGo(at),
     onCancel: () => callOff(),
+    onLetGo: () => { if (playing?.free) play(null); }, // Esc with the mouse captured: the browser keeps the key
     onPick: (at, mouse) => {
       if (dismissed) return;
       if (playing) { playing.click(rayAt(at, renderer.domElement, camera)); return; }
@@ -89,19 +91,26 @@ export function mountOffice(container, hooks) {
   const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches, container });
   // Whoever gets hit, or whose things do, jumps, glares and says so; the goose comes for you.
   const onHit = (id, line) => { if (id === GOOSE) { goose.hit(); return; } cast.startle(id); bubbles.say(id, '💢', line); };
-  const hand = createHand(view.hands);
+  const hand = createHand(view.hands), palm = new THREE.Vector3();
   const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches, onHit, others: () => [goose.column], hand });
   // A throw: pressed, it charges while it's all still yours (no panel or menu's come up, no overview); let go, it flies along `at`.
   const charge = createCharge(), clock = () => performance.now() / 1000, noEvent = {};
-  const thrower = () => props;
-  const canCharge = () => !playing && thrower().holding && !view.overview && !menu.open;
+  const thrower = () => playing?.free ? playing : props;
+  const canCharge = () => (!playing || playing.free) && thrower().holding && !view.overview && !menu.open;
   const startCharge = () => { if (!canCharge()) return false; charge.press(clock()); return true; };
-  const callOff = () => { if (!charge.active) return false; charge.cancel(); overlays.setCharge(null); thrower().abort(); return true; };
+  const callOff = () => { keyed = false; if (!charge.active) return false; charge.cancel(); overlays.setCharge(null); thrower().abort(); return true; };
   const letGo = at => {
     if (!canCharge() || !officeHasKeys(noEvent)) { callOff(); return; }
-    const level = charge.release(clock()); if (level === null) return;
+    const level = charge.release(clock()); keyed = false; if (level === null) return;
     overlays.setCharge(null); thrower().release(level, rayAt(at, renderer.domElement, camera));
   };
+  // Where a throw would go if let go now: E throws at the dot, a finger at its mark. And a level's item, with something else in hand,
+  // is a click: that's dropped when the level starts.
+  let keyed = false;
+  const throwAt = () => charge.active && (player.aimAt || keyed && player.centre) || (dot ? player.centre : mouse || player.centre);
+  const throwRay = () => { camera.updateMatrixWorld(); return rayAt(throwAt(), renderer.domElement, camera); };
+  const dropsHeld = at => { if (playing || !props.holding) return false; const hit = under(at); return hit?.kind === 'toggle' && hit.node.userData.dropsHeld; };
+  const arc = createArc(); scene.add(arc.mesh);
   // A thing out of reach: walk over (as near as the furniture lets you) and pick it up.
   const pickUp = body => { if (body.pos.distanceTo(player.position) <= REACH) props.grab(body); else player.walkTo(body.pos.clone().setY(0), () => props.grab(body), 0.7, true); };
   // The coffee machine: fills the mug if you're by it, else you walk over first.
@@ -117,19 +126,28 @@ export function mountOffice(container, hooks) {
   let playing = null;
   const play = game => {
     if (game === playing) return;
-    if (playing) { playing.leave(); const { x, z, yaw } = playing.stand(); player.place(x, z, yaw); player.pitch = -0.15; }
-    playing = game; player.unlock(); player.setOverview(!!game); view.play(game && (() => game.pose())); overlays.setPlaying(!!game); menu.close(); card.show(null);
+    callOff();
+    const was = playing;
+    if (was) { was.leave(); if (was.free) player.pin(false); else { const { x, z, yaw } = was.stand(); player.place(x, z, yaw); player.pitch = -0.15; } }
+    // A free game's played from your own eyes: only your feet stop. The others have the view.
+    const seated = game && !game.free ? game : null;
+    if (seated || (was && !was.free)) { player.unlock(); player.setOverview(!!seated); view.play(seated && (() => seated.pose())); }
+    playing = game; if (game?.free) player.pin(true);
+    overlays.setPlaying(!!game); menu.close(); card.show(null);
     if (game) game.enter();
   };
   const onPlay = game => {
     if (view.overview) return;
     const { x, z, yaw } = game.stand(), spot = new THREE.Vector3(x, 0, z);
+    if (game.free) { player.walkTo(spot, () => { player.place(x, z, yaw); play(game); }, 0.05); return; } // from exactly its mark
     if (player.position.clone().setY(0).distanceTo(spot) < 1.4) { player.place(player.position.x, player.position.z, yaw); play(game); }
     else player.walkTo(spot, () => { player.place(player.position.x, player.position.z, yaw); play(game); }, 0.3, true);
   };
   const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay });
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
+  const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (text, done) => overlays.setScore(text, done), reducedMotion: () => !!reducedMotion?.matches });
+  room.kitchen.add(trickshot);
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
@@ -157,7 +175,7 @@ export function mountOffice(container, hooks) {
     view.setOverview(on); player.setOverview(on); overlays.setOverview(on);
   };
   // Nothing else wants the mouse: no panel, menu or dialog up, not on the way to someone, not in the overview or a game, the window focused.
-  const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !view.overview && !office.talking && !playing && document.hasFocus();
+  const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !view.overview && !office.talking && (!playing || playing.free) && document.hasFocus();
   let wasFree = true;
   const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview), onLeave: () => play(null),
     onNew: anchor => {
@@ -175,9 +193,12 @@ export function mountOffice(container, hooks) {
     if (event.key === 'Escape' && callOff()) { event.preventDefault(); return; }
     if (!officeHasKeys(event)) return;
     if (playing && event.key !== 'Tab') {
+      if (playing.free && event.code === 'KeyR') callOff();
       if (playing.key?.(event.code, true)) { event.preventDefault(); return; }
-      if (event.key === 'Escape' || /^(Key[WASD]|Arrow\w+|Space)$/.test(event.code)) { event.preventDefault(); play(null); }
-      else if (event.code === 'KeyE') { event.preventDefault(); playing.click(aim()); }
+      // In a free game the arrows still look, and a key held from before isn't a walk.
+      if (event.key === 'Escape' || (playing.free ? !event.repeat && /^(Key[WASD]|Space)$/ : /^(Key[WASD]|Arrow\w+|Space)$/).test(event.code)) { event.preventDefault(); play(null); }
+      else if (event.code === 'KeyE') { event.preventDefault(); if (playing.free && playing.holding) { if (!event.repeat && startCharge()) keyed = true; } else if (!event.repeat) playing.click(aim()); }
+      else if (playing.free && event.code.startsWith('Arrow') && !player.locked && player.wanted && free()) player.lock();
       return;
     }
     if (!player.locked && player.wanted && /^(Key[WASD]|Arrow\w+|Space)$/.test(event.code) && free()) player.lock();
@@ -186,7 +207,7 @@ export function mountOffice(container, hooks) {
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE' && !menu.contains(event.target)) {
       event.preventDefault();
-      if (thrower().holding) { if (!event.repeat) startCharge(); } else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node, monitor.point); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(togglePoint); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
+      if (thrower().holding && !toggle?.userData.dropsHeld) { if (!event.repeat && startCharge()) keyed = true; } else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node, monitor.point); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(togglePoint); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
     }
     else if (event.code === 'KeyF' && !view.overview && !office.talking) { event.preventDefault(); if (!event.repeat) props.pour(true); }
   });
@@ -219,7 +240,6 @@ export function mountOffice(container, hooks) {
     if (playing) { lit(hovered, false); hovered = aimed = monitor = board = hire = toggle = prop = null; props.aim(null); card.show(null); overlays.setAim(false); renderer.domElement.style.cursor = 'crosshair'; return; }
     const at = office.talking ? null : aiming ? player.centre : mouse, hit = at && under(at);
     aimed = hit?.kind === 'character' ? hit.id : null; monitor = hit?.kind === 'monitor' ? hit : null; board = hit?.kind === 'board' ? hit.node : null; hire = hit?.kind === 'hire' ? hit : null; toggle = hit?.kind === 'toggle' ? hit.node : null; togglePoint = hit?.point;
-    overlays.setMark(charge.active ? player.aimAt : null);
     prop = hit?.kind === 'prop' && !props.holding ? hit.body : null; props.aim(prop);
     const whose = aimed || monitor?.id, session = whose && office.snapshot?.sessions.find(session => session.id === whose), facts = session && hooks.describe?.(session);
     const count = monitor && room.glass(monitor.node, monitor.point).side && shots.count(monitor.id); // the second monitor: the screenshots
@@ -236,6 +256,7 @@ export function mountOffice(container, hooks) {
   const tiltSigns = () => { for (const sign of signs) { sign.rotation.x = -PITCH * view.amount; sign.scale.setScalar(1 + 0.4 * view.amount); } };
   frames.add(dt => {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
+    overlays.setMark(charge.active ? player.aimAt : null);
     if (charge.active) {
       if (!canCharge() || !officeHasKeys(noEvent)) callOff();
       else { const level = charge.level(clock()); overlays.setCharge(level); if (!reducedMotion?.matches) hand.pull(level); }
@@ -243,12 +264,14 @@ export function mountOffice(container, hooks) {
     // Whatever took the mouse is done with it.
     const now = free(); if (now && !wasFree) player.resume(); wasFree = now;
     // The overview has the keys and drags while it's up: you stay where you were.
-    if (!view.overview && !playing) player.update(dt);
+    if (!view.overview && (!playing || playing.free)) player.update(dt);
+    if (playing?.free && document.body.classList.contains('panel-open')) play(null);
     // What you hold drops at the secret room's door (things in hand only know the office).
     if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
     // In the secret room or the kitchen the office's bubbles don't show through its walls. The overview looks down on all of it.
     const away = view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
     view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); room.secret.update(dt, player.position, !!reducedMotion?.matches, view.amount); room.kitchen.update(dt, player.position, !!reducedMotion?.matches, view.amount); cast.update(dt, player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });
   const resize = () => {

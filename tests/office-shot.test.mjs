@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { makeBody, simulate } from '../client/office/flight.js';
 import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
-import { scoreContacts, inZone, runShot, createRun } from '../client/office/shot.js';
+import { FLIGHT, SLOW, scoreContacts, inZone, runShot, createRun } from '../client/office/shot.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const kind = (bounce, extra = {}) => ({ radius: 0.05, low: 0.05, bounce, roll: 1, drag: 0.1, upright: false, ...extra });
@@ -104,7 +104,7 @@ test('one huge dt (a stalled tab) emits every contact in order and the end once'
 });
 
 test('playback follows the path between samples', () => {
-  const run = createRun({ start }), at = V(); run.shoot(makeBody(ball, V(-1, 1.2, -1), V(0, 0, 0)), null);
+  const run = createRun({ start, reducedMotion: true }), at = V(); run.shoot(makeBody(ball, V(-1, 1.2, -1), V(0, 0, 0)), null);
   run.advance(1 / 120); run.at(at); assert.ok(at.y < 1.2 && at.y > 1.2 - 0.01, `${at.y}`);
   assert.ok(Math.abs(run.time - 1 / 120) < 1e-9);
 });
@@ -116,13 +116,13 @@ test('slow motion covers the last 0.6 s of a made shot, and never under reduced 
     let slow = 0, scaled = 0;
     for (let i = 0; i < 2000 && run.state === 'flying'; i++) {
       run.advance(1 / 60);
-      if (run.timeScale < 1) { slow++; assert.ok(run.time > total - 0.6 - 1e-9, 'only in the last 0.6 s'); }
+      if (run.timeScale === SLOW) { slow++; assert.ok(run.time > total - 0.6 - 1e-9, 'only in the last 0.6 s'); }
       if (run.time > total - 0.6 + 1 / 60 && run.state === 'flying') scaled++;
     }
     assert.equal(slow > 0, !reducedMotion); assert.ok(reducedMotion || scaled > 0);
   }
   const run = createRun({ start }); run.shoot(makeBody(ball, V(-2, 1.5, -2.5), V(0, 0, 0)), ZONES.bin);
-  run.advance(1 / 60); for (let i = 0; i < 2000 && run.state === 'flying'; i++) { assert.equal(run.timeScale, 1, 'a miss never slows'); run.advance(1 / 60); }
+  run.advance(1 / 60); for (let i = 0; i < 2000 && run.state === 'flying'; i++) { assert.equal(run.timeScale, FLIGHT, 'a miss never slows further'); run.advance(1 / 60); }
   assert.equal(run.state, 'done');
 });
 
@@ -134,8 +134,8 @@ test('slow motion takes longer to play out than the shot', () => {
 
 test('a reset during slow motion leaves nothing running', () => {
   const run = createRun({ start }); run.shoot(onBin(), ZONES.bin);
-  for (let i = 0; i < 2000 && run.timeScale === 1; i++) run.advance(1 / 60);
-  assert.ok(run.timeScale < 1);
+  for (let i = 0; i < 2000 && run.timeScale !== SLOW; i++) run.advance(1 / 60);
+  assert.equal(run.timeScale, SLOW);
   run.reset();
   assert.equal(run.state, 'aiming'); assert.equal(run.timeScale, 1); assert.equal(run.result, null); assert.equal(run.time, 0);
   assert.deepEqual(run.advance(1), []);
@@ -169,16 +169,36 @@ test('a soft event just before a hard one on the same surface doesn\'t swallow i
 
 test('a made shot ends with the clock normal, and a big dt crosses into slow motion', () => {
   const run = createRun({ start }); run.shoot(onBin(), ZONES.bin);
-  const slowAt = run.result.time - 0.6; run.advance(slowAt + 0.3);
-  assert.ok(run.timeScale < 1);
-  assert.ok(Math.abs(run.time - (slowAt + 0.3 * 0.25)) < 1e-9, `${run.time} vs ${slowAt}`); // 0.3 s of real time past the boundary is only 0.3 * SLOW of the shot
+  const slowAt = run.result.time - 0.6; run.advance(slowAt / FLIGHT + 0.3);
+  assert.equal(run.timeScale, SLOW);
+  assert.ok(Math.abs(run.time - (slowAt + 0.3 * SLOW)) < 1e-9, `${run.time} vs ${slowAt}`); // 0.3 s of real time past the boundary is only 0.3 * SLOW of the shot
   run.advance(1e6);
   assert.equal(run.timeScale, 1); assert.equal(run.state, 'done');
 });
 
+test('a whole flight plays at the gentle rate, the same in big steps as small; reduced motion at full speed', () => {
+  const run = createRun({ start }); run.shoot(onBin(), ZONES.bin);
+  assert.equal(run.timeScale, FLIGHT); assert.ok(FLIGHT > SLOW && FLIGHT < 1);
+  run.advance(0.5);
+  assert.ok(Math.abs(run.time - 0.5 * FLIGHT) < 1e-9, `${run.time}`);
+  const total = run.result.time, real = (total - 0.6) / FLIGHT + 0.6 / SLOW, big = createRun({ start }), small = createRun({ start });
+  big.shoot(onBin(), ZONES.bin); small.shoot(onBin(), ZONES.bin);
+  big.advance(real - 0.05);
+  for (let i = 0; i < 100; i++) small.advance((real - 0.05) / 100);
+  assert.ok(Math.abs(big.time - small.time) < 1e-9, `${big.time} vs ${small.time}`);
+  assert.equal(big.state, 'flying');
+  big.advance(0.1); assert.equal(big.state, 'done'); assert.equal(big.timeScale, 1);
+  const calm = createRun({ start, reducedMotion: true }); calm.shoot(onBin(), ZONES.bin);
+  assert.equal(calm.timeScale, 1); calm.advance(0.5);
+  assert.ok(Math.abs(calm.time - 0.5) < 1e-9, `${calm.time}`); assert.equal(calm.timeScale, 1);
+  // Playback only: the shot's the same.
+  assert.deepEqual([...calm.result.path], [...big.result.path]); assert.equal(calm.result.score, big.result.score);
+});
+
 test('a negative or NaN dt waits', () => {
   const run = createRun({ start }); run.shoot(onBin(), ZONES.bin); run.advance(0.5);
-  for (const dt of [-1, NaN]) { run.advance(dt); assert.ok(Math.abs(run.time - 0.5) < 1e-9, `${dt}`); }
+  const was = run.time;
+  for (const dt of [-1, NaN]) { run.advance(dt); assert.ok(Math.abs(run.time - was) < 1e-9, `${dt}`); }
 });
 
 test('points are whole, and the score is points times multiplier', () => {
