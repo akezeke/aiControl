@@ -9,6 +9,8 @@ export function hologramLayout(count, width, height) {
   for (let i = 0; i < Math.min(count, fits); i++) rows.push({ x: PADDING, y: TITLE + i * (ROW + GAP), width: width - 2 * PADDING, height: ROW });
   return { width, height, top: TITLE, rows };
 }
+// How tall a panel this wide has to be to show this many rows.
+export const listHeight = (count, width) => width * (TITLE + PADDING - GAP + count * (ROW + GAP)) / 512;
 // The panel that lists every session: as many rows as there are stations, and all of it in view from the chair.
 export const ROSTER = { width: .6, height: 1.015 };
 // A highlight stays on its row when the list reorders, and goes with it.

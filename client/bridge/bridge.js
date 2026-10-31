@@ -9,7 +9,7 @@ import { BridgeCamera } from './camera.js';
 import { CENTER, CHAIR_Z, ROOM, SEAT, deckColliders, stationAt } from './deck.js';
 import { createCrew, crewArrival, crewLook } from './crew.js';
 import { SHOT_SIZE, createDisplays, stationName } from './displays.js';
-import { ROSTER, createHologram } from './hologram.js';
+import { ROSTER, createHologram, listHeight } from './hologram.js';
 import { createLights } from './lights.js';
 import { PALETTES, SIGNALS, paletteFor, saveColour, savedColour } from './palettes.js';
 import { createPost } from './post.js';
@@ -45,7 +45,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
   // The arms' projectors: colours on the right, everyone on board on the left.
   const projected = (x) => ({ from: new THREE.Vector3(x * .5, 1.12, CHAIR_Z - .83), at: new THREE.Vector3(x * .72, 1.72, CHAIR_Z - 1.4), still });
   const phone = () => Math.min(container.clientWidth, container.clientHeight) <= 640;
-  const holograms = { colour: createHologram(room.group, { ...projected(1), phone }), crew: createHologram(room.group, { ...projected(-1), ...ROSTER, phone, at: new THREE.Vector3(-.72, 1.66, CHAIR_Z - 1.4) }) };
+  const holograms = { colour: createHologram(room.group, { ...projected(1), width: ROSTER.width, height: listHeight(Object.keys(PALETTES).length, ROSTER.width), phone }), crew: createHologram(room.group, { ...projected(-1), ...ROSTER, phone, at: new THREE.Vector3(-.72, 1.66, CHAIR_Z - 1.4) }) };
   let colour = savedColour(), crew = [];
   const showColours = () => holograms.colour.show('COLOURS', Object.entries(PALETTES).map(([id, palette]) => ({ id, label: palette.name, swatch: [palette.wall, palette.trim, palette.neon], on: id === colour })));
   const showCrew = () => holograms.crew.show(crew.length ? `${crew.length} SESSIONS` : 'NO SESSIONS', crew.map(session => ({ id: session.id, label: stationName(session), swatch: [SIGNALS[signalOf(session)]] })));

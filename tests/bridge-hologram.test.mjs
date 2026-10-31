@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fitPanel, hologramLayout, rowAt } from '../client/bridge/hologram.js';
+import { fitPanel, hologramLayout, rowAt, listHeight } from '../client/bridge/hologram.js';
 
 const layout = hologramLayout(3, 512, 400);
 test('rows stack under the title and stay inside the panel', () => {
@@ -64,4 +64,11 @@ test('a grown panel never reaches past the edge of the view', () => {
 
 test('a panel on a bigger screen is not enlarged, even centred in a narrow window', () => {
   assert.equal(fitPanel(-.72, .21, .6, 1.015, .52, 1.12).size, 1);
+});
+test('a list is tall enough for every row', () => {
+  for (const count of [1, 3, 8, 12]) {
+    const height = listHeight(count, .6);
+    assert.equal(hologramLayout(count, 512, Math.round(512 * height / .6)).rows.length, count);
+    assert.ok(height < listHeight(count + 1, .6));
+  }
 });
