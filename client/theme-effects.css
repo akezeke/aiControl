@@ -786,21 +786,38 @@
 :root[data-theme=city] {
   /* The list as a game's menus: flat colour, square corners, a hard dark edge and pixel type on the labels. */
   :is(.brand-name, .panel-title, .sidebar-label, .status-line, .page-heading h1, .empty h2) { font-family: var(--display); font-weight: 400; letter-spacing: 0; }
-  :is(.session-card, .usage-accounts, .empty, .login-card, .request-box, .quiet-button, .stop-button, .clear-button, .spawn-button, .shot-button, .next-button, .back-button, .fire-button) { border: 2px solid var(--line); border-radius: 0; }
-  .session-card { box-shadow: var(--shadow); }
-  .session-card:is(:hover, :focus-visible) { border-color: var(--accent-2); }
-  .session-card.needs-input { border-color: var(--warn); }
-  .session-card[data-status=error] { border-color: #e83b3b; }
+  & *, & ::before, & ::after { border-radius: 0 !important; }
+  /* Corners cut by a border image and raised by a hard inner bevel. A drop shadow would fill the corners back in. */
+  :is(.session-card, .usage-accounts, .empty, .login-card, .request-box, .quiet-button, .stop-button, .clear-button, .spawn-button, .shot-button, .next-button, .back-button, .fire-button, .toast) { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-raised); }
+  :is(.quiet-button, .stop-button, .clear-button, .spawn-button, .shot-button, .next-button, .back-button, .fire-button):active { box-shadow: var(--px-sunk); }
+  :is(input:not([type=checkbox], [type=radio]), textarea, select) { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-sunk); }
+  :is(input, textarea, select):focus-visible { border-image-source: var(--px-accent); }
+  /* The search box is the wrapper around its input, so that's what gets the frame. */
+  .search input { border: 0; border-image: none; box-shadow: none; }
+  .search { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-sunk); }
+  .search:focus-within { border-image-source: var(--px-accent); box-shadow: var(--px-sunk); }
+  /* Meters count in blocks, like a game's power bar. */
+  :is(.usage-meter, .plan-meter) { height: 8px; background: #2e222f; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-bar { background: #2e222f; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-value { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
+  :is(.usage-meter, .plan-meter)::-moz-progress-bar { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
+  .stat { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-raised); }
+  .stat.selected { border-image-source: var(--px-accent); background-color: #4d65b4; color: #fff; box-shadow: var(--px-sunk); }
+  .session-card:is(:hover, :focus-visible) { border-image-source: var(--px-accent); }
+  .session-card.needs-input { border-image-source: var(--px-warn); }
+  .session-card[data-status=error] { border-image-source: var(--px-red); }
+  :is(.badge, .chip, .ctx-chip, .compact-chip, .doc-chip, .mode-chip, .plan-chip, .project-tag, .subagent-tag, .workflow-tag, .nav-count, .group-count) { clip-path: var(--px-notch); }
+  scrollbar-color: #4d65b4 #323353;
   .brand-mark { border-radius: 0; background: #4d9be6; box-shadow: none; }
   .brand-mark i { background: #2e222f; }
-  .toast { background: var(--panel); color: var(--text); border: 2px solid var(--line); border-radius: 0; box-shadow: var(--shadow); }
+  .toast { background: var(--panel); color: var(--text); }
   .shot-viewer::backdrop { background: #2e222fd9; }
 }
 @media (prefers-reduced-motion: no-preference) {
   /* A waiting card blinks like the beacon on its building, on the 3 s poll clock so a re-render doesn't restart it. */
   :root[data-theme=city] .session-card.needs-input { animation: city-blink 1.5s steps(1) infinite; animation-delay: var(--since-load, 0s); }
 }
-@keyframes city-blink { 50% { border-color: var(--warn-line); box-shadow: 2px 2px 0 var(--warn); } }
+@keyframes city-blink { 50% { border-image-source: var(--px-warn-line); box-shadow: inset 2px 2px 0 var(--warn), inset -2px -2px 0 var(--warn-line); } }
 @keyframes holo-sweep { from { transform: translateY(-20vh); } to { transform: translateY(100vh); } }
 @keyframes holo-breathe { 50% { opacity: .15; } }
 @media (prefers-reduced-motion: no-preference) {

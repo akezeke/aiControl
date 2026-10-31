@@ -116,13 +116,15 @@ export function createControls(box, { onFit, onNext, onList, onNew }) {
   const bar = document.createElement('div'); bar.className = 'city-controls'; box.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); b.onclick = onclick; bar.append(b); return b; };
   const lost = document.createElement('div'); lost.className = 'city-lost'; lost.textContent = 'Connection lost'; lost.hidden = true; bar.append(lost);
+  // Drawn on the same pixel grid as the city, so that no font brings its own idea of a plus sign.
+  const pixels = path => `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" fill-rule="evenodd" shape-rendering="crispEdges" aria-hidden="true"><path d="${path}"/></svg>`;
   const waiting = button('city-waiting', '', 'Next waiting (N)', () => onNext()); waiting.hidden = true;
-  // Drawn, because no font on most machines has a "fit" glyph and an empty box isn't an icon.
-  button('', '', 'Fit city (F)', () => onFit()).innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true"><path d="M1 1h5v2H3v3H1zM10 1h5v5h-2V3h-3zM1 10h2v3h3v2H1zM13 10h2v5h-5v-2h3z"/></svg>';
-  button('', '+', 'New project', event => onNew(event.currentTarget));
-  button('', '☰', 'Show the list', () => onList());
+  waiting.innerHTML = `${pixels('M7 1h2v2h1v2h1v2h1v2h1v2h1v3H1v-3h1V9h1V7h1V5h1V3h2zM7 5v5h2V5zM7 11v2h2v-2z')}<span></span>`;
+  button('', '', 'Fit city (F)', () => onFit()).innerHTML = pixels('M1 1h5v2H3v3H1zM10 1h5v5h-2V3h-3zM1 10h2v3h3v2H1zM13 10h2v5h-5v-2h3z');
+  button('', '', 'New project', event => onNew(event.currentTarget)).innerHTML = pixels('M7 2h2v5h5v2H9v5H7V9H2V7h5z');
+  button('', '', 'Show the list', () => onList()).innerHTML = pixels('M2 3h12v2H2zM2 7h12v2H2zM2 11h12v2H2z');
   return {
-    setWaiting(n) { waiting.hidden = !n; waiting.textContent = `⚠ ${n}`; },
+    setWaiting(n) { waiting.hidden = !n; waiting.lastChild.textContent = n; },
     setLost(on) { lost.hidden = !on; },
     dispose() { bar.remove(); },
   };

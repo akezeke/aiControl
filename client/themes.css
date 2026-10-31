@@ -101,6 +101,15 @@
   --shadow: 2px 2px 0 #2e222f;
   --shadow-lg: 4px 4px 0 #2e222f;
   --focus: #8fd3ff;
+  /* A 2 px edge with its corner pixel missing, as a border image so it can take a colour; and the same corners cut out of anything that has no border. */
+  --px-line: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%232e222f'/%3E%3C/svg%3E");
+  --px-accent: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%238fd3ff'/%3E%3C/svg%3E");
+  --px-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%23f9c22b'/%3E%3C/svg%3E");
+  --px-warn-line: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%23f79617'/%3E%3C/svg%3E");
+  --px-red: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%23e83b3b'/%3E%3C/svg%3E");
+  --px-notch: polygon(0 2px, 2px 2px, 2px 0, calc(100% - 2px) 0, calc(100% - 2px) 2px, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 2px calc(100% - 2px), 0 calc(100% - 2px));
+  --px-raised: inset 2px 2px 0 #4d65b4, inset -2px -2px 0 #323353;
+  --px-sunk: inset 2px 2px 0 #2e222f;
 }
 
 :root[data-theme=office] {
