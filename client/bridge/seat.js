@@ -15,6 +15,9 @@ export function clickAction(hit, { seated, zoomed, overview, locked, mouse }) {
   if (mouse && !locked) return 'capture';
   return hit?.kind === 'floor' && !seated ? 'walk' : null;
 }
+// The point on the view that's aimed at: the sight when the mouse is captured, and by touch, where there's no pointer to hover and looking
+// around is how you point. The overview has no sight, so by touch nothing is aimed at there.
+export const aimPoint = ({ aiming, touch, overview }, centre, mouse) => aiming || (touch && !overview) ? centre : touch ? null : mouse;
 // E on what's aimed at: a click's meaning, but never to capture the mouse or walk you to the floor.
 export function keyAction(hit, state) {
   const action = clickAction(hit, { ...state, mouse: false });

@@ -15,7 +15,7 @@ import { PALETTES, SIGNALS, paletteFor, saveColour, savedColour } from './palett
 import { createPost } from './post.js';
 import { createReticle } from './reticle.js';
 import { buildRoom } from './room.js';
-import { clickAction, keyAction, screenPose } from './seat.js';
+import { aimPoint, clickAction, keyAction, screenPose } from './seat.js';
 import { assignStations, displayState, shipState, signalOf, stationSignals } from './ship.js';
 import { createSpace } from './space.js';
 
@@ -145,16 +145,17 @@ export function mountBridge(container, hooks = {}, options = {}) {
     const name = session ? hooks.describe?.(session)?.title || stationName(session) : look.overview ? null : hit?.kind === 'shot' ? `${shots.count(hit.id)} screenshot${shots.count(hit.id) === 1 ? '' : 's'}` : hit?.kind === 'screen' ? hit.label : hit?.kind === 'chair' && !seated ? 'Sit' : null;
     return name ? { kind: 'hit', hit, name, object: hit.corners || hit.object } : null;
   }
-  // Under the pointer or, aiming, the sight, a few times a second. After a touch, or with the mouse gone, nothing is aimed at.
-  let hoverIn = 0, mouseAt = null;
-  const onMove = event => { if (event.pointerType === 'mouse') mouseAt = event.buttons ? null : { clientX: event.clientX, clientY: event.clientY }; };
+  // Under the pointer or the sight, a few times a second. A touch makes this a touch screen until a mouse moves.
+  let hoverIn = 0, mouseAt = null, touch = matchMedia('(pointer: coarse)').matches;
+  const onMove = event => { if (event.pointerType === 'mouse') { touch = false; mouseAt = event.buttons ? null : { clientX: event.clientX, clientY: event.clientY }; } };
   const onLeave = () => { mouseAt = null; };
-  const onDown = event => { if (event.pointerType !== 'mouse') mouseAt = null; };
+  const onDown = event => { if (event.pointerType !== 'mouse') { touch = true; mouseAt = null; } };
   el.addEventListener('pointermove', onMove); el.addEventListener('pointerleave', onLeave); el.addEventListener('pointerdown', onDown);
-  const aimedAt = () => { const at = player.aiming ? player.centre : mouseAt; return at && targetAt(at); };
+  const aimedAt = () => { const at = aimPoint({ aiming: player.aiming, touch, overview: look.overview }, player.centre, mouseAt); return at && targetAt(at); };
   function hover(dt) {
     hoverIn -= dt; if (hoverIn > 0) return; hoverIn = .1;
-    const target = aimedAt(), name = target && `E ${target.name}`;
+    // By touch there's no E to offer, and a row already shows its name, where the tag would only cover the next one.
+    const target = aimedAt(), name = target && (!touch ? `E ${target.name}` : target.kind === 'row' ? null : target.name);
     for (const [hologram, panel] of Object.entries(holograms)) panel.hover(target?.hologram === hologram ? target.row : null);
     reticle.aim(name); brackets.aim(target?.object ?? null); el.title = player.aiming ? '' : name || ''; el.style.cursor = name && !player.aiming ? 'pointer' : '';
   }
@@ -227,7 +228,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
       if (options.view) place();
       room.ceiling.visible = !look.amount;
       showLeave(); hover(dt);
-      reticle.show(player.aiming && !zoomed && !look.overview); reticle.tick(dt, container.clientHeight || 1); brackets.tick(container.clientHeight || 1);
+      reticle.show((player.aiming || touch) && !zoomed && !look.overview); reticle.tick(dt, container.clientHeight || 1); brackets.tick(container.clientHeight || 1);
       for (const hologram of Object.values(holograms)) hologram.tick(dt, T, camera);
       space.tick(dt); lights.tick(dt, T, space); room.tick(dt, T, camera); figures.forEach(figure => figure.tick(dt, T));
       post.flash = space.flash; post.render(world, space.scene, camera);

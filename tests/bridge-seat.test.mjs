@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { clickAction, keyAction, screenPose } from '../client/bridge/seat.js';
+import { aimPoint, clickAction, keyAction, screenPose } from '../client/bridge/seat.js';
 import { roster, shipState } from '../client/bridge/ship.js';
 import { ROSTER, carryHover, hologramLayout } from '../client/bridge/hologram.js';
 
@@ -106,4 +106,11 @@ test('a screenshot on a display opens, from the chair or close up, but not from 
   const picture = { kind: 'shot' };
   assert.equal(clickAction(picture, seated), 'shots'); assert.equal(clickAction(picture, { ...seated, zoomed: true }), 'shots'); assert.equal(keyAction(picture, { ...seated, zoomed: true }), 'shots');
   assert.equal(clickAction(picture, { ...seated, overview: true }), null);
+});
+test('what is aimed at: the sight when captured or by touch, otherwise the mouse', () => {
+  const centre = 'centre', mouse = 'mouse';
+  assert.equal(aimPoint({ aiming: true, touch: false, overview: false }, centre, mouse), centre);
+  assert.equal(aimPoint({ aiming: false, touch: false, overview: false }, centre, mouse), mouse);
+  assert.equal(aimPoint({ aiming: false, touch: true, overview: false }, centre, null), centre);
+  assert.equal(aimPoint({ aiming: false, touch: true, overview: true }, centre, null), null);
 });
