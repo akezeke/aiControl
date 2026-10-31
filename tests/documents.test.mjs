@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, open, rm, writeFile, appendFile, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, realpath, rm, writeFile, appendFile, symlink } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -22,7 +22,8 @@ const text = text => ({ type: 'text', text });
 const row = (cwd, minute, ...content) => JSON.stringify({ type: 'assistant', sessionId, cwd, timestamp: `2026-10-28T12:${String(minute).padStart(2, '0')}:00Z`, message: { role: 'assistant', content } }) + '\n';
 
 async function repo(t) {
-  const dir = await mkdtemp(join(tmpdir(), 'ai-control-documents-'));
+  // Real path: macOS's temp folder is a link (/var → /private/var), and documents are found by where they really are.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'ai-control-documents-')));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const cwd = join(dir, 'repo'), projects = join(dir, 'projects');
   await mkdir(join(cwd, 'docs'), { recursive: true }); await mkdir(join(projects, 'repo'), { recursive: true });

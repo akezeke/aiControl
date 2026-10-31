@@ -179,10 +179,13 @@ test('losing the window calls the throw off, and the button coming up afterwards
   pointer('up', 20); assert.deepEqual(calls, [['press', 20], 'cancel'], 'no click either');
 });
 test('losing the mouse calls the throw off, and the button coming up afterwards is nothing', t => {
-  const { calls, pointer, handlers, player } = presses(t); player.locked = true;
+  // Losing it asks a moment later whether the window still has focus: on this test's clock, not after it, when another test's document is up.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { calls, pointer, handlers, player } = presses(t); player.locked = player.wanted = true;
   pointer('down'); handlers.pointerlockchange();
   assert.deepEqual(calls, [['press', 50], 'cancel']); assert.equal(player.locked, false);
   pointer('up'); assert.deepEqual(calls, [['press', 50], 'cancel']);
+  t.mock.timers.tick(100); assert.equal(player.wanted, false, 'let go of in the window: you wanted it');
 });
 test('a right click during a key\'s charge calls it off, even with the left down since before there was a charge', t => {
   const { calls, player, pointer, holds } = presses(t, false); player.locked = player.wanted = true;
