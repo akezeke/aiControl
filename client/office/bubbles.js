@@ -139,6 +139,6 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     closeCopy(target) { return !line.contains(target) && closeLine(); },
     // The hint goes once you've used the overview.
     overviewUsed() { if (hint.hidden) return; hint.classList.add('gone'); setTimeout(() => { hint.hidden = true; }, 600); try { localStorage.setItem(hintKey, '1'); } catch { /* per tab only */ } },
-    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); thrower.remove(); mark.remove(); meter.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
+    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); thrower.remove(); meter.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
   };
 }

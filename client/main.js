@@ -318,7 +318,8 @@ function dressCity() {
   portraitsLoading = true;
   import('./city/portrait.js').then(module => { portraits = module; dressCity(); }).catch(() => { /* The list is complete without them. */ }).finally(() => { portraitsLoading = false; });
 }
-function closeScene() { scene?.unmount(); scene = null; sceneLook = null; document.querySelector('.main-content > .scene')?.remove(); }
+// A scene that throws while unmounting has already stopped drawing: its box goes anyway, or its last frame stays up, frozen.
+function closeScene() { try { scene?.unmount(); } catch (error) { console.error(error); } scene = null; sceneLook = null; document.querySelector('.main-content > .scene')?.remove(); }
 function syncScene() {
   const root = document.documentElement, main = document.querySelector('.main-content'), look = root.dataset.theme, entry = sceneFor(look);
   root.toggleAttribute('data-scene-list', !!entry && sceneList);
