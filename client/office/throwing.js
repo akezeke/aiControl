@@ -77,7 +77,7 @@ function ringAt({ pos, normal }, { low, radius }, world, eye) {
 // Small balls of one size in the world, so they shrink with distance and go behind what's in front. One flat unlit colour that reads
 // on a white wall and in the dark. One draw, a new way is worked out only when the throw changed, and it's drawn again only if that or the
 // hand did. The ring is the mesh's child, so it comes and goes with the dots. Nothing's listening to the ray.
-const DOT_RADIUS = 0.011, COLOUR = '#ff3d14', RING = [0.028, 0.047], FACING = new THREE.Vector3(0, 0, 1);
+const DOT_RADIUS = 0.011, COLOUR = '#14b8c4', RING = [0.028, 0.047], FACING = new THREE.Vector3(0, 0, 1);
 let dotShape, ringShape;
 const placed = new THREE.Matrix4(), near = new THREE.Vector3(), real = new THREE.Vector3(), offset = new THREE.Vector3(), sight = new THREE.Vector3(), lastPos = new THREE.Vector3(), SAME_HAND = 1e-3 ** 2, deaf = () => {};
 export function createArc() {
