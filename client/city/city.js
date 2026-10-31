@@ -11,6 +11,7 @@ import { buildTower, annex, dust, crane, coolingPlant, stackPlant } from './gene
 import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
+import { hop, hum, phaseAt, sparks, STEAM_MS } from './juice.js';
 import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf, keyPan } from './view.js';
 import { createControls, createLabels } from './labels.js';
 
@@ -19,7 +20,7 @@ const DRAG_SLOP = 6, GLIDE_MS = 220, NOTCH = 50, WHEEL_REST = 200;
 // A flick carries on: how long it takes to lose most of its speed, and what still counts as moving in CSS pixels per ms.
 const COAST_MS = 220, KEY_COAST_MS = 110, COAST_MIN = .03;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], a: [-1, 0], d: [1, 0], w: [0, -1], s: [0, 1] };
-const STEP_MS = 125, TWINKLE_MS = 1500, CACHE = 256, FLOOR = '#0b5e65', HIGHLIGHT = { hover: '#f9c22b', selected: '#fbff86', cursor: '#ffffff', asked: '#f9c22b' };
+const STEP_MS = 125, CACHE = 256, FLOOR = '#0b5e65', HIGHLIGHT = { hover: '#f9c22b', selected: '#fbff86', cursor: '#ffffff', asked: '#f9c22b' };
 // Everything but a chosen neighbourhood falls into shadow.
 const DUSK = 'rgba(46, 34, 47, .55)';
 // A sprite this far off the canvas can't reach it, so it isn't baked until it might.
@@ -36,7 +37,11 @@ export function webglAvailable() {
 }
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-const offset = id => { let hash = 0; for (const c of id) hash = hash * 31 + c.charCodeAt(0) | 0; return Math.abs(hash) % TWINKLE_MS; };
+const drawBounced = (target, image, sprite, x, y, bounce) => {
+  const left = x - sprite.originX, top = y - sprite.originY;
+  if (bounce) target.drawImage(image, left, top - bounce.lift + bounce.squash, image.width, image.height - bounce.squash);
+  else target.drawImage(image, left, top);
+};
 const toImage = ({ width, height, rgba }) => {
   if (!width || !height) return null;
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
@@ -60,12 +65,12 @@ export function mountCity(box, hooks = {}) {
   if (bloom) box.append(glowCanvas);
 
   const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), litHoods = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
-  const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(); // ghosts: what has left the plan but is still going up in dust.
+  const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(), hops = new Map(), moods = new Map(); // ghosts: what has left the plan but is still going up in dust.
   let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '';
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [];
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
-  let glide = null, coast = null, drawn = [], selectedHood = null, card = null, labels = null, menu = null, animating = false, test = null, slot, dismissed = false;
+  let glide = null, coast = null, drawn = [], selectedHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
   const fit = () => {
@@ -91,7 +96,21 @@ export function mountCity(box, hooks = {}) {
     const session = sessions.get(id), plant = plan.plants.find(p => p.provider === session?.provider);
     return session ? citySignal(session, { connected: !error && plant?.connected !== false }) : { windows: 'dark', twinkle: false };
   };
-  const phaseOf = (id, signal, now) => signal.twinkle && !reducedMotion() ? Math.floor((now + offset(id)) / TWINKLE_MS) % 2 : 0;
+  const phaseOf = (id, signal, now) => signal.twinkle && !reducedMotion() ? phaseAt(now, id) : 0;
+  // A building jumps when something about it changes, or when it's clicked: never just for being seen for the first time.
+  const hopped = (id, mood, now, reduced) => {
+    if (moods.has(id) && moods.get(id) !== mood && !reduced) hops.set(id, now);
+    moods.set(id, mood);
+  };
+  const bounceOf = (id, signal, dim, now, reduced) => {
+    if (reduced) return null;
+    const started = hops.get(id), jump = started === undefined ? null : hop(now - started);
+    if (started !== undefined && !jump) hops.delete(id);
+    if (jump) return jump;
+    if (dim) return null;
+    if (lots.hover && lots.hover === lotKeyOf(id)) return { lift: 1, squash: 0 };
+    return signal.twinkle && hum(now, id) ? { lift: 0, squash: 1 } : null;
+  };
 
   // Everything standing in the city this frame. Nothing here renders: a sprite is only baked if its key isn't cached.
   const standing = now => {
@@ -115,7 +134,8 @@ export function mountCity(box, hooks = {}) {
       if (stage.gone) return false;
       const signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(id), { windows } = signal, phase = phaseOf(id, signal, now), dim = dimmed(building);
       if (signal.twinkle && !reduced) animating = true;
-      stand(`${id}|${stage.storeys}|${windows}|${phase}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { beacon: signal.beacon && !dim && blink, named: true });
+      hopped(id, `${windows}|${building.storeys}`, now, reduced || stage.puff);
+      stand(`${id}|${stage.storeys}|${windows}|${phase}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { beacon: signal.beacon && !dim && blink, named: true, bounce: bounceOf(id, signal, dim, now, reduced), sparks: signal.twinkle && !dim && !reduced ? sparks(now, id) : null });
       if (stage.crane) stand('crane', `crane:${id}`, x + CRANE_AT, z - CRANE_AT, () => ({ stack: crane(true) }), null, dim);
       effects(id, x, z, signal, stage, dim);
       return true;
@@ -123,17 +143,19 @@ export function mountCity(box, hooks = {}) {
     const annexOf = (building, i, kid) => {
       const stage = { ...lifecycle.stage(kid.id, now, reduced), target: kid.leaving ? 0 : kid.storeys };
       if (stage.gone) return false;
-      const at = annexAt(building, i, view), group = `${building.id}+${i}`, signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(kid.id), dim = dimmed(building, kid.id);
-      stand(`${group}|${stage.storeys}|${signal.windows}|0`, group, at.x, at.z, () => annex(building.look, i, signal.windows, stage.storeys), stage.puff ? null : kid.id, dim, { beacon: signal.beacon && !dim && blink });
+      const at = annexAt(building, i, view), group = `${building.id}+${i}`, signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(kid.id), dim = dimmed(building, kid.id), phase = phaseOf(kid.id, signal, now);
+      hopped(kid.id, `${signal.windows}|${kid.storeys}`, now, reduced || stage.puff);
+      stand(`${group}|${stage.storeys}|${signal.windows}|${phase}`, group, at.x, at.z, () => annex(building.look, i, signal.windows, stage.storeys, phase), stage.puff ? null : kid.id, dim, { beacon: signal.beacon && !dim && blink, bounce: bounceOf(kid.id, signal, dim, now, reduced) });
       effects(group, at.x, at.z, signal, stage, dim);
       return true;
     };
-    animating = false;
+    animating = false; steaming = false;
     const quiet = !!selectedHood;
     cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${stackId(stack)}`, `prop:${i}`, x, z, () => ({ stack }), null, quiet));
     for (const { provider, x, z, connected } of plan.plants) {
-      const [make, stripe] = PLANTS[provider], lit = connected && !error, on = lit && !reduced;
-      stand(`plant:${provider}|${on}|${lit}`, `plant:${provider}`, x, z, () => ({ stack: make(stripe, on, lit) }), null, quiet);
+      const [make, stripe] = PLANTS[provider], lit = connected && !error, on = lit && !reduced, phase = on ? Math.floor(now / STEAM_MS) % 4 : 0;
+      if (on) steaming = true;
+      stand(`plant:${provider}|${on}|${lit}|${phase}`, `plant:${provider}`, x, z, () => ({ stack: make(stripe, on, lit, phase) }), null, quiet);
     }
     for (const building of plan.buildings) if (towerOf(building)) building.subagents.forEach((kid, i) => annexOf(building, i, kid));
     for (const [id, ghost] of ghosts) if (!(ghost.kid ? annexOf(ghost.building, ghost.i, ghost.kid) : towerOf(ghost.building))) ghosts.delete(id);
@@ -182,9 +204,10 @@ export function mountCity(box, hooks = {}) {
     drawn = placed.filter(item => item.opens);
     syncLabels(placed);
     for (const { sprite, x, y } of placed) if (sprite.shadowImage) ctx.drawImage(sprite.shadowImage, x - sprite.shadow.originX, y - sprite.shadow.originY);
-    for (const { sprite, x, y } of placed) if (sprite.image) ctx.drawImage(sprite.image, x - sprite.originX, y - sprite.originY);
+    // A hop lifts and squashes the picture and leaves the shadow on the ground.
+    for (const { sprite, x, y, item } of placed) if (sprite.image) drawBounced(ctx, sprite.image, sprite, x, y, item.bounce);
     // Effects last: they are in the air, in front of whatever stands there.
-    const under = new Map(placed.map(entry => [entry.item.group, entry])), crown = ({ sprite, x, y }) => { const [ox, oy] = screen(sprite.cx, 0, view); return [x + Math.round(ox), y + Math.round(oy) - sprite.top]; };
+    const under = new Map(placed.map(entry => [entry.item.group, entry])), crown = ({ sprite, x, y, item }) => { const [ox, oy] = screen(sprite.cx, 0, view), { lift = 0, squash = 0 } = item.bounce ?? {}; return [x + Math.round(ox), y + Math.round(oy) - sprite.top - lift + squash]; };
     for (const entry of placed) {
       if (!entry.item.beacon) continue;
       const [x, y] = crown(entry);
@@ -197,11 +220,14 @@ export function mountCity(box, hooks = {}) {
       const [x, y] = crown(parent), rest = parent.y + Math.round((y - parent.y) * item.rise);
       ctx.drawImage(sprite.image, x - sprite.originX, rest - item.lift - sprite.originY);
     }
+    const spray = target => { for (const entry of placed) if (entry.item.sparks) { const [x, y] = crown(entry); for (const spark of entry.item.sparks) { target.fillStyle = spark.colour; target.fillRect(x + spark.x, y + spark.y, 1, 1); } } };
+    spray(ctx);
     if (bloom) {
       const shiftX = lampOffset(gx), shiftY = lampOffset(gy), kx = glowCanvas.width / size.width, ky = glowCanvas.height / size.height;
       lampsCtx.setTransform(1, 0, 0, 1, 0, 0); lampsCtx.clearRect(0, 0, lamps.width, lamps.height); lampsCtx.setTransform(1, 0, 0, 1, shiftX, shiftY);
       if (lit) lampsCtx.drawImage(lit.edgeImage, gx - lit.originX, gy - lit.originY);
-      for (const { sprite, x, y } of placed) if (sprite.glowImage) lampsCtx.drawImage(sprite.glowImage, x - sprite.originX, y - sprite.originY);
+      for (const { sprite, x, y, item } of placed) if (sprite.glowImage) drawBounced(lampsCtx, sprite.glowImage, sprite, x, y, item.bounce);
+      spray(lampsCtx);
       lampsCtx.fillStyle = BEACON;
       for (const entry of placed) if (entry.item.beacon) { const [x, y] = crown(entry); lampsCtx.fillRect(x - 1, y - 3, 3, 3); }
       bloom.draw(glowCtx, lamps, -shiftX * kx, -shiftY * ky, lamps.width * kx, lamps.height * ky);
@@ -270,7 +296,7 @@ export function mountCity(box, hooks = {}) {
       if (Math.hypot(coast.vx, coast.vy) < COAST_MIN) coast = null;
     }
     const items = standing(now).filter(visible), ready = [];
-    if (items.length * 4 > sprites.max) sprites.max = items.length * 4;
+    if (items.length * 6 > sprites.max) sprites.max = items.length * 6;
     let baked = false, waiting = false;
     for (const item of items) {
       let sprite = sprites.get(item.key);
@@ -278,7 +304,7 @@ export function mountCity(box, hooks = {}) {
       if (sprite) shown.set(item.group, sprite); else sprite = shown.get(item.group);
       if (sprite) ready.push({ item, sprite });
     }
-    const drawing = ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.beacon ? 1 : 0}`).join();
+    const drawing = ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
     if (dirty || baked || drawing !== lastDrawn) { paint(ready); lastDrawn = drawing; dirty = false; }
     if (labelsStale) { moveLabels(); followMenu(); }
     return waiting || baked;
@@ -290,7 +316,9 @@ export function mountCity(box, hooks = {}) {
     if (gone || document.hidden) return;
     try {
       const more = step(now);
-      if (more || dirty || glide || coast || keysDown.size) schedule(); else if (moving()) timer = setTimeout(() => { timer = 0; schedule(); }, STEP_MS);
+      if (more || dirty || glide || coast || keysDown.size || hops.size) schedule();
+      else if (moving()) timer = setTimeout(() => { timer = 0; schedule(); }, STEP_MS);
+      else if (steaming) timer = setTimeout(() => { timer = 0; schedule(); }, STEAM_MS - now % STEAM_MS + 1);
     } catch (problem) { failure = problem; } // The next update throws it, and syncScene falls back to the list.
   };
   const schedule = () => { if (!raf && !gone && !document.hidden) raf = requestAnimationFrame(frame); };
@@ -361,6 +389,7 @@ export function mountCity(box, hooks = {}) {
   const talkTo = id => {
     const building = id && sessions.has(id) && !fired.has(id) && plan?.buildings.find(b => b.id === id || b.subagents.some(kid => kid.id === id));
     if (!building) return;
+    if (!reducedMotion()) hops.set(id, performance.now());
     panToWorld(building.x, building.z); hooks.openPanel?.(id);
   };
   const clickAt = event => { const hit = pickAt(event); if (hit?.id) talkTo(hit.id); else if (hit?.lot && !hit.lot.sessionId) askLot(hit.lot, false); };
