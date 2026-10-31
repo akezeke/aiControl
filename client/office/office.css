@@ -51,7 +51,7 @@
 .office-dot { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fffdf7; box-shadow: 0 0 0 1.5px #1b1a1f; pointer-events: none; transition: transform .12s, background .12s; }
 .office-dot.aim { background: #4f7cff; transform: scale(1.7); }
 .office-mark { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; box-sizing: border-box; border-radius: 50%; border: 2px solid #fffdf7; box-shadow: 0 0 0 1.5px #1b1a1f, inset 0 0 0 1.5px #1b1a1f; pointer-events: none; }
-.office-charge { position: absolute; left: -38px; top: -38px; width: 76px; height: 76px; display: none; overflow: visible; fill: none; stroke-linecap: round; pointer-events: none; will-change: transform; }
+.office-charge { position: absolute; left: -38px; top: -38px; z-index: 1001; width: 76px; height: 76px; display: none; overflow: visible; fill: none; stroke-linecap: round; pointer-events: none; will-change: transform; }
 .office-charge.shown { display: block; }
 .office-charge path { stroke-width: 7; }
 .office-charge .ink { stroke: #1b1a1f; stroke-width: 11; }
