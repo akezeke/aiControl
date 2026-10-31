@@ -37,3 +37,7 @@ test('a bubble near an edge slides in with its tail on the building', () => {
   const t = placeBubble(100, 2, 60, 20, 300, 200); assert.ok(t.y >= 4);
 });
 
+test('at 125% and 150% the zoom steps reach the sizes in between, not past them', () => {
+  assert.deepEqual(ZOOMS.map(step => fitCanvas(800, 600, 1.25, step).scale), [1, 2, 4, 5]);
+  assert.deepEqual(ZOOMS.map(step => fitCanvas(800, 600, 1.5, step).scale), [1, 3, 4, 6]);
+});

@@ -1,0 +1,4 @@
+#city { position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: #323353; touch-action: none; }
+/* Sized in JS: whole device pixels per art pixel, so never stretched to fit. */
+#city > canvas { display: block; image-rendering: pixelated; }
+@media (max-width: 640px) { :root[data-theme-choice=city]:not([data-scene-fallback], [data-scene-list]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }

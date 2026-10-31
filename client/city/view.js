@@ -5,7 +5,7 @@ export const ZOOMS = [1, 2, 3, 4];
 const PHONE = 700, HEIGHT = 40, PHONE_STEP = 2, KEEP = 40;
 
 export function fitCanvas(cssW, cssH, dpr, step) {
-  const ratio = dpr > 0 ? dpr : 1, scale = Math.max(1, Math.round(step * ratio)), art = css => Math.max(1, Math.floor((css || 0) * ratio / scale)), width = art(cssW), height = art(cssH);
+  const ratio = dpr > 0 ? dpr : 1, scale = Math.max(1, Math.ceil(step * ratio - .5)), art = css => Math.max(1, Math.floor((css || 0) * ratio / scale)), width = art(cssW), height = art(cssH);
   return { scale, width, height, cssW: width * scale / ratio, cssH: height * scale / ratio };
 }
 
