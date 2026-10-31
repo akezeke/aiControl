@@ -12,7 +12,7 @@ import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
 import { hop, hum, phaseAt, sparks, STEAM_MS, traffic, BURSTS, burst, momentOf, jibBeat } from './juice.js';
-import { boatsAt, seaFrame, SEA_FRAMES, SEA_KINDS } from './surroundings.js';
+import { birdsAt, boatsAt, cloudBlob, cloudsAt, seaFrame, SEA_FRAMES, SEA_KINDS } from './surroundings.js';
 import { powerRoutes, pulsesAt, routeDots } from './power.js';
 import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf, keyPan } from './view.js';
 import { createControls, createLabels } from './labels.js';
@@ -35,6 +35,7 @@ const PLUME = [6, 10, 14, 18], PLUME_LIFT = 3, PUFF = [14, 22, 30, 36];
 const FIRED_MS = VACANT_MS + 10_000;
 const BOAT_SAILS = ['#e83b3b', '#0eaf9b', '#f9c22b'];
 const POWER = { claude: '#e83b3b', codex: '#0eaf9b' }, POWER_HEAD = '#fbff86', POWER_DOTS = 6;
+const BIRD_DAY = '#2e222f', BIRD_NIGHT = '#c7dcd0', BIRD_LIFT = 46, CLOUD_INK = 'rgba(46, 34, 47, .16)', cloudSprites = new Map();
 const PLANTS = { claude: [coolingPlant, '#e83b3b'], codex: [stackPlant, '#0eaf9b'] };
 
 export function webglAvailable() {
@@ -75,7 +76,7 @@ export function mountCity(box, hooks = {}) {
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', glowDrawn = '', seaNow = null, seaFrameDrawn = 0, failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
-  let glide = null, coast = null, drawn = [], plantsDrawn = [], routes = [], pulses = [], litPlant = null, selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
+  let glide = null, coast = null, drawn = [], plantsDrawn = [], routes = [], pulses = [], birds = [], clouds = [], litPlant = null, selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
   const fit = () => {
@@ -270,6 +271,7 @@ export function mountCity(box, hooks = {}) {
     frames++;
     const ground = groundImage(), [gx, gy] = toCanvas(camera, size, 0, 0);
     paintGroundSheet(ground, gx, gy);
+    for (const { sx, sy, sprite } of clouds) ctx.drawImage(sprite, sx + gx, sy + gy);
     const chosen = selectedHood && plan.hoods.find(hood => hood.key === selectedHood), lit = chosen && litHood(chosen);
     if (lit) { ctx.fillStyle = DUSK; ctx.fillRect(0, 0, size.width, size.height); ctx.drawImage(lit.image, gx - lit.originX, gy - lit.originY); }
     // A pointer on a project's sign shows which ground is its, leaving the rest of the city as it was.
@@ -290,6 +292,8 @@ export function mountCity(box, hooks = {}) {
     for (const { sprite, x, y, item } of placed) if (sprite.shadowImage && !item.baked) ctx.drawImage(sprite.shadowImage, x - sprite.shadow.originX, y - sprite.shadow.originY);
     // A hop lifts and squashes the picture and leaves the shadow on the ground.
     for (const { sprite, x, y, item } of placed) if (sprite.image) drawBounced(ctx, sprite.image, sprite, x, y, item.bounce);
+    ctx.fillStyle = hour === 'night' ? BIRD_NIGHT : BIRD_DAY;
+    for (const { sx, sy, wings } of birds) { const px = sx + gx, py = sy + gy; ctx.fillRect(px - 1, py, 3, 1); ctx.fillRect(px - 2, py - 1 + wings * 2, 1, 1); ctx.fillRect(px + 2, py - 1 + wings * 2, 1, 1); }
     // Effects last: they are in the air, in front of whatever stands there.
     const under = new Map(placed.map(entry => [entry.item.group, entry])), crown = ({ sprite, x, y, item }) => { const [ox, oy] = screen(sprite.cx, 0, view), { lift = 0, squash = 0 } = item.bounce ?? {}; return [x + Math.round(ox), y + Math.round(oy) - sprite.top - lift + squash]; };
     for (const entry of placed) {
@@ -384,6 +388,27 @@ export function mountCity(box, hooks = {}) {
     const [gx, gy] = toCanvas(camera, size, 0, 0), wanted = routes.filter(({ id, plant }) => plant === litPlant || (signalOf(id).mood === 'working' && !dimmedId(id)));
     return pulsesAt(wanted, now).filter(({ x, z }) => { const [sx, sy] = screen(x, z, view), px = sx + gx, py = sy + gy; return px > -4 && py > -4 && px < size.width + 4 && py < size.height + 4; });
   };
+  // Birds and clouds are in world space, so they turn with the city. Only what's on screen counts: nothing else asks for a paint.
+  const birdsNow = now => {
+    if (reducedMotion()) return [];
+    const [gx, gy] = toCanvas(camera, size, 0, 0);
+    return birdsAt(plan.bounds, now).map(({ x, z, wings }) => { const [sx, sy] = screen(x, z, view); return { sx: Math.floor(sx), sy: Math.floor(sy) - BIRD_LIFT, wings }; }).filter(({ sx, sy }) => sx + gx > -4 && sy + gy > -4 && sx + gx < size.width + 4 && sy + gy < size.height + 4);
+  };
+  const cloudSprite = shape => {
+    let sprite = cloudSprites.get(shape);
+    if (sprite) return sprite;
+    const { w, h, rows } = cloudBlob(shape);
+    sprite = document.createElement('canvas'); sprite.width = w; sprite.height = h;
+    const c = sprite.getContext('2d'); c.fillStyle = CLOUD_INK; rows.forEach(([from, length], y) => { if (length) c.fillRect(from, y, length, 1); });
+    cloudSprites.set(shape, sprite);
+    return sprite;
+  };
+  // A cloud's shadow needs a sun, so only by day. Reduced motion has none either: a shadow that never moves is only a stain.
+  const cloudsNow = now => {
+    if (reducedMotion() || hour === 'night') return [];
+    const [gx, gy] = toCanvas(camera, size, 0, 0);
+    return cloudsAt(plan.bounds, now).map(({ x, z, shape }) => { const sprite = cloudSprite(shape), [sx, sy] = screen(x, z, view); return { sx: Math.floor(sx - sprite.width / 2), sy: Math.floor(sy - sprite.height / 2), sprite }; }).filter(({ sx, sy, sprite }) => sx + gx + sprite.width > 0 && sy + gy + sprite.height > 0 && sx + gx < size.width && sy + gy < size.height);
+  };
   // One sprite baked per frame at most; until it's ready a building shows what it last looked like.
   const step = now => {
     if (!plan || !camera) return false;
@@ -408,6 +433,8 @@ export function mountCity(box, hooks = {}) {
     const items = standing(now).filter(visible), ready = [];
     pulses = powerNow(now);
     if (pulses.length) animating = true;
+    birds = birdsNow(now); clouds = cloudsNow(now);
+    if (birds.length) animating = true;
     if (items.some(item => item.moves)) animating = true;
     if (items.length * 6 > sprites.max) sprites.max = items.length * 6;
     let baked = false, waiting = false;
@@ -422,7 +449,7 @@ export function mountCity(box, hooks = {}) {
     if (frameOfSea >= 0) steaming = true;
     seaNow = frameOfSea >= 0 ? seaList(frameOfSea) : null; seaFrameDrawn = frameOfSea;
     if (seaNow && !seaShows(seaNow)) seaNow = null;
-    const drawing = (seaNow ? `sea${frameOfSea},` : '') + pulses.map(({ x, z }) => `${x},${z}`).join(' ') + ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.moves ? `${item.sx},${item.sy}` : ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
+    const drawing = (seaNow ? `sea${frameOfSea},` : '') + pulses.map(({ x, z }) => `${x},${z}`).join(' ') + birds.map(({ sx, sy, wings }) => `${sx},${sy},${wings}`).join(' ') + clouds.map(({ sx, sy }) => `${sx},${sy}`).join(' ') + ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.moves ? `${item.sx},${item.sy}` : ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
     if (dirty || baked || drawing !== lastDrawn) { paint(ready); lastDrawn = drawing; dirty = false; }
     if (labelsStale) { moveLabels(); followMenu(); }
     return waiting || baked;

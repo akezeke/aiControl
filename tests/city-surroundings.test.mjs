@@ -81,7 +81,7 @@ test('at night each lamp lights the ground round it, and by day none does', () =
   assert.ok(night.lights.length >= 10);
   assert.deepEqual(night.lights, day.lights);
   const [x, z] = night.lights.find(([, b]) => b === plan.hoods[0].z - 1), warm = c => c[0] - c[2];
-  assert.ok(warm(cellAt(night, x + 1, z - 3)) > warm(cellAt(day, x + 1, z - 3)), 'warmer by the lamp');
+  assert.ok(warm(cellAt(night, x + 1, z - 1)) > warm(cellAt(day, x + 1, z - 1)), 'warmer by the lamp');
 });
 test('light falls away with distance, and stops', () => {
   const night = groundCells(plan, 'night'), day = groundCells(plan, 'day'), reachFrom = (x, z) => Math.min(...night.lights.map(([a, b]) => Math.hypot(a - x, b - z)));

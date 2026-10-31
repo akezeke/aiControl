@@ -1,6 +1,6 @@
 // What goes on around the city without having anything to do with it. Pure: where things are at a given moment, in numbers.
 import { screen } from './plan.js';
-import { LAND_FAR, mix } from './ground.js';
+import { LAND, LAND_FAR, mix } from './ground.js';
 
 // The sea is a list of little dashes per frame. They only ever cover cells that are still water, so a pier or a shadow stays dry.
 export const SEA_FRAMES = 8, SEA_KINDS = [{ colour: '#8ff8e2', w: 2 }, { colour: '#0eaf9b', w: 2 }, { colour: '#0b8a8f', w: 6 }, { colour: '#0eaf9b', w: 4 }];
@@ -19,7 +19,7 @@ export function seaFrame({ shore, past, glint }, frame, view) {
 
 // Boats sail one long lap round the whole coast, all the same way and evenly spaced, so they never meet. Far enough out for the island and the pier to be behind them.
 export const BOATS = 3;
-const BOAT_SPEED = .004, OUT_WEST = 142, OUT_EAST = 165, OUT_SOUTH = 72;
+const BOAT_SPEED = .004, OUT_WEST = LAND + 44, OUT_EAST = 165, OUT_SOUTH = 72;
 export function boatsAt({ w, d }, now) {
   const x0 = -OUT_WEST, z0 = -OUT_WEST, x1 = w + OUT_EAST, z1 = d + LAND_FAR + OUT_SOUTH, W = x1 - x0, D = z1 - z0, lap = 2 * (W + D);
   return Array.from({ length: BOATS }, (_, i) => {
@@ -31,4 +31,43 @@ export function boatsAt({ w, d }, now) {
     if (s < W) return { x: Math.round(x1 - s), z: z1, along: true, dir: -1 };
     return { x: x0, z: Math.round(z1 - (s - W)), along: false, dir: -1 };
   });
+}
+
+// Now and then a flock crosses, high up. It is over the city for a while and gone for longer, a new line each time.
+export const BIRD_EVERY = 60000;
+const BIRD_FLIGHT = 24000, BIRD_OFF = 160, WINGBEAT = 240, FLOCK = [[0, 0], [-6, -5], [-6, 5], [-12, -10], [-12, 10]];
+export function birdsAt({ w, d }, now) {
+  const pass = Math.floor(now / BIRD_EVERY), t = (now % BIRD_EVERY) / BIRD_FLIGHT;
+  if (t > 1) return [];
+  const along = pass % 2 === 0, back = mix(pass, 3) % 2 ? -1 : 1, spot = (mix(pass, 11) % 80 + 10) / 100, length = (along ? w : d) + BIRD_OFF * 2;
+  const run = (back > 0 ? t : 1 - t) * length - BIRD_OFF, side = spot * (along ? d : w);
+  return FLOCK.map(([behind, out], i) => {
+    const u = run + behind * back, wings = Math.floor(now / WINGBEAT + i * .5) % 2;
+    return { x: Math.round(along ? u : side + out), z: Math.round(along ? side + out : u), wings };
+  });
+}
+
+// The shadows of a few clouds, drifting across land and sea alike and coming round again.
+export const CLOUDS = 3;
+const CLOUD_SPEED = .002, CLOUD_OFF = 300, CLOUD_DRIFT = .4;
+export function cloudsAt({ w, d }, now) {
+  const across = w + CLOUD_OFF * 2;
+  return Array.from({ length: CLOUDS }, (_, i) => {
+    const s = (now * CLOUD_SPEED + i * across / CLOUDS + mix(i, 5) % 97) % across;
+    return { x: Math.round(s - CLOUD_OFF), z: Math.round(d * (i + .5) / CLOUDS - d / 6 + s * CLOUD_DRIFT * d / across), shape: i };
+  });
+}
+// A blob of overlapping puffs, as `[from, length]` per row: a picture's worth of runs.
+export function cloudBlob(shape) {
+  const W = 200 + mix(shape, 2) % 60, H = 70 + mix(shape, 4) % 40, n = 4 + mix(shape, 6) % 3, STEP = 3;
+  const puffs = Array.from({ length: n }, (_, i) => { const t = (i + .5) / n, rx = W * (.14 + mix(shape, 20 + i) % 6 / 100), ry = H * (.3 + mix(shape, 40 + i) % 16 / 100) * (1 - Math.abs(t - .5)); return { x: Math.max(rx + STEP, Math.min(W - rx - STEP, t * W)), y: H / 2 + (mix(shape, 60 + i) % 7 - 3) / 3 * H * .12, rx, ry }; });
+  const rows = Array.from({ length: H }, (_, y) => {
+    // Whole steps, so its edge looks drawn rather than smoothed.
+    const Y = y - y % STEP + STEP / 2; let from = W, to = 0;
+    for (const puff of puffs) { const q = 1 - ((Y - puff.y) / puff.ry) ** 2; if (q <= 0) continue; const half = puff.rx * Math.sqrt(q); from = Math.min(from, puff.x - half); to = Math.max(to, puff.x + half); }
+    if (to <= from) return [0, 0];
+    const start = Math.max(0, Math.round(from / STEP) * STEP), end = Math.min(W, Math.round(to / STEP) * STEP);
+    return [start, Math.max(0, end - start)];
+  });
+  return { w: W, h: H, rows };
 }

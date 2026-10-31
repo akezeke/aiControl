@@ -38,3 +38,21 @@ for (const view of [0, 1, 2, 3]) test(`view ${view}: no prop draws over a buildi
   const hits = []; for (const prop of propsPlaced(p, view)) { const { width: W, height: H, mask } = prop.sprite; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (mask[x + y * W]) { const o = m.get(`${prop.left + x},${prop.top + y}`); if (o !== undefined && prop.depth > items[o].depth) hits.push(items[o].who); } }
   assert.deepEqual([...new Set(hits)], []);
 });
+
+// The pylons run just outside the city, so how far one comes depends on the size of the city: one layout won't catch it.
+const someCity = seed => {
+  const counts = [3 + seed % 3, 5 - seed % 2, 3, seed % 5 + 1, 3 + seed % 4, seed % 7 + 1].slice(0, 3 + seed % 4);
+  const sessions = counts.flatMap((n, p) => [...Array(n).keys()].map(i => ({ id: `s${seed}-${p}-${i}`, project: `q${seed}p${p}`, cwd: `/q${seed}/p${p}`, status: 'working' })));
+  return cityPlan(layoutOffice(sessions, null, 1), {}, null, [{ name: 'Claude Code', connected: true }, { name: 'Codex', connected: true }]);
+};
+test('whatever the size of the city, in every view, no prop draws over a building', () => {
+  const hits = [];
+  for (let seed = 0; seed < 16; seed++) for (const view of [0, 1, 2, 3]) {
+    const p = someCity(seed), items = placed(p, view), m = new Map(); items.forEach((it, i) => stamp(m, it, i, () => {}));
+    for (const prop of propsPlaced(p, view)) {
+      const { width: W, height: H, mask } = prop.sprite;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (mask[x + y * W]) { const o = m.get(`${prop.left + x},${prop.top + y}`); if (o !== undefined && items[o].depth < prop.depth) hits.push(`${seed}/${view}/${items[o].who}/${prop.who}`); }
+    }
+  }
+  assert.deepEqual([...new Set(hits)], []);
+});

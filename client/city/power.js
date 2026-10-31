@@ -2,7 +2,8 @@
 import { fnv } from './identity.js';
 import { ROAD } from './plan.js';
 
-const MIDDLE = ROAD / 2, SPAN = 90, TRUNK = -6, FEED_INTO = 10, APART = 24, SPUR_OFF = 12, ROAD_CLEAR = 11;
+// The lines keep this far off the roads because a wire is drawn up in the air, and so over the ground to one side of it, a different side in each view.
+const MIDDLE = ROAD / 2, SPAN = 90, NORTH = -26, BEHIND = -118, START = -14, APART = 24, SPUR_OFF = 60, FEED_END = 6, FEED_BACK = 13, FEED_INTO = 10;
 const SPEED = .05, REST = 60, TRAIL = [0, 5, 10];
 
 // An account that has lost its plant still has its agent's first, rather than a tower nothing feeds.
@@ -53,32 +54,38 @@ export function pulsesAt(routes, now) {
   return pulses;
 }
 
-// Stops at least, and as many between as keep the spans short, leaving out any that would stand on a road it crosses. The far end is only a place to stop, so it gives way to a stop it would crowd.
-function trunk(stops, end, crossings) {
-  const all = [...new Set(stops.some(stop => Math.abs(stop - end) < APART) ? stops : [...stops, end])].sort((a, b) => a - b), out = [];
+// Stops at least, and as many between as keep the spans short.
+function trunk(stops) {
+  const all = [...new Set(stops)].sort((a, b) => a - b), out = [];
   all.forEach((stop, i) => {
     out.push(stop);
     const next = all[i + 1];
     if (next === undefined) return;
     const n = Math.ceil((next - stop) / SPAN);
-    for (let k = 1; k < n; k++) { const at = Math.round(stop + (next - stop) * k / n); if (!crossings.some(c => Math.abs(at - c) < ROAD_CLEAR)) out.push(at); }
+    for (let k = 1; k < n; k++) out.push(Math.round(stop + (next - stop) * k / n));
   });
   return out;
 }
-// A line up the west side and another along the north, meeting at the corner. It stops level with each plant, a little way off the plant's road so nothing stands on one, and the wires go on from there into the plant.
+// A line along the north of town to the plant there, and another down behind the plants on the west: no road runs out that far, so neither crosses one, and far enough behind that no pylon stands in front of a plant when the view's turned round.
 export function powerLines(plan) {
-  const { w, d } = plan.bounds, poles = new Map(), wires = [], feeds = [], claudes = plan.plants.filter(plant => plant.provider === 'claude'), codexes = plan.plants.filter(plant => plant.provider !== 'claude');
+  const poles = new Map(), wires = [], feeds = [], claudes = plan.plants.filter(plant => plant.provider === 'claude'), codexes = plan.plants.filter(plant => plant.provider !== 'claude');
   const pole = (x, z, along) => { const key = `${x},${z}`; if (!poles.has(key)) poles.set(key, { x, z, along }); };
   const string = (along, across, stops) => stops.forEach((at, i) => {
     const [x, z] = along ? [at, across] : [across, at];
     pole(x, z, along);
     if (i) { const was = stops[i - 1]; wires.push(along ? [was, z, x, z] : [x, was, x, z]); }
   });
-  // In a small city a plant can be nearly level with the corner, whose pylon then serves it.
-  const branch = at => { const stop = Math.round(at - SPUR_OFF); return stop - TRUNK < APART ? TRUNK : stop; };
-  if (claudes.length) string(false, TRUNK, trunk([TRUNK, ...claudes.map(plant => branch(plant.z))], d, claudes.map(plant => plant.z)));
-  if (codexes.length) string(true, TRUNK, trunk([TRUNK, ...codexes.map(plant => branch(plant.x))], w, codexes.map(plant => plant.x)));
-  for (const plant of claudes) feeds.push([plant.x + FEED_INTO, Math.round(plant.z - SPUR_OFF), TRUNK, branch(plant.z)]);
-  for (const plant of codexes) feeds.push([Math.round(plant.x - SPUR_OFF), plant.z + FEED_INTO, branch(plant.x), TRUNK]);
+  // In a small city a plant can be nearly level with where the line starts, whose pylon then serves it.
+  const snap = (stop, start) => Math.abs(stop - start) < APART ? start : stop;
+  const start = claudes.length ? BEHIND : START, stopFor = plant => snap(Math.round(plant.x - SPUR_OFF), start);
+  if (claudes.length) string(false, BEHIND, trunk([NORTH, ...claudes.map(plant => snap(Math.round(plant.z), NORTH))]));
+  if (codexes.length) string(true, NORTH, trunk([start, ...codexes.map(stopFor)]));
+  for (const plant of claudes) feeds.push([plant.x - FEED_INTO, Math.round(plant.z), BEHIND, snap(Math.round(plant.z), NORTH)]);
+  // The Codex plant is north of its road, so its line goes in at the back, clear of the road from every side.
+  for (const plant of codexes) {
+    const x = stopFor(plant), z = Math.round(plant.z - FEED_BACK);
+    string(false, x, [z, NORTH]);
+    feeds.push([Math.round(plant.x - FEED_END), z, x, z]);
+  }
   return { poles: [...poles.values()], wires, feeds };
 }

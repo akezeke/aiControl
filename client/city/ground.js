@@ -7,7 +7,7 @@ import { LOT, PLOT, ROAD, WALK, PLANT, unproject, screen } from './plan.js';
 import { SHADOW } from './sprite.js';
 
 const C = Object.fromEntries(Object.entries({ block: '#484a77', road: '#3e3546', walk: '#966c6c', dash: '#9babb2', zebra: '#c7dcd0', shadow: '#2e222f',
-  trail: '#ab947a', water: '#0b5e65', water2: '#0b8a8f', paving: '#966c6c', paving2: '#ab947a', court: '#a24b6f', line: '#c7dcd0', tarmac: '#3e3546', sea: '#0b5e65', ripple: '#0b8a8f', foam: '#8ff8e2', sand: '#ab947a', flower: '#fbb954', stake: '#c7dcd0', bush: '#239063', bud: '#1ebc73' }).map(([k, v]) => [k, hex(v)]));
+  trail: '#ab947a', water: '#0b5e65', water2: '#0b8a8f', paving: '#966c6c', paving2: '#ab947a', court: '#a24b6f', line: '#c7dcd0', tarmac: '#3e3546', sea: '#0b5e65', ripple: '#0b8a8f', foam: '#8ff8e2', sand: '#ab947a', flower: '#fbb954', rose: '#cf657f', stake: '#7f708a', bush: '#239063', bud: '#1ebc73' }).map(([k, v]) => [k, hex(v)]));
 // The land goes by the viewer's clock, sage by day and dusk blue by night, so the lit windows have the dark to glow against once it's dark out.
 const DAWN = 7, DUSK = 18;
 export const timeOfDay = (date = new Date()) => { const hour = date.getHours(); return hour >= DAWN && hour < DUSK ? 'day' : 'night'; };
@@ -23,9 +23,12 @@ const LOTS = [['#6e2727', '#7a3045', '#cd683d', '#e6904e', CHECK], ['#165a4c', '
 });
 export const lotLook = id => LOTS[fnv(`lot:${id}`) % LOTS.length];
 const KERB = 2, PATH = 4, BUSH = 8, STAKE = 6;
+// Across the road, for a road's width: which of its cells are a dash. Long and thin, since a short one turns into a blob at this angle.
+const DASH = 6, DASH_EVERY = 12, dashed = (across, along) => (across === 6 || across === 7) && along % DASH_EVERY < DASH;
+const CROSSING = 4, BAR = 2, BAR_EVERY = 4, HOLD_BACK = 3;
 // How far the land runs past the city: its power plants stand north and west of it, so that's where it needs the room.
-export const LAND = 98, LAND_FAR = 40;
-const RIPPLES = 66, CORNER = 34, TREE_GRID = 21;
+export const LAND = 130, LAND_FAR = 40;
+const RIPPLES = 66, CORNER = 34, TREE_GRID = 21, POLE_ROOM = 14;
 // Which water moves: a band along the shore for the waves, and now and then a cell further out that catches the light.
 const WAVES_FROM = 2, WAVES_TO = 9, GLINTS_FROM = 9, GLINTS_TO = 120, GLINT_EVERY = 90;
 // Cheap and without a visible grain, which a sum of multiples isn't: this runs for every cell of the map.
@@ -76,18 +79,26 @@ export function groundCells(plan, time = 'day') {
   const reach = reachOf(W, D);
   rect(0, 0, W, D, C.block);
 
-  // Roads run the length of the city; a walk either side, dashes down the middle, a crossing at each junction.
-  const road = (x, z, W2, D2) => { const along = W2 > D2; rect(x, z, W2, D2, (a, b) => { const v = along ? b : a, u = along ? a : b; return v < WALK || v >= ROAD + WALK ? C.walk : (v === WALK + 6 || v === WALK + 7) && u % 8 < 4 ? C.dash : C.road; }); };
-  for (const z of plan.roads.zs) road(0, z - WALK, W, ROADW);
-  for (const x of plan.roads.xs) road(x - WALK, 0, ROADW, D);
-  for (const x of plan.roads.xs) for (const z of plan.roads.zs) {
-    rect(x - WALK, z - WALK, ROADW, ROADW, C.road);
-    const across = a => a % 3 < 2 ? C.zebra : C.road, down = (a, b) => b % 3 < 2 ? C.zebra : C.road;
-    // A crossing only where a road carries on.
-    if (z > plan.roads.zs[0]) rect(x, z - WALK, ROAD, WALK, across);
-    if (z < plan.roads.zs.at(-1)) rect(x, z + ROAD, ROAD, WALK, across);
-    if (x > plan.roads.xs[0]) rect(x - WALK, z, WALK, ROAD, down);
-    if (x < plan.roads.xs.at(-1)) rect(x + ROAD, z, WALK, ROAD, down);
+  // Roads run the length of the city; a walk either side and dashes down the middle.
+  const road = (x, z, W2, D2) => { const along = W2 > D2; rect(x, z, W2, D2, (a, b) => { const v = along ? b : a, u = along ? a : b; return v < WALK || v >= ROAD + WALK ? C.walk : dashed(v - WALK, u) ? C.dash : C.road; }); };
+  const { xs, zs } = plan.roads;
+  for (const z of zs) road(0, z - WALK, W, ROADW);
+  for (const x of xs) road(x - WALK, 0, ROADW, D);
+  // At a junction the kerb goes round each corner and stays shut on any side no road leaves by. Bars across each road that does, and its dashes hold back from them.
+  const bars = a => a % BAR_EVERY < BAR ? C.zebra : C.road, ARM = CROSSING + HOLD_BACK;
+  for (const x of xs) for (const z of zs) {
+    const north = z > zs[0], south = z < zs.at(-1), west = x > xs[0], east = x < xs.at(-1);
+    rect(x - WALK, z - WALK, ROADW, ROADW, (a, b) => {
+      const u = a - WALK, v = b - WALK, inU = u >= 0 && u < ROAD, inV = v >= 0 && v < ROAD;
+      if (inU && inV) return C.road;
+      if (inU) return (v < 0 ? north : south) ? C.road : C.walk;
+      if (inV) return (u < 0 ? west : east) ? C.road : C.walk;
+      return C.walk;
+    });
+    if (north) rect(x, z - ARM, ROAD, ARM, (a, b) => b >= HOLD_BACK ? bars(a) : C.road);
+    if (south) rect(x, z + ROAD, ROAD, ARM, (a, b) => b < CROSSING ? bars(a) : C.road);
+    if (west) rect(x - ARM, z, ARM, ROAD, (a, b) => a >= HOLD_BACK ? bars(b) : C.road);
+    if (east) rect(x + ROAD, z, ARM, ROAD, (a, b) => a < CROSSING ? bars(b) : C.road);
   }
 
   for (const { kind, x, z, w: W2, d: D2, seed } of plan.parcels) PARCELS[kind]({ rect, prop, light, lawn, h: n => fnv(`${seed}:${n}`) }, x, z, W2, D2);
@@ -105,7 +116,13 @@ export function groundCells(plan, time = 'day') {
         if (inU >= 1 && inU < BUSH && inV >= 1 && inV < BUSH) return (u + v) % 5 ? C.bush : C.bud;
         return look.tile(u, v);
       });
-    } else rect(a + INSET, b + INSET, n, n, (u, v) => (u === 0 || v === 0 || u === A || v === A) && (u < STAKE || A - u < STAKE) && (v < STAKE || A - v < STAKE) ? C.stake : meadow(a + INSET + u, b + INSET + v, soil));
+    } else {
+      // The meadow runs on to the next lot, within the neighbourhood: a line between two empty lots would pass for a road. Only the stakes mark them out.
+      const staked = (u, v) => (u === 0 || v === 0 || u === A || v === A) && (u < STAKE || A - u < STAKE) && (v < STAKE || A - v < STAKE);
+      const from = (at, least) => at - LOT / 2 > least ? at - LOT / 2 : at - LOT / 2 + INSET, to = (at, most) => at + LOT / 2 < most ? at + LOT / 2 : at + LOT / 2 - INSET;
+      const left = from(lot.x, Math.min(...hood.lots.map(o => o.x)) - LOT / 2), right = to(lot.x, Math.max(...hood.lots.map(o => o.x)) + LOT / 2), top = from(lot.z, Math.min(...hood.lots.map(o => o.z)) - LOT / 2), bottom = to(lot.z, Math.max(...hood.lots.map(o => o.z)) + LOT / 2);
+      rect(left, top, right - left, bottom - top, (u, v) => staked(u + left - a - INSET, v + top - b - INSET) ? C.stake : meadow(left + u, top + v, soil));
+    }
   }
 
   // A lamp at each corner of each lot, on the pavement: enough to read the streets by at night, too short to hide anything.
@@ -114,29 +131,31 @@ export function groundCells(plan, time = 'day') {
     for (const r of [1, 2]) light(hood.x - 1, hood.z + r * LOT);
   }
 
-  // Trees on the outskirts, in the meadow's patches, never in front of a plant or its road.
+  const lines = powerLines(plan);
+  // Trees on the outskirts, in the meadow's patches, never in front of a plant or its road, or round a pylon.
   for (let z = -LAND; z < D + LAND_FAR; z += TREE_GRID) for (let x = -LAND; x < W + LAND_FAR; x += TREE_GRID) {
     const n = mix(x, z), X = x + n % 9, Z = z + (n >>> 8) % 9;
     if (X > -12 && Z > -12 && X < W + 12 && Z < D + 12) continue;
     if (reach(X, Z) > -10 || patch(X, Z) < .1 || n % 3 === 0) continue;
     { const { bridge: b, pier: q } = coastOf(W, D); if (X > W && Math.abs(Z - b.z) < 14 || Z > D && Math.abs(X - q.x) < 14) continue; }
     if (plan.plants.some(plant => Math.hypot(X - plant.x, Z - plant.z) < 36 || (plant.provider === 'claude' ? X < 0 && Math.abs(Z - plant.z) < 16 : Z < 0 && Math.abs(X - plant.x) < 16))) continue;
+    if (lines.poles.some(pole => Math.hypot(X - pole.x, Z - pole.z) < POLE_ROOM)) continue;
     const seed = n % 9; prop(once(`tree${seed}`, () => tree(seed)), X, Z);
   }
 
-  // A spur from the ring road to each plant.
+  // A spur from each plant, on through the ring road's kerb so that it opens onto the road.
   for (const plant of plan.plants) {
-    if (plant.provider === 'claude') road(-PLANT + 16, plant.z - 9, PLANT - 16, ROADW);
-    else road(plant.x - 9, -PLANT + 12, ROADW, PLANT - 12);
+    if (plant.provider === 'claude') road(-PLANT + 16, plant.z - 9, PLANT - 16 + xs[0], ROADW);
+    else road(plant.x - 9, -PLANT + 12, ROADW, PLANT - 12 + zs[0]);
     rect(plant.x - 18, plant.z - 14, 36, 28, C.walk);
   }
 
   // The bridge and the pier: laid over everything, so a spur of road reaches each. Their shadows on the water are painted, since they aren't standing on anything.
   const { isle, bridge, pier } = coastOf(W, D), half = DECK >> 1, plank = hex('#7f5f5a'), rail = hex('#c7dcd0'), post = hex('#45293f');
-  const onLand = (a0, n) => rect(a0, bridge.z - half, n, DECK, (a, b) => b === 0 || b === DECK - 1 ? C.walk : b === half - 1 || b === half ? (a % 8 < 4 ? C.dash : C.road) : C.road);
-  onLand(W, bridge.x0 - W); onLand(bridge.x1, isle.x - 10 - bridge.x1);
+  const onLand = (a0, n) => rect(a0, bridge.z - half, n, DECK, (a, b) => b === 0 || b === DECK - 1 ? C.walk : b === half - 1 || b === half ? (dashed(b - (half - 1) + 6, a) ? C.dash : C.road) : C.road);
+  onLand(W - WALK, bridge.x0 - W + WALK); onLand(bridge.x1, isle.x - 10 - bridge.x1);
   rect(bridge.x0, bridge.z + half, bridge.x1 - bridge.x0, 2, (a, b) => reach(bridge.x0 + a, bridge.z + half + b) >= 4 ? C.shadow : null);
-  rect(bridge.x0, bridge.z - half, bridge.x1 - bridge.x0, DECK, (a, b) => b === 0 || b === DECK - 1 ? (a % 4 ? rail : post) : b === half - 1 || b === half ? (a % 8 < 4 ? C.dash : C.road) : C.road);
+  rect(bridge.x0, bridge.z - half, bridge.x1 - bridge.x0, DECK, (a, b) => b === 0 || b === DECK - 1 ? (a % 4 ? rail : post) : b === half - 1 || b === half ? (dashed(b - (half - 1) + 6, a) ? C.dash : C.road) : C.road);
   // The island's end of it: a turning circle, with a lighthouse beyond and a few trees round about.
   const round = (cx, cz, r, c) => { for (let b = -r; b <= r; b++) for (let a = -r; a <= r; a++) if (a * a + b * b <= r * r) set(cx + a, cz + b, c); };
   round(isle.x - 4, isle.z, 12, C.walk); round(isle.x - 4, isle.z, 9, C.road); round(isle.x - 4, isle.z, 4, soil.land2);
@@ -154,7 +173,6 @@ export function groundCells(plan, time = 'day') {
     const seed = n % 9; prop(once(`tree${seed}`, () => tree(seed)), X, Z);
   }
 
-  const lines = powerLines(plan);
   for (const { x, z, along } of lines.poles) prop(pylon(along), x, z);
 
   if (time === 'night') pools(rgb, lights, x0, z0, w, d);
@@ -198,17 +216,37 @@ function pools(rgb, lights, x0, z0, w, d) {
   }
 }
 
-// Parcels are flat or nearly so: nothing here is ever tall enough to get in a building's way.
-const PARCELS = {
-  park({ rect, prop, light, lawn, h }, x, z, W, D) {
+// Trees are the only tall thing a park gets, since anything small and square would pass for a subagent with no building of its own. Beds and paths lie flat.
+const KIND_OF = 99;
+const beds = (u, v) => [C.flower, C.rose, C.bud][(u + (v >> 2) * 2 >> 1) % 3];
+const treeAt = (prop, seed, x, z) => { const n = seed % 9; prop(once(`tree${n}`, () => tree(n)), x, z); };
+const SMALL_PARKS = [
+  function trailed({ rect, prop, light, lawn, h }, x, z, W, D) {
     rect(x, z, W, D, lawn);
     const mid = D > W, along = Math.max(W, D), trail = i => Math.round(Math.min(W, D) / 2 + Math.sin(i / 7 + h(1) % 6) * 4);
     for (let i = 0; i < along; i++) { const j = trail(i); rect(x + (mid ? j : i), z + (mid ? i : j), 2, 2, C.trail); }
     // Beside the trail, on the side away from the trees.
     for (const i of along > 40 ? [.25, .75].map(t => Math.round(along * t)) : [along >> 1]) { const j = trail(i) - 2; light(x + (mid ? j : i), z + (mid ? i : j)); }
     const n = 2 + h(2) % 3;
-    for (let i = 0; i < n; i++) { const a = (i + .5) / n, side = i % 2 ? .62 : .88, seed = h(3 + i) % 9; prop(once(`tree${seed}`, () => tree(seed)), x + (mid ? W * side : W * a), z + (mid ? D * a : D * side)); }
+    for (let i = 0; i < n; i++) { const a = (i + .5) / n, side = i % 2 ? .62 : .88; treeAt(prop, h(3 + i), x + (mid ? W * side : W * a), z + (mid ? D * a : D * side)); }
   },
+  function flowerBeds({ rect, light, lawn }, x, z, W, D) {
+    const mid = D > W, along = Math.max(W, D), across = Math.min(W, D), m = across >> 1;
+    rect(x, z, W, D, (a, b) => { const u = mid ? b : a, v = mid ? a : b; if (Math.abs(v - m) < 2) return C.trail; return u < 3 || v < 3 || u >= along - 3 || v >= across - 3 ? lawn : beds(u, v); });
+    for (const t of along > 40 ? [.25, .75] : [.5]) { const u = along * t; light(x + (mid ? m : u), z + (mid ? u : m)); }
+  },
+  function orchard({ rect, prop, light, lawn, h }, x, z, W, D) {
+    const mid = D > W, along = Math.max(W, D), across = Math.min(W, D), END = 8, n = Math.max(2, Math.floor((along - END * 2) / 12));
+    rect(x, z, W, D, lawn);
+    // On the far side from the lots, as a trailed park's are: an annex comes close to this edge, and a tree must not stand in front of it.
+    [across * .55, across * .88].forEach((v, row) => { for (let i = 0; i < n; i++) { const u = END + (i + (row ? .75 : .25)) * (along - END * 2) / n; treeAt(prop, h(3), x + (mid ? v : u), z + (mid ? u : v)); } });
+    const lamp = across * .35; light(x + (mid ? lamp : along / 2), z + (mid ? along / 2 : lamp));
+  },
+];
+
+// Parcels are flat or nearly so: nothing here is ever tall enough to get in a building's way.
+const PARCELS = {
+  park(tools, x, z, W, D) { SMALL_PARKS[tools.h(KIND_OF) % SMALL_PARKS.length](tools, x, z, W, D); },
   pond({ rect, prop, light, lawn, h }, x, z, W, D) {
     const cx = W / 2, cz = D / 2, ra = W / 2 - 3, rb = D / 2 - 3;
     rect(x, z, W, D, (a, b) => { const q = ((a - cx) / ra) ** 2 + ((b - cz) / rb) ** 2; return q < .72 ? (a * 3 + b * 5) % 23 === 0 ? C.water2 : C.water : q < 1 ? C.water2 : lawn; });
@@ -241,7 +279,7 @@ const PARCELS = {
     for (let i = 0; i < n; i++) { const seed = h(i + 2) % 9, u = (i + .5) * L / n, v = Math.min(W, D) / 2; prop(once(`tree${seed}`, () => tree(seed)), x + (mid ? v : u), z + (mid ? u : v)); }
   },
 };
-function bigPark({ rect, prop, light, lawn, h }, x, z, W, D) {
+function pondPark({ rect, prop, light, lawn, h }, x, z, W, D) {
   const cx = W * .56, cz = D * .46;
   rect(x, z, W, D, (a, b) => { const q = ((a - cx) / (W * .24)) ** 2 + ((b - cz) / (D * .2)) ** 2; if (q < .78) return (a * 3 + b * 5) % 29 === 0 ? C.water2 : C.water; if (q < 1) return C.water2; return Math.abs(((a - cx) / (W * .34)) ** 2 + ((b - cz) / (D * .3)) ** 2 - 1) < .05 ? C.trail : lawn; });
   // Round the path by the pond. The trees keep clear of all of it.
@@ -249,9 +287,39 @@ function bigPark({ rect, prop, light, lawn, h }, x, z, W, D) {
   for (let i = 0; i < 14; i++) {
     const X = 8 + h(i * 2) % 1000 / 1000 * (W - 16), Z = 8 + h(i * 2 + 1) % 1000 / 1000 * (D - 16);
     if (((X - cx) / (W * .4)) ** 2 + ((Z - cz) / (D * .36)) ** 2 < 1) continue;
-    const seed = h(40 + i) % 9; prop(once(`tree${seed}`, () => tree(seed)), x + X, z + Z);
+    treeAt(prop, h(40 + i), x + X, z + Z);
   }
 }
+// Two paths crossing at a fountain, in rings of flowers.
+function gardenPark({ rect, prop, light, lawn, h }, x, z, W, D) {
+  const cx = W / 2, cz = D / 2, SQUARE = 14, RING_FROM = 20, RING_TO = 44, PATH_HALF = 3, CLEAR = 56, LAMP_OUT = 34;
+  rect(x, z, W, D, (a, b) => {
+    const r = Math.hypot(a - cx, b - cz);
+    if (r < SQUARE) return C.paving;
+    if (Math.abs(a - cx) < PATH_HALF || Math.abs(b - cz) < PATH_HALF) return C.trail;
+    if (r < RING_FROM || r >= RING_TO) return lawn;
+    return Math.floor(r / 4) % 2 ? lawn : beds(a, b);
+  });
+  prop(once('fountain', fountain), x + cx, z + cz);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) light(x + cx + dx * LAMP_OUT, z + cz + dz * LAMP_OUT);
+  for (let i = 0; i < 14; i++) {
+    const X = 8 + h(i * 2) % 1000 / 1000 * (W - 16), Z = 8 + h(i * 2 + 1) % 1000 / 1000 * (D - 16);
+    if (Math.hypot(X - cx, Z - cz) < CLEAR || Math.abs(X - cx) < 8 || Math.abs(Z - cz) < 8) continue;
+    treeAt(prop, h(40 + i), x + X, z + Z);
+  }
+}
+// Woods with one path through, lit the whole way.
+function grovePark({ rect, prop, light, lawn, h }, x, z, W, D) {
+  const phase = h(1) % 6, trail = a => D / 2 + Math.sin(a / 24 + phase) * D * .22, EVERY = 20, LAMPS = 5, TRAIL_HALF = 2, CLEAR = 8;
+  rect(x, z, W, D, (a, b) => Math.abs(b - trail(a)) < TRAIL_HALF ? C.trail : lawn);
+  for (let i = 0; i < LAMPS; i++) { const a = W * (i + .5) / LAMPS; light(x + a, z + trail(a)); }
+  for (let v = 0; v * EVERY + 8 < D - 8; v++) for (let u = 0; u * EVERY + 8 < W - 8; u++) {
+    const n = h(100 + u * 40 + v), X = 8 + u * EVERY + n % 9, Z = 8 + v * EVERY + (n >>> 8) % 9;
+    if (n % 4 === 0 || Math.abs(Z - trail(X)) < CLEAR || X > W - 8 || Z > D - 8) continue;
+    treeAt(prop, n >>> 16, x + X, z + Z);
+  }
+}
+const bigPark = (tools, x, z, W, D) => [pondPark, gardenPark, grovePark][tools.h(KIND_OF) % 3](tools, x, z, W, D);
 
 // A chosen neighbourhood lit up, to lay over the ground: its own cells brighter, a line between them, and a rim round the lot.
 // `edge` is the rim alone, which is the part that glows.

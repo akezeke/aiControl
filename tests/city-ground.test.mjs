@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cityPlan, LOT, PLOT, PLANT } from '../client/city/plan.js';
 import { groundCells, lotLook, paintLotShade, timeOfDay } from '../client/city/ground.js';
-import { lamp } from '../client/city/generator.js';
+import { lamp, pylon } from '../client/city/generator.js';
 import { renderSprite } from '../client/city/sprite.js';
 import { hex } from '../client/city/palette.js';
 
@@ -32,7 +32,7 @@ test('an empty lot is just the meadow, with stakes at its corners and no paving'
   const seen = coloursOf(empty, LOT / 2 - 2), all = [...seen.values()].reduce((a, b) => a + b), [top, next] = [...seen.values()].sort((a, b) => b - a);
   assert.ok((top + (next || 0)) / all > .9, `${seen.size} colours, the main two only ${((top + next) / all * 100).toFixed(1)}%`);
   for (const look of ['a', 'b', 'kerb', 'path']) for (const lot of taken) assert.ok(!seen.has(lotLook(lot.sessionId)[look].join()) || seen.get(lotLook(lot.sessionId)[look].join()) / all < .02, `${look} of ${lot.key} on an empty lot`);
-  const stake = hex('#c7dcd0').join(), half = LOT / 2 - 2;
+  const stake = hex('#7f708a').join(), half = LOT / 2 - 2;
   assert.ok(seen.has(stake), 'no stakes');
   assert.deepEqual(at(empty.x - half, empty.z - half).join(), stake);
   assert.notEqual(at(empty.x, empty.z).join(), stake);
@@ -49,7 +49,7 @@ test('roads stop at the city\'s edge without a crossing leading nowhere', () => 
   assert.ok(ROADW);
 });
 test('trees stand on the outskirts, out of the way of the city and its plants', () => {
-  const trees = cells.props.filter(({ x, z }) => x < -6 || z < -6 || x > plan.bounds.w + 6 || z > plan.bounds.d + 6);
+  const trees = cells.props.filter(({ stack, x, z }) => stack !== pylon(true) && stack !== pylon(false) && (x < -6 || z < -6 || x > plan.bounds.w + 6 || z > plan.bounds.d + 6));
   assert.ok(trees.length >= 6, `${trees.length} trees`);
   const water = c => c[2] > c[0] && c[1] > c[0] && c[0] < 20;
   for (const { x, z } of trees) {
