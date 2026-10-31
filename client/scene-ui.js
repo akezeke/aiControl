@@ -36,7 +36,7 @@ export function createCard(container) {
 }
 
 // A pod sign's menu: Claude (once per account, see hire.js) or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
-export function createMenu(container, onChoose) {
+export function createMenu(container, onChoose, onClose) {
   const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
   let cwd = null, items = [];
   // Without a folder (the + button) the menu asks for one, suggesting the folders sessions run in.
@@ -73,7 +73,7 @@ export function createMenu(container, onChoose) {
       if (where === null) { folder.value = ''; folder.focus(); } else if (focus) items[0].focus();
     },
     move(at) { if (!menu.hidden) placeNear(container, menu, at); },
-    close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; },
+    close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; onClose?.(); },
     dispose() { menu.remove(); },
   };
   return result;

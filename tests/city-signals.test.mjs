@@ -51,3 +51,12 @@ test('every icon officeStatus emits has a glyph, and an unknown emoji has none',
   for (const details of [undefined, 'Bash npm test', 'Read a.js', 'Edit a.js', 'Grep x', 'WebFetch u', 'Task x']) for (const s of statuses) { const icon = officeStatus({ id: 'a', ...s, detail: details }, 0).bubble?.icon; if (icon) assert.ok(glyph(icon), icon); }
   assert.equal(glyph('🦄'), null);
 });
+
+test('a leaving subagent loses a storey each step until nothing is left', () => {
+  const life = new Lifecycle(), p = leaving => ({ buildings: [{ id: 'a', storeys: 8, overflow: 0, subagents: [{ id: 'k', storeys: 3, leaving }] }] });
+  life.update(p(false), new Map(), 0); life.update(p(true), new Map(), 1000);
+  assert.equal(life.stage('k', 1000, false).storeys, 3);
+  assert.equal(life.stage('k', 1000 + STEP_MS, false).storeys, 2);
+  assert.equal(life.stage('k', 1000 + 3 * STEP_MS, false).storeys, 0);
+  assert.equal(life.stage('k', 1000 + 30 * STEP_MS, false).storeys, 0);
+});

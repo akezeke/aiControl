@@ -39,6 +39,12 @@ export function focusHood(plan, hood, view, cssW, cssH, dpr) {
   return { ...hoodMiddle(hood, view), step: fitStep(box, cssW, cssH, dpr) };
 }
 
+// Whatever's standing on these spots, each with its lot's room around it.
+export function focusBuildings(buildings, view, cssW, cssH, dpr) {
+  const box = boxOf(buildings.flatMap(({ x, z }) => [[x - LOT / 2, z - LOT / 2], [x + LOT / 2, z - LOT / 2], [x - LOT / 2, z + LOT / 2], [x + LOT / 2, z + LOT / 2]]), view, HEIGHT);
+  return { ...centre(box), step: fitStep(box, cssW, cssH, dpr) };
+}
+
 // The offset is whole, so every sprite moves by the same whole pixels as the camera pans.
 const offset = (camera, size) => [Math.round(size.width / 2 - camera.cx), Math.round(size.height / 2 - camera.cy)];
 export function toCanvas(camera, size, sx, sy) { const [ox, oy] = offset(camera, size); return [Math.round(sx) + ox, Math.round(sy) + oy]; }

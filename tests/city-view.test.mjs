@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutOffice } from '../client/office/layout.js';
 import { cityPlan, screen, LOT } from '../client/city/plan.js';
-import { ZOOMS, fitCanvas, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble } from '../client/city/view.js';
+import { ZOOMS, fitCanvas, cityBox, fitStep, startCamera, toCanvas, fromCanvas, hitSprites, placeBubble, focusBuildings } from '../client/city/view.js';
 
 test('art pixels are whole device pixels at any DPR', () => {
   for (const dpr of [1, 1.25, 1.5, 2, 2.625, 3]) for (const step of ZOOMS) {
@@ -40,4 +40,12 @@ test('a bubble near an edge slides in with its tail on the building', () => {
 test('at 125% and 150% the zoom steps reach the sizes in between, not past them', () => {
   assert.deepEqual(ZOOMS.map(step => fitCanvas(800, 600, 1.25, step).scale), [1, 2, 4, 5]);
   assert.deepEqual(ZOOMS.map(step => fitCanvas(800, 600, 1.5, step).scale), [1, 3, 4, 6]);
+});
+
+test('focusBuildings centres on the buildings it is given, close enough to hold them', () => {
+  const near = { x: 700, z: 700 }, far = { x: 1400, z: 700 }, [ax, ay] = screen(near.x, near.z, 0), [bx, by] = screen(far.x, far.z, 0);
+  const one = focusBuildings([near], 0, 1600, 900, 1), both = focusBuildings([near, far], 0, 1600, 900, 1);
+  assert.ok(Math.abs(one.cx - ax) < 2, `${one.cx} against ${ax}`);
+  assert.ok(one.step >= both.step);
+  assert.ok(Math.abs(both.cx - (ax + bx) / 2) < 2 && both.cy > Math.min(ay, by) - 80 && both.cy < Math.max(ay, by));
 });

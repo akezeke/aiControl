@@ -21,9 +21,10 @@ export class Lifecycle {
     const see = (id, storeys, leaving) => {
       here.add(id);
       const was = this.#known.get(id), ended = fired.get(id);
-      if (!was) { this.#known.set(id, { storeys, born: this.#started ? now : -Infinity, leaving, ended }); return; }
+      if (!was) { this.#known.set(id, { storeys, born: this.#started ? now : -Infinity, leaving, left: now, ended }); return; }
       // A compaction comes down a storey at a time from wherever it's got to; growth just appears.
       if (storeys < was.storeys) { was.from = this.stage(id, now, false).storeys; was.fell = now; }
+      if (leaving && !was.leaving) was.left = now;
       was.storeys = storeys; was.leaving = leaving; was.ended = ended;
     };
     for (const building of plan.buildings) {
@@ -41,8 +42,8 @@ export class Lifecycle {
     const entry = this.#known.get(id), quiet = { storeys: entry?.storeys, rising: false, crane: false, puff: false, sinking: false, gone: false };
     if (!entry) return { ...quiet, gone: true };
     if (entry.ended !== undefined && (reduced || now - entry.ended >= PUFF_MS)) return { ...quiet, gone: true };
-    if (entry.ended !== undefined) return { ...quiet, puff: true };
-    if (entry.leaving) return { ...quiet, sinking: !reduced, gone: reduced };
+    if (entry.ended !== undefined) return { ...quiet, puff: true, progress: Math.max(0, (now - entry.ended) / PUFF_MS) };
+    if (entry.leaving) { const storeys = Math.max(0, entry.storeys - Math.floor((now - entry.left) / STEP_MS)); return { ...quiet, storeys, sinking: !reduced && storeys > 0, gone: reduced || !storeys }; }
     if (reduced) return quiet;
     const age = now - entry.born;
     if (age < RISE_MS) return { ...quiet, storeys: Math.max(1, Math.floor(entry.storeys * age / RISE_MS)), rising: true, crane: true };

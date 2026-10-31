@@ -48,3 +48,16 @@
 .city-sign:hover { background: #4d9be6; }
 .city-sign.selected { background: #fbff86; color: #2e222f; }
 .city-tag { padding: 2px 4px; border: 2px solid #2e222f; background: #2e222f; color: #fbf5ef; z-index: 1; cursor: default; }
+
+.office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 2px solid #2e222f; background: #fbf5ef; color: #2e222f; }
+.office-menu[hidden] { display: none; }
+.office-menu button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 0; background: none; color: #2e222f; font: 700 14px system-ui, sans-serif; cursor: pointer; }
+.office-menu button:hover, .office-menu button:focus-visible { background: #f9c22b; outline: none; }
+.office-menu button:disabled { opacity: .5; cursor: progress; }
+.office-menu .provider-icon { width: 18px; height: 18px; image-rendering: pixelated; }
+.office-menu .office-folder { width: 220px; min-height: 36px; margin-bottom: 2px; padding: 0 10px; border: 2px solid #2e222f; border-radius: 0; background: #fff; color: #2e222f; font: 600 14px ui-monospace, monospace; }
+.office-menu .office-folder:focus-visible { outline: 2px solid #f9c22b; }
+.office-menu .last { margin-left: auto; padding-left: 12px; color: #625565; font-size: 11px; font-weight: 600; }
+@media (pointer: coarse) { .office-menu button { min-height: 44px; } }
+@media (prefers-reduced-motion: no-preference) { .office-menu { animation: city-menu-in .12s steps(2); } }
+@keyframes city-menu-in { from { opacity: 0; } }
