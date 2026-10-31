@@ -9,9 +9,10 @@ import { groundCells, paintGround } from './ground.js';
 import { buildTower, annex, coolingPlant, stackPlant } from './generator.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal } from './signals.js';
-import { ZOOMS, fitCanvas, fitStep, cityBox, clampCamera, startCamera, toCanvas, fromCanvas, hitSprites } from './view.js';
-import { createControls } from './labels.js';
+import { ZOOMS, fitCanvas, fitStep, cityBox, clampCamera, startCamera, focusHood, toCanvas, fromCanvas, hitSprites } from './view.js';
+import { createControls, createLabels } from './labels.js';
 
+const USAGE_LOW = 80, TAG_X = 16, TAG_Y = 6;
 const DRAG_SLOP = 6, PAN_KEY = 8, GLIDE_MS = 200, NOTCH = 50, WHEEL_REST = 200, PINCH_IN = 1.4, PINCH_OUT = .7;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], a: [-1, 0], d: [1, 0], w: [0, -1], s: [0, 1] };
 const STEP_MS = 125, TWINKLE_MS = 1500, CACHE = 256, FLOOR = '#323353', HIGHLIGHT = { hover: '#f9c22b', selected: '#fbff86', cursor: '#4d9be6' };
@@ -44,7 +45,7 @@ export function mountCity(box, hooks = {}) {
   let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '';
   let view = 0, camera = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [];
-  let glide = null, drawn = [], selectedHood = null, card = null;
+  let glide = null, drawn = [], selectedHood = null, card = null, labels = null;
 
   const dpr = () => window.devicePixelRatio || 1;
   const fit = () => {
@@ -62,6 +63,7 @@ export function mountCity(box, hooks = {}) {
     fit();
   };
 
+  const dimmed = building => !!selectedHood && building.hoodKey !== selectedHood;
   const signalOf = id => {
     const session = sessions.get(id), plant = plan.plants.find(p => p.provider === session?.provider);
     return session ? citySignal(session, { connected: !error && plant?.connected !== false }) : { windows: 'dark', twinkle: false };
@@ -70,25 +72,25 @@ export function mountCity(box, hooks = {}) {
 
   // Everything standing in the city this frame. Nothing here renders: a sprite is only baked if its key isn't cached.
   const standing = now => {
-    const items = [], stand = (key, group, x, z, build, opens) => { const [sx, sy] = screen(x, z, view); items.push({ key: `${key}|${view}|false`, group, sx, sy, build, opens }); };
+    const items = [], stand = (key, group, x, z, build, opens, dim = false) => { const [sx, sy] = screen(x, z, view); items.push({ key: `${key}|${view}|${dim}`, group, sx, sy, build, opens, dim }); };
     cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${i}:${x}:${z}`, `prop:${i}`, x, z, () => stack));
     for (const { provider, x, z, connected } of plan.plants) {
       const [make, stripe] = PLANTS[provider], on = connected && !error;
       stand(`plant:${provider}|${on}`, `plant:${provider}`, x, z, () => make(stripe, on));
     }
     for (const building of plan.buildings) {
-      const signal = signalOf(building.id), { id, look, storeys } = building, { windows } = signal, phase = phaseOf(id, signal, now);
-      stand(`${id}|${storeys}|${windows}|${phase}`, id, building.x, building.z, () => buildTower(look, windows, storeys, phase).stack, id);
+      const signal = signalOf(building.id), { id, look, storeys } = building, { windows } = signal, phase = phaseOf(id, signal, now), dim = dimmed(building);
+      stand(`${id}|${storeys}|${windows}|${phase}`, id, building.x, building.z, () => buildTower(look, windows, storeys, phase).stack, id, dim);
       building.subagents.forEach((kid, i) => {
         const at = annexAt(building, i, view), state = signalOf(kid.id);
-        stand(`${id}+${i}|${kid.storeys}|${state.windows}|0`, `${id}+${i}`, at.x, at.z, () => annex(look, i, state.windows, kid.storeys).stack, kid.id);
+        stand(`${id}+${i}|${kid.storeys}|${state.windows}|0`, `${id}+${i}`, at.x, at.z, () => annex(look, i, state.windows, kid.storeys).stack, kid.id, dim);
       });
     }
     return items.sort((a, b) => a.sy - b.sy);
   };
   const visible = item => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return x > -CULL_X && x < size.width + CULL_X && y > -CULL_UP && y < size.height + CULL_DOWN; };
   const bake = item => {
-    const started = performance.now(), sprite = renderSprite(item.build(), view);
+    const started = performance.now(), sprite = renderSprite(item.build(), view, { dim: item.dim });
     sprite.image = toImage(sprite); sprite.shadowImage = toImage(sprite.shadow);
     sprites.set(item.key, sprite);
     bakeMs.push(performance.now() - started); if (bakeMs.length > 500) bakeMs.shift();
@@ -116,10 +118,38 @@ export function mountCity(box, hooks = {}) {
     ctx.fillStyle = FLOOR; ctx.fillRect(0, 0, size.width, size.height);
     ctx.drawImage(ground.image, gx - ground.originX, gy - ground.originY);
     for (const kind of Object.keys(lots)) { const lot = lots[kind] && lotOf(lots[kind]); if (lot) outline(lot, HIGHLIGHT[kind]); }
-    const placed = list.map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
+    const placed = list.map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, item, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
     drawn = placed.filter(item => item.opens);
+    syncLabels(placed);
     for (const { sprite, x, y } of placed) if (sprite.shadowImage) ctx.drawImage(sprite.shadowImage, x - sprite.shadow.originX, y - sprite.shadow.originY);
     for (const { sprite, x, y } of placed) if (sprite.image) ctx.drawImage(sprite.image, x - sprite.originX, y - sprite.originY);
+  };
+
+  // The DOM over the city, kept in step with whatever was just drawn. The labels only touch what changed.
+  const syncLabels = placed => {
+    const at = new Map(placed.map(entry => [entry.item.group, entry])), buildingOf = id => plan.buildings.find(b => b.id === id || b.subagents.some(kid => kid.id === id));
+    labels.sync(drawn.map(({ opens: id, sprite, item }) => {
+      const session = sessions.get(id);
+      return { id, ax: item.sx, ay: item.sy - sprite.originY, bubble: session ? signalOf(id).bubble : null, unread: session && hooks.isUnread?.(session), dim: item.dim };
+    }), camera.step);
+    // On the project's left-hand corner in this view: its towers and their bubbles rise from the middle of the lots, so a corner stays clear.
+    labels.signs(plan.hoods.map(hood => {
+      const far = hood.cols * LOT, [ax, ay] = [[hood.x, hood.z], [hood.x + far, hood.z], [hood.x, hood.z + 2 * LOT], [hood.x + far, hood.z + 2 * LOT]].map(([x, z]) => screen(x, z, view)).reduce((a, b) => b[0] < a[0] ? b : a);
+      return { key: hood.key, name: hood.name, ax, ay, selected: hood.key === selectedHood };
+    }));
+    const tags = [];
+    for (const building of plan.buildings) {
+      if (!building.overflow || !at.has(building.id)) continue;
+      const spot = annexAt(building, 2, view), [ax, ay] = screen(spot.x, spot.z, view);
+      tags.push({ key: building.id, text: `+${building.overflow}`, title: `${building.overflow} more subagents`, ax: ax + TAG_X, ay: ay - TAG_Y });
+    }
+    for (const plant of plan.plants) {
+      const percent = Math.max(0, ...(snapshot.usage || []).filter(account => account.provider === plant.provider).flatMap(account => (account.windows || []).map(window => window.usedPercent))), spot = at.get(`plant:${plant.provider}`);
+      if (percent >= USAGE_LOW && spot) tags.push({ key: plant.provider, text: `${Math.round(percent)}%`, title: `${plant.name} usage near its limit`, ax: spot.item.sx, ay: spot.item.sy - spot.sprite.originY - TAG_Y });
+    }
+    labels.tags(tags);
+    const ratioNow = size.scale / dpr();
+    labels.move((sx, sy) => { const [px, py] = toCanvas(camera, size, sx, sy); return [px * ratioNow, py * ratioNow]; }, box.clientWidth, box.clientHeight);
   };
 
   // One sprite baked per frame at most; until it's ready a building shows what it last looked like.
@@ -190,6 +220,21 @@ export function mountCity(box, hooks = {}) {
   };
   const inView = (x, z) => { const [sx, sy] = screen(x, z, view), [px, py] = toCanvas(camera, size, sx, sy); return px > LOT / 2 && py > LOT && px < size.width - LOT / 2 && py < size.height - LOT / 2; };
   const panToWorld = (x, z) => { const [cx, cy] = screen(x, z, view); glideTo({ cx, cy }); };
+
+  // ---- A chosen project: the rest of the city dims, the camera fits it, and the cursor starts on its first lot.
+  const selectHood = key => {
+    const hood = plan.hoods.find(h => h.key === key);
+    if (!hood || key === selectedHood) { clearHood(); return; }
+    selectedHood = key; lots.cursor = hood.lots[0]?.key ?? null;
+    const rect = box.getBoundingClientRect(), next = focusHood(plan, hood, view, rect.width, rect.height, dpr());
+    if (next.step === camera.step) glideTo(next); else jump(next);
+    wake();
+  };
+  const clearHood = () => { if (selectedHood || lots.cursor) { selectedHood = null; lots.cursor = null; wake(); } };
+  const stepHood = dir => {
+    const at = plan.hoods.findIndex(h => h.key === selectedHood), count = plan.hoods.length;
+    if (count) selectHood(plan.hoods[at < 0 ? (dir > 0 ? 0 : count - 1) : (at + dir + count) % count].key);
+  };
 
   // ---- Picking: sprites front to back, then the ground.
   const pickAt = event => {
@@ -280,17 +325,22 @@ export function mountCity(box, hooks = {}) {
     else if (key === '-' || key === '_') zoom(-1);
     else if (key === 'q') turn(-1);
     else if (key === 'e') turn(1);
-    else if (key === 'f') fitCity();
+    else if (key === 'f') { clearHood(); fitCity(); }
+    // By place as well as by character: on many layouts, Swedish for one, [ and ] need AltGr, which reads as Ctrl+Alt.
+    else if (key === '[' || event.code === 'BracketLeft') stepHood(-1);
+    else if (key === ']' || event.code === 'BracketRight') stepHood(1);
+    else if (key === 'Escape') { if (!selectedHood && !lots.cursor) return; clearHood(); }
     else if (key === 'n') talkTo(hooks.nextWaiting?.()?.id);
     else return;
     event.preventDefault();
   };
 
   card = createCard(box);
-  const controls = createControls(box, { onRotate: dir => camera && turn(dir), onFit: () => camera && fitCity(), onNext: () => talkTo(hooks.nextWaiting?.()?.id), onList: () => hooks.showList?.(), onNew: () => {} });
+  labels = createLabels(box, { onSession: talkTo, onHood: selectHood });
+  const controls = createControls(box, { onRotate: dir => camera && turn(dir), onFit: () => { if (camera) { clearHood(); fitCity(); } }, onNext: () => talkTo(hooks.nextWaiting?.()?.id), onList: () => hooks.showList?.(), onNew: () => {} });
   const listening = [[canvas, 'pointerdown', onDown], [canvas, 'pointermove', onMove], [canvas, 'pointerup', onUp], [canvas, 'pointercancel', onUp], [canvas, 'pointerleave', onLeave], [window, 'keydown', onKey]];
   for (const [target, type, listener] of listening) target.addEventListener(type, listener);
-  canvas.addEventListener('wheel', onWheel, { passive: false });
+  box.addEventListener('wheel', onWheel, { passive: false }); // On the box: over a bubble it should still zoom.
 
   return {
     update(next, { error: problem = '' } = {}) {
@@ -303,7 +353,10 @@ export function mountCity(box, hooks = {}) {
       plan = cityPlan(layout, snapshot.towers, plan, snapshot.providers);
       const key = groundKey(plan);
       if (key !== cellsKey) { cells = groundCells(plan); cellsKey = key; grounds.clear(); dirty = true; }
+      if (selectedHood && !plan.hoods.some(hood => hood.key === selectedHood)) selectedHood = null;
       if (!camera) place();
+      // One agent not being there may just mean it isn't installed; that shows on its plant. Lost means nothing can be reached.
+      controls.setLost(!!error || !!snapshot.providers?.length && snapshot.providers.every(provider => !provider.connected));
       controls.setWaiting(snapshot.sessions.filter(session => ['permission', 'question'].includes(session.status)).length);
       dirty = true; cancel();
       // Drawn here, not left to the next frame, so that a canvas that can't draw is caught by syncScene.
@@ -316,7 +369,7 @@ export function mountCity(box, hooks = {}) {
     unmount() {
       gone = true; cancel(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible);
       for (const [target, type, listener] of listening) target.removeEventListener(type, listener);
-      canvas.removeEventListener('wheel', onWheel); controls.dispose(); card.dispose();
+      box.removeEventListener('wheel', onWheel); controls.dispose(); card.dispose(); labels.dispose();
       sprites.clear(); shown.clear(); grounds.clear(); canvas.remove();
     },
     // For the local harness: no cost unless something calls it.

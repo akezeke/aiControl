@@ -4,15 +4,15 @@
 @media (max-width: 640px) { :root[data-theme-choice=city]:not([data-scene-fallback], [data-scene-list]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
 #city > canvas { cursor: grab; touch-action: none; }
 
-.city-controls { position: absolute; top: 8px; right: 8px; z-index: 1500; display: flex; align-items: center; gap: 4px; }
-.city-controls button { display: grid; place-items: center; min-width: 36px; height: 36px; padding: 0 8px; border: 2px solid #2e222f; background: #484a77; color: #fff; font: 16px/1 var(--display, monospace); box-shadow: 2px 2px 0 #2e222f; cursor: pointer; }
+.city-controls { position: absolute; top: 8px; right: 8px; z-index: 1500; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; max-width: calc(100% - 16px); }
+.city-controls button { display: grid; place-items: center; min-width: 36px; height: 36px; padding: 0 8px; border: 2px solid #2e222f; background: #484a77; color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); box-shadow: 2px 2px 0 #2e222f; cursor: pointer; }
 .city-controls button[hidden], .city-lost[hidden] { display: none; }
 .city-controls button:hover { background: #4d9be6; }
 .city-controls button:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 #2e222f; }
 .city-controls button:focus-visible { outline: 2px solid #fbff86; outline-offset: 1px; }
 .city-controls .city-waiting { background: #f9c22b; color: #2e222f; }
 .city-controls .city-waiting:hover { background: #fbff86; }
-.city-lost { padding: 9px 8px; border: 2px solid #2e222f; background: #e83b3b; color: #fff; font: 12px/1 var(--display, monospace); box-shadow: 2px 2px 0 #2e222f; white-space: nowrap; }
+.city-lost { padding: 9px 8px; border: 2px solid #2e222f; background: #e83b3b; color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); box-shadow: 2px 2px 0 #2e222f; white-space: nowrap; }
 @media (pointer: coarse) { .city-controls button { min-width: 44px; height: 44px; } }
 
 .office-card { position: absolute; left: 0; top: 0; z-index: 2000; width: max-content; max-width: min(300px, calc(100% - 16px)); padding: 8px 10px; border: 2px solid #2e222f; background: #fbf5ef; color: #2e222f; font: 600 13px/1.35 system-ui, sans-serif; box-shadow: 2px 2px 0 #2e222f; pointer-events: none; }
@@ -26,3 +26,25 @@
 .office-card .chip.plan { background: #8fd3ff; }
 .office-card .chip.bypass, .office-card .chip.full { background: #f68181; }
 .office-card .detail { color: #3e3546; -webkit-line-clamp: 3; }
+
+.city-labels { position: absolute; inset: 0; z-index: 1000; overflow: hidden; pointer-events: none; }
+.city-labels > * { position: absolute; left: 0; top: 0; width: max-content; pointer-events: auto; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); will-change: transform; }
+.city-labels > [hidden] { display: none; }
+.city-bubble { display: flex; align-items: center; gap: 4px; max-width: 208px; min-height: 24px; padding: 2px 6px; border: 2px solid #2e222f; background: #fbf5ef; color: #2e222f; cursor: pointer; z-index: 2; }
+.city-bubble .icon { flex: none; width: 14px; height: 14px; image-rendering: pixelated; }
+.city-bubble .text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.city-bubble .tail { position: absolute; top: 100%; width: 6px; height: 4px; margin-left: -6px; border: solid #2e222f; border-width: 0 2px 2px; background: #fbf5ef; box-sizing: content-box; }
+.city-bubble .dot { display: none; flex: none; width: 6px; height: 6px; background: #e83b3b; box-shadow: 0 0 0 2px #2e222f; margin: 0 2px; }
+.city-bubble.unread .dot { display: block; }
+.city-bubble.high { background: #f9c22b; z-index: 3; }
+.city-bubble.high .tail { background: #f9c22b; }
+.city-bubble:hover { background: #fbff86; z-index: 4; }
+.city-bubble:hover .tail { background: #fbff86; }
+.city-bubble:focus-visible, .city-sign:focus-visible { outline: 2px solid #4d9be6; outline-offset: 1px; z-index: 4; }
+.city-bubble.dim { opacity: .55; }
+.city-labels.icons .city-bubble:not(.high) .text { display: none; }
+.city-labels.icons .city-bubble.bare:not(.high) { display: none; }
+.city-sign { padding: 3px 6px; border: 2px solid #2e222f; background: #484a77; color: #fff; cursor: pointer; z-index: 1; }
+.city-sign:hover { background: #4d9be6; }
+.city-sign.selected { background: #fbff86; color: #2e222f; }
+.city-tag { padding: 2px 4px; border: 2px solid #2e222f; background: #2e222f; color: #fbf5ef; z-index: 1; cursor: default; }
