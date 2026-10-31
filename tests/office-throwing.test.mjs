@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { chargeAt, createCharge, createHand, handModel, launch, throwSpeed } from '../client/office/throwing.js';
+import { chargeAt, createCharge, createHand, handModel, handParts, launch, throwSpeed } from '../client/office/throwing.js';
 import { Player } from '../client/office/player.js';
 
 test('a tap tosses at a quarter of full speed, a second gets all of it, and it holds', () => {
@@ -76,6 +76,27 @@ test('the hand holds round what it holds, whatever its size: palm under it, fing
     const box = new THREE.Box3().setFromBufferAttribute(at);
     assert.ok(box.min.x < -0.3 && box.min.y < -0.45, `the arm goes off the bottom left: ${box.min.x}, ${box.min.y}`);
   }
+});
+// Inside a convex mesh: behind every one of its faces. A tube's start: the middle of its first ring of vertices.
+const inside = (mesh, p) => { const at = mesh.attributes.position, tri = new THREE.Triangle(), n = new THREE.Vector3(), [a, b, c] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()], index = mesh.index;
+  for (let i = 0; i < index.count; i += 3) { a.fromBufferAttribute(at, index.getX(i)); b.fromBufferAttribute(at, index.getX(i + 1)); c.fromBufferAttribute(at, index.getX(i + 2)); if (tri.set(a, b, c).getArea() > 1e-12 && tri.getNormal(n).dot(p.clone().sub(a)) > 0) return false; } return true; };
+const tubeStart = (tube) => { const at = tube.attributes.position, ring = tube.parameters.radialSegments, p = new THREE.Vector3(), v = new THREE.Vector3(); for (let i = 0; i < ring; i++) p.add(v.fromBufferAttribute(at, i)); return p.divideScalar(ring); };
+test('the arm, the fingers and the thumb all start inside the palm, for everything it can hold', () => {
+  for (const [radius, low] of [...ITEMS, [0.02, 0.02], [0.1, 0.1], [0.2, 0.2], [0.2, 0.01]]) {
+    const { palm, joint, tubes } = handParts(radius, low);
+    assert.ok(tubes.length >= 5, 'the arm, three fingers and a thumb');
+    for (const tube of tubes) assert.ok(inside(palm, tubeStart(tube)), `${radius}, ${low}: ${tubeStart(tube).toArray()}`);
+    joint.computeBoundingSphere(); assert.ok(joint.boundingSphere.center.distanceTo(tubeStart(tubes[0])) < 1e-6, "a ball over the arm's open end");
+  }
+});
+test('the arm goes with the hand: one mesh, so a pull can\'t part them', () => {
+  const hand = createHand(new THREE.Group()); hand.hold(null, 0.07, 0.05); const meshes = []; hand.palm.traverse(n => { if (n.isMesh) meshes.push(n); });
+  assert.equal(meshes.length, 1); const [body] = meshes, same = body.geometry;
+  for (const charge of [0.25, 1]) { hand.pull(charge); body.updateMatrix(); assert.ok(body.parent === hand.palm && body.matrix.equals(new THREE.Matrix4()) && body.geometry === same); }
+});
+test('the darts\' arm starts inside its fist too', () => {
+  const { arm, grip } = handModel(), [fist] = grip.children, tube = arm.children.find(n => n.geometry?.type === 'TubeGeometry'); grip.updateMatrix();
+  assert.ok(inside(fist.geometry.clone().applyMatrix4(grip.matrix), tubeStart(tube.geometry)));
 });
 test('a hand fitted once is kept, and what\'s flatter than it\'s wide gets a flatter one', () => {
   const hand = createHand(new THREE.Group()); let body; hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });

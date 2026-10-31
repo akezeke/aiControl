@@ -159,20 +159,27 @@ export function handModel() {
 // being further off. All one draw, in the mug's ink, so a finger only shows by its outline: each ends at its own place up the right, a bump apiece. They're arcs round the
 // thing, seen across it, from the palm under it, their ends turned in over its edge towards you. The thumb's a short one the other way up the left, hugging it too, so it never stands up by itself. The arm runs off the bottom left, the mug's mirrored.
 const SEEN = 0.8 / 0.62, TUBE = 0.0105 * SEEN, THUMB = 0.011 * SEEN, ARM = 0.02 * SEEN * 0.9, ANGLE = Math.PI / 180;
-const PALM_AT = -115 * ANGLE, TIP = 25 * ANGLE, FINGER_LONG = 0.27, THUMB_LONG = 0.15, FINGERS_Z = [2.4, 1.2, 0].map(z => z * TUBE);
+const PALM_AT = -115 * ANGLE, TIP = 25 * ANGLE, FINGER_LONG = 0.27, THUMB_LONG = 0.17, FINGERS_Z = [2.4, 1.2, 0].map(z => z * TUBE), WRIST = new THREE.Vector3(-0.027, -0.024, 0.024);
 const curled = (ax, ay, z, over, from, to, tube) => {
   const at = u => { const t = from + (to - from) * u, turn = Math.max(0, (u - 0.5) * 2) ** 2, near = 1 - 0.12 * turn; return new THREE.Vector3(ax * Math.cos(t) * near, ay * Math.sin(t) * near, z + over * turn); };
   const end = at(1);
   return [new THREE.TubeGeometry(new THREE.CatmullRomCurve3(Array.from({ length: 9 }, (_, i) => at(i / 8))), 14, tube, 8), new THREE.SphereGeometry(tube, 8, 6).translate(end.x, end.y, end.z)];
 };
-function gripping(radius, low) {
-  const across = radius + TUBE * 0.7, under = low + TUBE * 0.7, over = radius * 0.5;
-  const top = Math.min(TIP, PALM_AT + FINGER_LONG / across), apart = Math.min(32 * ANGLE, 2.1 * TUBE / across); // each a finger's width below the last
-  const fingers = FINGERS_Z.flatMap((z, i) => curled(across, under, z, over, PALM_AT, top - i * apart, TUBE));
-  const thumb = curled(across + (THUMB - TUBE) * 0.7, under, TUBE * 2, over, PALM_AT - 12 * ANGLE, Math.max(-210 * ANGLE, PALM_AT - 12 * ANGLE - THUMB_LONG / across), THUMB);
-  const palm = new THREE.Vector3(across * Math.cos(PALM_AT), under * Math.sin(PALM_AT) - 0.022, TUBE * 2), wrist = palm.clone().add(new THREE.Vector3(-0.034, -0.03, 0.03));
+// Every tube starts inside the palm, worked out from where the palm is, and the arm's open end has a ball over it there, like the mug's: they can't part at any size.
+export function handParts(radius, low) {
+  const across = radius + TUBE * 0.7, under = low + TUBE * 0.7, over = radius * 0.5, top = Math.min(TIP, PALM_AT + FINGER_LONG / across), apart = Math.min(32 * ANGLE, 2.1 * TUBE / across); // each a finger's width below the last
+  const fingers = FINGERS_Z.map((z, i) => curled(across, under, z, over, PALM_AT, top - i * apart, TUBE));
+  const thumb = curled(across + (THUMB - TUBE) * 0.7, under, TUBE * 2, over, PALM_AT, Math.max(-210 * ANGLE, PALM_AT - THUMB_LONG / across), THUMB);
+  const at = new THREE.Vector3(across * Math.cos(PALM_AT), under * Math.sin(PALM_AT) - 0.022, TUBE * 2), wrist = at.clone().add(WRIST);
   const here = HOLD.clone().negate(), arm = new THREE.QuadraticBezierCurve3(wrist, new THREE.Vector3(-0.42, -0.34, -0.55).add(here), new THREE.Vector3(-0.62, -0.75, -0.25).add(here));
-  const parts = [...fingers, ...thumb, new THREE.SphereGeometry(0.038 * SEEN, 14, 10).scale(1.1, 0.8, 1.15).rotateZ(0.5).translate(palm.x, palm.y, palm.z), new THREE.TubeGeometry(arm, 16, ARM, 8), new THREE.SphereGeometry(ARM * 1.05, 12, 8).translate(wrist.x, wrist.y, wrist.z)];
+  return {
+    palm: new THREE.SphereGeometry(0.038 * SEEN, 14, 10).scale(1.1, 0.8, 1.15).rotateZ(0.5).translate(at.x, at.y, at.z),
+    joint: new THREE.SphereGeometry(ARM * 1.05, 12, 8).translate(wrist.x, wrist.y, wrist.z),
+    tubes: [new THREE.TubeGeometry(arm, 16, ARM, 8), ...[...fingers, thumb].map(([tube]) => tube)], tips: [...fingers, thumb].map(([, tip]) => tip),
+  };
+}
+function gripping(radius, low) {
+  const { palm, joint, tubes, tips } = handParts(radius, low), parts = [palm, joint, ...tubes, ...tips];
   const whole = mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g)); parts.forEach(g => g.dispose());
   return whole;
 }
