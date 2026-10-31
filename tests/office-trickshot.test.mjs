@@ -6,6 +6,8 @@ import { BLEND, arcPoints, blendLeft, createArc, drawnAt, launch } from '../clie
 import { TiltedBox, makeBody, simulate, stopShort } from '../client/office/flight.js';
 import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
 import { EYE, Player } from '../client/office/player.js';
+import { WALL_H } from '../client/office/furniture.js';
+import { BALLS, LOOSE } from '../client/office/props.js';
 import { ITEMS, MONDAY, STARTS } from '../client/office/levels.js';
 import { loadProgress } from '../client/office/progress.js';
 import { FLIGHT, SLOW, inZone } from '../client/office/shot.js';
@@ -442,6 +444,36 @@ test('the ring goes with the arc, nothing listens to it, and a hand alone doesn\
   assert.equal(shown, false);
   arc.show(kind, thrown, world, eye, palm);
   assert.equal(arc.ring.visible, true, 'and back again');
+});
+
+test('a throw that falls short of a far wall ends on the floor, not against the wall', () => {
+  // As it was reported: the old arc stopped 4 m out, seen against this wall, and the thing fell 8 m out.
+  const kind = { radius: 0.05, low: 0.05, bounce: 0.2, roll: 6, drag: 0.3, throw: 10, tumble: 8, upright: true };
+  const eye = V(0, 1.6, 0), wall = Object.assign(new THREE.Box3(V(-20, 0, -12.2), V(20, 3, -12)), { surface: 'wall' }), world = { colliders: [wall], columns: [], ceiling: 3 };
+  const thrown = launch(kind, 1, { position: eye }, V(0, Math.sin(0.1), -Math.cos(0.1)), V(0, 0, 0)), arc = createArc();
+  arc.show(kind, thrown, world, eye, V(-0.3, 1.33, -0.8));
+  const { contacts: [hit] } = simulate(makeBody(kind, thrown.pos, thrown.vel), world, { maxTime: 6, stop: () => true });
+  assert.equal(hit.surface, 'floor');
+  assert.ok(hit.pos[2] < -7.5 && hit.pos[2] > -8.5, `first hit ${hit.pos[2]} m out`);
+  onSurface(arc, V(0, 1, 0), p => p.y);
+  assert.ok(Math.hypot(arc.ring.position.x - hit.pos[0], arc.ring.position.z - hit.pos[2]) < 1e-6, 'the ring is where it lands');
+  const last = V(...arc.points.slice(-3)), gap = last.distanceTo(V(...arc.points.slice(-6, -3)));
+  assert.ok(last.distanceTo(V(...hit.pos)) <= gap + 1e-3, `the last dot is ${last.distanceTo(V(...hit.pos))} m from it, gaps of ${gap}`);
+  assert.ok(last.y < 0.6, `and low down, ${last.y} m up`);
+  for (let i = 2; i < arc.points.length; i += 3) assert.ok(arc.points[i] >= hit.pos[2] - 1e-3, 'none past it');
+});
+
+test('every throw hits something before the arc stops looking, with no ring missing', () => {
+  // Floor and ceiling are all it takes: however big the room, nothing stays up. So a dot trail in mid air, with no ring, never happens in a room.
+  const eye = V(0, EYE, 0), world = { colliders: [], columns: [], ceiling: WALL_H }, arc = createArc(), palm = V(-0.3, EYE - 0.3, 0.2);
+  let longest = 0;
+  for (const kind of [...Object.values(ITEMS), ...BALLS, ...Object.values(LOOSE)]) for (const charge of [0, 0.25, 0.5, 0.75, 1]) for (let pitch = -60; pitch <= 88; pitch += 4) {
+    const thrown = launch(kind, charge, { position: eye }, V(0, Math.sin(rad(pitch)), -Math.cos(rad(pitch))), V(0, 0, 0));
+    longest = Math.max(longest, simulate(makeBody(kind, thrown.pos, thrown.vel), world, { maxTime: 2.5, stop: () => true }).contacts[0]?.time ?? Infinity);
+    arc.show(kind, thrown, world, eye, palm);
+    assert.equal(arc.ring.visible, true, `${kind.name ?? kind.radius} at ${charge}, pitch ${pitch}`);
+  }
+  assert.ok(longest < 2, `the longest flight to a first hit is ${longest} s`);
 });
 
 test('the arc follows aim and charge, and isn\'t worked out again without a change', () => {

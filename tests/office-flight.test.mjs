@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { STEP, TiltedBox, makeBody, stepBody, advance, simulate, escaped, stopShort } from '../client/office/flight.js';
-import { createProps, moveBody } from '../client/office/props.js';
-import { createHand } from '../client/office/throwing.js';
+import { BALLS, LOOSE, createProps, moveBody } from '../client/office/props.js';
+import { createArc, createHand } from '../client/office/throwing.js';
 import { KITCHEN } from '../client/office/kitchen-plan.js';
 import { WALL_T } from '../client/office/furniture.js';
 import { kitchenDoor } from '../client/office/layout.js';
@@ -259,6 +259,29 @@ function office({ colliders = [], still = false, people = [] } = {}) {
   const send = (pos, vel) => { ball.pos.set(...pos); ball.vel.set(...vel); ball.rest = false; };
   return { props, run, ball, send, room, player, heard, camera, view, size, scene };
 }
+
+test('the arc ends where the office\'s real throw first lands, short of a far wall', () => {
+  for (const kind of [LOOSE.mug, LOOSE.frame, BALLS[0], BALLS[1]]) {
+    const wall = box3(13, 0, 0, 13.2, 3, 30), a = office({ colliders: [wall] }), { ball, props, player, camera } = a;
+    ball.kind = kind; ball.rest = false; // a desk thing, without its desk
+    player.position.set(1, 1.6, 5); camera.position.copy(player.position); a.run(0.05);
+    ball.pos.set(1.3, 1.2, 5); props.grab(ball); a.run(0.05);
+    assert.equal(props.heldKind, kind);
+    const direction = V(Math.cos(0.1), Math.sin(0.1), 0), arc = createArc();
+    arc.show(kind, props.launch(1, direction), props.aimWorld(), player.position, V(1.3, 1.3, 5.3));
+    assert.equal(arc.ring.visible, true);
+    const ring = arc.ring.position.clone(), last = V(...arc.points.slice(-3));
+    assert.ok(ring.y < 0.01, `${ring.toArray()}`);
+    assert.ok(ring.x < 12.5, `it falls short of the wall: ${ring.x}`);
+    props.throw(direction, false, 1);
+    let falling = false, landed = null;
+    for (let i = 0; i < 240 * 3 && !landed; i++) { const y = ball.vel.y; props.update(1 / 240); if (y < 0) falling = true; if (falling && ball.vel.y > y + 1) landed = ball.pos.clone(); }
+    assert.ok(landed, 'it came down');
+    assert.ok(Math.hypot(landed.x - ring.x, landed.z - ring.z) < 0.1, `thrown, it lands at ${landed.x}, the ring's at ${ring.x}`);
+    assert.ok(last.x <= landed.x + 0.1, `no dot past it: ${last.x}`);
+    assert.ok(landed.x - last.x < 0.6, `the dots get there: ${last.x} to ${landed.x}`);
+  }
+});
 
 test('only real walls stop things now: the room has no invisible edge', () => {
   const a = office(); a.send([9.5, 1, 5], [4, 0, 0]); a.run(0.5);
