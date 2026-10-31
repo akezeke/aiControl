@@ -18,14 +18,25 @@ test('fit picks the highest step that fits, and never below 1', () => {
 });
 test('canvas and screen coordinates round-trip', () => { const cam = { cx: 37, cy: -12, step: 2 }, size = { width: 300, height: 200 }, [px, py] = toCanvas(cam, size, 50, 60); assert.deepEqual(fromCanvas(cam, size, px, py), [50, 60]); });
 const plan2 = () => cityPlan(layoutOffice([{ id: 'a', project: 'x', cwd: '/x', status: 'idle' }, { id: 'b', project: 'y', cwd: '/y', status: 'idle' }, { id: 'c', project: 'z', cwd: '/z', status: 'idle' }], null, 1));
-test('a phone starts on the waiting project, or the first', () => {
-  const p = plan2(), hood = p.hoods[1], [sx, sy] = screen(hood.x + hood.cols * LOT / 2, hood.z + LOT, 0);
-  const cam = startCamera(p, 0, 390, 844, 3, hood.key); assert.equal(cam.step, 2); assert.equal(Math.round(cam.cx), Math.round(sx)); assert.equal(Math.round(cam.cy), Math.round(sy));
-  assert.equal(startCamera(p, 0, 390, 844, 3, undefined).step, 2);
+const middleOf = (hood, view = 0) => screen(hood.x + hood.cols * LOT / 2, hood.z + LOT, view);
+test('the start zoom grows with the screen, and is closer than fitting the city', () => {
+  const p = plan2();
+  assert.deepEqual([390, 1048, 1368, 1600, 2000, 9000].map(w => startCamera(p, 0, w, 900, 1).step), [2, 2, 3, 3, 4, ZOOMS.at(-1)]);
+  assert.ok(startCamera(p, 0, 1600, 900, 1).step > fitStep(cityBox(p, 0), 1600, 900, 1));
 });
-test('a desktop starts fitted to the whole city; an empty city starts anywhere valid', () => {
-  const p = plan2(), cam = startCamera(p, 0, 1600, 900, 1); assert.equal(cam.step, fitStep(cityBox(p, 0), 1600, 900, 1));
-  const e = startCamera(cityPlan(layoutOffice([], null, 1)), 0, 390, 844, 3); assert.ok(Number.isFinite(e.cx) && Number.isFinite(e.cy));
+test('the waiting project, or the first, is on the screen, with no more empty space than it takes', () => {
+  const p = plan2(), box = cityBox(p, 0);
+  const filled = (c, lo, hi, n) => hi - lo <= n ? c === (lo + hi) / 2 : c - n / 2 >= lo && c + n / 2 <= hi;
+  for (const [w, h, dpr] of [[390, 844, 3], [1048, 700, 1], [1368, 900, 1], [1600, 900, 1.25], [2380, 1400, 1]]) for (const [hood, key] of [...p.hoods.map(hood => [hood, hood.key]), [p.hoods[0], undefined]]) {
+    const cam = startCamera(p, 0, w, h, dpr, key), size = fitCanvas(w, h, dpr, cam.step), [mx, my] = middleOf(hood), [px, py] = toCanvas(cam, size, mx, my);
+    assert.ok(px >= 0 && px <= size.width && py >= 0 && py <= size.height, `${hood.key} at ${px},${py} of ${size.width}x${size.height}`);
+    assert.ok(filled(cam.cx, box.x0, box.x1, size.width) && filled(cam.cy, box.y0, box.y1, size.height), `${cam.cx},${cam.cy} in ${JSON.stringify(box)} at ${size.width}x${size.height}`);
+  }
+});
+test('a city smaller than the screen sits in the middle', () => {
+  const empty = cityPlan(layoutOffice([], null, 1)), box = cityBox(empty, 0), cam = startCamera(empty, 0, 2600, 1400, 1);
+  assert.equal(cam.cx, (box.x0 + box.x1) / 2); assert.equal(cam.cy, (box.y0 + box.y1) / 2);
+  assert.ok(Number.isFinite(startCamera(empty, 0, 390, 844, 3).cx));
 });
 test('the frontmost sprite wins, and clear pixels fall through', () => {
   const sprite = { width: 2, height: 1, mask: Uint8Array.of(1, 0) }, back = { sprite: { width: 2, height: 1, mask: Uint8Array.of(1, 1) }, left: 0, top: 0, id: 'back' }, front = { sprite, left: 0, top: 0, id: 'front' };

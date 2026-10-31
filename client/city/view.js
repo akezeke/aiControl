@@ -2,7 +2,7 @@
 import { screen, LOT } from './plan.js';
 
 export const ZOOMS = [1, 2, 3, 4];
-const PHONE = 700, HEIGHT = 40, PHONE_STEP = 2, KEEP = 40;
+const START_STEP = 2, START_WIDTH = 450, HEIGHT = 40, KEEP = 40;
 
 export function fitCanvas(cssW, cssH, dpr, step) {
   const ratio = dpr > 0 ? dpr : 1, scale = Math.max(1, Math.ceil(step * ratio - .5)), art = css => Math.max(1, Math.floor((css || 0) * ratio / scale)), width = art(cssW), height = art(cssH);
@@ -26,13 +26,13 @@ export function fitStep(box, cssW, cssH, dpr) {
 const centre = box => ({ cx: (box.x0 + box.x1) / 2, cy: (box.y0 + box.y1) / 2 });
 const hoodMiddle = (hood, view) => { const [cx, cy] = screen(hood.x + hood.cols * LOT / 2, hood.z + LOT, view); return { cx, cy }; };
 
+// Toward the middle of the city only as far as it takes to fill the screen. What it was aimed at stays on the screen, since the box holds it.
+const fill = (at, lo, hi, size) => hi - lo <= size ? (lo + hi) / 2 : Math.min(hi - size / 2, Math.max(lo + size / 2, at));
+// Close enough to know the buildings, whatever the screen: the whole city is one button away.
 export function startCamera(plan, view, cssW, cssH, dpr, focusKey) {
-  const box = cityBox(plan, view);
-  if (cssW < PHONE) {
-    const hood = plan.hoods.find(h => h.key === focusKey) || plan.hoods[0];
-    return { ...hood ? hoodMiddle(hood, view) : centre(box), step: PHONE_STEP };
-  }
-  return { ...centre(box), step: fitStep(box, cssW, cssH, dpr) };
+  const box = cityBox(plan, view), hood = plan.hoods.find(h => h.key === focusKey) || plan.hoods[0], at = hood ? hoodMiddle(hood, view) : centre(box);
+  const step = Math.min(ZOOMS.at(-1), Math.max(START_STEP, Math.floor(cssW / START_WIDTH))), { width, height } = fitCanvas(cssW, cssH, dpr, step);
+  return { cx: fill(at.cx, box.x0, box.x1, width), cy: fill(at.cy, box.y0, box.y1, height), step };
 }
 export function focusHood(plan, hood, view, cssW, cssH, dpr) {
   const w = hood.cols * LOT, box = boxOf([[hood.x, hood.z], [hood.x + w, hood.z], [hood.x, hood.z + 2 * LOT], [hood.x + w, hood.z + 2 * LOT]], view, HEIGHT);
