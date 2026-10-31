@@ -222,7 +222,7 @@ test('a game added part way through is built after the room, and one added after
   assert.equal(order.at(-1)[0], 'last');
 });
 
-test('prepared and hidden it costs nothing: not shown, no matrices, no ray, no pan moved, and thrown things still meet the shut door', t => {
+test('prepared and hidden: not shown, the group\'s own matrix flag off, no ray, no pan moved, and thrown things still meet the shut door', t => {
   const { kitchen, events } = setup(t), shown = [];
   kitchen.add({ build() {}, update: (dt, at, still, on) => shown.push(on) });
   drain(kitchen.prepare());
@@ -261,11 +261,11 @@ test('growing the room part way through getting ready builds nothing again and m
 
 // A renderer as far as getting ready goes: what it's asked for, and the textures it has already.
 const fakeProgram = calls => { const program = { getUniforms: () => calls.push(['use', program]), getAttributes() {} }; return program; };
-const fakeRenderer = (uploaded = new Set()) => {
-  const calls = [], renderer = {
-    calls, info: { memory: { textures: 0 }, programs: [] },
+const fakeRenderer = ({ parallel = true } = {}) => {
+  const calls = [], seen = new Set(), renderer = {
+    calls, info: { programs: [] }, extensions: { has: name => parallel && name === 'KHR_parallel_shader_compile' }, properties: { has: texture => seen.has(texture) },
     compileAsync: (...args) => { calls.push(['compile', ...args]); renderer.info.programs.push(fakeProgram(calls)); return Promise.resolve(); },
-    initTexture: texture => { calls.push(['texture', texture]); if (!uploaded.has(texture)) { uploaded.add(texture); renderer.info.memory.textures++; } },
+    initTexture: texture => { calls.push(['texture', texture]); seen.add(texture); },
   };
   return renderer;
 };
@@ -290,6 +290,16 @@ test('after the room: its shaders, hidden as it is and with the scene it will be
   const old = renderer.info.programs[0]; renderer.calls.length = 0;
   assert.equal([...kitchen.prepare(renderer, camera, scene)].length, 2, "asked again: the compile, its one new program, and no slice for a texture that's up");
   assert.ok(renderer.calls.every(c => c[1] !== old), 'a program from before is left alone');
+});
+
+test('where shaders would stall, the room and its textures still get ready, and the shaders are left to the first draw', t => {
+  const { kitchen } = setup(t), renderer = fakeRenderer({ parallel: false }), builds = [];
+  kitchen.add({ build: group => builds.push(group), update() {} });
+  drain(kitchen.prepare(renderer, new THREE.PerspectiveCamera(), new THREE.Scene()));
+  assert.deepEqual(builds, [kitchen.group]);
+  assert.ok(kitchen.group.children.length > 10 && kitchen.pans);
+  assert.ok(renderer.calls.length >= 3);
+  assert.ok(renderer.calls.every(c => c[0] === 'texture'), 'no compile, no first use');
 });
 
 test('the doors opening before the shaders are done still leave them to be prepared, for what the first draw would not see', t => {

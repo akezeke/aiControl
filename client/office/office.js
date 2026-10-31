@@ -21,6 +21,7 @@ import { createGolf } from './golf.js';
 import { createPinball } from './pinball.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
+import { inSlices, shaders, textures } from './ready.js';
 import { hireChoices } from '../hire.js';
 
 const PICKED = '#ffd23f'; // the sidebar's highlighter
@@ -280,14 +281,12 @@ export function mountOffice(container, hooks) {
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });
-  // Once the office has drawn a few frames the kitchen gets ready, a slice each time the browser's idle, so its doors have nothing left to do (kitchen.prepare).
-  // So does the dotted arc, which an office throw shows first. ponytail: Safari has no idle callback, so a short wait between slices instead.
-  let readying = true, untilReady = 10;
+  // Once the office has drawn a few frames the kitchen gets ready, a slice each time the browser's idle, so its doors have little left to do (kitchen.prepare).
+  // So does whatever else in the office hasn't been looked at yet, which is what you first turn to face and the dotted arc of the first throw.
+  // ponytail: Safari has no idle callback, so a short wait between slices instead.
+  let readying = true;
   const whenIdle = fn => globalThis.requestIdleCallback ? requestIdleCallback(fn, { timeout: 500 }) : setTimeout(fn, 50);
-  const getReady = (function* () { yield* room.kitchen.prepare(renderer, camera, scene); yield renderer.compileAsync(arc.mesh, camera, scene); })();
-  const slice = async () => { if (!readying) return; const { done, value } = getReady.next(); await value; if (!done) whenIdle(slice); };
-  const drawn = () => { if (layout && !--untilReady) { frames.delete(drawn); whenIdle(slice); } };
-  frames.add(drawn);
+  inSlices(frames, (function* () { yield* room.kitchen.prepare(renderer, camera, scene); yield* shaders(renderer, scene, camera); yield* textures(renderer, scene); })(), { whenIdle, stopped: () => !readying, up: () => layout });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;

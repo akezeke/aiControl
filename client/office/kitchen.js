@@ -1,6 +1,7 @@
 // The kitchen and lunch room, through swinging doors in the office's left wall. Everything thrown at in here is drawn where
 // kitchen-plan.js says it is, with those boxes' shapes. It's built ahead of the doors, a slice at a time between frames (prepare, driven by office.js), so they
-// open with nothing left to do; shut (or in the overview) it's skipped whole, like the games room (secret.js): not drawn, its matrices not kept up and no ray tested on it.
+// open with little left to do; shut (or in the overview) it's skipped, like the games room (secret.js): not drawn and no ray tested on it. Only the group's own matrix
+// stops, its parts' still update, 45 of them for about 0.013 ms a frame.
 // The doors swing open as you come near, jump with reduced motion, and stop being a box to thrown things as soon as they start.
 // Fruit and the goose stay out (their paths only know the office).
 // ponytail: no lamp lights of its own, unlike the games room. The office's fill and daylight already reach in here and follow the switch,
@@ -11,6 +12,7 @@ import { WALL_H, WALL_T, canvasTexture, floorShadow, glowTexture, once, paint, p
 import { COPY, INK, cardsMesh, face, fit, lines, printOn } from './cutouts.js';
 import { DOOR_H, DOOR_W, KITCHEN, PAN, SPOTS, VESSELS, behind, flightBoxes, walkBoxes } from './kitchen-plan.js';
 import { kitchenDoor, kitchenShift } from './layout.js';
+import { shaders, textures } from './ready.js';
 import { dims } from './lights.js';
 import { createWindows } from './windows.js';
 import { instancedOutline, toonMaterial } from './toon.js';
@@ -231,17 +233,13 @@ export function createKitchen({ onMove } = {}) {
     shut(on) { held = on; },
     add(game) { games.push(game); const build = () => game.build(group); if (steps.length) steps.push(build); else build(); },
     // Getting ready before anyone's near: each next() is a slice of work, and what it yields is to be waited for. The shaders are compiled with the
-    // scene's lights, and hidden doesn't stop them (compile goes through all of it), so the room's first frame finds its programs; then each texture.
+    // scene's lights where that can't stall (ready.js), and hidden doesn't stop them (compile goes through all of it), so the room's first frame finds its programs; then each texture.
     // Update finishes the building if the doors get there first, and the rest is still worth doing then, for what that first frame didn't look at.
     * prepare(renderer, camera, scene) {
       while (steps.length) { steps.shift()(); yield; }
       if (!renderer) return;
-      const known = new Set(renderer.info.programs);
-      yield renderer.compileAsync(group, camera, scene);
-      // A program's first use is what waits for its link, where the browser can't say it's finished. Better here than in the frame the doors open.
-      for (const program of renderer.info.programs) if (!known.has(program)) { program.getUniforms(); program.getAttributes(); yield; }
-      const maps = new Set(); group.traverse(node => { for (const material of [node.material].flat()) for (const value of Object.values(material ?? {})) if (value?.isTexture) maps.add(value); });
-      for (const map of maps) { const had = renderer.info.memory.textures; renderer.initTexture(map); if (renderer.info.memory.textures > had) yield; } // one that's up already is nothing
+      yield* shaders(renderer, group, camera, scene);
+      yield* textures(renderer, group);
     },
     // The room's `depth` (a new shell, `wall` being its left wall): the same kitchen moves with the door, telling kitchen.moved first, while
     // inside() still means where it was. Returns what blocks walking: its walls, what stands on the floor, and the floor behind it.
