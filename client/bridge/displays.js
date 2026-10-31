@@ -2,6 +2,7 @@
 // Signals: red needs you, teal is working, pale blue is idle, orange is near a limit. Decoration uses the palette's other hues.
 import { monitorLines } from '../office/status.js';
 import { usageWindowView } from '../usage-presentation.js';
+import { rectCorners } from './brackets.js';
 import { SIGNALS } from './palettes.js';
 import { signalOf, stationSignals } from './ship.js';
 
@@ -253,6 +254,11 @@ export function createDisplays(room) {
       const row = facts?.rows[index], { g, el } = room.panels[`row${index}`];
       if (!row?.shot) return false;
       return shotUnder(agentLayout(row, el.width, el.height, measureOn(g)).shot.rect, u, v, el.width, el.height);
+    },
+    // Where the picture on a station's display is in the world.
+    shotCorners(index) {
+      const row = facts.rows[index], { g, el } = room.panels[`row${index}`], mesh = room.stations[index].mesh;
+      return rectCorners(mesh, agentLayout(row, el.width, el.height, measureOn(g)).shot.rect, el.width, el.height);
     },
     update(args) {
       again = () => this.update(args);

@@ -93,7 +93,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
   const reticle = createReticle(camera, still), brackets = createBrackets(camera); world.add(camera);
   const displays = createDisplays(room), shots = createScreenshots({ room: displays, ...SHOT_SIZE }), figures = room.stations.map(station => { const figure = createCrew(station, { still }); station.crew = figure; return figure; }), seatedAt = [], looks = new Map();
   let crewStarted = false, wasOffline = false;
-  function repaint(palette) { room.repaint(palette); figures.forEach(figure => figure.paint(palette)); lights.repaint(palette); space.repaint(palette); displays.repaint(palette); container.style.setProperty('--bridge-accent', palette.trim); for (const painted of [...Object.values(holograms), reticle, brackets]) painted.paint(palette.tones[2], palette.tones[0]); }
+  function repaint(palette) { room.repaint(palette); figures.forEach(figure => figure.paint(palette)); lights.repaint(palette); space.repaint(palette); displays.repaint(palette); container.style.setProperty('--bridge-accent', palette.trim); for (const painted of [...Object.values(holograms), reticle]) painted.paint(palette.tones[2], palette.tones[0]); }
   repaint(paletteFor(savedColour()));
   const setMode = state => { room.setMode(state); lights.setMode(state); space.setMode(state); };
   setMode({ mode: 'orbit', warp: 0, offline: false });
@@ -120,7 +120,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
     aim(event);
     for (const { object, point, uv } of ray.intersectObject(room.group, true)) {
       if (!shown(object)) continue;
-      if (object.userData.station != null && object.userData.screen && displays.shotAt(object.userData.station, uv.x, uv.y)) return { kind: 'shot', id: seats[object.userData.station].id, object };
+      if (object.userData.station != null && object.userData.screen && displays.shotAt(object.userData.station, uv.x, uv.y)) return { kind: 'shot', id: seats[object.userData.station].id, corners: displays.shotCorners(object.userData.station) };
       if (object.userData.screen) return { kind: 'screen', mesh: object, label: object.userData.screen, object };
       if (object.material.transparent || !object.material.visible) continue;
       for (let node = object; node; node = node.parent) {
@@ -136,14 +136,14 @@ export function mountBridge(container, hooks = {}, options = {}) {
   function targetAt(at) {
     aim(at);
     if (!zoomed) for (const [hologram, panel] of Object.entries(holograms)) {
-      const hit = panel.at(ray); if (hit) return hit.row ? { kind: 'row', hologram, row: hit.row, name: hit.row.label } : null;
+      const hit = panel.at(ray); if (hit) return hit.row ? { kind: 'row', hologram, row: hit.row, name: hit.row.label, object: panel.rowCorners(hit.row) } : null;
     }
     const button = zoomed || look.overview ? null : room.hologramAt(ray);
     if (button) return { kind: 'button', button, name: PROJECTORS[button], object: room.hologramButton(button) };
     // Close up, only a screenshot can be used, and only by pointing at it: the sight is the screen's middle, and E there comes back.
     const found = zoomed && player.aiming ? null : under(at), hit = zoomed && found?.kind !== 'shot' ? null : found, session = hit?.kind === 'character' && last?.sessions?.find(({ id }) => id === hit.id);
     const name = session ? hooks.describe?.(session)?.title || stationName(session) : look.overview ? null : hit?.kind === 'shot' ? `${shots.count(hit.id)} screenshot${shots.count(hit.id) === 1 ? '' : 's'}` : hit?.kind === 'screen' ? hit.label : hit?.kind === 'chair' && !seated ? 'Sit' : null;
-    return name ? { kind: 'hit', hit, name, object: zoomed ? null : hit.object } : null;
+    return name ? { kind: 'hit', hit, name, object: hit.corners || hit.object } : null;
   }
   // Under the pointer or, aiming, the sight, a few times a second. After a touch, or with the mouse gone, nothing is aimed at.
   let hoverIn = 0, mouseAt = null;

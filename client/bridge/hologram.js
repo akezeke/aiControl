@@ -1,5 +1,6 @@
 // A hologram that opens over a projector on the bridge: a title and rows you can click, on a panel that turns to face you.
 import * as THREE from 'three';
+import { rectCorners } from './brackets.js';
 import { fitText, font } from './displays.js';
 
 const PADDING = 22, TITLE = 70, ROW = 70, GAP = 8, UNFOLD = .22, REACH = 3.2;
@@ -96,6 +97,8 @@ export function createHologram(parent, { from, at, width = .78, height = .6, pho
       if (index < 0 && (1 - hit.uv.y) * H > (layout.rows.length ? layout.rows.at(-1).y + ROW + PADDING : TITLE + PADDING)) return null;
       return { row: rows[index] };
     },
+    // Where a row is in the world.
+    rowCorners(row) { const { x, y, width: w, height: h } = layout.rows[rows.indexOf(row)]; return rectCorners(plane, { x, y, w, h }, W, H); },
     hover(row) { const next = row ? rows.indexOf(row) : -1; if (next !== hovered) { hovered = next; draw(); } },
     paint(colour, label) { tint = colour; text = label; sweep.material.color.set(colour); beam.material.color.set(colour); draw(); },
     tick(dt, t, camera) {
