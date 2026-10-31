@@ -6,7 +6,7 @@ import { officeHasKeys, sceneFocused } from '../scene-keys.js';
 import { createCard, createMenu } from '../scene-ui.js';
 import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
-import { groundCells, paintGround, paintHood, paintLotShade } from './ground.js';
+import { groundCells, paintGround, paintHood, paintLotShade, timeOfDay } from './ground.js';
 import { buildTower, annex, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant } from './generator.js';
 import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
@@ -53,7 +53,7 @@ const toImage = ({ width, height, rgba }) => {
 const stackIds = new WeakMap(); let stacksSeen = 0;
 const stackId = stack => { if (!stackIds.has(stack)) stackIds.set(stack, ++stacksSeen); return stackIds.get(stack); };
 // What the ground is painted from: anything else in the plan can change without repainting it.
-const groundKey = plan => JSON.stringify([plan.plants.map(plant => plant.provider), plan.bounds, plan.roads, plan.parcels, plan.parks, plan.hoods.map(hood => [hood.key, hood.x, hood.z, hood.cols, hood.lots.map(lot => lot.sessionId)])]);
+const groundKey = plan => JSON.stringify([plan.plants.map(plant => [plant.key, plant.z]), plan.bounds, plan.roads, plan.parcels, plan.parks, plan.hoods.map(hood => [hood.key, hood.x, hood.z, hood.cols, hood.lots.map(lot => lot.sessionId)])]);
 
 export function mountCity(box, hooks = {}) {
   const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { alpha: false });
@@ -67,7 +67,7 @@ export function mountCity(box, hooks = {}) {
 
   const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), litHoods = new Map(), lotShades = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
   const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(), hops = new Map(), moods = new Map(), states = new Map(), bursts = new Map(); // ghosts: what has left the plan but is still going up in dust.
-  let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '';
+  let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '', hour = timeOfDay(), clock = 0;
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
@@ -169,10 +169,10 @@ export function mountCity(box, hooks = {}) {
     animating = false; steaming = false;
     const quiet = !!selectedHood;
     cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${stackId(stack)}`, `prop:${i}`, x, z, () => ({ stack }), null, quiet));
-    for (const { provider, x, z, connected } of plan.plants) {
+    for (const { provider, key, x, z, connected } of plan.plants) {
       const [make, stripe] = PLANTS[provider], lit = connected && !error, on = lit && !reduced, phase = on ? Math.floor(now / STEAM_MS) % 4 : 0;
       if (on) steaming = true;
-      stand(`plant:${provider}|${on}|${lit}|${phase}`, `plant:${provider}`, x, z, () => ({ stack: make(stripe, on, lit, phase) }), null, quiet);
+      stand(`plant:${provider}|${on}|${lit}|${phase}`, `plant:${key}`, x, z, () => ({ stack: make(stripe, on, lit, phase) }), null, quiet);
     }
     for (const building of plan.buildings) if (towerOf(building)) building.subagents.forEach((kid, i) => annexOf(building, i, kid));
     if (!reduced) {
@@ -203,7 +203,7 @@ export function mountCity(box, hooks = {}) {
     if (!lit) { const painted = paintHood(cells, hood, view); lit = { ...painted, image: toImage(painted), edgeImage: toImage({ width: painted.width, height: painted.height, rgba: painted.edge }) }; litHoods.set(key, lit); }
     return lit;
   };
-  const lotShade = () => { let shade = lotShades.get(view); if (!shade) { const painted = paintLotShade(view); shade = { ...painted, image: toImage(painted) }; lotShades.set(view, shade); } return shade; };
+  const lotShade = () => { let shade = lotShades.get(view); if (!shade) { const painted = paintLotShade(view, hour); shade = { ...painted, image: toImage(painted) }; lotShades.set(view, shade); } return shade; };
   // A lot's outline, walked on the ground so that it's the same shape in every view.
   const outline = (lot, colour) => {
     const half = LOT / 2 - PLOT;
@@ -299,8 +299,8 @@ export function mountCity(box, hooks = {}) {
       tags.push({ key: building.id, text: `+${building.overflow}`, title: `${building.overflow} more subagents`, ax: ax + TAG_X, ay: ay - TAG_Y });
     }
     for (const plant of plan.plants) {
-      const spot = at.get(`plant:${plant.provider}`);
-      if (spot) tags.push({ key: plant.provider, ...plantTag(plant, snapshot.usage), ax: spot.item.sx, ay: spot.item.sy - spot.sprite.originY - TAG_Y });
+      const spot = at.get(`plant:${plant.key}`);
+      if (spot) tags.push({ key: plant.key, ...plantTag(plant, snapshot.usage), ax: spot.item.sx, ay: spot.item.sy - spot.sprite.originY - TAG_Y });
     }
     labels.tags(tags);
     moveLabels();
@@ -331,7 +331,7 @@ export function mountCity(box, hooks = {}) {
     if (el !== mapEl) { mapOff?.(); mapEl = el; mapDrawn = ''; mapOff = el && steerMap(el, (cx, cy, dragging) => { if (!plan || !camera) return; if (dragging) jump({ cx, cy }); else glideTo({ cx, cy }); }); }
     if (!el) return;
     const lit = litNow(), key = `${mapRev}|${view}|${lit instanceof Set ? [...lit].join() : lit ?? ''}`;
-    if (key !== mapDrawn && paintMap(el, plan, view, { lit, asleep: id => !!sessions.get(id) && !!signalOf(id).asleep })) mapDrawn = key;
+    if (key !== mapDrawn && paintMap(el, plan, view, { lit, time: hour, asleep: id => !!sessions.get(id) && !!signalOf(id).asleep })) mapDrawn = key;
     trackMap(el, eye, boxW, boxH);
   };
 
@@ -386,6 +386,14 @@ export function mountCity(box, hooks = {}) {
   const wake = () => { dirty = true; cancel(); schedule(); };
   const onVisible = () => { if (!document.hidden) wake(); };
   document.addEventListener('visibilitychange', onVisible);
+  // Dawn and dusk. Twice a day it repaints the ground and everything cut from it, so once a minute is plenty to notice.
+  clock = setInterval(() => {
+    const now = timeOfDay();
+    if (now === hour) return;
+    hour = now; grounds.clear(); litHoods.clear(); lotShades.clear(); mapRev++;
+    if (plan) cells = groundCells(plan, hour);
+    wake();
+  }, 60000);
   const resize = new ResizeObserver(() => { if (camera) { halt(); fit(); settle(); } else place(); if (camera) wake(); });
   resize.observe(box);
 
@@ -443,7 +451,8 @@ export function mountCity(box, hooks = {}) {
   const pickAt = event => {
     if (!plan || !camera) return null;
     const [px, py] = artAt(event), sprite = hitSprites(drawn, px, py);
-    if (sprite) return { id: sprite.opens, lot: null };
+    // A building whose session has ended opens nothing: a press goes through it to the lot.
+    if (sprite && sessions.has(sprite.opens)) return { id: sprite.opens, lot: null };
     const [sx, sy] = fromCanvas(camera, size, px, py), [x, z] = unproject(sx, sy, view), lot = lotAt(plan, x, z);
     return lot ? { id: lot.sessionId, lot } : null;
   };
@@ -622,7 +631,7 @@ export function mountCity(box, hooks = {}) {
       sessions = new Map(snapshot.sessions.map(session => [session.id, session]));
       layout = snapshot.office ? sharedLayout(snapshot.office) : layoutOffice(snapshot.sessions, layout);
       const before = plan, now = performance.now();
-      plan = cityPlan(layout, snapshot.towers, plan, snapshot.providers, snapshot.sessions);
+      plan = cityPlan(layout, snapshot.towers, plan, snapshot.providers, snapshot.sessions, snapshot.claudeAccounts);
       const here = new Set(plan.buildings.flatMap(building => [building.id, ...building.subagents.map(kid => kid.id)]));
       // Still fired while it stands: a vacant lot keeps its building a while, and clearing early would bring it back.
       for (const [id, at] of fired) if (!here.has(id) && !sessions.has(id) || now - at > FIRED_MS) fired.delete(id);
@@ -634,7 +643,7 @@ export function mountCity(box, hooks = {}) {
       }
       lifecycle.update(plan, fired, now);
       const key = groundKey(plan);
-      if (key !== cellsKey) { cells = groundCells(plan); cellsKey = key; grounds.clear(); litHoods.clear(); dirty = true; }
+      if (key !== cellsKey) { cells = groundCells(plan, hour); cellsKey = key; grounds.clear(); litHoods.clear(); dirty = true; }
       if (selectedHood && !plan.hoods.some(hood => hood.key === selectedHood)) selectedHood = null;
       if (hoveredHood && !plan.hoods.some(hood => hood.key === hoveredHood)) hoveredHood = null;
       // Someone else may have just taken the lot it was asking about.
@@ -659,7 +668,7 @@ export function mountCity(box, hooks = {}) {
     talkTo,
     fire(id) { if (gone) return; fired.set(id, performance.now()); if (snapshot) scene.update(snapshot, { error }); },
     unmount() {
-      gone = true; cancel(); mapOff?.(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('pointerdown', onPress, true);
+      gone = true; cancel(); clearInterval(clock); mapOff?.(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('pointerdown', onPress, true);
       for (const [target, type, listener] of listening) target.removeEventListener(type, listener);
       box.removeEventListener('wheel', onWheel); controls.dispose(); card.dispose(); labels.dispose(); menu.dispose();
       sprites.clear(); shown.clear(); grounds.clear(); ghosts.clear(); fired.clear(); canvas.remove(); glowCanvas.remove(); plan = null;

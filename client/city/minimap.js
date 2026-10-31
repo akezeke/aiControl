@@ -1,10 +1,10 @@
 // The sidebar's site plan: the real island, roads and lots from the camera's angle, each session's tower on its own lot, and a box round what the camera sees.
 import { screen, annexAt, lotAt, unproject, LOT, ROAD, WALK } from './plan.js';
 import { hex } from './palette.js';
-import { LAND, LAND_FAR, lotLook, reachOf } from './ground.js';
+import { LAND, LAND_FAR, lotLook, reachOf, soilOf } from './ground.js';
 
 export const MAP_PX = 2;
-const SEA = hex('#0b5e65'), RIPPLE = hex('#0b8a8f'), SAND = hex('#c9a98e'), GRASS = hex('#4c4a2a'), VACANT = hex('#676633'), TARMAC = hex('#2e222f'), POND = hex('#0b8a8f'), PAVED = hex('#7f5f5a'), PLANT = hex('#9babb2'), INK = hex('#2e222f');
+const SEA = hex('#0b5e65'), RIPPLE = hex('#0b8a8f'), SAND = hex('#c9a98e'), TARMAC = hex('#2e222f'), POND = hex('#0b8a8f'), PAVED = hex('#7f5f5a'), PLANT = hex('#9babb2'), INK = hex('#2e222f');
 const SHORE = 12, KERB = 7, DIM = .5, ASLEEP = .72, ANNEX_H = 2, ANNEX_W = 2, TOWER_W = 4, MIN_H = 2, MAX_H = 7, PLANT_W = 3;
 const blend = (a, b, t) => [Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), Math.round(a[2] + (b[2] - a[2]) * t)];
 const riseOf = storeys => Math.max(MIN_H, Math.min(MAX_H, Math.round(storeys * .6) + 1));
@@ -30,8 +30,8 @@ export function mapSites(plan, view, fit) {
 const litTest = lit => lit == null ? null : typeof lit === 'string' ? key => key === lit : key => lit.has(key);
 
 // Pure: lit is a neighbourhood's key or a set of them, and everything else dims as it does on the map itself.
-export function mapPicture(plan, view, width, height, fit, { asleep = () => false, lit = null } = {}) {
-  const rgba = new Uint8ClampedArray(width * height * 4), { w: W, d: D } = plan.bounds, reach = reachOf(W, D), isLit = litTest(lit);
+export function mapPicture(plan, view, width, height, fit, { asleep = () => false, lit = null, time = 'day' } = {}) {
+  const rgba = new Uint8ClampedArray(width * height * 4), { w: W, d: D } = plan.bounds, reach = reachOf(W, D), isLit = litTest(lit), { land: GRASS, tuft: VACANT } = soilOf(time);
   const inRoad = (v, list) => list.some(r => v >= r - WALK && v < r + ROAD + WALK);
   const ownerOf = new Map(plan.buildings.map(building => [`${building.hoodKey}:${building.slot}`, building.id]));
   const groundAt = (x, z) => {
@@ -111,8 +111,8 @@ export function placeContacts(el) {
 export function paintMap(el, plan, view, options = {}) {
   const width = Math.floor(el.clientWidth / MAP_PX), height = Math.floor(el.clientHeight / MAP_PX);
   if (!width || !height) return false;
-  const map = mapOf(el), { asleep = () => false, lit = null } = options, isLit = litTest(lit);
-  const key = JSON.stringify([view, width, height, plan.bounds, plan.hoods.map(hood => [hood.key, hood.name, isLit ? isLit(hood.key) : 0]), plan.plants.map(plant => [plant.provider, plant.connected]), plan.buildings.map(building => [building.id, building.slot, building.x, building.z, building.storeys, building.look.colour, asleep(building.id), building.subagents.map(kid => [kid.id, asleep(kid.id)])])]);
+  const map = mapOf(el), { asleep = () => false, lit = null, time = 'day' } = options, isLit = litTest(lit);
+  const key = JSON.stringify([view, time, width, height, plan.bounds, plan.hoods.map(hood => [hood.key, hood.name, isLit ? isLit(hood.key) : 0]), plan.plants.map(plant => [plant.key, plant.connected]), plan.buildings.map(building => [building.id, building.slot, building.x, building.z, building.storeys, building.look.colour, asleep(building.id), building.subagents.map(kid => [kid.id, asleep(kid.id)])])]);
   if (key !== map.key) {
     map.key = key; map.fit = mapFit(plan, view, width, height); map.sites = mapSites(plan, view, map.fit);
     map.canvas.width = width; map.canvas.height = height;

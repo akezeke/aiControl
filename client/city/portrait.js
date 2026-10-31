@@ -6,6 +6,7 @@ import { renderSprite, SpriteCache } from './sprite.js';
 import { sharedLayout, layoutOffice } from '../office/layout.js';
 import { cityPlan } from './plan.js';
 import { paintMap, placeContacts } from './minimap.js';
+import { timeOfDay } from './ground.js';
 
 export const PORTRAIT_STOREYS = 6;
 const ANNEX_STOREYS = 3, BEATS = 4, PHASE_MS = 650;
@@ -81,6 +82,6 @@ export function dressList(root, snapshot, { error = false, reduced = false, sele
   // With the scene up the map is the scene's, turned and lit as it is. Without one the list draws it, so it's the same map.
   if (mapped.hasAttribute('data-live')) { placeContacts(mapped); return; }
   listLayout = snapshot?.office ? sharedLayout(snapshot.office) : layoutOffice(sessions, listLayout);
-  listPlan = cityPlan(listLayout, towers, listPlan, providers, sessions);
-  paintMap(mapped, listPlan, 0, { asleep: id => { const session = byId.get(id); return !!session && !!citySignal(session, options(session)).asleep; } });
+  listPlan = cityPlan(listLayout, towers, listPlan, providers, sessions, snapshot?.claudeAccounts);
+  paintMap(mapped, listPlan, 0, { time: timeOfDay(), asleep: id => { const session = byId.get(id); return !!session && !!citySignal(session, options(session)).asleep; } });
 }

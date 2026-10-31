@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cityPlan, LOT, PLOT, PLANT } from '../client/city/plan.js';
-import { groundCells, lotLook } from '../client/city/ground.js';
+import { groundCells, lotLook, paintLotShade, timeOfDay } from '../client/city/ground.js';
 import { lamp } from '../client/city/generator.js';
 import { renderSprite } from '../client/city/sprite.js';
 import { hex } from '../client/city/palette.js';
@@ -72,4 +72,34 @@ test('streets have lamps, and a lamp is lit', () => {
   assert.ok(posts.length >= plan.hoods.length * 3, `${posts.length} lamps`);
   assert.ok(renderSprite(lamp(), 0).lit.includes(1));
   assert.ok(lamp().h < 12, 'too short to hide anything');
+});
+
+const local = (hour, minute = 0) => new Date(2026, 5, 15, hour, minute);
+const meadowOf = cells => { const a = -60 - cells.x0, b = -60 - cells.z0, seen = new Set(); for (let z = 0; z < 40; z++) for (let x = 0; x < 40; x++) { const i = (a + x + (b + z) * cells.w) * 3; seen.add(hex2(cells.rgb, i)); } return seen; };
+const hex2 = (rgb, i) => `#${[rgb[i], rgb[i + 1], rgb[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+test('the ground goes by the clock: sage from seven, dusk from six', () => {
+  assert.equal(timeOfDay(local(6, 59)), 'night');
+  assert.equal(timeOfDay(local(7)), 'day');
+  assert.equal(timeOfDay(local(17, 59)), 'day');
+  assert.equal(timeOfDay(local(18)), 'night');
+  assert.equal(timeOfDay(local(0)), 'night');
+});
+test('day and night are different ground, and neither is still the old olive', () => {
+  const day = meadowOf(groundCells(plan, 'day')), night = meadowOf(groundCells(plan, 'night'));
+  assert.ok(day.has('#4b7058') && day.has('#547e64'), [...day].join());
+  assert.ok(night.has('#323353') && night.has('#3a3a60'), [...night].join());
+  for (const seen of [day, night]) assert.ok(!seen.has('#4c4a2a') && !seen.has('#565430'));
+});
+test('swapping day for night and back paints the same day again', () => {
+  const first = groundCells(plan, 'day').rgb;
+  groundCells(plan, 'night');
+  assert.deepEqual(groundCells(plan, 'day').rgb, first);
+  assert.deepEqual(groundCells(plan).rgb, first);
+});
+test('a sleeping lot stays apart from the ground at night, darker than the dusk around it', () => {
+  const over = (time, under) => { const { rgba } = paintLotShade(0, time), i = rgba.findIndex((v, n) => n % 4 === 3 && v) - 3, a = rgba[i + 3] / 255; return under.map((v, k) => v * (1 - a) + rgba[i + k] * a); };
+  const light = c => c[0] * .3 + c[1] * .6 + c[2] * .1, dusk = hex('#323353');
+  assert.ok(light(over('night', hex('#45293f'))) < light(dusk) - 8, 'a plum lot under the shade');
+  assert.ok(light(over('night', hex('#0b5e65'))) < light(dusk) + 8, 'a teal lot under the shade');
+  assert.notDeepEqual([...paintLotShade(0, 'night').rgba], [...paintLotShade(0, 'day').rgba]);
 });

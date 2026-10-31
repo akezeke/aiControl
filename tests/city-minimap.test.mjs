@@ -80,3 +80,8 @@ test('a press on the map finds the spot it shows', () => {
   const [cx, cy] = mapToScreen(fit, (sx * fit.scale + fit.ox) * MAP_PX, (sy * fit.scale + fit.oy) * MAP_PX);
   assert.ok(Math.abs(cx - sx) < 1e-6 && Math.abs(cy - sy) < 1e-6);
 });
+test("the map's land is the ground the city has at this hour", () => {
+  const p = plan(), fit = mapFit(p, 0, W, H), colours = time => { const rgba = mapPicture(p, 0, W, H, fit, { time }), seen = new Set(); for (let i = 0; i < rgba.length; i += 4) seen.add(`${rgba[i]},${rgba[i + 1]},${rgba[i + 2]}`); return seen; };
+  assert.ok(colours('day').has('75,112,88') && !colours('day').has('50,51,83'));
+  assert.ok(colours('night').has('50,51,83') && !colours('night').has('75,112,88'));
+});
