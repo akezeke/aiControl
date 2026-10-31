@@ -86,6 +86,12 @@
   :root[data-theme-choice=office]:not([data-scene-fallback], [data-scene-list]) .panel-backdrop { background: transparent; backdrop-filter: none; }
 }
 body.panel-open .office-hint { display: none; }
+/* Over the bubbles, under cards and menus; its own finger, so the browser takes no gesture from it. */
+.office-throw { position: absolute; right: calc(16px + env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom)); width: 72px; height: 72px; padding: 0; border: 2.5px solid #1b1a1f; border-radius: 50%; background: #fffdf7; color: #1b1a1f; font: 700 16px system-ui, sans-serif; box-shadow: 0 3px 0 #1b1a1f; z-index: 1002; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.office-throw[hidden] { display: none; }
+.office-throw.held { background: #ffd166; transform: translateY(2px); box-shadow: 0 1px 0 #1b1a1f; }
+.office-throw.off { background: #ff8f7a; font-size: 26px; }
+body.panel-open .office-throw { display: none; }
 /* It fades in gently as the view settles on whoever you're talking to. */
 @media (prefers-reduced-motion: no-preference) {
   :root[data-theme-choice=office]:not([data-scene-fallback], [data-scene-list]) .detail-panel { animation: office-panel-in .4s ease; }

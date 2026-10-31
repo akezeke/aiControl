@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { FULL_CHARGE, chargeAt, createCharge, createHand, handModel, handParts, launch, throwSpeed } from '../client/office/throwing.js';
+import { SLIDE_OFF, FULL_CHARGE, chargeAt, createCharge, createHand, createThrowButton, handModel, handParts, launch, throwSpeed } from '../client/office/throwing.js';
 import { Player } from '../client/office/player.js';
 
 test('a tap tosses at a quarter of full speed, a long hold gets all of it, and it holds', () => {
@@ -152,42 +152,119 @@ test('dragging past the slop calls the throw off and looks around instead', t =>
   assert.deepEqual(calls, [['press', 20], 'cancel']); assert.notEqual(player.yaw, yaw);
   pointer('up', 40); assert.deepEqual(calls, [['press', 20], 'cancel'], 'neither a throw nor a click');
 });
-test('a second finger calls the throw off', t => {
-  const { calls, pointer } = presses(t);
-  pointer('down', 20, { pointerType: 'touch' }); pointer('down', 60, { pointerType: 'touch', pointerId: 2 }); pointer('up', 60, { pointerType: 'touch', pointerId: 2 });
-  assert.deepEqual(calls, [['press', 20], 'cancel']);
-});
-test('a finger held a moment aims as it charges, finely, and throws through the centre, wherever it came down', t => {
-  const { calls, pointer, player } = presses(t), yaw = player.yaw, touch = { pointerType: 'touch' };
-  pointer('down', 20, { ...touch, timeStamp: 1000 });
-  pointer('move', 120, { ...touch, timeStamp: 1300 });
-  assert.deepEqual(calls, [['press', 20]], 'still charging');
-  const turned = player.yaw - yaw;
-  assert.ok(turned > 0, 'the scene follows the finger, as it does when looking');
-  assert.ok(Math.abs(turned) < 100 * 0.003, 'finer than looking');
-  pointer('up', 120, { ...touch, timeStamp: 1400 });
-  assert.deepEqual(calls, [['press', 20], ['release', 50]], 'the centre of the turned view');
-  assert.equal(player.spin, 0, 'and no fling');
-});
-test('a tap anywhere throws along the centre', t => {
+test('holding, a finger on the canvas never charges: a tap is a tap', t => {
   const { calls, pointer } = presses(t), touch = { pointerType: 'touch' };
-  pointer('down', 80, touch); pointer('up', 80, touch);
-  assert.deepEqual(calls, [['press', 80], ['release', 50]]);
+  pointer('down', 80, touch); assert.deepEqual(calls, []);
+  pointer('up', 80, touch); assert.deepEqual(calls, [['pick', 80]]);
 });
-test('a finger swiped straight away looks round: no throw, at the speed it always had', t => {
+test('holding, a finger dragged on the canvas looks round at the speed it always had, and flings, however long it was held first', t => {
   const { calls, pointer, player } = presses(t), yaw = player.yaw, touch = { pointerType: 'touch' };
   globalThis.innerWidth = 390; t.after(() => { delete globalThis.innerWidth; });
-  pointer('down', 20, { ...touch, timeStamp: 1000 }); pointer('move', 120, { ...touch, timeStamp: 1100 });
-  assert.deepEqual(calls, [['press', 20], 'cancel']);
-  assert.ok(Math.abs(player.yaw - yaw) >= 100 * 0.006 - 1e-9);
-  pointer('up', 120, { ...touch, timeStamp: 1200 });
-  assert.deepEqual(calls, [['press', 20], 'cancel']);
+  pointer('down', 20, { ...touch, timeStamp: 1000 }); pointer('move', 120, { ...touch, timeStamp: 1500 });
+  assert.ok(Math.abs(player.yaw - yaw) >= 100 * 0.006 - 1e-9, 'a look, not aiming');
+  pointer('move', 140, { ...touch, timeStamp: 1520 }); pointer('up', 140, { ...touch, timeStamp: 1530 });
+  assert.deepEqual(calls, []); assert.ok(player.spin > 0, 'it carries on');
 });
-test('a second finger calls off a throw that is being aimed', t => {
+test('holding, a second finger on the canvas calls nothing off and makes it no tap', t => {
   const { calls, pointer } = presses(t), touch = { pointerType: 'touch' };
-  pointer('down', 20, { ...touch, timeStamp: 1000 }); pointer('move', 60, { ...touch, timeStamp: 1300 });
-  pointer('down', 90, { ...touch, pointerId: 2, timeStamp: 1400 });
-  assert.deepEqual(calls, [['press', 20], 'cancel']);
+  pointer('down', 20, touch); pointer('down', 60, { ...touch, pointerId: 2 }); pointer('up', 60, { ...touch, pointerId: 2 });
+  assert.deepEqual(calls, []);
+});
+// The canvas's side of the throw button: `aimFine` says it's held, whichever finger came first.
+test('while the button is held a finger turns the view finely, with the scene, and no fling; down first or second', t => {
+  for (const first of [true, false]) {
+    const { calls, pointer, player } = presses(t), yaw = player.yaw, touch = { pointerType: 'touch' };
+    player.spin = 2;
+    if (first) player.aimFine(true);
+    pointer('down', 20, { ...touch, timeStamp: 1000 });
+    if (!first) { pointer('move', 22, { ...touch, timeStamp: 1010 }); player.aimFine(true); }
+    assert.equal(player.spin, 0, 'it stops any fling still going');
+    const from = player.yaw;
+    pointer('move', 120, { ...touch, timeStamp: 1100 });
+    const turned = player.yaw - from;
+    assert.ok(turned > 0, 'the scene follows the finger'); assert.ok(Math.abs(turned - 100 * 0.0022) < 1e-9, `at the fine speed, ${turned}`);
+    pointer('move', 200, { ...touch, timeStamp: 1120 }); pointer('up', 200, { ...touch, timeStamp: 1125 });
+    assert.equal(player.spin, 0, 'no fling'); assert.deepEqual(calls, [], 'no tap, nothing called off');
+    assert.ok(player.yaw !== yaw);
+  }
+});
+test('a tap on the canvas while the button is held is nothing', t => {
+  const { calls, pointer, player } = presses(t), touch = { pointerType: 'touch' };
+  player.aimFine(true); pointer('down', 20, touch); pointer('up', 20, touch);
+  assert.deepEqual(calls, []);
+});
+test('the button let go with the other finger still down: it looks at its own speed from there, with no fling, and is no tap', t => {
+  const { calls, pointer, player } = presses(t), touch = { pointerType: 'touch' };
+  globalThis.innerWidth = 390; t.after(() => { delete globalThis.innerWidth; });
+  player.aimFine(true); pointer('down', 20, { ...touch, timeStamp: 1000 }); player.aimFine(false);
+  const from = player.yaw; pointer('move', 120, { ...touch, timeStamp: 1010 });
+  assert.ok(Math.abs(player.yaw - from) >= 100 * 0.006 - 1e-9);
+  pointer('up', 120, { ...touch, timeStamp: 1015 });
+  assert.equal(player.spin, 0); assert.deepEqual(calls, []);
+});
+test('with the button let go a new finger is an ordinary look and tap again', t => {
+  const { calls, pointer, player } = presses(t), touch = { pointerType: 'touch' };
+  player.aimFine(true); player.aimFine(false); pointer('down', 20, touch); pointer('up', 20, touch);
+  assert.deepEqual(calls, [['pick', 20]]);
+});
+
+// The throw button, without a browser: 72 px, its middle at 336, 636.
+function throwButton(t, answer = () => true) {
+  const handlers = {}, calls = [], classes = new Set(), captured = new Set();
+  const el = { textContent: 'Throw', addEventListener: (type, fn) => { handlers[type] = fn; }, setPointerCapture: id => captured.add(id), releasePointerCapture: id => captured.delete(id), hasPointerCapture: id => captured.has(id), getBoundingClientRect: () => ({ left: 300, top: 600, width: 72, height: 72 }), classList: { toggle: (name, on) => { if (on) classes.add(name); else classes.delete(name); }, contains: name => classes.has(name) } };
+  const button = createThrowButton(el, { press: () => { calls.push('press'); return answer(); }, release: () => calls.push('release'), cancel: () => calls.push('cancel') });
+  const fire = (type, clientX = 336, clientY = 636, pointerId = 1) => handlers[type]({ pointerId, clientX, clientY, preventDefault() { calls.push('no menu'); } });
+  return { button, calls, classes, captured, el, fire };
+}
+test('a tap on the button throws, at the same low power as ever', t => {
+  const { calls, classes, fire, captured } = throwButton(t), charge = createCharge();
+  charge.press(10); fire('pointerdown'); assert.deepEqual(calls, ['press']); assert.ok(classes.has('held')); assert.ok(captured.has(1), 'its own pointer');
+  fire('pointerup'); assert.deepEqual(calls, ['press', 'release']); assert.ok(!classes.has('held'));
+  const kind = { throw: 8 }; assert.ok(throwSpeed(kind, charge.release(10.05)) < 0.35 * kind.throw, 'a tap\'s toss');
+});
+test('held, the button keeps on holding, whatever the finger does on it, and throws when it comes up', t => {
+  const { calls, classes, fire } = throwButton(t);
+  fire('pointerdown'); fire('pointermove', 336 + 36 + SLIDE_OFF - 2);
+  assert.ok(!classes.has('off'), 'not by a clear margin yet'); assert.deepEqual(calls, ['press']);
+  fire('pointerup', 336 + 36 + SLIDE_OFF - 2); assert.deepEqual(calls, ['press', 'release']);
+});
+test('slid off the button by a clear margin it shows so, and coming up calls it off', t => {
+  const { calls, classes, fire, el } = throwButton(t);
+  fire('pointerdown'); fire('pointermove', 336, 636 - 36 - SLIDE_OFF - 2);
+  assert.ok(classes.has('off')); assert.equal(el.textContent, '✕'); assert.deepEqual(calls, ['press'], 'not until it comes up');
+  fire('pointerup', 336, 636 - 36 - SLIDE_OFF - 2);
+  assert.deepEqual(calls, ['press', 'cancel']); assert.ok(!classes.has('off') && !classes.has('held')); assert.equal(el.textContent, 'Throw');
+});
+test('slid off and back, it throws after all', t => {
+  const { calls, classes, fire, el } = throwButton(t);
+  fire('pointerdown'); fire('pointermove', 100, 100); fire('pointermove', 340, 640);
+  assert.ok(!classes.has('off')); assert.equal(el.textContent, 'Throw');
+  fire('pointerup', 340, 640); assert.deepEqual(calls, ['press', 'release']);
+});
+for (const lost of ['pointercancel', 'lostpointercapture']) test(`a ${lost} calls it off, once`, t => {
+  const { calls, classes, fire } = throwButton(t);
+  fire('pointerdown'); fire(lost); assert.deepEqual(calls, ['press', 'cancel']); assert.ok(!classes.has('held'));
+  fire('pointerup'); fire('lostpointercapture'); assert.deepEqual(calls, ['press', 'cancel']);
+});
+test('only the finger that pressed it counts: others on the button do nothing', t => {
+  const { calls, classes, fire } = throwButton(t);
+  fire('pointerdown'); fire('pointerdown', 340, 640, 2); fire('pointermove', 0, 0, 2); assert.ok(!classes.has('off'));
+  fire('pointerup', 0, 0, 2); fire('pointercancel', 0, 0, 2); assert.deepEqual(calls, ['press']);
+  fire('pointerup'); assert.deepEqual(calls, ['press', 'release']);
+});
+test('with nothing to charge a press is nothing, and takes no pointer', t => {
+  const { calls, classes, fire, captured } = throwButton(t, () => false);
+  fire('pointerdown'); assert.deepEqual(calls, ['press']); assert.ok(!classes.has('held')); assert.equal(captured.size, 0);
+  fire('pointerup'); assert.deepEqual(calls, ['press']);
+});
+test('called off from elsewhere, the button lets go, and its finger coming up is nothing', t => {
+  const { button, calls, classes, fire, captured } = throwButton(t);
+  fire('pointerdown'); button.drop(); assert.ok(!classes.has('held')); assert.equal(captured.size, 0);
+  fire('lostpointercapture'); fire('pointerup'); assert.deepEqual(calls, ['press']);
+  fire('pointerdown', 336, 636, 2); assert.deepEqual(calls, ['press', 'press'], 'and it can be pressed again');
+});
+test('a long press on the button brings up no menu', t => {
+  const { calls, fire } = throwButton(t); fire('contextmenu'); assert.deepEqual(calls, ['no menu']);
 });
 test('a mouse drag still calls the throw off however long it was held', t => {
   const { calls, pointer, player } = presses(t);

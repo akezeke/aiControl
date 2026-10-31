@@ -133,6 +133,23 @@ export function createCharge(hide = () => {}) {
   };
 }
 
+// On touch, the button that throws. Pressed it charges and up it throws, along the view's centre; slid SLIDE_OFF px past its edge it shows ✕, and comes up calling it off, as a lost pointer does. Its finger's its own: others on it, or on the canvas, do something else.
+export const SLIDE_OFF = 40;
+export function createThrowButton(el, { press, release, cancel }) {
+  let id = null;
+  const done = () => { el.classList.toggle('held', false); el.classList.toggle('off', false); el.textContent = 'Throw'; if (id !== null && el.hasPointerCapture(id)) el.releasePointerCapture(id); id = null; };
+  const ours = fn => event => { if (event.pointerId === id) fn(event); };
+  el.addEventListener('pointerdown', event => { if (id !== null || !press()) return; id = event.pointerId; el.setPointerCapture(id); el.classList.toggle('held', true); });
+  el.addEventListener('pointermove', ours(({ clientX, clientY }) => {
+    const { left, top, width, height } = el.getBoundingClientRect(), off = Math.hypot(clientX - left - width / 2, clientY - top - height / 2) > width / 2 + SLIDE_OFF;
+    if (off !== el.classList.contains('off')) { el.classList.toggle('off', off); el.textContent = off ? '✕' : 'Throw'; }
+  }));
+  el.addEventListener('pointerup', ours(() => { const off = el.classList.contains('off'); done(); if (off) cancel(); else release(); }));
+  for (const lost of ['pointercancel', 'lostpointercapture']) el.addEventListener(lost, ours(() => { done(); cancel(); }));
+  el.addEventListener('contextmenu', event => event.preventDefault());
+  return { drop: done };
+}
+
 // The power gauge's colour at a charge, 0 to 1: calm, then warm, then hot.
 const HEAT = [[0.18, 0.72, 0.8], [1, 0.76, 0.2], [1, 0.2, 0.1]], MIDDLE = 0.55;
 export function gaugeColour(level) {

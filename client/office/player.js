@@ -4,7 +4,7 @@
 // off first of all (`onCancel`, true if there was one), and so do losing the mouse or the window. Not captured, a drag does too.
 // Captured is what you want until you let go yourself: whatever else takes the mouse (a panel, a menu, the overview, another
 // window) gives it back when it's done (`wanted`, `resume`). Looking with the arrow keys aims with the dot too, until the mouse moves.
-// Touch drags the view along with the finger and taps to walk or pick someone. Holding something, a finger held a moment aims as it charges, turning the view finely, and throws along the view's centre wherever it came down; swiped straight away it's only looking. While the overview is up it has the keys and drags.
+// Touch drags the view along with the finger and taps to walk or pick someone, holding something or not: on touch the throw button (`createThrowButton`) charges, and while it's held (`aimFine`) a finger turns the view finely. While the overview is up it has the keys and drags.
 // A click on the floor walks there round the furniture: a walking key calls it off, and looking around doesn't.
 // Pinned (`pin`), for a game played from your own eyes, you stay where you are and can still look.
 import * as THREE from 'three';
@@ -15,7 +15,7 @@ export const LOOK_UP = 0.8; // radians: as high as you can look
 const reduceMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
 // How far (px) a press can move and still be a tap, not a drag (darts.js tells them apart the same way).
 export const DRAG_SLOP = 6;
-const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, TOUCH_LOOK = 0.006, LOCKED_LOOK = 0.0022, AIM_HOLD = 200, JUMP = 4.2, FLING = 0.3, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
+const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, TOUCH_LOOK = 0.006, LOCKED_LOOK = 0.0022, JUMP = 4.2, FLING = 0.3, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
 // How far (radians) you have to look on a walk for the view to stay yours; less is a twitch of the mouse as it clicks.
 const TAKE_VIEW = 0.05;
 // A walk by a click: it picks up speed (m/s²) and slows to a stop at the end; each corner is rounded off from up to ROUND (m)
@@ -45,9 +45,11 @@ export class Player {
     this.disposers = [];
     // A drag; and `charging`: this press charged a throw, so its release is that throw's, even if it's been called off since, and
     // never a click. Called off with the button out of sight, the press is over, for it may come up where we can't see it.
-    let drag = null, charging = false;
+    let drag = null, charging = false, fine = false;
     const noThrow = () => { if (charging) { charging = false; this.onCancel(); } };
     const callOff = () => { if (charging) drag = null; charging = false; this.onCancel(); };
+    // The throw button's held: any finger on the canvas turns the view finely, whichever came down first. That finger's no tap and no fling, even if the button's let go first.
+    this.aimFine = on => { fine = on; if (!on) return; this.spin = 0; if (drag) { drag.moved = drag.fine = true; drag.v = 0; } };
     listen(document, 'keydown', event => {
       this.shift = event.shiftKey;
       if (!officeHasKeys(event) || this.overview) return;
@@ -78,8 +80,8 @@ export class Player {
       if (event.button !== 0) { if (event.button === 2) this.onCancel(); return; }
       this.spin = 0;
       if (drag) { drag.moved = true; noThrow(); return; }
-      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, t: event.timeStamp, v: 0 }; canvas.setPointerCapture(event.pointerId);
-      charging = this.onPress(event, event.pointerType === 'mouse');
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: fine, fine, t: event.timeStamp, v: 0 }; canvas.setPointerCapture(event.pointerId);
+      charging = event.pointerType !== 'touch' && this.onPress(event, event.pointerType === 'mouse');
     });
     listen(canvas, 'pointermove', event => {
       if (event.button === 2) this.onCancel(); // pressed with the left still down, a right click is only a move
@@ -88,13 +90,12 @@ export class Player {
       if (event.pointerType === 'mouse' && (event.movementX || event.movementY)) this.keyLook = false;
       if (!drag || drag.id !== event.pointerId) return;
       if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < DRAG_SLOP) return;
-      const aiming = charging && event.pointerType === 'touch' && event.timeStamp - drag.t >= AIM_HOLD;
-      drag.moved = true; if (!aiming) noThrow();
+      drag.moved = true; noThrow();
       const dx = event.clientX - drag.x, dy = event.clientY - drag.y; drag.x = event.clientX; drag.y = event.clientY;
       // A finger drags the scene along with it (turning the other way to a mouse): a swipe across the screen turns
       // about 225° whatever its size, and the turn's speed (smoothed) carries on as a fling when the finger lifts.
       if (this.overview) return;
-      if (aiming) { look(-dx, -dy, LOCKED_LOOK); return; }
+      if (fine) { look(-dx, -dy, LOCKED_LOOK); return; }
       if (event.pointerType !== 'touch') { look(dx, dy, LOOK); return; }
       const speed = Math.max(TOUCH_LOOK, 1.25 * Math.PI / innerWidth), ms = Math.max(1, event.timeStamp - drag.t);
       look(-dx, -dy, speed);
@@ -104,7 +105,7 @@ export class Player {
       if (charging) { charging = false; this.onRelease(this.locked || event.pointerType !== 'mouse' ? this.centre : event); }
       else if (drag && !drag.moved) this.onPick(event, event.pointerType === 'mouse');
       // A finger that stopped before lifting doesn't fling.
-      else if (drag && event.pointerType === 'touch' && event.timeStamp - drag.t < 100 && !reduceMotion?.matches) this.spin = drag.v;
+      else if (drag && !drag.fine && event.pointerType === 'touch' && event.timeStamp - drag.t < 100 && !reduceMotion?.matches) this.spin = drag.v;
       drag = null;
     });
     listen(canvas, 'pointercancel', () => { drag = null; noThrow(); });

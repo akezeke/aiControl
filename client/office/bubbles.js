@@ -2,7 +2,7 @@
 // Plus the few controls that stay on screen: who's waiting, low usage, back to the list, the phone overview button, the aiming dot and the hint,
 // and the card beside whoever is outlined.
 import * as THREE from 'three';
-import { GAUGE_SIZE, createGauge } from './throwing.js';
+import { GAUGE_SIZE, createGauge, createThrowButton } from './throwing.js';
 
 const hintKey = 'ai-control-office-hint-3';
 
@@ -88,7 +88,7 @@ export class Bubbles {
 
 export { createCard, createMenu } from '../scene-ui.js';
 
-export function createOverlays(container, { onNext, onList, onOverview, onNew, onLeave, onCopy }) {
+export function createOverlays(container, { onNext, onList, onOverview, onNew, onLeave, onCopy, onThrow }) {
   const bar = document.createElement('div'); bar.className = 'office-overlay'; container.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); if (onclick) b.onclick = onclick; bar.append(b); return b; };
   const leave = button('office-leave', '✕ Quit game', 'Stop playing and stand up (Esc)', onLeave); leave.hidden = true;
@@ -101,6 +101,8 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
   const meter = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); meter.setAttribute('class', 'office-charge'); meter.setAttribute('viewBox', `0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`); meter.setAttribute('aria-hidden', 'true');
   meter.innerHTML = `<g>${['ink', 'track', 'fill', 'shine'].map(name => `<path class="${name}" d="${gaugeArc()}" pathLength="1"/>`).join('')}</g>`; container.append(meter);
+  const thrower = document.createElement('button'); thrower.type = 'button'; thrower.className = 'office-throw'; thrower.textContent = 'Throw'; thrower.setAttribute('aria-label', 'Throw'); thrower.hidden = true; container.append(thrower);
+  const throwing = createThrowButton(thrower, onThrow);
   const score = document.createElement('div'); score.className = 'office-score'; score.hidden = true; container.append(score);
   const copied = document.createElement('div'); copied.className = 'office-copied'; copied.textContent = 'Copied'; copied.hidden = true; container.append(copied);
   // Where the clipboard can't be written: the line selected, to copy by hand. Esc, its ✕ or a click anywhere else closes it; while it's up the keys are the input's.
@@ -119,6 +121,8 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     setPlaying(on) { leave.hidden = !on; },
     showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
+    showThrow(on) { if (thrower.hidden === on) thrower.hidden = !on; },
+    dropThrow() { throwing.drop(); },
     setCharge: createGauge(container, meter, meter.querySelector('.fill')),
     // What a shot asks (goalOf's list, a ticked line struck through) and, beside it, how it went; a null goal hides it.
     setScore(goal, verdict, canCopy) {
@@ -135,6 +139,6 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     closeCopy(target) { return !line.contains(target) && closeLine(); },
     // The hint goes once you've used the overview.
     overviewUsed() { if (hint.hidden) return; hint.classList.add('gone'); setTimeout(() => { hint.hidden = true; }, 600); try { localStorage.setItem(hintKey, '1'); } catch { /* per tab only */ } },
-    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); mark.remove(); meter.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
+    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); thrower.remove(); mark.remove(); meter.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
   };
 }

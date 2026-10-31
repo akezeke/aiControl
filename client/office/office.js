@@ -70,7 +70,7 @@ export function mountOffice(container, hooks) {
     room: () => layout && room.secret.bounds(layout.room), // the secret room's beside the office
     route: yourRoute,
     // In first person, a mouse click that isn't on someone (or a board, a pod's sign or a ball) captures the mouse; captured, a
-    // click on the floor walks there. With something in hand a press charges a throw instead; playing a game, the game has the
+    // click on the floor walks there. With something in hand a mouse press charges a throw instead (a finger has the throw button); playing a game, the game has the
     // click. A press that closes the sign's menu does nothing else.
     onPress: at => !dismissed && !dropsHeld(at) && startCharge(),
     onRelease: at => letGo(at),
@@ -97,7 +97,7 @@ export function mountOffice(container, hooks) {
   const hand = createHand(view.hands), palm = new THREE.Vector3();
   const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches, onHit, others: () => [goose.column], hand });
   // A throw: pressed, it charges while it's all still yours (no panel or menu's come up, no overview); let go, it flies along `at`.
-  const charge = createCharge(() => overlays.setCharge(null)), clock = () => performance.now() / 1000, noEvent = {};
+  const charge = createCharge(() => { overlays.setCharge(null); overlays.dropThrow(); player.aimFine(false); }), clock = () => performance.now() / 1000, noEvent = {};
   const thrower = () => playing?.free ? playing : props;
   const canCharge = () => (!playing || playing.free) && thrower().holding && !view.overview && !menu.open;
   const startCharge = () => { if (!canCharge()) return false; charge.press(clock()); return true; };
@@ -107,7 +107,7 @@ export function mountOffice(container, hooks) {
     const level = charge.release(clock()); keyed = false; if (level === null) return;
     thrower().release(level, rayAt(at, renderer.domElement, camera));
   };
-  // Where a throw would go if let go now: E and a finger throw along the centre, whatever else the pointer's doing. And a level's item, with something else in hand,
+  // Where a throw would go if let go now: E and the throw button throw along the centre, whatever else the pointer's doing. And a level's item, with something else in hand,
   // is a click: that's dropped when the level starts.
   let keyed = false;
   const throwAt = () => charge.active && keyed || dot ? player.centre : mouse || player.centre;
@@ -182,7 +182,7 @@ export function mountOffice(container, hooks) {
   // Nothing else wants the mouse: no panel, menu or dialog up, not on the way to someone, not in the overview or a game, the window focused.
   const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !overlays.copying && !view.overview && !office.talking && (!playing || playing.free) && document.hasFocus();
   let wasFree = true;
-  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview), onLeave: () => play(null), onCopy: () => trickshot.copy(),
+  const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview), onLeave: () => play(null), onCopy: () => trickshot.copy(), onThrow: { press: () => { if (!startCharge()) return false; keyed = true; player.aimFine(true); return true; }, release: () => letGo(player.centre), cancel: () => callOff() },
     onNew: anchor => {
       const r = anchor.getBoundingClientRect();
       const known = [...new Set((office.snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort();
@@ -236,7 +236,9 @@ export function mountOffice(container, hooks) {
     if (!dot) card.move(mouse);
   });
   listen(container, 'pointerleave', () => { mouse = null; });
-  listen(container, 'pointerdown', event => { if (event.pointerType !== 'mouse') mouse = null; }); // on a device with both, a finger's throw isn't the mouse's
+  // On a device with both, a finger's throw isn't the mouse's; and the throw button's up for whichever was used last.
+  let touched = !!globalThis.matchMedia?.('(pointer: coarse)')?.matches;
+  listen(container, 'pointerdown', event => { if (event.pointerType !== 'mouse') mouse = null; touched = event.pointerType === 'touch'; });
   const hover = dt => {
     const aiming = player.aiming && !view.overview && !office.talking;
     if (aiming !== dot) { dot = aiming; overlays.showDot(aiming); hoverIn = 0; }
@@ -267,6 +269,7 @@ export function mountOffice(container, hooks) {
       if (!canCharge() || !officeHasKeys(noEvent)) callOff();
       else { const level = charge.level(clock()); overlays.setCharge(level, throwAt()); if (!reducedMotion?.matches) hand.pull(level); }
     }
+    overlays.showThrow(touched && canCharge() && officeHasKeys(noEvent) && !overlays.copying && !office.talking && !player.flight);
     // Whatever took the mouse is done with it.
     const now = free(); if (now && !wasFree) player.resume(); wasFree = now;
     // The overview has the keys and drags while it's up: you stay where you were.
