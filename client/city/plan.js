@@ -3,7 +3,7 @@
 import { SCREEN } from './sprite.js';
 import { fnv, lookOf, tower } from './identity.js';
 
-export const LOT = 70, PARK = 26, WALK = 2, ROAD = 14, BELT = PARK + WALK * 2 + ROAD, EDGE = ROAD + WALK * 2, PLANT = 60, PLOT = 2;
+export const LOT = 70, PARK = 26, WALK = 2, ROAD = 14, BELT = PARK + WALK * 2 + ROAD, EDGE = ROAD + WALK * 2, PLANT = 60, PLANT_GAP = 96, PLOT = 2;
 // Annexes stand to the screen's right and left of their parent however the city is turned: never in its column, so neither covers the other.
 export const SPOTS = [[28, -4], [-16, 16], [4, -28]];
 
@@ -21,7 +21,7 @@ export function annexAt(building, i, view) { const [a, b] = turned(SPOTS[i], vie
 const parcel = (seed, x, z, w, d) => ({ kind: KINDS[fnv(seed) % KINDS.length], x, z, w, d, seed });
 
 // `previous` is what this page last drew: while it stays open the columns only grow, so nothing already on screen slides.
-export function cityPlan(layout, towers = {}, previous = null, providers = [], sessions = []) {
+export function cityPlan(layout, towers = {}, previous = null, providers = [], sessions = [], accounts = ['']) {
   towers ||= {};
   const before = new Map((previous?.hoods || []).map(hood => [hood.key, hood])), desks = [...layout.desks.values()];
   const slotsOf = key => desks.filter(desk => desk.podKey === key).map(desk => desk.slot);
@@ -39,7 +39,8 @@ export function cityPlan(layout, towers = {}, previous = null, providers = [], s
   for (const hood of hoods) {
     hood.x = xs[hood.col]; hood.z = zAt(hood.row);
     hood.sign = { x: hood.x + hood.cols * LOT / 2, z: hood.z - WALK };
-    const slotOwner = new Map(desks.filter(desk => desk.podKey === hood.key).map(desk => [desk.slot, desk.sessionId]));
+    // An ended session's building may stand a while longer, but nothing holds its lot: you can build there straight away.
+    const slotOwner = new Map(desks.filter(desk => desk.podKey === hood.key && desk.vacantSince === undefined).map(desk => [desk.slot, desk.sessionId]));
     hood.lots = Array.from({ length: hood.cols * 2 }, (_, slot) => ({ key: `${hood.key}:${slot}`, slot, x: hood.x + (slot >> 1) * LOT + LOT / 2, z: hood.z + (slot & 1) * LOT + LOT / 2, sessionId: slotOwner.get(slot) ?? null, cols: hood.cols }));
     // Each neighbourhood keeps its own parcels, seeded by its name: part of remembering where it is.
     const width = widths[hood.col], across = width / LOT, x1 = hood.x + width, z1 = hood.z + 2 * LOT;
@@ -68,8 +69,10 @@ export function cityPlan(layout, towers = {}, previous = null, providers = [], s
 
   const connected = name => providers.find(provider => provider.name === name)?.connected === true;
   // An agent that isn't set up here has no plant. One that was, or that has sessions in the city, stays when it drops: dark, which is why they are.
-  const plants = [{ provider: 'claude', name: 'Claude Code', x: -PLANT, z: D * .62, connected: connected('Claude Code') }, { provider: 'codex', name: 'Codex', x: W * .62, z: -PLANT, connected: connected('Codex') }]
-    .filter(plant => plant.connected || sessions.some(session => session.provider === plant.provider) || previous?.plants.some(was => was.provider === plant.provider));
+  // One plant per account, since each has its own limits, spread around where a lone one stands.
+  const claudes = accounts.map((account, i) => ({ provider: 'claude', account, key: account ? `claude:${account}` : 'claude', name: account ? `Claude · ${account}` : 'Claude Code', x: -PLANT, z: D * .62 + (i - (accounts.length - 1) / 2) * PLANT_GAP, connected: connected('Claude Code') }));
+  const plants = [...claudes, { provider: 'codex', key: 'codex', name: 'Codex', x: W * .62, z: -PLANT, connected: connected('Codex') }]
+    .filter(plant => plant.connected || sessions.some(session => session.provider === plant.provider) || previous?.plants.some(was => was.key === plant.key));
   const roads = { xs: [...xs.slice(0, -1).map(x => x - ROAD - WALK), W - ROAD - WALK], zs: Array.from({ length: rows + 1 }, (_, i) => zAt(i) - ROAD - WALK) };
   return { hoods, buildings, roads, parcels, parks, plants, bounds: { w: W, d: D }, widths };
 }

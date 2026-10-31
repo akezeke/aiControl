@@ -93,6 +93,7 @@ const usageWindow = (id, label, usedPercent, resetMinutes, scope = '') => ({ id,
 const usage = [
   { provider: 'codex', name: 'Codex', windows: [usageWindow('codex:primary', '5-hour', 38, 134), usageWindow('codex:secondary', 'Weekly', 21, 4 * 1440)], updatedAt: now, status: 'ready', detail: '' },
   { provider: 'claude', name: 'Claude Code', windows: [usageWindow('five_hour', '5-hour', 64, 71), usageWindow('seven_day', 'Weekly', 47, 2 * 1440)], updatedAt: now, status: 'ready', detail: '' },
+  { provider: 'claude', label: 'work', name: 'Claude Code · work', windows: [usageWindow('five_hour', '5-hour', 22, 188), usageWindow('seven_day', 'Weekly', 31, 5 * 1440)], updatedAt: now, status: 'ready', detail: '' },
 ];
 // Same merge as server/main.mjs: a pending request sets the session status.
 const seats = new OfficeSeats(), towers = new CityTowers();
@@ -102,7 +103,7 @@ const snapshot = () => {
     sessions: sessions.map(s => { const own = requests.filter(r => r.sessionId === s.id); return { ...s, ...(own.length ? { status: own[0].kind === 'question' ? 'question' : 'permission' } : {}), requests: own }; }),
     office: seats.update(sessions),
     towers: towers.update(sessions),
-    usage, features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: 'demo',
+    usage, features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: 'demo', claudeAccounts: ['', 'work'],
     providers: [{ name: 'Codex', connected: true, detail: 'Demo data' }, { name: 'Claude Code', connected: true, detail: 'Demo data' }],
   };
 };

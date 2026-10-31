@@ -58,14 +58,16 @@ export function layoutOffice(sessions, previous, now = Date.now(), reserved = ne
     const wanted = [...reserved.get(pod.key) || []];
     for (const session of [...pod.sessions].sort((a, b) => a.id.localeCompare(b.id))) {
       if (kept.has(session.id)) continue;
+      // Someone who has left only holds a seat until it's asked for: they're off the floor once its agent arrives.
+      const open = slot => slots[slot] === undefined || pod.sessions.some(other => other.id === slots[slot] && other.vacantSince !== undefined);
       let slot = wanted.shift();
-      while (slot !== undefined && slots[slot] !== undefined) slot = wanted.shift();
+      while (slot !== undefined && !open(slot)) slot = wanted.shift();
       if (slot === undefined) { slot = 0; while (slots[slot] !== undefined) slot++; }
       slots[slot] = session.id;
     }
     pod.slots = slots;
-    // The folder the pod's sign starts another agent in (room.js), from someone still here.
-    pod.cwd = pod.sessions.find(session => session.cwd && session.vacantSince === undefined)?.cwd;
+    // The folder the pod's sign starts another agent in (room.js), from someone still here, or as last known while the last of them leaves.
+    pod.cwd = pod.sessions.find(session => session.cwd && session.vacantSince === undefined)?.cwd ?? previous?.pods.find(old => old.key === pod.key)?.cwd;
     pod.pairs = Math.max(1, Math.ceil(slots.length / 2));
     pod.width = pod.pairs * DESK_W;
     pod.depth = 2 * DESK_D + 2 * CHAIR;

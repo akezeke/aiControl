@@ -126,6 +126,23 @@ test('a reserved slot already taken is skipped', () => {
   const first = layoutOffice([s('a', 'p')], null, 1);
   assert.equal(layoutOffice([s('a', 'p'), s('n', 'p')], first, 2, new Map([['/p/p', [0, 4]]])).desks.get('n').slot, 4);
 });
+test('a reserved slot goes to the newcomer even while someone who has left still holds it', () => {
+  const first = layoutOffice([s('a', 'p'), s('b', 'p')], null, 1), left = layoutOffice([s('b', 'p')], first, 2), slot = first.desks.get('a').slot;
+  const next = layoutOffice([s('b', 'p'), s('n', 'p')], left, 3, new Map([['/p/p', [slot]]]));
+  assert.equal(next.desks.get('n').slot, slot);
+  assert.equal(next.desks.has('a'), false, 'the one who left is off the floor');
+  assert.equal(next.desks.get('b').slot, first.desks.get('b').slot);
+});
+test('a reservation clears nobody before its agent has come', () => {
+  const first = layoutOffice([s('a', 'p')], null, 1), left = layoutOffice([], first, 2), waiting = layoutOffice([], left, 3, new Map([['/p/p', [0]]]));
+  assert.equal(waiting.desks.has('a'), true);
+  assert.equal(waiting.pods.length, 1, 'the project keeps its place');
+});
+test('a pod still knows its folder while its last session walks out', () => {
+  const first = layoutOffice([s('a', 'x')], null, 1), left = layoutOffice([], first, 2);
+  assert.equal(left.pods[0].cwd, '/p/x');
+  assert.equal(layoutOffice([], left, 3).pods[0].cwd, '/p/x');
+});
 test('reservations move nobody already seated', () => {
   const first = layoutOffice([s('a', 'p'), s('b', 'p')], null, 1), next = layoutOffice([s('a', 'p'), s('b', 'p')], first, 2, new Map([['/p/p', [0]]]));
   assert.equal(next.desks.get('a').slot, first.desks.get('a').slot); assert.equal(next.desks.get('b').slot, first.desks.get('b').slot);

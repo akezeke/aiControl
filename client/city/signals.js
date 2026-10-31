@@ -19,7 +19,7 @@ export function citySignal(session, { connected = true, now = Date.now() } = {})
 // What a plant is for: each agent's fuel. The limit closest to running out, and when it comes back. Limits whose reset has passed are awaiting a refresh, so they say nothing.
 export function plantTag(plant, usage = [], now = Date.now(), low = 80) {
   if (plant.connected === false) return { text: `${plant.name} offline`, title: `${plant.name} is not connected`, high: false };
-  const limits = usage.filter(account => account.provider === plant.provider).flatMap(account => account.windows || []).map(window => [window, usageWindowView(window, now)]).filter(([, view]) => !view.expired);
+  const limits = usage.filter(account => account.provider === plant.provider && (plant.account === undefined || (account.label || '') === plant.account)).flatMap(account => account.windows || []).map(window => [window, usageWindowView(window, now)]).filter(([, view]) => !view.expired);
   if (!limits.length) return { text: plant.name, title: plant.name, high: false };
   const [worst, view] = limits.reduce((a, b) => b[0].usedPercent > a[0].usedPercent ? b : a), percent = worst.usedPercent, high = percent >= low, resets = view.resetShortText === '—' ? '' : `\nresets ${view.resetShortText}`;
   return { text: `${plant.name} ${Math.round(percent)}%${resets}`, title: [`${plant.name} usage${high ? ' near its limit' : ''}`, ...limits.map(([window, { percentText, resetText }]) => `${window.label} ${percentText} · ${resetText}`)].join('\n'), high, meter: percent };

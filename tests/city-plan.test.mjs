@@ -51,6 +51,12 @@ test('missing data still draws: no towers entry, no towers at all, an ended sess
   for (const towers of [undefined, {}, { other: { storeys: 9 } }]) { const b = cityPlan(l1, towers).buildings[0]; assert.equal(b.storeys, 4); assert.deepEqual(b.look, tower('a')); }
   assert.ok(cityPlan(ended).buildings[0].vacantSince !== undefined);
 });
+test('a lot is free as soon as its session has ended, while its building is still there', () => {
+  const l1 = layoutOffice([s('a', 'x'), s('b', 'x')], null, 1), ended = cityPlan(layoutOffice([s('b', 'x')], l1, 2)), hood = ended.hoods[0];
+  assert.equal(hood.lots[l1.desks.get('a').slot].sessionId, null);
+  assert.equal(hood.lots[l1.desks.get('b').slot].sessionId, 'b');
+  assert.ok(ended.buildings.some(building => building.id === 'a'));
+});
 test('a subagent with no entry gets 2 storeys; desk fields carry through', () => {
   const b = plan([s('a', 'x'), s('k', 'x', { parentId: 'a', status: 'working' })]).buildings.find(q => q.id === 'a');
   assert.deepEqual(b.subagents, [{ id: 'k', storeys: 2, leaving: false }]); assert.equal(b.overflow, 0);
@@ -66,6 +72,17 @@ test('plants sit outside the grid and show the connection', () => {
   const p = cityPlan(layoutOffice([claudeSession], null, 1), {}, null, [{ name: 'Claude Code', connected: false }, { name: 'Codex', connected: true }], [claudeSession]);
   const claude = p.plants.find(q => q.provider === 'claude'), codex = p.plants.find(q => q.provider === 'codex');
   assert.equal(claude.x, -PLANT); assert.equal(codex.z, -PLANT); assert.equal(claude.connected, false); assert.equal(codex.connected, true);
+});
+test('every Claude account has its own plant, side by side, and one account stays where it was', () => {
+  const session = { ...s('a', 'x'), provider: 'claude' }, providers = [{ name: 'Claude Code', connected: true }, { name: 'Codex', connected: true }], layout = layoutOffice([session], null, 1);
+  const one = cityPlan(layout, {}, null, providers, [session]).plants, two = cityPlan(layout, {}, null, providers, [session], ['', 'work']).plants;
+  assert.deepEqual(one.map(plant => plant.name), ['Claude Code', 'Codex']);
+  assert.deepEqual(two.map(plant => plant.name), ['Claude Code', 'Claude · work', 'Codex']);
+  assert.equal(new Set(two.map(plant => plant.key)).size, 3);
+  const [a, b] = two;
+  assert.equal(a.x, b.x);
+  assert.ok(Math.abs(a.z - b.z) >= 50, 'far enough apart that neither stands on the other');
+  assert.ok(Math.abs((a.z + b.z) / 2 - one[0].z) < 1e-9);
 });
 const plantsOf = (sessions, providers, previous) => cityPlan(layoutOffice(sessions, null, 1), {}, previous, providers, sessions).plants.map(q => q.provider);
 const both = (claude, codex) => [{ name: 'Claude Code', connected: claude }, { name: 'Codex', connected: codex }];

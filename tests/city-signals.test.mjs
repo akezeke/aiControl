@@ -72,6 +72,12 @@ test('a power plant always says whose it is, with its usage when there is any', 
   assert.equal(tag([windowOf('5-hour', 80, 60)]).high, true);
   assert.equal(tag([windowOf('5-hour', 79, 60)]).high, false);
 });
+test('a plant for one account reads only that account', () => {
+  const usage = [{ provider: 'claude', label: '', windows: [windowOf('5-hour', 20, 60)] }, { provider: 'claude', label: 'work', windows: [windowOf('5-hour', 90, 60)] }];
+  assert.equal(plantTag({ provider: 'claude', account: '', name: 'Claude Code' }, usage, NOW).text.split('\n')[0], 'Claude Code 20%');
+  const work = plantTag({ provider: 'claude', account: 'work', name: 'Claude · work' }, usage, NOW);
+  assert.equal(work.text.split('\n')[0], 'Claude · work 90%'); assert.equal(work.high, true);
+});
 const clock = minutes => new Date(NOW + minutes * 60_000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const codex = { provider: 'codex', name: 'Codex', connected: true }, tagOf = windows => plantTag(codex, [{ provider: 'codex', windows }], NOW);
 test('a plant says when the limit nearest to running out comes back', () => {
