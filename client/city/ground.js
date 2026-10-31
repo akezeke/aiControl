@@ -25,8 +25,10 @@ const KERB = 2, PATH = 4, BUSH = 8, STAKE = 6;
 // How far the land runs past the city: its power plants stand north and west of it, so that's where it needs the room.
 export const LAND = 98, LAND_FAR = 40;
 const RIPPLES = 66, CORNER = 34, TREE_GRID = 21;
+// Which water moves: a band along the shore for the waves, and now and then a cell further out that catches the light.
+const WAVES_FROM = 2, WAVES_TO = 9, GLINTS_FROM = 9, GLINTS_TO = 120, GLINT_EVERY = 90;
 // Cheap and without a visible grain, which a sum of multiples isn't: this runs for every cell of the map.
-const mix = (a, b) => { let n = Math.imul(a, 73856093) ^ Math.imul(b, 19349663); n = Math.imul(n ^ n >>> 13, 1274126177); return (n ^ n >>> 16) >>> 0; };
+export const mix = (a, b) => { let n = Math.imul(a, 73856093) ^ Math.imul(b, 19349663); n = Math.imul(n ^ n >>> 13, 1274126177); return (n ^ n >>> 16) >>> 0; };
 // Slow waves, so that the meadow's lighter part comes in big soft patches and trees gather in them.
 const patch = (x, z) => Math.sin(x / 19 + z / 31) + Math.sin(z / 13 - x / 41);
 const meadow = (x, z, soil) => { const n = mix(x, z); return patch(x, z) > .55 ? n % 401 === 0 ? C.flower : n % 37 === 0 ? soil.tuft : soil.land2 : n % 149 === 0 ? soil.tuft : soil.land; };
@@ -37,19 +39,20 @@ const stacks = new Map(), once = (key, make) => { if (!stacks.has(key)) stacks.s
 // An island: the distance past the edge of a rounded box, made uneven by a couple of slow waves.
 export const reachOf = (W, D) => (x, z) => { const qx = Math.abs(x - (W + LAND_FAR - LAND) / 2) - (W + LAND_FAR + LAND) / 2 + CORNER, qz = Math.abs(z - (D + LAND_FAR - LAND) / 2) - (D + LAND_FAR + LAND) / 2 + CORNER; return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - CORNER + Math.sin(x / 23) * 3 + Math.sin(z / 17) * 2; };
 // The slow part of the ground, and the part a new session doesn't change, so it's only painted when the city changes size.
-let land = { key: '', rgb: null };
+let land = { key: '', rgb: null, shore: [], past: [], glint: [] };
 function landscape(W, D, x0, z0, w, d, time) {
   const key = `${W},${D},${time}`;
-  if (land.key === key) return land.rgb;
-  const out = new Uint8Array(w * d * 3), reach = reachOf(W, D), soil = soilOf(time);
+  if (land.key === key) return land;
+  const out = new Uint8Array(w * d * 3), reach = reachOf(W, D), soil = soilOf(time), shore = [], depths = [], glint = [];
   for (let b = 0; b < d; b++) for (let a = 0; a < w; a++) {
     const past = reach(x0 + a, z0 + b);
     // Ripples are dashes, thinning out the further they are from shore so that they never end in a line.
     const c = past < 0 ? meadow(x0 + a, z0 + b, soil) : past < 4 ? C.sand : past < 5 ? C.foam : past < RIPPLES && a % 9 < 5 && mix(a >> 3, b) % (12 + Math.floor(past)) === 0 ? C.ripple : C.sea;
     out.set(c, (a + b * w) * 3);
+    if (past >= WAVES_FROM && past < WAVES_TO) { shore.push(x0 + a, z0 + b); depths.push(past); } else if (past >= GLINTS_FROM && past < GLINTS_TO && mix(x0 + a, z0 + b) % GLINT_EVERY === 0) glint.push(x0 + a, z0 + b);
   }
-  land = { key, rgb: out };
-  return out;
+  land = { key, rgb: out, shore, past: depths, glint };
+  return land;
 }
 
 export function groundCells(plan, time = 'day') {
@@ -57,7 +60,8 @@ export function groundCells(plan, time = 'day') {
   const set = (x, z, c) => { const a = Math.floor(x) - x0, b = Math.floor(z) - z0; if (a < 0 || b < 0 || a >= w || b >= d) return; const i = (a + b * w) * 3; rgb[i] = c[0]; rgb[i + 1] = c[1]; rgb[i + 2] = c[2]; };
   const rect = (x, z, W2, D2, c) => { for (let b = 0; b < D2; b++) for (let a = 0; a < W2; a++) set(x + a, z + b, typeof c === 'function' ? c(a, b) : c); };
   const prop = (stack, x, z) => props.push({ stack, x, z });
-  rgb.set(landscape(W, D, x0, z0, w, d, time));
+  const coast = landscape(W, D, x0, z0, w, d, time);
+  rgb.set(coast.rgb);
   rect(0, 0, W, D, C.block);
 
   // Roads run the length of the city; a walk either side, dashes down the middle, a crossing at each junction.
@@ -127,7 +131,12 @@ export function groundCells(plan, time = 'day') {
     const dark = nearest([0, 1, 2].map(k => rgb[i * 3 + k] + (C.shadow[k] - rgb[i * 3 + k]) * DARK));
     rgb[i * 3] = dark[0]; rgb[i * 3 + 1] = dark[1]; rgb[i * 3 + 2] = dark[2];
   }
-  return { x0, z0, w, d, rgb, props };
+  // Whatever has been built over the water, or lies in a shadow on it, stays still.
+  const wet = new Set([C.sea, C.ripple, C.sand, C.foam].map(c => c.join())), stillWet = (x, z) => { const i = (x - x0 + (z - z0) * w) * 3; return wet.has(`${rgb[i]},${rgb[i + 1]},${rgb[i + 2]}`); };
+  const water = { shore: [], past: [], glint: [] };
+  for (let i = 0; i < coast.shore.length; i += 2) if (stillWet(coast.shore[i], coast.shore[i + 1])) { water.shore.push(coast.shore[i], coast.shore[i + 1]); water.past.push(coast.past[i / 2]); }
+  for (let i = 0; i < coast.glint.length; i += 2) if (stillWet(coast.glint[i], coast.glint[i + 1])) water.glint.push(coast.glint[i], coast.glint[i + 1]);
+  return { x0, z0, w, d, rgb, props, water };
 }
 
 // Parcels are flat or nearly so: nothing here is ever tall enough to get in a building's way.

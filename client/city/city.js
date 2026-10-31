@@ -12,6 +12,7 @@ import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
 import { hop, hum, phaseAt, sparks, STEAM_MS, traffic, BURSTS, burst, momentOf, jibBeat } from './juice.js';
+import { seaFrame, SEA_FRAMES, SEA_KINDS } from './surroundings.js';
 import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf, keyPan } from './view.js';
 import { createControls, createLabels } from './labels.js';
 import { paintMap, trackMap, steerMap } from './minimap.js';
@@ -65,11 +66,11 @@ export function mountCity(box, hooks = {}) {
   glowCanvas.className = 'city-glow';
   if (bloom) box.append(glowCanvas);
 
-  const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), litHoods = new Map(), lotShades = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
+  const sprites = new SpriteCache(CACHE), shown = new Map(), grounds = new Map(), seas = new Map(), litHoods = new Map(), lotShades = new Map(), lots = { hover: null, selected: null, cursor: null, asked: null };
   const lifecycle = new Lifecycle(), fired = new Map(), ghosts = new Map(), hops = new Map(), moods = new Map(), states = new Map(), bursts = new Map(); // ghosts: what has left the plan but is still going up in dust.
   let snapshot = null, error = '', layout = null, plan = null, sessions = new Map(), cells = null, cellsKey = '', hour = timeOfDay(), clock = 0;
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
-  let raf = 0, timer = 0, dirty = true, lastDrawn = '', glowDrawn = '', failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
+  let raf = 0, timer = 0, dirty = true, lastDrawn = '', glowDrawn = '', seaNow = null, seaFrameDrawn = 0, failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
   let glide = null, coast = null, drawn = [], selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
 
@@ -197,6 +198,31 @@ export function mountCity(box, hooks = {}) {
     if (!ground) { const started = performance.now(), painted = paintGround(cells, view); ground = { ...painted, image: toImage(painted) }; grounds.set(view, ground); groundMs.push(performance.now() - started); }
     return ground;
   };
+  // Foam and glints. The ground underneath is never redrawn for them, only painted over, and a frame of them is worked out once per view.
+  const seaList = frame => { const key = `${view}:${frame}`; let list = seas.get(key); if (!list) { list = seaFrame(cells.water, frame, view); seas.set(key, list); } return list; };
+  const seaShows = list => { const [gx, gy] = toCanvas(camera, size, 0, 0); for (let i = 0; i < list.length; i += 3) { const x = list[i] + gx, y = list[i + 1] + gy; if (x > -8 && y > -1 && x < size.width && y < size.height) return true; } return false; };
+  // The ground and the sea are one opaque sheet, as big as the canvas, made again when the sea moves or the camera does. The dashes are a few thousand rectangles and everything else here paints three times as often.
+  const sheet = document.createElement('canvas'), sheetCtx = sheet.getContext('2d', { alpha: false });
+  let sheetOf = null, sheetKey = '';
+  const paintGroundSheet = (ground, gx, gy) => {
+    const key = `${seaNow ? seaFrameDrawn : ''}|${gx}|${gy}|${size.width}|${size.height}`;
+    if (key !== sheetKey || ground !== sheetOf) {
+      sheetKey = key; sheetOf = ground;
+      if (sheet.width !== size.width || sheet.height !== size.height) { sheet.width = size.width; sheet.height = size.height; }
+      sheetCtx.fillStyle = FLOOR; sheetCtx.fillRect(0, 0, size.width, size.height);
+      sheetCtx.drawImage(ground.image, gx - ground.originX, gy - ground.originY);
+      if (seaNow) {
+        let was = -1;
+        for (let i = 0; i < seaNow.length; i += 3) {
+          const x = seaNow[i] + gx, y = seaNow[i + 1] + gy, kind = seaNow[i + 2];
+          if (x <= -8 || y <= -1 || x >= size.width || y >= size.height) continue;
+          if (kind !== was) { sheetCtx.fillStyle = SEA_KINDS[kind].colour; was = kind; }
+          sheetCtx.fillRect(x, y, SEA_KINDS[kind].w, 1);
+        }
+      }
+    }
+    ctx.drawImage(sheet, 0, 0);
+  };
   const litHood = hood => {
     const key = `${hood.key}|${view}`;
     let lit = litHoods.get(key);
@@ -228,8 +254,7 @@ export function mountCity(box, hooks = {}) {
   const paint = list => {
     frames++;
     const ground = groundImage(), [gx, gy] = toCanvas(camera, size, 0, 0);
-    ctx.fillStyle = FLOOR; ctx.fillRect(0, 0, size.width, size.height);
-    ctx.drawImage(ground.image, gx - ground.originX, gy - ground.originY);
+    paintGroundSheet(ground, gx, gy);
     const chosen = selectedHood && plan.hoods.find(hood => hood.key === selectedHood), lit = chosen && litHood(chosen);
     if (lit) { ctx.fillStyle = DUSK; ctx.fillRect(0, 0, size.width, size.height); ctx.drawImage(lit.image, gx - lit.originX, gy - lit.originY); }
     // A pointer on a project's sign shows which ground is its, leaving the rest of the city as it was.
@@ -369,7 +394,12 @@ export function mountCity(box, hooks = {}) {
       if (sprite) shown.set(item.group, sprite); else sprite = shown.get(item.group);
       if (sprite) ready.push({ item, sprite });
     }
-    const drawing = ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.moves ? `${item.sx},${item.sy}` : ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
+    // Only worth a paint while some of it is on screen.
+    const frameOfSea = reducedMotion() ? -1 : Math.floor(now / STEAM_MS) % SEA_FRAMES;
+    if (frameOfSea >= 0) steaming = true;
+    seaNow = frameOfSea >= 0 ? seaList(frameOfSea) : null; seaFrameDrawn = frameOfSea;
+    if (seaNow && !seaShows(seaNow)) seaNow = null;
+    const drawing = (seaNow ? `sea${frameOfSea},` : '') + ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.moves ? `${item.sx},${item.sy}` : ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
     if (dirty || baked || drawing !== lastDrawn) { paint(ready); lastDrawn = drawing; dirty = false; }
     if (labelsStale) { moveLabels(); followMenu(); }
     return waiting || baked;
@@ -394,7 +424,7 @@ export function mountCity(box, hooks = {}) {
   clock = setInterval(() => {
     const now = timeOfDay();
     if (now === hour) return;
-    hour = now; grounds.clear(); litHoods.clear(); lotShades.clear(); mapRev++;
+    hour = now; grounds.clear(); seas.clear(); litHoods.clear(); lotShades.clear(); mapRev++;
     if (plan) cells = groundCells(plan, hour);
     wake();
   }, 60000);
@@ -647,7 +677,7 @@ export function mountCity(box, hooks = {}) {
       }
       lifecycle.update(plan, fired, now);
       const key = groundKey(plan);
-      if (key !== cellsKey) { cells = groundCells(plan, hour); cellsKey = key; grounds.clear(); litHoods.clear(); dirty = true; }
+      if (key !== cellsKey) { cells = groundCells(plan, hour); cellsKey = key; grounds.clear(); seas.clear(); litHoods.clear(); dirty = true; }
       if (selectedHood && !plan.hoods.some(hood => hood.key === selectedHood)) selectedHood = null;
       if (hoveredHood && !plan.hoods.some(hood => hood.key === hoveredHood)) hoveredHood = null;
       // Someone else may have just taken the lot it was asking about.
