@@ -43,20 +43,41 @@ export function createCard(container) {
 export function createMenu(container, onChoose, onClose) {
   const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
   let cwd = null, items = [];
-  // Without a folder (the + button) the menu asks for one, suggesting the folders sessions run in.
+  // Without a folder (the + button) the menu asks for one, suggesting the folders sessions run in. One that isn't there yet
+  // is made as the agent starts, if its parent is (server/folders.mjs); the note under it says which, as you type.
   const folder = document.createElement('input'); folder.className = 'office-folder'; folder.placeholder = '~/folder'; folder.setAttribute('aria-label', 'Folder'); folder.setAttribute('list', 'office-folders'); folder.autocomplete = 'off'; folder.spellcheck = false;
   const folders = document.createElement('datalist'); folders.id = 'office-folders';
+  const note = span('office-folder-note', ''); note.hidden = true; note.setAttribute('aria-live', 'polite');
+  let known = [], checked = { path: '', state: '' }, checking = 0, timer = 0;
+  const showState = (path, state) => {
+    checked = { path, state }; note.hidden = state !== 'new' && state !== 'none'; note.dataset.state = state;
+    note.textContent = state === 'new' ? '+ New folder' : state === 'none' ? 'No such folder' : '';
+    note.title = state === 'new' ? 'Created when the agent starts' : state === 'none' ? 'A new folder goes inside one that exists' : '';
+  };
+  const check = () => {
+    clearTimeout(timer); const path = folder.value.trim(), ask = ++checking;
+    if (!path || known.includes(path)) { showState(path, path && 'folder'); return; }
+    if (path !== checked.path) showState(path, ''); // Nothing said about a path till its answer comes.
+    timer = setTimeout(() => fetch(`/api/folder?path=${encodeURIComponent(path)}`, { credentials: 'same-origin', cache: 'no-store' })
+      .then(response => response.ok ? response.json() : null).catch(() => null)
+      .then(data => { if (ask === checking) showState(path, data?.state || ''); }), 200);
+  };
+  folder.addEventListener('input', check);
   folder.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); items[0]?.click(); } });
-  const build = (choices, known) => {
+  const build = choices => {
     items = choices.map(choice => {
       const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`;
       item.append(providerIcon(choice.provider), choice.label);
       if (choice.last) item.append(span('last', 'last'));
-      item.onclick = () => { const at = cwd ?? folder.value.trim(); if (!at) { folder.focus(); return; } result.close(); onChoose(at, choice, item); };
+      item.onclick = () => {
+        const at = cwd ?? folder.value.trim();
+        if (!at || (cwd === null && checked.path === at && checked.state === 'none')) { folder.focus(); return; }
+        result.close(); onChoose(at, cwd === null ? { ...choice, create: true } : choice, item);
+      };
       return item;
     });
     folders.replaceChildren(...known.map(path => Object.assign(document.createElement('option'), { value: path })));
-    menu.replaceChildren(...(cwd === null ? [folder, folders] : []), ...items);
+    menu.replaceChildren(...(cwd === null ? [folder, note, folders] : []), ...items);
   };
   // Keys stay in the menu: the arrows and WASD would otherwise walk or pan the camera behind it.
   menu.addEventListener('keydown', event => {
@@ -71,10 +92,10 @@ export function createMenu(container, onChoose, onClose) {
     get open() { return !menu.hidden; },
     contains: node => menu.contains(node),
     get asking() { return !menu.hidden && cwd === null; },
-    // At a screen point; `focus` for the keyboard. A null folder asks for one; `known` are the suggestions.
-    show(where, at, focus, choices, known = []) {
-      cwd = where; build(choices, known); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
-      if (where === null) { folder.value = ''; folder.focus(); } else if (focus) items[0].focus();
+    // At a screen point; `focus` for the keyboard. A null folder asks for one; `suggested` are the folders to suggest.
+    show(where, at, focus, choices, suggested = []) {
+      cwd = where; known = suggested; build(choices); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
+      if (where === null) { folder.value = ''; check(); folder.focus(); } else if (focus) items[0].focus();
     },
     move(at) { if (!menu.hidden) placeNear(container, menu, at); },
     close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; onClose?.(); },

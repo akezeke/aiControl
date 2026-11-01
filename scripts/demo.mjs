@@ -4,11 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import { Auth, savePassword } from '../server/auth.mjs';
 import { RequestStore, fail } from '../server/requests.mjs';
 import { createHandler } from '../server/http.mjs';
+import { folderPath } from '../server/folders.mjs';
 import { OfficeSeats } from '../server/seats.mjs';
 import { CityTowers } from '../server/towers.mjs';
 import { claudeRequest } from '../server/claude.mjs';
@@ -165,7 +166,8 @@ const messages = {
 
 // Enough of a spawn to try by hand: the agent turns up a moment later, where it was asked for.
 let spawned = 0;
-const spawn = async ({ cwd, slot } = {}) => {
+const spawn = async ({ cwd: typed, slot } = {}) => {
+  const cwd = folderPath(typed, '/home/demo') || typed;
   seats.reserve(cwd, slot);
   setTimeout(() => {
     const id = `demo-${++spawned}`, project = sessions.find(s => s.cwd === cwd)?.project || cwd.split('/').pop();
@@ -174,10 +176,16 @@ const spawn = async ({ cwd, slot } = {}) => {
   return { session: 'demo' };
 };
 
+// The new agent menu's folder check, over the made-up folders: a project's is there, one more inside ~/code or a project can be made.
+const folder = typed => {
+  const path = folderPath(typed, '/home/demo'), there = new Set(['/home/demo', home, ...sessions.map(s => s.cwd)]);
+  return !path ? 'none' : there.has(path) ? 'folder' : there.has(dirname(path)) ? 'new' : 'none';
+};
+
 const authFile = join(await mkdtemp(join(tmpdir(), 'ai-control-demo-')), 'auth.json');
 await savePassword(authFile, pin);
 const origins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
 const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: ['127.0.0.1', 'localhost'] } });
-const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn }));
+const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder }));
 server.listen(port, '127.0.0.1', () => console.log(`AI Control demo: ${origins[0]}  PIN ${pin}  (Ctrl-C stops)`));
 process.once('SIGINT', () => { server.closeAllConnections(); server.close(); vite.close().finally(() => process.exit(0)); });

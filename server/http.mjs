@@ -16,7 +16,7 @@ async function body(req) {
   try { return JSON.parse(raw); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -58,6 +58,11 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         res.setHeader('Set-Cookie', auth.cookie('', 0)); json(res, 200, { ok: true }); return;
       }
       if (path === '/api/snapshot' && req.method === 'GET') { json(res, 200, snapshot(), req); return; }
+      // Whether a typed folder is there, could be made (see folders.mjs), or neither: for the new agent menu as you type.
+      if (path === '/api/folder' && req.method === 'GET') {
+        if (!folder) throw fail('Starting agents is not available.', 503);
+        json(res, 200, { state: folder(new URL(req.url, origins[0]).searchParams.get('path') || '') }); return;
+      }
       if (path === '/api/spawn' && req.method === 'POST') {
         if (!spawn) throw fail('Starting agents is not available.', 503);
         const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;

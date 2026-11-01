@@ -1,9 +1,8 @@
 import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
 import { appendFile, writeFile, rename, unlink } from 'node:fs/promises';
-import { join, isAbsolute } from 'node:path';
-import { statSync } from 'node:fs';
-import { hostname as machineName, homedir } from 'node:os';
+import { join } from 'node:path';
+import { hostname as machineName } from 'node:os';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
 import { RequestStore, mergeSessions } from './requests.mjs';
@@ -13,6 +12,7 @@ import { UsagePoller, claudeUsageReader } from './usage.mjs';
 import { createHandler } from './http.mjs';
 import { fail } from './requests.mjs';
 import { spawnAgent } from './claude-messaging.mjs';
+import { agentFolder, folderState } from './folders.mjs';
 import { OfficeSeats } from './seats.mjs';
 import { CityTowers } from './towers.mjs';
 import { root, authFile, dataDir, hookSocket, port, claudeAccounts } from './config.mjs';
@@ -57,16 +57,16 @@ export async function startServer({ host, hostname, tls = null }) {
     documents: id => claudeId(id) ? claude.documentList(id) : codex.documentList(messageTarget(id)),
     document: (id, documentId) => claudeId(id) ? claude.document(id, documentId) : codex.document(messageTarget(id), documentId),
   };
-  // Any existing directory (~ expands). Claude starts under the account asked for, or the one the project last used.
-  // `slot` is the desk or lot the agent was asked for, if any.
-  const spawn = ({ cwd, provider, account: label, slot } = {}) => {
-    if (typeof cwd === 'string') cwd = cwd.trim().replace(/^~(?=\/|$)/, homedir()).replace(/(.)\/+$/, '$1');
-    if (typeof cwd !== 'string' || !isAbsolute(cwd) || !statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return Promise.reject(fail('No such folder.', 404));
+  // Any existing directory (~ expands), or with `create` a new one in an existing directory. Claude starts under the account
+  // asked for, or the one the project last used. `slot` is the desk or lot the agent was asked for, if any.
+  const spawn = ({ cwd: typed, provider, account: label, slot, create } = {}) => {
+    let cwd;
+    try { cwd = agentFolder(typed, { create: create === true }); } catch (e) { return Promise.reject(e); }
     const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
     seats.reserve(cwd, slot);
     return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' }).catch(e => { seats.release(cwd, slot); throw e; });
   };
-  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn });
+  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {
