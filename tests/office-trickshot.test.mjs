@@ -162,11 +162,11 @@ test('leaving puts the item back on its spot and opens the doors', () => {
   assert.ok(item(t, 'paper').parent, 'it\'s back in the room');
 });
 
-test('leaving mid-flight stops the shot where it is, and it\'s not scored', () => {
+test('leaving a miss mid-flight stops the shot where it is, and it\'s not scored', () => {
   const t = setup();
   const spot = item(t, 'paper').position.clone();
   begin(t, 'paper');
-  throwIt(t, IN);
+  throwIt(t, SKIDS);
   for (let i = 0; i < 10; i++) t.game.update(DT, null, false, true);
   t.game.leave();
   for (let i = 0; i < 300; i++) t.game.update(DT, null, false, true);
@@ -883,6 +883,23 @@ const fakeAudio = { currentTime: 0, destination: {}, resume() {}, close: async (
   createOscillator() { const o = { frequency: { setValueAtTime(from) { o.from = from; }, exponentialRampToValueAtTime() {} }, connect: to => to, start() { heard.push(o.from); }, stop() {} }; return o; } };
 const listen = c => { const was = globalThis.AudioContext; globalThis.AudioContext = function () { return fakeAudio; }; c.after(() => { globalThis.AudioContext = was; }); heard.length = 0; };
 const FANFARE = 1047;
+
+test('leaving with a made shot in the air keeps it, a miss or an ended flight adds nothing, and N and the panel go by way of leave', () => {
+  const t = setup(); begin(t, 'paper'); throwIt(t, IN);
+  const { score, pos } = t.game.run.result; assert.ok(t.game.run.result.made && !t.saved.length, 'in the air');
+  t.game.leave();
+  assert.equal(t.saved.length, 1); assert.equal(loadProgress(t.memory).best.paper, score, 'saved');
+  assert.deepEqual(item(t, 'paper').position.toArray(), pos, 'where it would have come to rest');
+  const flown = setup(); begin(flown, 'paper'); throwIt(flown, IN); play(flown);
+  const landed = flown.saved.length; assert.ok(landed); flown.game.leave();
+  assert.equal(flown.saved.length, landed, 'its end recorded it: not twice');
+  const out = setup(); begin(out, 'paper'); throwIt(out, SKIDS); assert.ok(!out.game.run.result.made); out.game.leave();
+  assert.equal(out.saved.length, 0, 'nothing made, nothing kept');
+  const source = readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8');
+  assert.match(source, /if \(was\) \{ was\.leave\(\);/, 'play(null) leaves');
+  assert.match(source, /onNext: \(\) => office\.talkTo\(/); assert.match(source, /talkTo\(id[^\n]*\{[\s\S]{0,200}?play\(null\)/, 'N');
+  assert.match(source, /playing\?\.free && document\.body\.classList\.contains\('panel-open'\)\) play\(null\)/, 'the panel');
+});
 
 test('unmounting closes the sound, once, and the next release makes a new one', c => {
   listen(c); closeAudio();

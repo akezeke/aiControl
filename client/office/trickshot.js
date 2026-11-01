@@ -182,6 +182,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     if (entry.day) { recordDaily(progress, entry.day, entry.index, r); saveProgress(progress, store); game.saved++; }
     else if (entry.id) { recordLevel(progress, entry.id, r); saveProgress(progress, store); game.saved++; if (r.made) rested[entry.id] = r.pos; }
   };
+  // Still in the air, it's made already: whatever cuts the flight off keeps it. What it says, for a verdict.
+  const keepMade = () => { const r = game.run.state === 'flying' && game.run.result.made ? game.run.result : null; if (r) record(r); return r; };
   const says = r => r.made ? `${r.points} × ${r.multiplier} = ${r.score}` : 'Miss';
   const verdict = r => {
     record(r); game.score = says(r); label();
@@ -234,7 +236,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     },
     leave() {
       if (!entry) return;
-      stop(); hand.free(); arc.hide(); kitchen.shut(false); marker.visible = false;
+      keepMade(); stop(); hand.free(); arc.hide(); kitchen.shut(false); marker.visible = false;
       const id = MONDAY.find(e => e.id === entry.id)?.id ?? MONDAY.find(e => e.item === entry.item).id;
       entry = kind = mesh = null; game.score = null; label();
       putBack(id);
@@ -255,7 +257,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     abort() { hand.pull(0); },
     reset() {
       if (!entry) return;
-      const r = game.run.state === 'flying' && game.run.result.made ? game.run.result : null; if (r) record(r);
+      const r = keepMade();
       stop(); game.run.reset(); game.score = r?.made ? says(r) : null; inHand(); label();
     },
     click() { if (game.retrying) game.reset(); },
