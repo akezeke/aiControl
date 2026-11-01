@@ -86,8 +86,8 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .theme-swatch.modern-dark { background: radial-gradient(circle, #8b8cf9 0 32%, #0b0d12 36%); }
 .theme-swatch.alien { background: radial-gradient(circle, #b6f2a2 0 35%, #031203 40%); }
 .theme-swatch.office { background: radial-gradient(circle at 40% 40%, #f28c28 0 30%, #f7d23e 34% 55%, #d62828 59%); }
-.theme-swatch.city { background: linear-gradient(#fbf5ef 0 0) 72% 100% / 26% 16% no-repeat, linear-gradient(#fb6b1d 0 0) 30% 100% / 40% 72% no-repeat, #b3966c; }
-.theme-swatch.bridge { background: radial-gradient(circle, #ff4fd0 0 32%, #22378e 36%); }
+.theme-swatch.city { border: 0; border-radius: 3px; background: url('/city-mark.svg') center / 32px 32px; image-rendering: pixelated; } /* the brand mark at 1:1, its frame just outside */
+.theme-swatch.bridge { background: url('/bridge-swatch.svg') center / cover; border-color: #070a22; }
 .theme-swatch.command { background: repeating-linear-gradient(135deg, #f0c94a 0 3px, #262c1f 3px 6px); }
 
 /* Login */
