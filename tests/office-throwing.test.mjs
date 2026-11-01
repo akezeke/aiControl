@@ -105,6 +105,13 @@ test('a hand fitted once is kept, and what\'s flatter than it\'s wide gets a fla
   const hand = createHand(new THREE.Group()); let body; hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });
   const flat = body.geometry; hand.hold(null, 0.08); assert.ok(body.geometry !== flat); hand.hold(null, 0.08, 0.012); assert.ok(body.geometry === flat);
 });
+test('the fingertips come over the thing\'s face, apart, to show against it as the mug\'s hand\'s do against its mug', () => {
+  for (const radius of [0.03, 0.045, 0.07, 0.08, 0.11, 0.16]) {
+    const { tips } = handParts(radius, radius), at = tips.slice(0, 3).map(g => { g.computeBoundingSphere(); return g.boundingSphere.center; });
+    for (const tip of at) { assert.ok(Math.hypot(tip.x, tip.y) < radius + 0.0105, `${radius}: within its edge`); assert.ok(tip.z > 0.7 * radius, `${radius}: on the side towards you`); }
+    for (let i = 1; i < 3; i++) assert.ok(at[i - 1].distanceTo(at[i]) > 0.02, `${radius}: a finger's width apart`);
+  }
+});
 const SIDE = Math.tan(THREE.MathUtils.degToRad(35)), V3 = () => new THREE.Vector3();
 test('a phone\'s narrow picture shows all of what you hold and the thumb round it, charged or not; a wide one has the palm where it was', () => {
   for (const radius of [0.03, 0.04, 0.045, 0.06, 0.07, 0.08, 0.11, 0.13, 0.16]) for (const charge of [0, 0.5, 1]) {
