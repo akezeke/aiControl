@@ -19,7 +19,7 @@ const look = (yaw, pitch) => V(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch),
 const ORIGIN = { x: -0.2, z: 5 }, DT = 1 / 60;
 // Throws that do it, from tests/office-levels.test.mjs's search: yaw and pitch in radians.
 const IN = { yaw: 2.416772208600941, pitch: 0.17453292519943295, charge: 0.625 }; // the paper ball into the sink, off a cupboard and the wall
-const WEDGED = { yaw: rad(-129), pitch: rad(17), charge: 1 }; // a rubber ball from the far table, still a metre up at 8 s
+const WEDGED = { yaw: rad(-66), pitch: rad(19), charge: 1 }; // a rubber ball from the doors, still up on the counter at 8 s
 const SKIDS = { yaw: STARTS.island.stand, pitch: rad(-30), charge: 1 }; // the paper ball at the floor: a miss
 const aRetry = t => { for (let i = 0; i < 2000 && !t.game.retrying; i++) t.game.update(DT, null, false, true); assert.ok(t.game.retrying); };
 
@@ -381,7 +381,7 @@ test('R and a click still go at once during the wait; R after it clears the verd
 test('a shot stopped in mid-air isn\'t left floating', () => {
   const t = setup();
   begin(t, 'rubber');
-  t.camera.position.set(ORIGIN.x + STARTS.farTable.x, EYE, ORIGIN.z + STARTS.farTable.z);
+  t.camera.position.set(ORIGIN.x + STARTS.doors.x, EYE, ORIGIN.z + STARTS.doors.z);
   throwIt(t, WEDGED); play(t);
   assert.equal(t.game.run.state, 'aiming');
   assert.equal(t.hand.held, item(t, 'rubber'));
@@ -755,7 +755,50 @@ const inBox = p => levelWorld().colliders.find(box => {
   return Math.abs(q.x) < box.half.x && Math.abs(q.y) < box.half.y && Math.abs(q.z) < box.half.z;
 });
 const poseLocal = (t, key) => { const p = t.view.plays.at(-1)()[key]; return V(p.x - ORIGIN.x, p.y, p.z - ORIGIN.z); };
-const SHOTS = { paper: IN, rubber: { yaw: 2.5156756047097217, pitch: rad(10), charge: 1 }, roll: { yaw: 0.17756142103488476, pitch: rad(25), charge: 1 }, mug: { yaw: -1.5784087546712922, pitch: rad(5), charge: 0.25 }, plate: { yaw: 1.6271065558422666, pitch: rad(25), charge: 0.25 }, teabag: { yaw: 0.2761636434773391, pitch: rad(5), charge: 1 } };
+const SHOTS = { paper: IN, rubber: { yaw: -3.044610637288692, pitch: rad(-5), charge: 0.25 }, roll: { yaw: 0.17756142103488476, pitch: rad(25), charge: 1 }, mug: { yaw: -1.5784087546712922, pitch: rad(5), charge: 0.25 }, plate: { yaw: 2.1460666365074754, pitch: rad(-5), charge: 0.4 }, teabag: { yaw: 0.2761636434773391, pitch: rad(5), charge: 1 } };
+
+test('a hit level: made at the touch and slowed there, the item carries on, then it\'s straight back in hand and stays where it\'s picked up', () => {
+  for (const id of ['rubber', 'plate']) {
+    const t = setup(), spot = item(t, id).position.toArray();
+    begin(t, id); throwIt(t, SHOTS[id]);
+    const r = t.game.run.result; assert.ok(r.made && r.hit, id); assert.equal(r.hit.surface, ZONES[MONDAY.find(e => e.id === id).target].surface);
+    while (!t.game.score) { assert.ok(t.game.run.time < r.hit.time + 0.02, `${id}: told at the touch`); assert.equal(t.saved.length, 0, 'nor saved before'); t.game.update(DT, null, false, true); }
+    assert.ok(t.game.run.time >= r.hit.time, id); assert.equal(t.game.run.state, 'flying', 'it isn\'t over');
+    assert.equal(t.game.score, `${r.points} × ${r.multiplier} = ${r.score}`); assert.equal(t.saved.length, 1); assert.equal(t.game.progress.lines[id].away, true);
+    assert.ok(t.game.run.timeScale < 1, 'slowed at the touch');
+    play(t);
+    assert.equal(t.saved.length, 1, 'once'); assert.equal(t.game.run.state, 'aiming', 'still bouncing is no reason to wait'); assert.equal(t.hand.held, item(t, id)); assert.equal(t.game.score, `${r.points} × ${r.multiplier} = ${r.score}`);
+    t.game.leave();
+    assert.deepEqual(item(t, id).position.toArray(), spot, `${id}: back where it's picked up`);
+  }
+});
+
+test('a hit is kept once, however the flight\'s cut off, before the touch or after it', () => {
+  for (const cut of [t => t.game.key('KeyR', true), t => t.game.leave()]) for (const after of [false, true]) {
+    const t = setup(), spot = item(t, 'rubber').position.toArray();
+    begin(t, 'rubber'); throwIt(t, SHOTS.rubber);
+    if (after) while (!t.game.score) t.game.update(DT, null, false, true);
+    else t.game.update(DT, null, false, true);
+    assert.equal(t.saved.length, after ? 1 : 0);
+    cut(t);
+    assert.equal(t.saved.length, 1); assert.equal(t.game.progress.lines.rubber.away, true);
+    t.game.leave();
+    assert.deepEqual(item(t, 'rubber').position.toArray(), spot);
+  }
+});
+
+test('ticked on an earlier visit, what\'s only to hit is still where it\'s picked up when the page comes back', () => {
+  const home = item(setup(), 'rubber').position.toArray(), memory = { value: JSON.stringify({ lines: { rubber: { away: true, trick: false, score: false } }, best: { rubber: 400 }, daily: {} }), getItem() { return memory.value; }, setItem() {} };
+  assert.deepEqual(item(setup({ store: memory }), 'rubber').position.toArray(), home);
+});
+
+test('a miss on a hit level stays a miss, and the goal says what to hit', () => {
+  const said = [], t = setup({ score: (goal, verdict) => said.push({ goal, verdict }) });
+  begin(t, 'rubber'); assert.equal(said.at(-1).goal[0].text, 'Rubber ball → hit the orange');
+  throwIt(t, { ...SHOTS.rubber, yaw: SHOTS.rubber.yaw + Math.PI });
+  assert.equal(t.game.run.result.hit, null); assert.equal(t.game.run.result.made, false);
+  assert.equal(t.game.progress.lines.rubber?.away, undefined);
+});
 
 test('from release the camera follows every throw, made or missed, and holds on where it landed before it hands back', () => {
   const t = setup();
@@ -785,9 +828,10 @@ test('the camera trails the item, looks at it and is never in anything, on all s
   for (const id of Object.keys(SHOTS)) {
     const t = setup(), { start } = MONDAY.find(e => e.id === id), truly = V(0, 0, 0), eye = V(STARTS[start].x, EYE, STARTS[start].z);
     begin(t, id); throwIt(t, SHOTS[id]);
-    let amount = 0, frames = 0, close = 0, biggest = 0, last = null; // the camera's own easing onto the pose, as camera.js does it
+    const { pos } = t.game.run.result; let amount = 0, frames = 0, close = 0, biggest = 0, last = null; // the camera's own easing onto the pose, as camera.js does it
     while (t.game.run.state === 'flying') {
       t.game.update(DT, null, false, true); frames++;
+      if (!t.view.plays.at(-1)) break; // what's still bouncing off what it hit is handed straight back
       amount += (1 - amount) * (1 - Math.exp(-DT * 5));
       const from = poseLocal(t, 'from'), look = poseLocal(t, 'look'), seen = eye.clone().lerp(from, amount);
       for (const p of [from, seen]) {
@@ -800,7 +844,7 @@ test('the camera trails the item, looks at it and is never in anything, on all s
     }
     assert.ok(close / frames > 0.5, `${id}: looks at the item, ${close} of ${frames} frames within 1 m`);
     assert.ok(biggest < 0.25, `${id}: no jerk, biggest step ${biggest} m`);
-    assert.ok(poseLocal(t, 'from').distanceTo(V(...t.game.run.result.pos)) < 3.5, `${id}: it caught up`);
+    assert.ok(last.distanceTo(V(...pos)) < 3.5, `${id}: it caught up`);
   }
 });
 
@@ -825,7 +869,8 @@ test('the item stays in sight, unless it\'s down in what it was thrown at', () =
     const t = setup(), zone = ZONES[MONDAY.find(e => e.id === id).target]; begin(t, id); throwIt(t, SHOTS[id]);
     let run = 0, longest = 0;
     while (t.game.run.state === 'flying') {
-      t.game.update(DT, null, false, true); t.game.run.at(truly);
+      t.game.update(DT, null, false, true); if (!t.view.plays.at(-1)) break;
+      t.game.run.at(truly);
       const seen = stopShort(poseLocal(t, 'from'), spare.copy(truly), { radius: 0.005, low: 0.005 }, world).distanceTo(truly) < 0.15;
       run = seen || inZone(truly.toArray(), zone) ? 0 : run + 1; longest = Math.max(longest, run);
     }
@@ -1079,21 +1124,23 @@ test('the bar shows the goal from the start, its lines struck as they\'re done, 
 });
 
 const MARKER_SIGHT = { radius: 0.01, low: 0.01 };
+const headOf = marker => marker.position.clone().setY(marker.position.y + (marker.rotation.x ? -1 : 1) * marker.scale.y); // it points up from under what's hung from the ceiling
 // What a shot's first view shows of the arrow, on a screen `width` by `height`, from its mark at the facing it starts with (player.jumpTo's pitch, the camera's fov).
 const arrowOnScreen = (t, width, height) => {
   const { marker } = t.game, { x, z, yaw } = t.game.stand(), camera = new THREE.PerspectiveCamera(70, width / height, 0.05, 200);
   camera.position.set(x - ORIGIN.x, EYE, z - ORIGIN.z); camera.rotation.set(-0.08, yaw + Math.PI, 0, 'YXZ'); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
-  return [marker.position, marker.position.clone().setY(marker.position.y + marker.scale.y)].map(p => { const n = p.clone().project(camera); return { x: (n.x + 1) / 2 * width, y: (1 - n.y) / 2 * height, front: n.z < 1 }; });
+  return [marker.position, headOf(marker)].map(p => { const n = p.clone().project(camera); return { x: (n.x + 1) / 2 * width, y: (1 - n.y) / 2 * height, front: n.z < 1 }; });
 };
 const EVERY_SHOT = [...MONDAY, ...Object.entries(PAIRS).flatMap(([item, pairs]) => pairs.map(([start, target]) => ({ item, start, target })))];
-test('an arrow points down at the target, its tip in sight of the mark, clear of what\'s over it, for every shot there is', () => {
+test('an arrow points at the target, its tip in sight of the mark, clear of what\'s around it and under the ceiling, for every shot there is', () => {
   const t = setup(), { colliders } = levelWorld();
   assert.equal(t.game.marker.visible, false, 'not till a level\'s on');
   for (const shot of EVERY_SHOT) {
     t.game.start(shot); t.game.enter(); t.game.update(DT, null, false, true);
-    const { marker } = t.game, zone = ZONES[shot.target], tip = marker.position.clone(), head = tip.clone().setY(tip.y + marker.scale.y), { x, z } = STARTS[shot.start], eye = V(x, EYE, z), name = `${shot.item} from ${shot.start} at ${shot.target}`;
+    const { marker } = t.game, zone = ZONES[shot.target], tip = marker.position.clone(), head = headOf(marker), { x, z } = STARTS[shot.start], eye = V(x, EYE, z), name = `${shot.item} from ${shot.start} at ${shot.target}`;
     assert.equal(marker.visible, true);
-    assert.ok(Math.abs(tip.x - zone.centre.x) < zone.half.x && Math.abs(tip.z - zone.centre.z) < zone.half.z && tip.y > zone.centre.y + zone.half.y + 0.05, `${name}: tip over it`);
+    assert.ok(Math.abs(tip.x - zone.centre.x) < zone.half.x && Math.abs(tip.z - zone.centre.z) < zone.half.z && (marker.rotation.x ? tip.y < zone.centre.y - zone.half.y - 0.05 : tip.y > zone.centre.y + zone.half.y + 0.05), `${name}: tip at it`);
+    assert.ok(Math.max(tip.y, head.y) + 0.03 < WALL_H && Math.min(tip.y, head.y) > 0.03, `${name}: in the room, ${tip.y} to ${head.y}`);
     if (shot.target === 'sink') assert.ok(Math.abs(tip.x - SPOTS.tap.x) > 0.1, `${name}: not in the tap's spout`);
     assert.ok(stopShort(eye, tip.clone(), MARKER_SIGHT, colliders).distanceTo(tip) < 1e-6, `${name}: tip seen`);
     assert.ok(stopShort(tip, head.clone(), MARKER_SIGHT, colliders).distanceTo(head) < 1e-6, `${name}: stands clear`);
@@ -1111,8 +1158,9 @@ test('a level starts with its arrow on screen and big enough, on a phone and a d
     for (const [width, height, least] of [[390, 780, 40], [1000, 650, 28]]) {
       const [tip, head] = arrowOnScreen(t, width, height);
       for (const p of [tip, head]) assert.ok(p.front && p.x > width * 0.2 && p.x < width * 0.8 && p.y > 140 && p.y < height * 0.9, `${name} at ${width}: on screen, at ${Math.round(p.x)},${Math.round(p.y)}`);
-      assert.ok(tip.y - head.y >= least, `${name} at ${width}: ${Math.round(tip.y - head.y)} px tall`);
-      assert.ok(tip.y - head.y < 90, `${name} at ${width}: not huge, ${Math.round(tip.y - head.y)} px`);
+      const tall = Math.abs(tip.y - head.y);
+      assert.ok(tall >= least, `${name} at ${width}: ${Math.round(tall)} px tall`);
+      assert.ok(tall < 90, `${name} at ${width}: not huge, ${Math.round(tall)} px`);
     }
     t.game.leave();
   }
@@ -1182,7 +1230,7 @@ test('the look is drawn in only as far as the item needs, and stays where it was
 test('on a phone, a rubber ball\'s bounces stay well inside the screen, with the fov the shape asks for', () => {
   for (const aspect of [390 / 736, 1000 / 610]) {
     const t = setup(), cam = new THREE.PerspectiveCamera(shotFov(aspect), aspect, 0.05, 100), p = V(0, 0, 0), probe = cam.clone(); t.view.camera = cam; let shown = null; t.view.play = pose => { shown = pose; };
-    begin(t, 'rubber'); throwIt(t, { yaw: rad(92), pitch: rad(-10), charge: 0.63 });
+    begin(t, 'rubber'); throwIt(t, { yaw: rad(-88), pitch: rad(-10), charge: 0.63 }); // down the length of the room, from the doors
     let frames = 0, worst = 0; const mesh = item(t, 'rubber');
     for (let i = 0; i < 12 * 60 && t.game.run.state !== 'aiming'; i++) {
       t.game.update(DT, null, false, true); if (t.game.run.state === 'aiming' || !shown || i < 12) continue; // still leaving the hand

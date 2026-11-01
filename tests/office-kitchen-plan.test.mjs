@@ -67,6 +67,7 @@ test('each cupboard door has a solid body behind it, at height', () => {
 // Drops over a grid inside each container, with items of different `low`: all stay and end in the zone. From under what hangs over the sink (cupboards) and basket (pans).
 test('an item dropped anywhere into a container stays in it, in the zone', () => {
   for (const [name, zone] of Object.entries(ZONES)) {
+    if (zone.surface) continue; // only to hit: nothing's meant to stay
     for (const item of [ball, plate, teabag]) for (const fx of [-0.8, 0, 0.8]) for (const fz of [-0.8, 0, 0.8]) {
       const room = V(zone.half.x - 0.01 - item.radius, 0, zone.half.z - 0.01 - item.radius); // the centre may be this far out and still clear the rim
       const top = { sink: 1.4, basket: 1.5 }[name] ?? zone.centre.y + zone.half.y + 0.8, b = makeBody(item, V(zone.centre.x + fx * room.x, top, zone.centre.z + fz * room.z), V(0, 0, 0));
@@ -224,7 +225,7 @@ test('the way out from between the table rows does not depend on where the cells
 });
 
 test('walking boxes leave a way from the door to every zone and spot', () => {
-  const spots = { ...Object.fromEntries(Object.entries(ZONES).map(([name, z]) => [name, [z.centre.x, z.centre.z]])), clipboard: [SPOTS.clipboard.x, SPOTS.clipboard.z], scores: [SPOTS.scores.x, SPOTS.scores.z], panRack: [SPOTS.panRack.x, SPOTS.panRack.z], tap: [SPOTS.tap.x, SPOTS.tap.z], ...Object.fromEntries(SPOTS.lunchTables.map((t, i) => [`table${i}`, [t.x, t.z]])) };
+  const spots = { ...Object.fromEntries(Object.entries(ZONES).filter(([, z]) => !z.surface).map(([name, z]) => [name, [z.centre.x, z.centre.z]])), clipboard: [SPOTS.clipboard.x, SPOTS.clipboard.z], scores: [SPOTS.scores.x, SPOTS.scores.z], panRack: [SPOTS.panRack.x, SPOTS.panRack.z], tap: [SPOTS.tap.x, SPOTS.tap.z], ...Object.fromEntries(SPOTS.lunchTables.map((t, i) => [`table${i}`, [t.x, t.z]])) };
   for (const depth of DEPTHS) {
     const { at, grid } = kitchenGrid(depth);
     for (const [name, [x, z]] of Object.entries(spots)) {

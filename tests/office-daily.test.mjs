@@ -7,9 +7,9 @@ import { loadProgress, saveProgress, recordLevel, recordDaily } from '../client/
 const store = (init) => { const m = new Map(init ? [['aiControl.trickshot', init]] : []); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
 // Pinned as generated, so a change to the generator shows up.
 const PIN = {
-  '2026-10-30': [{ item: 'plate', start: 'doors', target: 'bucket' }, { item: 'teabag', start: 'stove', target: 'bin' }, { item: 'roll', start: 'fridge', target: 'shelf' }],
-  '2027-01-01': [{ item: 'plate', start: 'fridge', target: 'sink' }, { item: 'paper', start: 'doors', target: 'bin' }, { item: 'rubber', start: 'island', target: 'bucket' }],
-  '2028-02-29': [{ item: 'plate', start: 'vending', target: 'bin' }, { item: 'teabag', start: 'farTable', target: 'tableMug' }, { item: 'mug', start: 'island', target: 'sink' }],
+  '2026-10-30': [{ item: 'plate', start: 'island', target: 'lemon' }, { item: 'rubber', start: 'doors', target: 'orange' }, { item: 'teabag', start: 'farTable', target: 'tableMug' }],
+  '2027-01-01': [{ item: 'plate', start: 'stove', target: 'moist' }, { item: 'paper', start: 'doors', target: 'bin' }, { item: 'rubber', start: 'farTable', target: 'banner' }],
+  '2028-02-29': [{ item: 'plate', start: 'doors', target: 'special' }, { item: 'teabag', start: 'farTable', target: 'tableMug' }, { item: 'mug', start: 'stove', target: 'bucket' }],
 };
 const miss = { made: false, score: 0, surfaces: [] };
 
@@ -125,7 +125,7 @@ test('big scores group after rounding', () => assert.equal(copyLine('2026-10-30'
 
 test('a shot\'s goal: the item, where it goes and what else the level asks, ticked lines marked', () => {
   const none = { lines: {}, best: {}, daily: {} }, rubber = MONDAY.find(e => e.id === 'rubber'), text = goal => goal.map(g => g.text).join(' · ');
-  assert.equal(text(goalOf(rubber, none)), 'Rubber ball → bucket · off the banner · 300');
+  assert.equal(text(goalOf(rubber, none)), 'Rubber ball → hit the orange · off the banner · 1,500');
   assert.deepEqual(goalOf(rubber, { ...none, lines: { rubber: { away: true, trick: false, score: true } } }).map(g => g.done), [true, false, true]);
   assert.equal(text(goalOf(MONDAY.find(e => e.id === 'mug'), none)), 'Mug → shelf · off the fridge · 500');
   for (const e of MONDAY) { const parts = goalOf(e, none); assert.equal(parts.length, 3); assert.ok(parts.every(p => p.text && !p.done && !p.text.includes(','.repeat(2))), e.id); assert.ok(e.trick.name.endsWith(parts[1].text)); }

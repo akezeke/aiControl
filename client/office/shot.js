@@ -5,6 +5,7 @@ import { TIERS, surfaceTier, levelWorld } from './kitchen-plan.js';
 // motion can start before the score is known to the player. Coordinates are kitchen-local, as in kitchen-plan.js.
 export const SOFT = 0.5, FLIGHT = 0.45, SLOW = 0.15, SLOW_FOR = 0.5, RETRY = 1, LONGEST = 10; // m/s under which a hit scores nothing; playback rate of a whole flight, and in the last SLOW_FOR s of a made shot; real s after release a click retries, and a miss is cut off
 export const MOST_TIME = 8, SETTLE = 1, HARD_TIME = 20; // past MOST_TIME a shot ends once the item's been SETTLE s on a surface; HARD_TIME's only a guard against one that never does
+export const LEAD = 0.1, AFTER_HIT = 1.15; // a hit: how long before the touch the slow motion starts (it lasts SLOW_FOR); how long the item plays on after it, the last of that at full speed
 const REPEAT = [1, 0.5, 0.25, 0]; // what the 1st, 2nd, 3rd and later hit on one surface are worth
 
 // ponytail: one shared collider list for every shot (levelWorld builds them all each call); nothing writes to it.
@@ -37,8 +38,9 @@ const SAME = 2.5 * STEP;
 const ON_IT = 0.05;
 
 // Simulates `body` to its end, consuming it (stepped in place: each shot takes a fresh body): at rest, or past MOST_TIME and SETTLE s on a surface, in the air it plays on. Made: at rest inside `zone`.
+// A zone with a `surface` is a thing to hit: made by the first touch that counts (`hit`, a contact), which is where the score stops; the item bounces on AFTER_HIT s for the look of it.
 export function runShot(body, zone) {
-  const last = new Map(), contacts = []; let now = 0, on = 0, touched = -1;
+  const last = new Map(), contacts = []; let now = 0, on = 0, touched = -1, hit = null, scored = null;
   const out = simulate(body, shared(), { maxTime: HARD_TIME, stop(c) {
     if (now - touched > ON_IT) on = now; touched = now;
     const before = last.get(c.surface);
@@ -46,13 +48,15 @@ export function runShot(body, zone) {
     if (c.speed < SOFT) return false; // settling, not a hit: scores nothing and opens no run
     last.set(c.surface, c.time);
     contacts.push({ time: c.time, surface: c.surface, speed: c.speed, pos: body.pos.toArray() });
+    if (!hit && c.surface === zone?.surface) { hit = contacts.at(-1); scored = contacts.length; }
     return false;
   }, until() {
     now += STEP;
+    if (hit) return now >= hit.time + AFTER_HIT - 1e-9;
     return now >= MOST_TIME - 1e-9 && now - touched <= ON_IT && now - on >= SETTLE;
   } });
-  const made = out.rest && !!zone && inZone(out.pos, zone), { points, multiplier, surfaces } = scoreContacts(contacts);
-  return { path: out.path, contacts, time: out.time, made, rest: out.rest, pos: out.pos, points, multiplier, score: made ? points * multiplier : 0, surfaces };
+  const made = zone?.surface ? !!hit : out.rest && !!zone && inZone(out.pos, zone), { points, multiplier, surfaces } = scoreContacts(hit ? contacts.slice(0, scored) : contacts);
+  return { path: out.path, contacts, time: out.time, made, rest: out.rest, pos: out.pos, points, multiplier, score: made ? points * multiplier : 0, surfaces, hit };
 }
 
 const RATE = 1 / (4 * STEP); // path samples per second
@@ -77,20 +81,21 @@ export function createRun({ start, reducedMotion = false, now = null }) {
       const a = p(k), b = p(k + 1);
       return out.set(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f);
     },
-    // dt real seconds; returns the contacts passed and, once, the end. The rate changes at a time known at release, split here so a big dt keeps it: a made shot slows for its last SLOW_FOR s, a miss
-    // settles at full speed after its last hit. A rubber ball's miss bounces for 10 s and more: nothing it does can matter, so that's cut off (run.time short of result.time).
+    // dt real seconds; returns the contacts passed, `made` as the touch that makes a hit goes by and, once, the end. The rate changes at times known at release, split here so a big dt keeps it: a made shot
+    // slows for its last SLOW_FOR s, a hit around its touch and then plays out at full speed, a miss settles at full speed after its last hit. A rubber ball's miss bounces for 10 s and more: nothing it does
+    // can matter, so that's cut off (run.time short of result.time).
     advance(dt) {
       const r = run.result; if (run.state !== 'flying') return EMPTY;
-      const turn = reducedMotion ? Infinity : r.made ? r.time - SLOW_FOR : r.contacts.at(-1)?.time ?? r.time, after = r.made ? SLOW : 1, real = dt > 0 ? dt : 0, events = [];
-      let t = clock, left = real; // a negative or NaN dt waits
+      const rates = reducedMotion ? [[Infinity, 1]] : r.hit ? [[r.hit.time - LEAD, FLIGHT], [r.hit.time - LEAD + SLOW_FOR, SLOW], [Infinity, 1]] : r.made ? [[r.time - SLOW_FOR, FLIGHT], [Infinity, SLOW]] : [[r.contacts.at(-1)?.time ?? r.time, FLIGHT], [Infinity, 1]];
+      const real = dt > 0 ? dt : 0, events = []; // a negative or NaN dt waits
+      let t = clock, left = real;
       run.flown = now ? now() - released : run.flown + real;
-      if (t < turn) { const till = (turn - t) / rate; if (left < till) { t += left * rate; left = 0; } else { t = turn; left -= till; } }
-      t += left * after;
+      for (const [until, speed] of rates) { if (t >= until) continue; const till = (until - t) / speed; if (left < till) { t += left * speed; break; } t = until; left -= till; }
       clock = Math.min(t, r.time); run.time = clock;
-      for (; next < hits.length && hits[next].time <= clock; next++) events.push(touch(hits[next]));
+      for (; next < hits.length && hits[next].time <= clock; next++) { events.push(touch(hits[next])); if (hits[next] === r.hit) events.push({ type: 'made', result: r }); }
       const over = clock >= r.time || !r.made && run.flown >= LONGEST;
       if (over) { run.state = 'done'; events.push({ type: 'end', result: r }); }
-      run.timeScale = over ? 1 : clock >= turn ? after : rate;
+      run.timeScale = over ? 1 : rates.find(([until]) => clock < until)[1];
       return events;
     },
   };

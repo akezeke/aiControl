@@ -86,7 +86,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   const marker = makeMarker(), arc = createArc(), axis = new THREE.Vector3(), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: SHOT_FOV, hands: false };
   const follow = { at: new THREE.Vector3(), look: new THREE.Vector3(), ahead: new THREE.Vector3(), spot: new THREE.Vector3(), step: new THREE.Vector3(), from: new THREE.Vector3() };
   const eye = new THREE.Vector3(), now = new THREE.Vector3(), flying = new THREE.Vector3(), palm = new THREE.Vector3(), fromHand = new THREE.Vector3(); // `flying`: where it really is, the mesh only drawn from the hand
-  let group = null, pending = null, entry = null, kind = null, mesh = null, angle = 0, moved = false, handBack = 0, partyLeft = 0, climb = 0, bob = 0;
+  let group = null, pending = null, entry = null, kind = null, mesh = null, angle = 0, moved = false, handBack = 0, partyLeft = 0, climb = 0, bob = 0, told = false; // told: this shot's verdict is out
 
   const bits = Array.from({ length: BITS }, () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 })), spots = new Float32Array(BITS * 3), colours = new Float32Array(BITS * 3);
   { const paper = ['#ffd166', '#ef476f', '#06d6a0', '#4f7cff'].map(c => new THREE.Color(c)); for (let i = 0; i < BITS; i++) paper[i % 4].toArray(colours, i * 3); }
@@ -103,9 +103,9 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     const { item, target } = MONDAY.find(e => e.id === id), { centre, half } = ZONES[target], a = i * Math.PI / 3, r = Math.min(half.x, half.z) * 0.4;
     return [centre.x + Math.cos(a) * r, centre.y - half.y + ITEMS[item].low, centre.z + Math.sin(a) * r];
   };
-  const away = id => !!(rested[id] || progress.lines[id]?.away);
+  const away = id => !ZONES[MONDAY.find(e => e.id === id).target].surface && !!(rested[id] || progress.lines[id]?.away); // what's only to hit stays where it's picked up
   const putBack = id => {
-    const item = items[id], at = rested[id] ?? (progress.lines[id]?.away ? awayOf(id, MONDAY.findIndex(e => e.id === id)) : homeOf(id));
+    const item = items[id], at = rested[id] ?? (away(id) ? awayOf(id, MONDAY.findIndex(e => e.id === id)) : homeOf(id));
     holders[id].add(item); item.position.fromArray(at); if (!rested[id]) item.rotation.set(0, 0, 0);
     // Clicked over a bin's rim, if that's where it is.
     hits[id].position.set(at[0], at[1] - ITEMS[MONDAY.find(e => e.id === id).item].low, at[2]); hits[id].scale.set(0.3, away(id) ? 0.75 : 0.35, 0.3);
@@ -119,9 +119,11 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   // The marker: over the target, under what's over that (a sink's cupboards), and higher if that's what it takes to see its tip from the mark (the bin's behind the orange from the stove).
   const overTarget = () => {
     const { centre, half } = ZONES[entry.target], top = centre.y + half.y, x = centre.x + (entry.target === 'sink' ? TAP_ASIDE : 0), { colliders } = flightWorld(); bob = 0; eyeNow();
+    const far = ARROW * Math.hypot(eye.x - centre.x, eye.z - centre.z), under = top + OVER + far > WALL_H - BOB; marker.rotation.x = under ? Math.PI : 0; marker.glow(1); // hung under the ceiling (the banner), it points up from below: the ceiling isn't a collider, and there's no room for it above
+    if (under) { marker.scale.setScalar(far); marker.position.set(x, centre.y - half.y - OVER, centre.z); return; }
     const room = stopShort(flying.set(x, top, centre.z), now.set(x, top + WALL_H, centre.z), MARKER_SIGHT, colliders).y - top - BOB;
-    const size = Math.min(ARROW * Math.hypot(eye.x - centre.x, eye.z - centre.z), room - LEAST);
-    marker.scale.setScalar(size); marker.glow(1);
+    const size = Math.min(far, room - LEAST);
+    marker.scale.setScalar(size);
     for (let over = Math.min(OVER, room - size); over <= HIGHEST; over += 0.1) { marker.position.set(x, top + over, centre.z); if (stopShort(eye, now.copy(marker.position), MARKER_SIGHT, colliders).equals(marker.position)) return; }
   };
   // Everything a shot set going stops: its sound, the pans, the confetti, and the camera comes straight back, so a throw leaves from your eyes.
@@ -180,18 +182,18 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   // Saved once a shot, at its end; its result's known from the release, so going again doesn't lose a made one.
   const record = r => {
     if (entry.day) { recordDaily(progress, entry.day, entry.index, r); saveProgress(progress, store); game.saved++; }
-    else if (entry.id) { recordLevel(progress, entry.id, r); saveProgress(progress, store); game.saved++; if (r.made) rested[entry.id] = r.pos; }
+    else if (entry.id) { recordLevel(progress, entry.id, r); saveProgress(progress, store); game.saved++; if (r.made && !r.hit) rested[entry.id] = r.pos; }
   };
   // Still in the air, it's made already: whatever cuts the flight off keeps it. What it says, for a verdict.
-  const keepMade = () => { const r = game.run.state === 'flying' && game.run.result.made ? game.run.result : null; if (r) record(r); return r; };
+  const keepMade = () => { const r = game.run.state === 'flying' && game.run.result.made ? game.run.result : null; if (r && !told) record(r); return r; };
   const says = r => r.made ? `${r.points} × ${r.multiplier} = ${r.score}` : 'Miss';
   const verdict = r => {
-    record(r); game.score = says(r); label();
-    if (r.made) celebrate(r.pos); else tone(190, 110, 0.28, 'sawtooth', 0.1);
+    told = true; record(r); game.score = says(r); label();
+    if (r.made) celebrate(r.hit?.pos ?? r.pos); else tone(190, 110, 0.28, 'sawtooth', 0.1);
   };
-  // The moment it really stops. Out of time and still up on something, or wedged, or a long miss cut off mid-air: not left hanging there.
+  // The moment it really stops. Out of time and still up on something, or wedged, or a long miss cut off mid-air, or still bouncing off what it hit: not left hanging there.
   const stopped = r => {
-    if (game.run.time < r.time || !r.rest && r.time >= MOST_TIME - 1e-6 && r.pos[1] > kind.low + 0.02) handBackNow();
+    if (game.run.time < r.time || !r.rest && (r.hit || r.time >= MOST_TIME - 1e-6 && r.pos[1] > kind.low + 0.02)) handBackNow();
     else handBack = HAND_BACK;
   };
 
@@ -249,7 +251,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       fromHand.subVectors(palmNow(), pos); flying.copy(pos); // before the hand lets go, with the charge's pull still in it
       hand.free(); mesh.removeFromParent(); group.add(mesh); drawnAt(mesh.position, pos, fromHand, 0, kind, flightWorld().colliders); arc.hide();
       axis.crossVectors(direction, UP).normalize(); if (!axis.lengthSq()) axis.set(1, 0, 0);
-      game.score = null; label();
+      game.score = null; told = false; label();
       game.run.shoot(makeBody(kind, pos, vel), ZONES[entry.target]);
       if (!reducedMotion()) { moved = true; follow.at.copy(eye); follow.look.copy(mesh.position); follow.ahead.set(direction.x, 0, direction.z); if (follow.ahead.lengthSq() < 1e-6) follow.ahead.set(Math.sin(STARTS[entry.start].stand), 0, Math.cos(STARTS[entry.start].stand)); follow.ahead.normalize(); view?.play(() => game.pose()); }
       tone(280, 640, 0.13, 'sine', 0.08 + 0.1 * charge);
@@ -289,7 +291,8 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
         return;
       }
       for (const event of run.advance(dt)) {
-        if (event.type === 'end') { verdict(event.result); stopped(event.result); continue; }
+        if (event.type === 'made') { verdict(event.result); continue; } // a hit's made at the touch, and plays on
+        if (event.type === 'end') { if (!told) verdict(event.result); stopped(event.result); continue; }
         knock(event.surface, event.speed);
         if (event.surface.startsWith('pan-') && !reducedMotion()) kitchen.pans?.hit(+event.surface.slice(4), event.speed);
       }

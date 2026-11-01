@@ -24,24 +24,24 @@ export const STARTS = {
 
 export const MONDAY = [
   { id: 'paper', item: 'paper', start: 'island', target: 'sink', trick: { name: 'sink, off the ceiling', via: 'ceiling' }, set: 1500 },
-  { id: 'rubber', item: 'rubber', start: 'farTable', target: 'bucket', trick: { name: 'bucket, off the banner', via: 'banner' }, set: 300 },
+  { id: 'rubber', item: 'rubber', start: 'doors', target: 'orange', trick: { name: 'orange, off the banner', via: 'banner' }, set: 1500 },
   { id: 'roll', item: 'roll', start: 'stove', target: 'bin', trick: { name: 'bin, off the orange', via: 'cutout-2' }, set: 600 },
   { id: 'mug', item: 'mug', start: 'fridge', target: 'shelf', trick: { name: 'mug on the shelf, off the fridge', via: 'fridge' }, set: 500 },
-  { id: 'plate', item: 'plate', start: 'fridge', target: 'sink', trick: { name: 'sink, off a cupboard', via: 'cupboard-' }, set: 1500 },
+  { id: 'plate', item: 'plate', start: 'island', target: 'lemon', trick: { name: 'lemon, off a cupboard', via: 'cupboard-' }, set: 1500 },
   { id: 'teabag', item: 'teabag', start: 'farTable', target: 'tableMug', trick: { name: 'mug, off a chair', via: 'chair-' }, set: 400 },
 ];
 
-// What else each item can do, for the daily challenges: [start, target]. A rubber ball only ever stays in the bucket's water.
+// What else each item can do, for the daily challenges: [start, target]. What bounces this well is thrown at things, not into them, from where the thing shows its face.
 export const PAIRS = {
   paper: [['doors', 'bin'], ['stove', 'bucket'], ['island', 'sink'], ['island', 'basket'], ['fridge', 'shelf'], ['farTable', 'tableMug']],
-  rubber: [['doors', 'bucket'], ['stove', 'bucket'], ['fridge', 'bucket'], ['island', 'bucket']],
+  rubber: [['doors', 'lemon'], ['doors', 'orange'], ['farTable', 'banana'], ['farTable', 'special'], ['vending', 'pear'], ['farTable', 'banner'], ['stove', 'moist']],
   roll: [['doors', 'bin'], ['stove', 'sink'], ['island', 'basket'], ['fridge', 'shelf']],
   mug: [['doors', 'bin'], ['stove', 'bucket'], ['island', 'sink'], ['vending', 'shelf']],
-  plate: [['doors', 'bucket'], ['vending', 'bin'], ['fridge', 'sink']],
+  plate: [['doors', 'orange'], ['island', 'lemon'], ['farTable', 'pear'], ['doors', 'banner'], ['doors', 'special'], ['stove', 'moist'], ['farTable', 'banana']],
   teabag: [['stove', 'bin'], ['stove', 'bucket'], ['island', 'basket'], ['island', 'sink'], ['vending', 'shelf'], ['farTable', 'tableMug']],
 };
 
-// `away`: it's in. `trick`: in, off the entry's surface (or family, when `via` ends in -). `score`: the set score. result.surfaces holds only contacts that scored, so a graze doesn't count.
+// `away`: it's in, or it hit what it was thrown at. `trick`: in, off the entry's surface (or family, when `via` ends in -). `score`: the set score. result.surfaces holds only contacts that scored, so a graze doesn't count.
 export function lineDone(line, result, entry) {
   if (line === 'away') return result.made;
   if (line === 'score') return result.score >= entry.set;

@@ -258,6 +258,19 @@ test('each item has three pairs or more, and together they use every target', ()
 
 // The real path grid at the kitchen's real place, as in the plan's own test: cells fall differently in rooms of different depths.
 const DEPTHS = [8, 8.6, 9.7, 10, 12.3, 14, 15.5], LEFT = -(WALL_T + KITCHEN.width);
+test('what\'s only to hit shows its face from the mark, and most of it in plain sight', () => {
+  const shots = [...MONDAY.map(e => [e.start, e.target]), ...Object.values(PAIRS).flat()].filter(([, target]) => ZONES[target].surface), { colliders } = levelWorld();
+  assert.ok(shots.length > 10);
+  const blocked = (eye, to, surface) => { const p = V(0, 0, 0); for (let i = 1; i < 120; i++) { p.lerpVectors(eye, to, i / 120); if (colliders.some(c => c.surface !== surface && c.containsPoint(p))) return true; } return false; };
+  for (const [start, target] of shots) {
+    const { surface } = ZONES[target], { x, z } = STARTS[start], eye = V(x, EYE, z), towards = c => V(0, 0, 1).applyQuaternion(c.quaternion).dot(eye.clone().sub(c.centre).normalize());
+    const facing = c => target === 'banner' ? Math.abs(towards(c)) : towards(c), card = flightBoxes().filter(b => b.surface === surface && b.half.x > 0.1).sort((a, b) => facing(b) - facing(a))[0]; // the banner's printed both ways; a cutout's back is card, a sign has a face each way
+    let seen = 0, all = 0; for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) { all++; if (!blocked(eye, V(card.half.x * i / 3.5, card.half.y * j / 3.5, 0).applyQuaternion(card.quaternion).add(card.centre), surface)) seen++; }
+    assert.ok(facing(card) > 0.45, `${target} from ${start} faces it ${facing(card).toFixed(2)}`);
+    assert.ok(seen / all >= 0.75, `${target} from ${start} shows ${Math.round(seen / all * 100)}%`);
+  }
+});
+
 test('no start mark stands in a collider', () => {
   assert.deepEqual(Object.keys(STARTS).sort(), ['doors', 'farTable', 'fridge', 'island', 'stove', 'vending']);
   const boxes = flightBoxes();

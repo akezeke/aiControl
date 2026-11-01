@@ -3,8 +3,8 @@
 // Each is a canvas texture redrawn only when what it shows changes. And the kitchen's: Trickshot's clipboard and score board.
 import * as THREE from 'three';
 import { usageWindowView } from '../usage-presentation.js';
-import { PLACES, bestText, capital, challenges, dayKey, itemName, num, randomShot } from './daily.js';
-import { SPOTS } from './kitchen-plan.js';
+import { PLACES, aimAt, bestText, capital, challenges, dayKey, itemName, num, randomShot } from './daily.js';
+import { SPOTS, ZONES } from './kitchen-plan.js';
 import { MONDAY } from './levels.js';
 import { dims } from './lights.js';
 
@@ -145,12 +145,12 @@ function drawWaiting({ g, width: w, height: h }, titles) {
 }
 
 // Monday's page: each item, and under it its three lines. All three done, the item's crossed off too.
-export const clipboardLines = progress => MONDAY.flatMap(({ id, item, trick, set }) => {
+export const clipboardLines = progress => MONDAY.flatMap(({ id, item, target, trick, set }) => {
   const { away = false, trick: tricked = false, score = false } = progress.lines[id] ?? {};
-  return [{ text: itemName(item), done: away && tricked && score, indent: 0 }, { text: 'Put it away', done: away, indent: 1 }, { text: capital(trick.name), done: tricked, indent: 1 }, { text: `Score ${num(set)}`, done: score, indent: 1 }];
+  return [{ text: itemName(item), done: away && tricked && score, indent: 0 }, { text: ZONES[target].surface ? capital(aimAt(target)) : 'Put it away', done: away, indent: 1 }, { text: capital(trick.name), done: tricked, indent: 1 }, { text: `Score ${num(set)}`, done: score, indent: 1 }];
 });
 // Today's page: the three challenges and your best at each (null: not played).
-export const dailyLines = (key, progress) => challenges(key).map(({ item, start, target }, i) => ({ text: `${itemName(item)}: ${PLACES[start]} to ${PLACES[target]}`, best: progress.daily[key]?.[i] ?? null }));
+export const dailyLines = (key, progress) => challenges(key).map(({ item, start, target }, i) => ({ text: `${itemName(item)}: ${PLACES[start]}${ZONES[target].surface ? ', ' : ' to '}${aimAt(target)}`, best: progress.daily[key]?.[i] ?? null }));
 
 // `size` as far down as `text` needs to fit `width`.
 function sized(g, text, size, width) { do g.font = `${size}px ${SHARPIE}`; while (g.measureText(text).width > width && (size -= 2) > 14); }

@@ -137,6 +137,13 @@ export function flightBoxes(origin = { x: 0, z: 0 }, { doorShut = true } = {}) {
   return PARTS(doorShut).map(p => p.centre ? new TiltedBox({ centre: [p.centre[0] + origin.x, p.centre[1], p.centre[2] + origin.z], half: p.half, rotation: p.rotation, surface: p.surface }) : shifted(origin, p));
 }
 
+// Things to hit rather than get in: touching one is the shot (shot.js). Its box, the card without its strut, is what the arrow stands over.
+const struck = surface => {
+  const whole = new THREE.Box3(); for (const b of flightBoxes()) if (b.surface === surface && b.half?.x > 0.1) whole.expandByPoint(b.min).expandByPoint(b.max);
+  return { surface, centre: whole.getCenter(new THREE.Vector3()), half: whole.getSize(new THREE.Vector3()).multiplyScalar(0.5) };
+};
+Object.assign(ZONES, { pear: struck('cutout-1'), orange: struck('cutout-2'), banana: struck('cutout-3'), lemon: struck('cutout-4'), banner: struck('banner'), moist: struck('sign-1'), special: struck('sign-2') });
+
 // Floor-standing things the player walks round, each name as one axis-aligned box (a turned chair, the fridge with its door, a leaning tray).
 // ponytail: walls, anything above head height, and what stands on a table or the island are left out; they can overlap, the doorway stays clear.
 const NOT_WALKED = /^(wall|cupboard|pan|shelf|basket|tableMug|banner)/;

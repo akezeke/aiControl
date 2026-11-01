@@ -53,6 +53,14 @@ test('Monday\'s page lists three lines for each item, and crosses off the done o
   assert.equal(crossed.g.strokes - blank.g.strokes, 2, 'a line through each done one');
 });
 
+test('what\'s thrown at something says hit, on both pages', () => {
+  const lines = clipboardLines(none()), at = MONDAY.findIndex(e => e.id === 'rubber') * 4;
+  assert.deepEqual(lines.slice(at, at + 3).map(line => line.text), ['Rubber ball', 'Hit the orange', 'Orange, off the banner']);
+  assert.equal(lines[MONDAY.findIndex(e => e.id === 'plate') * 4 + 1].text, 'Hit the lemon');
+  assert.equal(lines[MONDAY.findIndex(e => e.id === 'paper') * 4 + 1].text, 'Put it away');
+  assert.deepEqual(dailyLines('2026-10-30', none()).map(line => line.text), ['Plate: island, hit the lemon', 'Rubber ball: doors, hit the orange', 'Tea bag: far table to mug']);
+});
+
 test('today\'s page shows three challenges and your best', () => {
   const shots = challenges(DAY), lines = dailyLines(DAY, { ...none(), daily: { [DAY]: [1200, 0, null] } });
   assert.deepEqual(lines.map(line => line.best), [1200, 0, null]);

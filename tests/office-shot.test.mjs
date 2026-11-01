@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { makeBody, simulate } from '../client/office/flight.js';
-import { ZONES, levelWorld } from '../client/office/kitchen-plan.js';
-import { FLIGHT, SLOW, SLOW_FOR, SOFT, RETRY, LONGEST, MOST_TIME, SETTLE, HARD_TIME, scoreContacts, inZone, runShot, createRun } from '../client/office/shot.js';
+import { ZONES, flightBoxes, levelWorld } from '../client/office/kitchen-plan.js';
+import { FLIGHT, SLOW, SLOW_FOR, SOFT, RETRY, LONGEST, MOST_TIME, SETTLE, HARD_TIME, LEAD, AFTER_HIT, scoreContacts, inZone, runShot, createRun } from '../client/office/shot.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const kind = (bounce, extra = {}) => ({ radius: 0.05, low: 0.05, bounce, roll: 1, drag: 0.1, upright: false, ...extra });
@@ -281,4 +281,59 @@ test('a negative or NaN dt waits', () => {
 test('points are whole, and the score is points times multiplier', () => {
   const r = scoreContacts(['wall-n', 'wall-n', 'wall-n'].map(s => hit(s)));
   assert.deepEqual(pick(r), { points: 88, multiplier: 1 }); // 50 + 25 + 12.5
+});
+
+// Things to hit: at the orange's card, square on, from `away` in front of it. It bounces back the way it came.
+const card = flightBoxes().find(b => b.surface === 'cutout-2' && b.half.x > 0.1), facing = V(0, 0, -1).applyQuaternion(card.quaternion); // into the room
+const atCard = (speed = 6, away = 0.6, thing = rubber) => makeBody(thing, card.centre.clone().addScaledVector(facing, away), facing.clone().multiplyScalar(-speed));
+
+test('a thing to hit is made by the touch, and the score stops there while it plays on', () => {
+  const r = runShot(atCard(), ZONES.orange);
+  assert.ok(r.made); assert.equal(r.hit.surface, 'cutout-2'); assert.equal(r.hit, r.contacts[0]);
+  assert.ok(Math.abs(r.time - (r.hit.time + AFTER_HIT)) < 0.01 && !r.rest, `played on to ${r.time}`);
+  assert.ok(r.contacts.length > 1, 'it bounced on');
+  assert.deepEqual(r.surfaces, ['cutout-2'], 'and nothing after the touch scores');
+  assert.equal(r.score, 200 * 2);
+});
+
+test('what it touched on the way scores; what it never touched is a miss, wherever it ends', () => {
+  const offFloor = runShot(makeBody(rubber, card.centre.clone().addScaledVector(facing, 1.5).setY(0.5), V(0, -3, 0).addScaledVector(facing, -4)), ZONES.orange);
+  assert.ok(offFloor.made); assert.equal(offFloor.surfaces[0], 'floor');
+  const miss = runShot(makeBody(ball, V(-5, 1, -3), V(0, 0, 0)), ZONES.orange);
+  assert.ok(!miss.made && !miss.hit && miss.rest); assert.equal(miss.score, 0);
+  const wrong = runShot(atCard(), ZONES.pear);
+  assert.ok(!wrong.made, 'another card is not it'); assert.ok(wrong.surfaces.includes('cutout-2'));
+});
+
+test('a touch too soft to score doesn\'t make it', () => {
+  const r = runShot(atCard(SOFT / 2, card.half.z + rubber.radius + 0.005), ZONES.orange);
+  assert.ok(!r.made && !r.hit, `${r.contacts.map(c => `${c.surface} ${c.speed}`)}`);
+});
+
+test('a hit\'s playback: made once, straight after its touch and before the end, slowing round it and full speed after', () => {
+  const run = createRun({ start }); run.shoot(atCard(12, 2.5), ZONES.orange);
+  const { hit: touch, time } = run.result, seen = [], rates = [];
+  assert.ok(touch.time > LEAD, 'the slow motion starts in the air');
+  while (run.state === 'flying') { seen.push(...run.advance(1 / 240)); rates.push([run.time, run.timeScale]); }
+  const madeAt = seen.findIndex(e => e.type === 'made');
+  assert.equal(seen.filter(e => e.type === 'made').length, 1);
+  assert.equal(seen[madeAt - 1].surface, 'cutout-2'); assert.equal(seen[madeAt].result, run.result);
+  assert.equal(seen.at(-1).type, 'end'); assert.ok(madeAt < seen.length - 1);
+  const rate = t => rates.find(([at]) => at >= t)[1];
+  assert.equal(rate(touch.time - LEAD - 0.02), FLIGHT); assert.equal(rate(touch.time), SLOW); assert.equal(rate(touch.time - LEAD + SLOW_FOR - 0.02), SLOW); assert.equal(rate(time - 0.02), 1);
+  assert.ok(time > touch.time - LEAD + SLOW_FOR + 0.5, 'and a moment at full speed');
+});
+
+test('a hit in one huge dt, and under reduced motion: the same events, at no slower than real time', () => {
+  const big = createRun({ start }); big.shoot(atCard(12, 2.5), ZONES.orange);
+  const events = big.advance(1e6); assert.deepEqual(events.map(e => e.type).slice(0, 2), ['contact', 'made']); assert.equal(events.at(-1).type, 'end');
+  const calm = createRun({ start, reducedMotion: true }); calm.shoot(atCard(12, 2.5), ZONES.orange);
+  const types = []; let most = 0; while (calm.state === 'flying') { types.push(...calm.advance(1 / 60).map(e => e.type)); most = Math.max(most, calm.timeScale); assert.equal(calm.timeScale, 1); }
+  assert.equal(types.filter(t => t === 'made').length, 1); assert.equal(most, 1);
+});
+
+test('a hit\'s not cut off for time, however long it took to get there', () => {
+  let t = 0; const run = createRun({ start, now: () => t }); run.shoot(atCard(0.8, 1.5), ZONES.orange);
+  assert.ok(run.result.made); while (run.state === 'flying') { t += 0.25; run.advance(0.25); }
+  assert.equal(run.time, run.result.time);
 });
