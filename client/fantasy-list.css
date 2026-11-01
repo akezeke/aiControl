@@ -1,4 +1,4 @@
-/* Fantasy's list and panel are the party menu of an old RPG: one rounded face, gradient windows, a small title window stacked on each list, a portrait to a person. Nothing is a button: commands are plain words, statuses are coloured words, and the white hand points at what's selected or asking. */
+/* Fantasy's list and panel are the party menu of an old RPG: one rounded face, windows in PS1 pixels (see fantasy/fantasy.css), a small title window stacked on each list, a portrait to a person. Nothing is a button: commands are plain words, statuses are coloured words, and the white hand points at what's selected or asking. */
 :root[data-theme=fantasy] {
   background: #06231d;
   body, .shell { background: transparent; }
@@ -7,24 +7,24 @@
   font-weight: 700;
 
   /* The window. */
-  :is(.session-list, .group-title, .usage-accounts, .login-card, .empty, .sidebar, .filter-options, .theme-options, .toast, .integrations, .request-box) { background: var(--fy-win); border: 3px solid; border-color: var(--fy-bevel); border-radius: 7px; box-shadow: var(--fy-rim); color: var(--text); text-shadow: var(--fy-ink); }
+  :is(.session-list, .group-title, .usage-accounts, .login-card, .empty, .sidebar, .filter-options, .theme-options, .toast, .integrations, .request-box) { background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; color: var(--text); text-shadow: var(--fy-ink); }
   :is(.topbar, .chat-header, .message-composer) { background: var(--fy-win); -webkit-backdrop-filter: none; backdrop-filter: none; text-shadow: var(--fy-ink); }
-  .topbar, .chat-header { border-bottom: 3px solid #d4d4ca; box-shadow: 0 1px 0 #000c; }
-  .message-composer { border-top: 3px solid #d4d4ca; }
-  .detail-panel { background: linear-gradient(160deg, #0a3a2f, #04201a); border-left: 3px solid #d4d4ca; box-shadow: inset 1px 0 0 #000a, var(--shadow-lg); }
+  .topbar, .chat-header { border-bottom: 2px solid #dcdcd2; box-shadow: 0 2px 0 #000000c8; }
+  .message-composer { border-top: 2px solid #dcdcd2; box-shadow: 0 -2px 0 #000000c8; }
+  .detail-panel { background: url('/fantasy/dither.svg') 0 0 / 8px 8px, linear-gradient(160deg, #08382c 10%, #08382c 0 20%, #083428 0 30%, #083028 0 40%, #083024 0 50%, #082c24 0 60%, #082820 0 70%, #042820 0 80%, #04241c 0 90%, #04201c 0); border-left: 2px solid #dcdcd2; box-shadow: -2px 0 0 #000000c8, var(--shadow-lg); }
   @media (max-width: 640px) { .detail-panel { border-left: 0; } }
   .panel-backdrop { background: #02120e99; -webkit-backdrop-filter: none; backdrop-filter: none; }
 
   /* A command is its word. */
-  :is(.secondary, .quiet-button, .spawn-button, .theme-menu > summary, .filter-menu > summary, .answer-option, .stat, .chat-header select) { background: none; border: 0; border-radius: 4px; box-shadow: none; color: var(--text); font-weight: 700; text-shadow: var(--fy-ink); }
+  :is(.secondary, .quiet-button, .spawn-button, .theme-menu > summary, .filter-menu > summary, .answer-option, .stat, .chat-header select) { background: none; border: 0; border-radius: 0; box-shadow: none; color: var(--text); font-weight: 700; text-shadow: var(--fy-ink); }
   :is(.secondary, .quiet-button, .spawn-button, .theme-menu > summary, .filter-menu > summary, .answer-option, .stat, .chat-header select):hover:not(:disabled) { background: #ffffff1c; border: 0; color: #fff; }
   :is(.fire-button, .clear-button).armed, :is(.fire-button, .clear-button).armed:hover:not(:disabled) { background: var(--danger); color: #fff; }
-  .primary { background: var(--fy-win); border: 3px solid; border-color: var(--fy-bevel); border-radius: 7px; box-shadow: var(--fy-rim); color: #fff; font-weight: 800; text-shadow: var(--fy-ink); }
-  .primary:hover:not(:disabled) { background: var(--fy-win); color: var(--warn); }
-  :is(.search, .message-form textarea, .composer-row textarea, .request-code, .request-details pre, .login-card input, .deny-reason, .custom-answer input, .access-form input:not([type=checkbox])) { background: #0316108c; border: 0; border-radius: 4px; box-shadow: inset 0 0 0 1px #ffffff26; color: var(--text); }
+  .primary { background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; color: #fff; font-weight: 800; text-shadow: var(--fy-ink); }
+  .primary:hover:not(:disabled) { background: var(--fy-win); background-clip: padding-box; border-image-source: url('/fantasy/frame-hi.svg'); color: var(--warn); }
+  :is(.search, .message-form textarea, .composer-row textarea, .request-code, .request-details pre, .login-card input, .deny-reason, .custom-answer input, .access-form input:not([type=checkbox])) { background: #0316108c; background-clip: padding-box; border: 4px solid transparent; border-image: var(--fy-well); border-radius: 0; box-shadow: none; color: var(--text); }
   .search:focus-within, :is(.login-card input, .deny-reason, .custom-answer input, .access-form input):focus { box-shadow: inset 0 0 0 2px var(--warn); }
-  .composer-row textarea { background: #021511; border: 2px solid; border-color: var(--fy-sunk); border-radius: 5px; box-shadow: inset 0 2px 0 #0007; font-weight: 600; }
-  .composer-row textarea:focus { border-color: var(--fy-sunk); box-shadow: inset 0 2px 0 #0007, 0 0 0 2px var(--warn); }
+  .composer-row textarea { background: #021511; background-clip: padding-box; border: 4px solid transparent; border-image: var(--fy-well); border-radius: 0; box-shadow: none; font-weight: 600; }
+  .composer-row textarea:focus { border-color: transparent; box-shadow: 0 0 0 2px var(--warn); }
   .composer-row textarea::placeholder { color: var(--text-3); opacity: .8; }
   .chip, .subagent-tag, .plan-chip, .mode-chip, .ctx-chip, .compact-chip { padding: 0; background: none; border: 0; color: var(--text-3); font: 700 13px/1.2 var(--font); }
   .ctx-chip { color: var(--warn); }
@@ -53,17 +53,18 @@
   .usage-note { color: var(--text-2); font-size: 13px; }
   .usage-reset { display: none; font-size: 13px; color: var(--text-2); }
   :is(.usage-high, .usage-full, .usage-expired) .usage-reset { display: block; }
-  .usage-meter { height: 5px; border: 0; border-radius: 0; background: #000a; color: #8ee89c; }
-  .usage-meter::-webkit-progress-bar { background: #000a; border-radius: 0; }
-  .usage-meter::-webkit-progress-value { border-radius: 0; }
-  .usage-meter::-moz-progress-bar { border-radius: 0; }
+  /* Chunky like the windows' own bars: a slot, lit along the top of its fill. */
+  :is(.usage-meter, .plan-meter) { height: 10px; border: 2px solid; border-color: var(--fy-slot); border-radius: 0; background: #0c140e; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-bar { background: #0c140e; border-radius: 0; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-value { background: var(--fy-fill); border-radius: 0; }
+  :is(.usage-meter, .plan-meter)::-moz-progress-bar { background: var(--fy-fill); border-radius: 0; }
 
   .search { min-height: 38px; }
 
   /* A list is a window with a small title window on top of it. Where a project lives and what can be started there come up when it's pointed at. */
   .project-group { margin-bottom: 14px; }
   .group-heading { position: relative; z-index: 1; margin: 0 0 -3px; min-height: 0; align-items: flex-end; }
-  .group-title { gap: 0; padding: 2px 12px; border-radius: 7px; }
+  .group-title { gap: 0; padding: 0 10px; }
   .group-title h2 { font: 800 16px/1.2 var(--display); letter-spacing: 0; text-transform: none; color: #fff; }
   .group-title .icon { display: none; }
   .group-count { margin-left: 8px; padding: 0; background: none; color: var(--text-2); font: 700 14px/1 var(--display); }
@@ -81,7 +82,7 @@
   .session-card.needs-input .session-title { color: var(--warn); }
   .session-card[data-status=error] .session-title { color: var(--danger); }
   .session-card:is([data-status=idle], [data-status=offline]) { :is(.session-title, .message-preview, .session-description) { color: var(--text-3); } .agent-mark { opacity: .6; } }
-  .agent-mark, .session-card.subagent .agent-mark { position: relative; width: 52px; height: 52px; background: #0005 center / cover no-repeat; border: 0; border-radius: 3px; text-shadow: var(--fy-ink); }
+  .agent-mark, .session-card.subagent .agent-mark { position: relative; width: 52px; height: 52px; background: #0005 center / cover no-repeat; border: 0; border-radius: 0; text-shadow: var(--fy-ink); }
   .agent-mark.fy-faced, .session-card.subagent .agent-mark.fy-faced { background-image: var(--fy-face); }
   .agent-mark.fy-faced > .provider-icon { position: absolute; right: 1px; bottom: 1px; width: 14px; height: 14px; font-size: 14px; filter: drop-shadow(0 0 1px #000); }
   .session-body { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: baseline; column-gap: 10px; }
@@ -130,18 +131,18 @@
 
   /* A message is a dialogue window, the speaker's name on a tab across its top edge. */
   .history-content { padding-top: 24px; }
-  .recent-message:not(.tool, .notice) { position: relative; padding: 13px 14px 10px; background: var(--fy-win); border: 3px solid; border-color: var(--fy-bevel); border-radius: 7px; box-shadow: var(--fy-rim); color: var(--text); font-weight: 500; text-shadow: var(--fy-ink); }
+  .recent-message:not(.tool, .notice) { position: relative; padding: 10px 11px 7px; background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; color: var(--text); font-weight: 500; text-shadow: var(--fy-ink); }
   .history-content > .recent-message:not(.tool, .notice, :first-child) { margin-top: 24px; }
-  .recent-message:not(.tool, .notice) > .message-meta { position: absolute; top: -14px; left: 10px; justify-content: flex-start; gap: 9px; max-width: calc(100% - 20px); margin: 0; padding: 2px 9px 1px; background: var(--fy-tab); border: 2px solid; border-color: var(--fy-bevel); border-radius: 5px; box-shadow: 0 0 0 1px #000c, 0 2px 0 #0008; font: 700 13px/1.25 var(--display); color: var(--text-3); white-space: nowrap; }
+  .recent-message:not(.tool, .notice) > .message-meta { position: absolute; top: -20px; left: 4px; justify-content: flex-start; gap: 9px; max-width: calc(100% - 8px); margin: 0; padding: 0 7px; background: var(--fy-tab); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; font: 700 13px/1.25 var(--display); color: var(--text-3); white-space: nowrap; }
   .recent-message:not(.tool, .notice) > .message-meta strong { overflow: hidden; text-overflow: ellipsis; color: var(--warn); font-weight: 800; }
   /* What you said is the other side of the conversation: the same window at dusk, its tab on the right. */
-  .recent-message.user { --accent: #9ccfff; --accent-2: #9ccfff; --panel-2: #ffffff1c; --sunken: #050d24b0; --line: #ffffff33; background: linear-gradient(120deg, #2f5aa8, #1d3a78 42%, #0b1838); }
-  .recent-message.user > .message-meta { left: auto; right: 10px; background: #13285a; }
+  .recent-message.user { --accent: #9ccfff; --accent-2: #9ccfff; --panel-2: #ffffff1c; --sunken: #050d24b0; --line: #ffffff33; background: url('/fantasy/dither.svg') 0 0 / 8px 8px, linear-gradient(120deg, #2c58a4 6.25%, #2c549c 0 12.5%, #285098 0 18.75%, #244890 0 25%, #244488 0 31.25%, #204080 0 37.5%, #1c3c78 0 43.75%, #1c3874 0 50%, #18346c 0 56.25%, #183064 0 62.5%, #142c5c 0 68.75%, #142858 0 75%, #102450 0 81.25%, #102048 0 87.5%, #0c1c44 0 93.75%, #0c183c 0); background-clip: padding-box; }
+  .recent-message.user > .message-meta { left: auto; right: 4px; background: #102858; background-clip: padding-box; }
   .recent-message.tool { border-left-color: var(--text-3); }
   .tool-call { color: var(--text-2); }
 
   /* A request is a dialogue with choices: the hand picks one. */
-  .request-box { border-color: #fff3b0 #b8901e #8a6c14 #f2d76e; }
+  .request-box { border-image-source: url('/fantasy/frame-gold.svg'); }
   .request-box > .eyebrow { display: none; }
   .answer-option { position: relative; min-height: 36px; margin: 0; padding: 4px 8px 4px 36px; font-weight: 700; }
   .answer-option input { position: absolute; opacity: 0; pointer-events: none; }
@@ -187,8 +188,8 @@
   .login-card .brand-variant.fantasy { gap: clamp(8px, 2vw, 16px); }
   .login-card .brand-variant.fantasy .brand-mark { width: clamp(40px, 9vw, 72px); height: clamp(40px, 9vw, 72px); filter: drop-shadow(0 3px 0 #0008); }
   .login-card .brand-variant.fantasy .brand-name { font: 800 clamp(36px, 8vw, 68px)/1 var(--display); color: #fff; white-space: nowrap; text-shadow: 0 3px 0 #000b, 0 0 26px #0009; }
-  .login-form { position: relative; width: min(100%, 320px); align-self: center; gap: 8px; padding: 12px 14px 12px 50px; background: var(--fy-win); border: 3px solid; border-color: var(--fy-bevel); border-radius: 7px; box-shadow: var(--fy-rim); }
-  .login-form::before { content: ''; position: absolute; left: 12px; top: 12px; width: 30px; height: 42px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .login-form { position: relative; width: min(100%, 320px); align-self: center; gap: 8px; padding: 9px 11px 9px 47px; background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; }
+  .login-form::before { content: ''; position: absolute; left: 9px; top: 9px; width: 30px; height: 42px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
   .login-form input { min-height: 42px; }
   .login-form .primary { margin-top: 0; min-height: 38px; }
   .login-form .form-error:empty { display: none; }
@@ -203,7 +204,7 @@
     &, * { scrollbar-color: #b9bab0 #04201a; }
     @supports not (scrollbar-color: red blue) {
       ::-webkit-scrollbar { width: 10px; height: 10px; background: #04201a; }
-      ::-webkit-scrollbar-thumb { border: 2px solid #04201a; border-radius: 5px; background: #b9bab0; }
+      ::-webkit-scrollbar-thumb { border: 2px solid #04201a; border-radius: 0; background: #b9bab0; }
       ::-webkit-scrollbar-thumb:hover { background: #f4f2ea; }
       ::-webkit-scrollbar-corner { background: #04201a; }
     }

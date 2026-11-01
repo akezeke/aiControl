@@ -33,7 +33,6 @@ export function labelTexture(text, color) {
   if (LABELS.size > LABEL_LIMIT) { const [oldest, gone] = LABELS.entries().next().value; LABELS.delete(oldest); gone.texture.dispose(); }
   return label;
 }
-// A small window with a tail, for what someone's doing right now. Shares the labels' limit.
 // Bright at the foot, nothing at the head. Added to the screen, black draws nothing.
 let FADE = null;
 const fade = () => {
@@ -45,17 +44,39 @@ const fade = () => {
   FADE = new THREE.CanvasTexture(canvas); FADE.colorSpace = THREE.NoColorSpace;
   return FADE;
 };
+// A small window with a tail, for what someone's doing right now, in the windows' own pixels (scripts/fantasy-frames.mjs): a cell of 6 is about two screen pixels at the size it's shown. Shares the labels' limit.
+const CELL = 6, BODY = 17, BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], OUTLINE = '#000000c8', SHADOW = '#00000070';
+const LIT = { top: '#f4f2ea', left: '#dcdcd2', right: '#9a9c92', bottom: '#7d7f76' }, DIM = { top: '#9fa197', left: '#8f9188', right: '#62645c', bottom: '#53554e' };
+const TAIL = ['dFFFFFd', 'bdFFFdb', 'obdFdbo', '.obdbo.', '..obo..', '...o...'];
+// The bubble's gradient in 14 bands, each channel in steps of 4.
+const BANDS = Array.from({ length: 14 }, (_, i) => { const t = (i + .5) / 14, [a, b, k] = t < .5 ? [[26, 114, 96], [13, 69, 55], t * 2] : [[13, 69, 55], [6, 35, 29], t * 2 - 1]; return a.map((v, j) => Math.round((v + (b[j] - v) * k) / 4) * 4); });
 export function bubbleTexture(text) {
   const key = `bubble|${text}`;
   let label = LABELS.get(key);
   if (label) { LABELS.delete(key); LABELS.set(key, label); return label; }
   const font = '800 57px Nunito, system-ui, sans-serif', canvas = document.createElement('canvas'); let context = canvas.getContext('2d');
-  context.font = font; const width = Math.max(138, Math.ceil(context.measureText(text).width) + 60), height = 126, box = 99; canvas.width = width; canvas.height = height;
-  context = canvas.getContext('2d'); context.font = font; context.textAlign = 'center'; context.textBaseline = 'middle';
-  const shape = () => { context.beginPath(); context.roundRect(6, 6, width - 12, box - 12, 13); context.moveTo(width / 2 - 20, box - 6); context.lineTo(width / 2, height - 3); context.lineTo(width / 2 + 20, box - 6); };
-  const fill = context.createLinearGradient(0, 0, width, box); fill.addColorStop(0, '#16705a'); fill.addColorStop(.5, '#0d4537'); fill.addColorStop(1, '#06231d');
-  context.lineJoin = 'round'; context.lineWidth = 12; context.strokeStyle = '#000b'; shape(); context.stroke();
-  context.lineWidth = 6; context.strokeStyle = '#eceae0'; shape(); context.stroke(); context.fillStyle = fill; shape(); context.fill();
+  context.font = font;
+  const cols = Math.max(23, Math.ceil((context.measureText(text).width + 60) / CELL)) | 1, rows = BODY + 4, width = cols * CELL, height = rows * CELL, box = BODY * CELL; // Odd, so the tail has a middle.
+  canvas.width = width; canvas.height = height;
+  // The window's bands at 120°, under the Bayer dither.
+  const fill = (x, y) => {
+    const t = clamp(((x - cols / 2) * .866 + (y - BODY / 2) * .5) / (cols * .866 + BODY * .5) + .5, 0, .999), v = BAYER[y % 4 * 4 + x % 4] / 15 - .5;
+    return `rgb(${BANDS[Math.floor(t * BANDS.length)].map(c => Math.round(v > 0 ? c + (255 - c) * v * 28 / 255 : c * (1 + v * 44 / 255))).join()})`;
+  };
+  const depth = (x, y) => { if (y < 0 || y >= BODY) return -1; const r = cols - 1 - x, b = BODY - 1 - y; return Math.min(x, y, r, b, x + y - 2, r + y - 2, x + b - 2, r + b - 2); };
+  const cells = new Map();
+  for (let y = 0; y <= BODY; y++) for (let x = 0; x < cols; x++) {
+    const d = depth(x, y);
+    if (d < 0) { if (depth(x, y - 1) >= 0) cells.set(`${x},${y}`, SHADOW); continue; }
+    const near = { top: y, left: x, right: cols - 1 - x, bottom: BODY - 1 - y }, side = Object.keys(near).reduce((a, k) => near[k] < near[a] ? k : a, 'top');
+    cells.set(`${x},${y}`, d === 0 ? OUTLINE : d === 1 ? LIT[side] : d === 2 ? DIM[side] : fill(x, y));
+  }
+  // The tail opens the frame's bottom bands and steps down to a point, its shadow under it.
+  const left = (cols - 1) / 2 - 3, top = BODY - 3, ink = { d: DIM.bottom, b: LIT.bottom, o: OUTLINE };
+  TAIL.forEach((row, r) => [...row].forEach((c, i) => { if (c !== '.') cells.set(`${left + i},${top + r}`, c === 'F' ? fill(left + i, top + r) : ink[c]); }));
+  for (let r = 3; r <= TAIL.length; r++) for (let i = 0; i < 7; i++) if ((TAIL[r]?.[i] ?? '.') === '.' && TAIL[r - 1][i] === 'o') cells.set(`${left + i},${top + r}`, SHADOW);
+  for (const [at, color] of cells) { const [x, y] = at.split(','); context.fillStyle = color; context.fillRect(x * CELL, y * CELL, CELL, CELL); }
+  context.font = font; context.textAlign = 'center'; context.textBaseline = 'middle';
   context.fillStyle = '#000'; context.fillText(text, width / 2 + 3, box / 2 + 4); context.fillStyle = '#fff9e6'; context.fillText(text, width / 2, box / 2 + 1);
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.NoColorSpace; texture.minFilter = THREE.LinearMipmapLinearFilter; texture.generateMipmaps = true; texture.words = true;
   label = { texture, aspect: width / height };
