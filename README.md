@@ -37,16 +37,18 @@ On macOS, the Tailscale app is detected automatically. Claude usage uses its exi
 
 ![OpenCode icons for every theme](docs/screenshots/opencode-icons.webp)
 
-Install [OpenCode](https://opencode.ai/docs/) and leave its local server running:
+Install [OpenCode 2](https://dev.opencode.ai/v2/docs/), connect your provider with `/connect`, then choose its model with `/models`. Adding an Anthropic key does not switch away from OpenCode's free model. Connect AI Control to the shared background service:
 
 ```sh
-npm install -g opencode-ai
-opencode serve --hostname 127.0.0.1 --port 4096
+npm run setup -- --opencode auto
+npm restart
 ```
 
-In another terminal, run `npm run setup`, enter `http://127.0.0.1:4096` as the OpenCode URL, then run `npm restart`. If the server uses `OPENCODE_SERVER_PASSWORD`, save the same password in setup.
+Use **… → New OpenCode session** beside search to create a session in any folder. Terminal sessions started with `opencode` share the same service; AI Control discovers its address and password after restarts. A provider key alone does not connect the dashboard. Heroes gives OpenCode its own ranger portrait.
 
-Use `opencode attach http://127.0.0.1:4096` for terminal sessions on that server. Run `/connect` to connect Anthropic or another provider, then `/models` to select a model. AI Control can create sessions, send messages, stop turns and answer permissions/questions. Costs and tokens cover recorded OpenCode sessions; provider credit balances are unavailable. Each theme includes its own OpenCode icon.
+For a standalone server or OpenCode 1, run `opencode serve --hostname 127.0.0.1 --port 4096`, enter its URL/password in `npm run setup`, then restart AI Control. Connect the terminal to that same server (`opencode --server URL` in V2; `opencode attach URL` in V1).
+
+AI Control supports messages, stopping turns, permissions and questions; advanced V2 forms stay in OpenCode. Costs and tokens cover recorded sessions, not provider credit balances. **Updating** means a turn's final cost is pending; **Partial** means some history or costs are unavailable. V1 sessions appear only if the connected server exposes them.
 
 ## Commands
 
@@ -72,7 +74,7 @@ npm run build
 
 | Springfield | Sanctuary | Heroes |
 | --- | --- | --- |
-| ![Springfield](docs/screenshots/springfield-overview.webp) | ![Sanctuary](docs/screenshots/diablo-overview.webp) | ![Heroes](docs/screenshots/heroes-overview.webp) |
+| ![Springfield](docs/screenshots/springfield-overview.webp) | ![Sanctuary](docs/screenshots/diablo-overview.webp) | ![Heroes](docs/screenshots/heroes-opencode.webp) |
 
 [More screenshots, including mobile](docs/screenshots).
 

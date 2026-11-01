@@ -64,7 +64,7 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
     }
     row.append(windows);
     if (stale && (account.windows?.length || account.periods?.length)) row.append(node('span', 'usage-state', 'stale'));
-    if (account.status === 'partial') row.append(node('span', 'usage-state', 'partial'));
+    if (['partial', 'updating'].includes(account.status) && !stale) { const status = node('span', 'usage-state', account.status); status.title = detail; status.setAttribute('aria-label', detail); row.append(status); }
     rows.append(row);
   }
   container.replaceChildren(rows);

@@ -23,6 +23,8 @@ function fixture(t) {
     assert.equal(options.headers.Authorization, `Basic ${Buffer.from('opencode:test-secret').toString('base64')}`);
     if (state.offline) throw new Error('test-secret must not be exposed');
     const json = value => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
+    if (path === '/api/info') return new Response('', { status: 404 });
+    if (path === '/global/health') return json({ healthy: true, version: '1.19.5' });
     if (path === '/experimental/session') return json(state.sessions);
     if (path === '/session/status') return json(state.status);
     if (path === '/permission') return json(state.permissions);

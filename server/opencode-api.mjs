@@ -1,0 +1,117 @@
+import { fail } from './requests.mjs';
+
+const array = value => { if (!Array.isArray(value)) throw fail('OpenCode returned an unsupported response. Update OpenCode and reconnect.', 503); return value; };
+const infoV2 = (info, version) => ({ ...info, directory: info.location?.directory, version });
+
+// Keep the dashboard's existing transcript representation across the two wire protocols.
+export function messagesV2(rows) {
+  return rows.map(message => {
+    const info = { ...message, role: message.type, providerID: message.model?.providerID, modelID: message.model?.id,
+      ...(message.error ? { error: { name: message.error.type, data: { message: message.error.message } } } : {}) };
+    let parts = [];
+    if (message.type === 'user') parts = [{ type: 'text', text: message.text }, ...(message.files || []).map(file => ({ type: 'file', mime: file.mime, filename: file.name }))];
+    if (message.type === 'assistant') parts = (message.content || []).map(part => ({ ...part, ...(part.type === 'tool' ? { tool: part.name } : {}) }));
+    if (message.type === 'compaction') { info.role = 'assistant'; parts = [{ type: 'compaction' }]; }
+    if (message.type === 'shell') { info.role = 'assistant'; parts = [{ type: 'tool', tool: 'shell', state: { input: { command: message.command }, status: message.exit ? 'error' : message.status } }]; }
+    return { info, parts: parts.map((part, i) => ({ ...part, id: `${message.id}:${part.id || i}` })) };
+  });
+}
+
+function formV2(form) {
+  const supported = form.fields?.length && form.fields.every(field => ['string', 'multiselect', 'boolean', 'number', 'integer'].includes(field.type) && !field.hidden && !field.when?.length
+    && new Set(field.options?.map(option => option.label)).size === (field.options?.length || 0));
+  return { ...form, unsupported: !supported, questions: supported ? form.fields.map(field => ({
+    question: field.title || field.description || field.key, multiple: field.type === 'multiselect',
+    options: field.type === 'boolean' ? [{ label: 'Yes' }, { label: 'No' }] : field.options || [],
+    custom: field.type !== 'boolean' && (!field.options?.length || field.custom === true),
+  })) : [] };
+}
+
+export class OpenCodeAPI {
+  constructor(client) { this.client = client; }
+  async detect() {
+    if (this.version) return;
+    try {
+      const info = await this.client.request('/api/info');
+      if (!/^2\./.test(info?.version)) throw fail('This OpenCode API version is not supported.', 503);
+      this.version = info.version; this.v2 = true;
+    } catch (error) {
+      if (error.upstreamStatus !== 404 && !error.notJSON) throw error;
+      const info = await this.client.request('/global/health');
+      if (!/^1\./.test(info?.version)) throw fail('This OpenCode API version is not supported.', 503);
+      this.version = info.version; this.v2 = false;
+    }
+  }
+  async sessions(limit) {
+    await this.detect();
+    if (!this.v2) return array(await this.client.request('/experimental/session', { query: { limit, archived: true } }));
+    // Omitting archived includes both active and archived sessions in V2.
+    const rows = [], seen = new Set(); let cursor;
+    do {
+      const result = await this.client.request('/api/session', { query: { limit: Math.min(200, limit - rows.length), ...cursor ? { cursor } : { order: 'desc' } } });
+      rows.push(...array(result.data)); cursor = result.cursor?.next;
+      if (cursor && seen.has(cursor)) throw fail('OpenCode returned an invalid session cursor.', 503);
+      seen.add(cursor);
+    } while (cursor && rows.length < limit);
+    return rows.map(info => infoV2(info, this.version));
+  }
+  async session(id, directory) {
+    const result = await this.client.request(`${this.v2 ? '/api' : ''}/session/${id}`, { ...!this.v2 ? { directory } : {} });
+    return this.v2 ? infoV2(result.data, this.version) : result;
+  }
+  async status(directory) {
+    const result = await this.client.request(this.v2 ? '/api/session/active' : '/session/status', { ...!this.v2 ? { directory } : {} });
+    return this.v2 ? Object.fromEntries(Object.entries(result.data).map(([id]) => [id, { type: 'busy' }])) : result;
+  }
+  async requests(kind, directory) {
+    if (!this.v2) return array(await this.client.request(`/${kind}`, { directory }));
+    const result = await this.client.request(kind === 'permission' ? '/api/permission/request' : '/api/form', { query: { 'location[directory]': directory } });
+    return array(result.data).map(request => kind === 'permission' ? { ...request, permission: request.action, patterns: request.resources } : formV2(request));
+  }
+  async reply(kind, request, directory, answer, questions) {
+    let body, path;
+    if (kind === 'permission') {
+      const decision = answer.decision === 'accept' ? 'once' : 'reject';
+      body = { [this.v2 ? 'decision' : 'reply']: decision, ...(answer.message ? { message: answer.message } : {}) };
+    } else if (!this.v2) body = { answers: questions.map(q => answer.answers[q.id]) };
+    else {
+      if (request.unsupported) throw fail('Answer this form in OpenCode.');
+      const values = request.fields.map((field, i) => {
+        const selected = answer.answers[questions[i].id];
+        const mapped = selected.map(label => field.options?.find(option => option.label === label)?.value ?? label);
+        let value = field.type === 'multiselect' ? mapped : field.type === 'boolean' ? selected[0] === 'Yes' : mapped[0];
+        if (['number', 'integer'].includes(field.type)) {
+          value = Number(value);
+          if (!Number.isFinite(value) || (field.type === 'integer' && !Number.isInteger(value))) throw fail(`Enter a ${field.type}: ${field.title || field.key}`);
+        }
+        return [field.key, value];
+      });
+      body = { answer: Object.fromEntries(values) };
+    }
+    path = this.v2 ? `/api/session/${request.sessionID}/${kind === 'question' ? 'form' : 'permission'}/${request.id}/reply` : `/${kind}/${request.id}/reply`;
+    return this.client.request(path, { method: 'POST', body, ...!this.v2 ? { directory } : {} });
+  }
+  async messages(id, directory, limit) {
+    if (!this.v2) return array(await this.client.request(`/session/${id}/message`, { directory, query: limit ? { limit } : {} }));
+    const rows = [], seen = new Set(); let cursor;
+    do {
+      const page = await this.client.request(`/api/session/${id}/message`, { query: { limit: limit || 200, ...cursor ? { cursor } : { order: 'desc' } } });
+      rows.push(...array(page.data));
+      cursor = page.cursor?.next;
+      if (limit) break;
+      // Avoid silently presenting partial usage as complete on malformed or enormous histories.
+      if (cursor && (seen.has(cursor) || rows.length >= 100_000)) throw fail('OpenCode history is too large to read. Usage may be incomplete.', 503);
+      seen.add(cursor);
+    } while (cursor);
+    return messagesV2(rows.reverse());
+  }
+  send(id, directory, text) {
+    return this.client.request(this.v2 ? `/api/session/${id}/prompt` : `/session/${id}/prompt_async`,
+      { method: 'POST', body: this.v2 ? { text } : { parts: [{ type: 'text', text }] }, ...!this.v2 ? { directory } : {} });
+  }
+  interrupt(id, directory) { return this.client.request(this.v2 ? `/api/session/${id}/interrupt` : `/session/${id}/abort`, { method: 'POST', ...!this.v2 ? { directory } : {} }); }
+  async create(directory) {
+    const result = await this.client.request(this.v2 ? '/api/session' : '/session', { method: 'POST', body: this.v2 ? { location: { directory } } : {}, ...!this.v2 ? { directory } : {} });
+    return this.v2 ? infoV2(result.data, this.version) : result;
+  }
+}

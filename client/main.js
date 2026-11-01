@@ -235,12 +235,14 @@ function showWorkspace() {
   const stats = el('div', 'stats'); stats.id = 'stats'; main.append(stats);
   const usage = el('section', 'usage'); usage.id = 'usage'; usage.setAttribute('aria-label', 'Usage limits'); main.append(usage);
   const toolbar = el('div', 'toolbar'); const menu = el('details', 'filter-menu'); menu.id = 'agent-filter-menu';
-  const summary = el('summary', 'quiet-button', '…'); summary.setAttribute('aria-label', 'Filter sessions by agent'); summary.title = 'Agent filter'; menu.append(summary);
+  const summary = el('summary', 'quiet-button', '…'); summary.setAttribute('aria-label', 'Session options'); summary.title = 'Session options'; menu.append(summary);
   const tabs = el('div', 'filter-options'); tabs.setAttribute('aria-label', 'Agent provider'); tabs.append(el('span', 'sidebar-label', 'SHOW AGENTS'));
   for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code'], ['opencode', 'OpenCode']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
   const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu); main.append(toolbar);
+  const create = button('New OpenCode session', 'tab new-session-button', () => { menu.open = false; newOpenCodeSession(); }, 'plus');
+  tabs.append(create);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
   const screen = el('div', 'main-screen'); screen.append(main); content.append(screen); shell.append(content); app.append(shell);
@@ -298,6 +300,7 @@ function syncOffice() {
 }
 
 function renderData() {
+  document.querySelector('.new-session-dialog')?.updateConnection();
   if (!state.snapshot || !document.querySelector('#groups')) {
     const error = document.querySelector('#error'); if (error && state.error) { error.hidden = false; error.textContent = state.error; } return;
   }
@@ -346,7 +349,7 @@ function renderData() {
   });
   for (const tab of document.querySelectorAll('[data-provider]')) { tab.classList.toggle('active', tab.dataset.provider === state.provider); tab.setAttribute('aria-pressed', String(tab.dataset.provider === state.provider)); }
   for (const tab of document.querySelectorAll('[data-grouping]')) { tab.classList.toggle('active', tab.dataset.grouping === state.grouping); tab.setAttribute('aria-pressed', String(tab.dataset.grouping === state.grouping)); }
-  const filterMenu = document.querySelector('#agent-filter-menu'); filterMenu.classList.toggle('filtered', state.provider !== 'all'); filterMenu.querySelector('summary').setAttribute('aria-label', `Agent filter: ${state.provider === 'all' ? 'All agents' : providerName(state.provider)}`);
+  const filterMenu = document.querySelector('#agent-filter-menu'); filterMenu.classList.toggle('filtered', state.provider !== 'all'); filterMenu.querySelector('summary').setAttribute('aria-label', `Session options: ${state.provider === 'all' ? 'All agents' : providerName(state.provider)}`);
   const focusedSession = document.activeElement?.classList.contains('session-card') ? document.activeElement.dataset.sessionId : null;
   const groups = document.querySelector('#groups');
   const visible = sessions.filter(s => (!state.project || (s.cwd || s.project) === state.project) && (state.provider === 'all' || s.provider === state.provider) && (state.filter === 'all' || (state.filter === 'attention' ? needsInput(s) : s.status === state.filter)) && `${s.title} ${s.project} ${s.cwd} ${s.model}`.toLowerCase().includes(state.search.toLowerCase()));
@@ -358,7 +361,7 @@ function renderData() {
   syncList(groups, visible.length ? sorted.map(([cwd]) => [cwd, null]) : [['empty', [state.filter === 'attention', sessions.length]]], data => {
     if (!data) { const group = el('section', 'project-group'); group.append(el('div', 'group-heading'), el('div', 'session-list')); return group; }
     const [attention, total] = data, empty = el('div', 'empty');
-    empty.append(icon(attention ? 'check' : 'terminal'), el('h2', '', attention ? 'Nothing needs your attention.' : total ? 'No sessions match.' : 'Your control room is ready.'), el('p', 'muted', total ? 'Sessions update automatically as your agents work.' : 'Open Codex or Claude Code on this computer. Live sessions will appear here, grouped by project.'));
+    empty.append(icon(attention ? 'check' : 'terminal'), el('h2', '', attention ? 'Nothing needs your attention.' : total ? 'No sessions match.' : 'No sessions yet.'));
     return empty;
   });
   const sessionsById = new Map();
@@ -604,6 +607,7 @@ function renderSessionRequests(requests, session) {
     if (request.plan) { const rendered = renderMessageMarkdown(request.plan, Infinity), plan = el('div', 'message-text request-plan'); plan.innerHTML = rendered.html + (rendered.more || ''); box.append(plan); }
     if (request.kind !== 'question') renderRequestDetails(box, request);
     const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
+    if (request.unsupported) { box.append(el('p', 'muted', request.unsupported)); requests.append(box); continue; }
     if (request.kind === 'question') {
       const form = el('form', 'question-form');
       for (const [index, q] of request.questions.entries()) {
@@ -968,6 +972,41 @@ async function respond(request, payload, container, error) {
 }
 
 function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
+function newOpenCodeSession() {
+  if (document.querySelector('.new-session-dialog')) return;
+  const dialog = el('dialog', 'new-session-dialog'), form = el('form', 'new-session-form');
+  const title = el('h2', '', 'New OpenCode session'); title.id = 'new-session-title'; dialog.setAttribute('aria-labelledby', title.id);
+  const label = el('label', '', 'Folder'), folder = el('input'); folder.required = true; folder.autocomplete = 'off'; folder.spellcheck = false; folder.placeholder = '~/project'; folder.maxLength = 4096;
+  folder.setAttribute('list', 'new-session-folders'); folder.value = state.project || ''; label.append(folder);
+  const known = el('datalist'); known.id = 'new-session-folders';
+  for (const cwd of new Set((state.snapshot?.sessions || []).map(session => session.cwd).filter(Boolean))) { const option = el('option'); option.value = cwd; known.append(option); }
+  const connection = el('p', 'form-error'); connection.setAttribute('role', 'status');
+  const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
+  const actions = el('div', 'new-session-actions');
+  const cancel = button('Cancel', 'secondary', () => dialog.close());
+  const submit = button('Create', 'primary', undefined, 'plus'); submit.type = 'submit'; actions.append(cancel, submit);
+  let sending = false;
+  dialog.updateConnection = () => {
+    const provider = state.snapshot?.providers?.find(provider => provider.name === 'OpenCode');
+    connection.textContent = state.error || (!state.snapshot ? 'Connecting…' : !state.snapshot.features?.opencode ? 'Connect OpenCode: npm run setup -- --opencode auto, then npm restart.' : !provider?.connected ? provider?.detail || 'OpenCode is disconnected. Start OpenCode to reconnect.' : '');
+    connection.hidden = !connection.textContent; submit.disabled = sending || !!connection.textContent;
+  };
+  form.onsubmit = async event => {
+    event.preventDefault(); if (sending || submit.disabled) return;
+    const cwd = folder.value.trim(); if (!cwd) { folder.focus(); return; }
+    sending = true; error.textContent = ''; folder.disabled = cancel.disabled = true; dialog.updateConnection();
+    try {
+      const result = await api('spawn', { provider: 'opencode', cwd });
+      if (!dialog.isConnected) return;
+      dialog.close(); await refresh(); if (state.csrf) { openPanel(result.sessionId); toast('OpenCode session created'); }
+    } catch (e) { error.textContent = e.message; }
+    finally { sending = false; folder.disabled = cancel.disabled = false; dialog.updateConnection(); }
+  };
+  dialog.oncancel = event => { if (sending) event.preventDefault(); };
+  dialog.onclose = () => { dialog.remove(); if (!state.selected) document.querySelector('#agent-filter-menu summary')?.focus(); };
+  dialog.onclick = event => { if (event.target === dialog && !sending) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); } };
+  form.append(title, label, known, connection, error, actions); dialog.append(form); app.append(dialog); dialog.updateConnection(); dialog.showModal(); folder.focus();
+}
 function spawnButtons(cwd) {
   const actions = el('span', 'group-actions');
   for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}${choice.last ? ' · last used here' : ''}`; actions.append(b); }
@@ -992,6 +1031,7 @@ async function lock() {
   try { await logout; } catch { /* local display still locks if offline */ }
 }
 document.addEventListener('keydown', event => {
+  if (document.querySelector('dialog[open]')) return;
   if (event.key !== 'Escape' && event.key !== 'Tab') return;
   const openTheme = document.querySelector('.theme-menu[open]');
   if (event.key === 'Escape' && openTheme) { openTheme.open = false; openTheme.querySelector('summary').focus(); return; }

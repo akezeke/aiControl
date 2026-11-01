@@ -8,8 +8,9 @@ const add = (target, source) => { for (const key of Object.keys(target)) target[
 
 // The assistant message already totals its step-finish parts. Counting both doubles spend.
 export function usageRecords(rows) {
-  return [...new Map(rows.filter(row => row.info?.role === 'assistant').map(({ info }) => [info.id, {
+  return [...new Map(rows.filter(row => row.info?.role === 'assistant' && (!row.info.type || row.info.type === 'assistant')).map(({ info }) => [info.id, {
     id: info.id, at: info.time?.created, usd: Number.isFinite(info.cost) && info.cost >= 0 ? info.cost : null,
+    pending: info.type === 'assistant' && !info.time?.completed && !info.error,
     ...tokenUsage(info.tokens),
   }])).values()];
 }

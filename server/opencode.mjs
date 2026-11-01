@@ -1,7 +1,12 @@
 import { fail, slashCommand } from './requests.mjs';
 import { openCodeSession, openCodeMessages, usageRecords, usagePeriods, tokenUsage } from './opencode-data.mjs';
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { OpenCodeAPI } from './opencode-api.mjs';
 
 export function openCodeConfig(value) {
+  if (value?.service === true) return { service: true };
   if (!value?.url) return null;
   let url;
   try { url = new URL(value.url); } catch { throw new Error('Enter a valid OpenCode server URL.'); }
@@ -27,11 +32,15 @@ export class OpenCodeClient {
         signal: AbortSignal.any([AbortSignal.timeout(15_000), ...this.signal ? [this.signal] : []]) });
       if (!response.ok) {
         await response.body?.cancel();
-        throw fail([401, 403].includes(response.status) ? 'OpenCode refused access. Check its server password in npm run setup.'
+        throw Object.assign(fail([401, 403].includes(response.status) ? 'OpenCode refused access. Check its server password in npm run setup.'
           : response.status === 404 ? 'OpenCode no longer has this session or request, or its API needs updating.'
-          : response.status === 409 ? 'OpenCode is busy. Stop its current turn or wait for it to finish.' : 'OpenCode could not complete this request.', response.status === 404 || response.status === 409 ? 409 : 503);
+          : response.status === 409 ? 'OpenCode is busy. Stop its current turn or wait for it to finish.' : 'OpenCode could not complete this request.', [400, 404, 409].includes(response.status) ? response.status === 404 ? 409 : response.status : 503), { upstreamStatus: response.status });
       }
       if (response.status === 204) return null;
+      if (!response.headers.get('content-type')?.includes('application/json')) {
+        await response.body?.cancel();
+        throw Object.assign(fail('OpenCode returned an unsupported response.', 503), { notJSON: true });
+      }
       let raw = '', size = 0;
       const decoder = new TextDecoder();
       for await (const chunk of response.body) {
@@ -56,11 +65,16 @@ async function eachLimit(items, action) {
 }
 
 export class OpenCodeAdapter {
-  constructor(store, config, { fetch: fetcher, now = Date.now, intervalMs = 3000 } = {}) {
+  constructor(store, config, { fetch: fetcher, now = Date.now, intervalMs = 3000, serviceFile = join(process.env.XDG_STATE_HOME || join(homedir(), '.local/state'), 'opencode/service.json') } = {}) {
     this.store = store; this.config = openCodeConfig(config); this.now = now; this.intervalMs = intervalMs;
     this.sessions = new Map(); this.usage = new Map(); this.requestKeys = new Set(); this.submissions = new Map();
-    this.controller = new AbortController(); this.client = this.config && new OpenCodeClient(this.config, { fetch: fetcher, signal: this.controller.signal });
+    this.controller = new AbortController(); this.fetch = fetcher; this.serviceFile = serviceFile;
+    if (this.config && !this.config.service) this.connect(this.config);
     this.connected = false; this.detail = this.config ? 'Connecting to OpenCode…' : ''; this.usageUpdatedAt = null;
+  }
+  connect(config) {
+    this.client = new OpenCodeClient(config, { fetch: this.fetch, signal: this.controller.signal });
+    this.api = new OpenCodeAPI(this.client);
   }
   start() {
     if (!this.config || this.timer) return;
@@ -75,19 +89,29 @@ export class OpenCodeAdapter {
   }
   list() { return [...this.sessions.values()]; }
   refresh() {
-    if (!this.client || this.controller.signal.aborted) return Promise.resolve();
+    if (!this.config || this.controller.signal.aborted) return Promise.resolve();
     if (this.pending) return this.pending;
     this.pending = this.sync().catch(error => { this.disconnect(error.status ? error.message : 'OpenCode could not refresh sessions.'); }).finally(() => { this.pending = null; });
     return this.pending;
   }
   async sync() {
-    const rows = array(await this.client.request('/experimental/session', { query: { limit: maxSessions, archived: true } }));
+    if (this.config.service) {
+      let registration;
+      try { registration = JSON.parse(await readFile(this.serviceFile, 'utf8')); }
+      catch { throw fail('OpenCode service is unavailable. Start OpenCode or run opencode service start.', 503); }
+      const config = openCodeConfig({ url: registration.url, password: registration.password });
+      if (!config) throw fail('OpenCode service has no local address. Restart OpenCode.', 503);
+      if (JSON.stringify(config) !== JSON.stringify(this.client?.config)) {
+        this.disconnect('Reconnecting to OpenCode…'); this.connect(config);
+      }
+    }
+    const rows = await this.api.sessions(maxSessions);
     const infos = rows.filter(info => /^ses[\w-]+$/.test(info.id) && typeof info.directory === 'string');
     const directories = [...new Set(infos.filter(info => !info.time?.archived).map(info => info.directory))];
-    const states = new Map(), requests = [];
+    const states = new Map(), requests = [], active = this.api.v2 ? await this.api.status() : null;
     await eachLimit(directories, async directory => {
       const [status, permissions, questions] = await Promise.all([
-        this.client.request('/session/status', { directory }), this.client.request('/permission', { directory }), this.client.request('/question', { directory }),
+        active || this.api.status(directory), this.api.requests('permission', directory), this.api.requests('question', directory),
       ]);
       if (!status || typeof status !== 'object' || Array.isArray(status)) throw fail('OpenCode returned invalid session status.', 503);
       for (const [id, value] of Object.entries(status)) states.set(id, value);
@@ -95,7 +119,7 @@ export class OpenCodeAdapter {
     });
     // A request can belong to an older session outside the listing window.
     for (const { request, directory } of requests) if (!infos.some(info => info.id === request.sessionID)) {
-      infos.push(await this.client.request(`/session/${nativeId(request.sessionID)}`, { directory }));
+      infos.push(await this.api.session(nativeId(request.sessionID), directory));
     }
     this.controller.signal.throwIfAborted();
     const live = new Set(infos.filter(info => !info.time?.archived).map(info => info.id));
@@ -108,12 +132,12 @@ export class OpenCodeAdapter {
       const prior = this.sessions.get(info.id), status = states.get(info.id)?.type;
       const working = status === 'busy' || status === 'retry';
       const stored = this.usage.get(info.id), monthly = info.time?.updated >= month;
-      const readUsage = monthly && (!stored || stored.updated !== info.time?.updated || working) && (!stored || this.now() - stored.at >= 60_000);
+      const readUsage = monthly && (!stored || stored.updated !== info.time?.updated || working || prior?.status === 'working') && (!stored || this.now() - stored.at >= 60_000 || (prior?.status === 'working' && !working));
       const changed = !prior || prior.updatedAt !== info.time?.updated || working || prior.status === 'working' || prior.messagesState === 'stale' || prior.messagesState === 'unavailable';
       let session = prior;
       try {
         if (readUsage || (!info.time?.archived && changed)) {
-          const messages = array(await this.client.request(`/session/${nativeId(info.id)}/message`, { directory: info.directory, query: readUsage ? {} : { limit: 30 } }));
+          const messages = await this.api.messages(nativeId(info.id), info.directory, readUsage ? undefined : 30);
           this.controller.signal.throwIfAborted();
           session = openCodeSession(info, messages, prior);
           if (readUsage) {
@@ -123,6 +147,9 @@ export class OpenCodeAdapter {
               if (records.every(r => r.usd !== null)) session.cost = { usd: total, estimated: true, added: info.summary?.additions || 0, removed: info.summary?.deletions || 0 };
             }
             if (!info.tokens) session.tokens = records.reduce((sum, record) => { for (const key of Object.keys(sum)) sum[key] += record[key] || 0; return sum; }, tokenUsage());
+          } else if (stored) {
+            // Refresh streamed costs from the recent page without reloading the full history each poll.
+            stored.records = [...new Map([...stored.records, ...usageRecords(messages)].map(record => [record.id, record])).values()];
           }
         }
       } catch {
@@ -148,18 +175,16 @@ export class OpenCodeAdapter {
       if (typeof request.id !== 'string' || !/^[\w-]+$/.test(request.id)) continue;
       const key = `opencode:${kind}:${request.id}`, sessionId = `opencode:${request.sessionID}`; keys.add(key);
       const questions = kind === 'question' ? (request.questions || []).map((q, i) => ({ id: String(i), question: q.question, options: q.options, multiSelect: !!q.multiple, allowOther: q.custom !== false })) : undefined;
-      const view = kind === 'question' ? { questions, title: 'A question for you' } : {
+      const view = kind === 'question' ? { questions, title: request.title || 'A question for you', ...(request.unsupported ? { unsupported: 'Answer this form in OpenCode.' } : {}) } : {
         title: request.permission || 'Permission request', command: request.metadata?.command,
         details: { patterns: request.patterns, ...request.metadata }, denyMessage: true,
         actions: [{ value: 'accept', label: 'Allow once' }, { value: 'decline', label: 'Deny' }],
       };
       this.store.add({ provider: 'opencode', sessionId, kind, ...view }, async answer => {
         this.require(request.sessionID);
-        const pending = array(await this.client.request(`/${kind}`, { directory }));
+        const pending = await this.api.requests(kind, directory);
         if (!pending.some(item => item.id === request.id && item.sessionID === request.sessionID)) throw fail('This OpenCode request was already answered.', 409);
-        const body = kind === 'question' ? { answers: questions.map(q => answer.answers[q.id]) }
-          : { reply: answer.decision === 'accept' ? 'once' : 'reject', ...(answer.message ? { message: answer.message } : {}) };
-        await this.client.request(`/${kind}/${encodeURIComponent(request.id)}/reply`, { method: 'POST', body, directory });
+        await this.api.reply(kind, request, directory, answer, questions);
       }, key);
     }
     for (const key of this.requestKeys) if (!keys.has(key)) this.store.removeSource(key);
@@ -168,9 +193,11 @@ export class OpenCodeAdapter {
   usageSnapshot() {
     const periods = usagePeriods([...this.usage.values()].flatMap(value => value.records), this.now());
     const incomplete = this.usageIncomplete || periods.some(period => period.incomplete);
+    const missing = [...this.usage].flatMap(([id, value]) => value.records.filter(record => record.usd === null && record.at >= periods[1].from && record.at <= this.now()).map(record => ({ ...record, working: this.sessions.get(id)?.status === 'working' })));
+    const updating = !this.usageIncomplete && missing.length > 0 && missing.every(record => record.pending && record.working);
     return { provider: 'opencode', name: 'OpenCode', windows: [], periods: this.usageUpdatedAt ? periods : [], updatedAt: this.usageUpdatedAt,
-      status: !this.connected ? this.usageUpdatedAt ? 'stale' : 'unavailable' : incomplete ? 'partial' : 'ready',
-      detail: !this.connected ? this.detail : `${incomplete ? 'Incomplete totals. ' : ''}OpenCode estimates for recorded sessions, using this computer’s calendar. Free, subscription or unpriced models may report $0.`, estimated: true };
+      status: !this.connected ? this.usageUpdatedAt ? 'stale' : 'unavailable' : updating ? 'updating' : incomplete ? 'partial' : 'ready',
+      detail: !this.connected ? this.detail : `${updating ? 'A turn is still running; its final cost is not reported yet. ' : incomplete ? 'Some history or costs are unavailable; totals are incomplete. ' : ''}OpenCode estimates for recorded sessions, using this computer’s calendar. Free, subscription or unpriced models may report $0.`, estimated: true };
   }
   require(id) {
     nativeId(id);
@@ -180,7 +207,7 @@ export class OpenCodeAdapter {
     return session;
   }
   async history(id, limit = 40) {
-    const session = this.require(id), rows = array(await this.client.request(`/session/${id}/message`, { directory: session.cwd, query: { limit: limit + 1 } }));
+    const session = this.require(id), rows = await this.api.messages(id, session.cwd, limit + 1);
     return { messages: openCodeMessages(rows, limit), more: rows.length > limit };
   }
   async sendMessage(id, body) {
@@ -191,7 +218,7 @@ export class OpenCodeAdapter {
     const key = `${id}:${body.clientMessageId}`, existing = this.submissions.get(key);
     if (existing) { if (existing.text !== text) throw fail('This message ID was already used.'); return existing.promise; }
     // Retain ambiguous failures as well as successes: a timed-out POST must never be resent automatically.
-    const promise = this.client.request(`/session/${id}/prompt_async`, { directory: session.cwd, method: 'POST', body: { parts: [{ type: 'text', text }] } })
+    const promise = this.api.send(id, session.cwd, text)
       .then(() => { session.status = 'working'; return { status: 'sent' }; });
     this.submissions.set(key, { text, promise });
     if (this.submissions.size > 1000) this.submissions.delete(this.submissions.keys().next().value);
@@ -199,12 +226,12 @@ export class OpenCodeAdapter {
   }
   async interrupt(id) {
     const session = this.require(id);
-    await this.client.request(`/session/${id}/abort`, { directory: session.cwd, method: 'POST' });
+    await this.api.interrupt(id, session.cwd);
     await this.refresh(); return { status: 'interrupted' };
   }
   async spawn(cwd) {
     if (!this.connected) throw fail('OpenCode is disconnected. Start its server first.', 503);
-    const info = await this.client.request('/session', { directory: cwd, method: 'POST', body: {} });
+    const info = await this.api.create(cwd);
     nativeId(info.id); this.sessions.set(info.id, openCodeSession(info));
     return { sessionId: `opencode:${info.id}` };
   }
