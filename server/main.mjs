@@ -9,6 +9,7 @@ import { Auth } from './auth.mjs';
 import { RequestStore, mergeSessions } from './requests.mjs';
 import { CodexAdapter } from './codex.mjs';
 import { ClaudeAdapter } from './claude.mjs';
+import { OpenCodeAdapter } from './opencode.mjs';
 import { UsagePoller, claudeUsageReader } from './usage.mjs';
 import { createHandler } from './http.mjs';
 import { fail } from './requests.mjs';
@@ -19,7 +20,7 @@ import { CityTowers } from './towers.mjs';
 import { Battlefields } from './battlefields.mjs';
 import { Recovery, resumeArgs } from './recovery.mjs';
 import { PromptHistory } from './prompt-history.mjs';
-import { root, authFile, dataDir, hookSocket, port, claudeAccounts } from './config.mjs';
+import { root, authFile, dataDir, hookSocket, port, claudeAccounts, readSettings } from './config.mjs';
 
 export async function startServer({ host, hostname, tls = null }) {
   const origin = `${tls ? 'https' : 'http'}://${hostname}:${port}`;
@@ -32,6 +33,7 @@ export async function startServer({ host, hostname, tls = null }) {
   const codex = new CodexAdapter(store);
   const accounts = claudeAccounts();
   const claude = new ClaudeAdapter(store, hookSocket, { accounts });
+  const opencode = new OpenCodeAdapter(store, readSettings().opencode);
   // One usage row per Claude account, each with its own credentials.
   const claudeUsage = accounts.map(({ dir, label }) => ({ label, poller: new UsagePoller('claude', label ? `Claude Code · ${label}` : 'Claude Code', claudeUsageReader({ credentialsFile: join(dir, '.credentials.json') })) }));
   // Loading the .mjs directly avoids temporary bundled configs triggering Node 22's imported-module watcher.
@@ -47,8 +49,8 @@ export async function startServer({ host, hostname, tls = null }) {
     recovery.update([...codex.list(), ...claude.list()], { ended: entry => entry.provider === 'claude' ? claude.ending(entry.nativeId) : '', typed: session => session.provider === 'claude' ? prompts.get(session.nativeId) : '' });
   };
   const snapshot = () => {
-    const sessions = mergeSessions([...codex.list(), ...claude.list()], store.list());
-    return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label }))], features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }] };
+    const sessions = mergeSessions([...codex.list(), ...claude.list(), ...opencode.list()], store.list());
+    return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -56,24 +58,27 @@ export async function startServer({ host, hostname, tls = null }) {
     return session.nativeId;
   };
   const claudeId = id => id.startsWith('claude:') && id.slice(7);
+  const openCodeId = id => id.startsWith('opencode:') && id.slice(9);
+  const unsupportedOpenCode = () => { throw fail('This control is not available for OpenCode.', 409); };
   const messages = {
-    send: (id, body) => claudeId(id) ? claude.sendMessage(claudeId(id), body) : codex.sendMessage(messageTarget(id), body),
-    cancel: (id, queuedId) => codex.cancelQueuedMessage(messageTarget(id), queuedId),
-    interrupt: id => claudeId(id) ? claude.interrupt(claudeId(id)) : codex.interrupt(messageTarget(id)),
+    send: (id, body) => openCodeId(id) ? opencode.sendMessage(openCodeId(id), body) : claudeId(id) ? claude.sendMessage(claudeId(id), body) : codex.sendMessage(messageTarget(id), body),
+    cancel: (id, queuedId) => openCodeId(id) ? unsupportedOpenCode() : codex.cancelQueuedMessage(messageTarget(id), queuedId),
+    interrupt: id => openCodeId(id) ? opencode.interrupt(openCodeId(id)) : claudeId(id) ? claude.interrupt(claudeId(id)) : codex.interrupt(messageTarget(id)),
     fire: id => claudeId(id) ? claude.fire(claudeId(id)) : Promise.reject(fail('Only Claude sessions can be fired for now.', 409)),
     clear: id => claudeId(id) ? claude.clear(claudeId(id)) : Promise.reject(fail('Only Claude sessions can be cleared for now.', 409)),
-    effort: (id, body) => claudeId(id) ? claude.setEffort(claudeId(id), body?.effort) : codex.setEffort(messageTarget(id), body?.effort),
-    history: (id, limit) => claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
-    images: id => claudeId(id) ? claude.imageList(id) : codex.imageList(messageTarget(id)),
-    image: (id, imageId) => claudeId(id) ? claude.image(id, imageId) : codex.image(messageTarget(id), imageId),
-    documents: id => claudeId(id) ? claude.documentList(id) : codex.documentList(messageTarget(id)),
-    document: (id, documentId) => claudeId(id) ? claude.document(id, documentId) : codex.document(messageTarget(id), documentId),
+    effort: (id, body) => openCodeId(id) ? unsupportedOpenCode() : claudeId(id) ? claude.setEffort(claudeId(id), body?.effort) : codex.setEffort(messageTarget(id), body?.effort),
+    history: (id, limit) => openCodeId(id) ? opencode.history(openCodeId(id), limit) : claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
+    images: id => openCodeId(id) ? { images: [] } : claudeId(id) ? claude.imageList(id) : codex.imageList(messageTarget(id)),
+    image: (id, imageId) => openCodeId(id) ? unsupportedOpenCode() : claudeId(id) ? claude.image(id, imageId) : codex.image(messageTarget(id), imageId),
+    documents: id => openCodeId(id) ? { documents: [] } : claudeId(id) ? claude.documentList(id) : codex.documentList(messageTarget(id)),
+    document: (id, documentId) => openCodeId(id) ? unsupportedOpenCode() : claudeId(id) ? claude.document(id, documentId) : codex.document(messageTarget(id), documentId),
   };
   // Any existing directory (~ expands), or with `create` a new one in an existing directory. Claude starts under the account
   // asked for, or the one the project last used. `slot` is the desk or lot the agent was asked for, if any.
   const spawn = ({ cwd: typed, provider, account: label, slot, create } = {}) => {
     let cwd;
     try { cwd = agentFolder(typed, { create: create === true }); } catch (e) { return Promise.reject(e); }
+    if (provider === 'opencode') return opencode.spawn(cwd);
     const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
     seats.reserve(cwd, slot);
     return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' }).catch(e => { seats.release(cwd, slot); throw e; });
@@ -107,6 +112,7 @@ export async function startServer({ host, hostname, tls = null }) {
   }
   try { await claude.start(); } catch (e) { await closeServers(); await vite.close(); throw e; }
   codex.start();
+  opencode.start();
   for (const { poller } of claudeUsage) poller.start();
   const recovering = setInterval(() => recover().catch(error => console.error('[Recovery]', error.message)), 4000);
   // npm start polls for this file; write then rename so it never reads a partial file.
@@ -117,7 +123,7 @@ export async function startServer({ host, hostname, tls = null }) {
   async function close() {
     if (closing) return; closing = true;
     auth.persist(loginsFile);
-    clearInterval(recovering); codex.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
+    clearInterval(recovering); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
     await closeServers();
     await unlink(join(dataDir, 'server.json')).catch(() => {});
   }

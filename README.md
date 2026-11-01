@@ -1,6 +1,6 @@
 # AI Control
 
-A self-hosted dashboard for local Codex and Claude Code sessions on **macOS and Linux**, accessible from a browser or phone.
+A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **macOS and Linux**, accessible from a browser or phone.
 
 ![Orbit: session overview](docs/screenshots/orbit-light-overview.webp)
 
@@ -10,6 +10,7 @@ A self-hosted dashboard for local Codex and Claude Code sessions on **macOS and 
 - Answer permissions and questions, send messages, stop turns and start agents. Nothing is auto-approved.
 - Chat history with Markdown, diffs, tool calls, screenshots and the Markdown files a session writes.
 - Account usage limits, notifications and sounds when a session needs you.
+- OpenCode session costs, tokens and estimated daily/monthly spending.
 - Sessions lost to a crash, a killed tmux or a shutdown come back with their last prompt and reply, to resume in a click.
 - Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting.
 - A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
@@ -36,13 +37,30 @@ First run chooses local or Tailscale access, sets your PIN/password, and connect
 
 On macOS, the Tailscale app is detected automatically. Claude usage uses its existing [Keychain login](https://code.claude.com/docs/en/authentication#credential-management); macOS may ask for access. Use `npm run setup` to add Claude accounts or change network settings.
 
+### OpenCode
+
+![OpenCode icons for every theme](docs/screenshots/opencode-icons.webp)
+
+Install [OpenCode 2](https://dev.opencode.ai/v2/docs/), connect your provider with `/connect`, then choose its model with `/models`. Adding an Anthropic key does not switch away from OpenCode's free model. Connect AI Control to the shared background service:
+
+```sh
+npm run setup -- --opencode auto
+npm restart
+```
+
+Use **… → New OpenCode session** beside search to create a session in any folder. Terminal sessions started with `opencode` share the same service; AI Control discovers its address and password after restarts. A provider key alone does not connect the dashboard. Heroes gives OpenCode its own ranger portrait.
+
+For a standalone server or OpenCode 1, run `opencode serve --hostname 127.0.0.1 --port 4096`, enter its URL/password in `npm run setup`, then restart AI Control. Connect the terminal to that same server (`opencode --server URL` in V2; `opencode attach URL` in V1).
+
+AI Control supports messages, stopping turns, permissions and questions; advanced V2 forms stay in OpenCode. Costs and tokens cover recorded sessions, not provider credit balances. **Updating** means a turn's final cost is pending; **Partial** means some history or costs are unavailable. V1 sessions appear only if the connected server exposes them.
+
 ## Commands
 
 ```sh
 npm run attach             # Server terminal
 npm stop                   # Stop
 npm restart                # Restart
-npm run setup              # Network, HTTPS and Claude accounts
+npm run setup              # Network, HTTPS, Claude accounts and OpenCode
 npm run password           # Change PIN/password; sign out everywhere
 npm run dev:local          # Localhost only
 npm run demo               # Demo on port 47842, PIN 1234
@@ -60,7 +78,7 @@ npm run build
 
 | Springfield | Sanctuary | Heroes |
 | --- | --- | --- |
-| ![Springfield](docs/screenshots/springfield-overview.webp) | ![Sanctuary](docs/screenshots/diablo-overview.webp) | ![Heroes](docs/screenshots/heroes-overview.webp) |
+| ![Springfield](docs/screenshots/springfield-overview.webp) | ![Sanctuary](docs/screenshots/diablo-overview.webp) | ![Heroes](docs/screenshots/heroes-opencode.webp) |
 
 | Bridge | Bridge, on alert | Bridge's list |
 | --- | --- | --- |
@@ -88,7 +106,7 @@ For HTTPS and browser notifications, enable HTTPS in Tailscale and follow the ce
 
 ## How it works
 
-Codex connects through its local app-server socket. Claude sessions and history come from local files; hooks forward permissions and questions. Messages reach Claude through tmux or its inbox. Usage comes from each provider using your existing login; Claude manages token renewal.
+Codex connects through its local app-server socket. Claude sessions and history come from local files; hooks forward permissions and questions. Messages reach Claude through tmux or its inbox. OpenCode uses its local HTTP API. Account limits use your existing login; OpenCode costs use its recorded usage.
 
 ## License
 

@@ -17,7 +17,7 @@ export const settingsFile = join(dataDir, 'config.json');
 export const port = 47841;
 export function prepareData() { mkdirSync(dataDir, { recursive: true, mode: 0o700 }); }
 
-// { mode: 'tailscale' | 'local', cert?, key?, claudeDirs? }, written by scripts/setup.mjs.
+// { mode: 'tailscale' | 'local', cert?, key?, claudeDirs?, opencode?: { service: true } | { url, username?, password? } }, written by scripts/setup.mjs.
 export function readSettings() {
   try { return JSON.parse(readFileSync(settingsFile, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return {}; throw e; }
 }

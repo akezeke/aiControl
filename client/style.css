@@ -49,8 +49,18 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 :is(.secondary, .quiet-button):hover:not(:disabled) { background: var(--panel-2); border-color: var(--line-2); color: var(--text); }
 .quiet-button { font-weight: 500; }
 :is(.primary, .secondary, .quiet-button):active:not(:disabled) { transform: translateY(1px); }
-.login-form input, .access-form input:not([type=checkbox]), .custom-answer input, .message-form textarea { display: block; width: 100%; min-height: 44px; padding: 10px 12px; color: var(--text); background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 14px; line-height: 1.45; outline: none; caret-color: var(--accent); transition: border-color .15s, box-shadow .15s; }
-:is(.login-form input, .access-form input, .custom-answer input, .message-form textarea):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.login-form input, .access-form input:not([type=checkbox]), .custom-answer input, .message-form textarea, .new-session-form input { display: block; width: 100%; min-height: 44px; padding: 10px 12px; color: var(--text); background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 14px; line-height: 1.45; outline: none; caret-color: var(--accent); transition: border-color .15s, box-shadow .15s; }
+:is(.login-form input, .access-form input, .custom-answer input, .message-form textarea, .new-session-form input):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.new-session-dialog { width: min(420px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 24px; color: var(--text); background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: 0 16px 64px #0006; }
+.new-session-dialog::backdrop { background: #0009; }
+.new-session-form { display: grid; gap: 16px; }
+.new-session-form h2 { margin: 0; font-size: 18px; }
+.new-session-form label { display: grid; gap: 6px; font-size: 13px; }
+.new-session-form input { font-size: 16px; }
+.new-session-form .form-error { margin: 0; overflow-wrap: anywhere; }
+.new-session-form .form-error:empty { display: none; }
+.new-session-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.filter-options .new-session-button { display: flex; align-items: center; gap: 7px; margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0; padding-top: 12px; }
 :is(input, textarea)::placeholder { color: var(--text-3); opacity: 1; }
 
 /* Brand */
@@ -505,22 +515,25 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .history-shot { position: relative; width: 100%; height: 96px; min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--sunken); cursor: zoom-in; }
 .history-shot img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .history-shot:hover, .history-shot:focus-visible { border-color: var(--accent); }
-.shot-viewer { width: auto; max-width: calc(100vw - 24px); max-height: calc(100svh - 24px); padding: 10px; border: 1px solid #ffffff26; border-radius: 14px; background: #0d0f14f2; color: #eef0f5; font: 13px/1.4 system-ui, sans-serif; }
+.shot-viewer { position: fixed; inset: 0; width: 100%; height: 100%; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); overflow: hidden; border: 1px solid #ffffff26; border-radius: 0; background: #0d0f14f2; color: #eef0f5; font: 13px/1.4 system-ui, sans-serif; }
+.shot-viewer[open] { display: flex; flex-direction: column; }
+.shot-viewer::before { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shot-viewer::backdrop { background: #000c; }
-/* Horizontal drags are swipes between screenshots, not the browser's back gesture; pinch-zoom still works. */
-.shot-viewer { touch-action: pinch-zoom; }
-.shot-full { position: relative; display: block; width: fit-content; margin-inline: auto; cursor: zoom-in; }
-.shot-viewer.has-strip { --strip: 70px; }
-.shot-full img { display: block; max-width: calc(100vw - 46px); max-height: calc(100svh - 92px - var(--strip, 0px)); margin-inline: auto; object-fit: contain; border-radius: 6px; }
-/* No wider than the picture above it: the zero width keeps a long strip from stretching the viewer. The padding keeps a thumbnail's ring from being clipped. */
-.shot-strip { display: flex; justify-content: safe center; gap: 6px; box-sizing: border-box; width: 0; min-width: 100%; margin-top: 4px; padding: 4px; overflow-x: auto; scrollbar-width: thin; touch-action: pan-x pinch-zoom; }
+/* Gestures transform the picture without zooming the controls or scrolling the page. */
+.shot-viewer { touch-action: none; }
+/* Reserve the strip and controls before fitting the image, regardless of its size or the theme's frame. */
+.shot-full { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; cursor: grab; user-select: none; }
+.shot-full:active { cursor: grabbing; }
+.shot-full img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; pointer-events: none; }
+/* Every screenshot of the session as a thumbnail; the padding keeps a thumbnail's ring from being clipped. */
+.shot-strip { display: flex; flex: none; justify-content: safe center; gap: 6px; box-sizing: border-box; min-width: 0; margin-top: 4px; padding: 4px; overflow-x: auto; scrollbar-width: thin; touch-action: pan-x; }
 .shot-thumb { flex: none; width: 76px; height: 48px; padding: 0; overflow: hidden; border: 2px solid #ffffff2e; border-radius: 7px; background: #000; opacity: .7; cursor: pointer; }
 .shot-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .shot-thumb:hover, .shot-thumb:focus-visible { opacity: 1; }
 .shot-thumb.current { border-color: var(--accent); opacity: 1; }
-.shot-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.shot-bar { display: flex; flex: none; align-items: center; gap: 8px; margin-top: 8px; }
 .shot-meta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; color: #b9bfcc; }
-.shot-button { min-width: 36px; height: 32px; padding: 0 10px; border: 1px solid #ffffff2e; border-radius: 8px; background: #ffffff14; color: inherit; font: inherit; font-size: 16px; cursor: pointer; }
+.shot-button { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid #ffffff2e; border-radius: 8px; background: #ffffff14; color: inherit; font: inherit; font-size: 16px; text-decoration: none; cursor: pointer; }
 .shot-button:disabled { opacity: .35; cursor: default; }
 /* Markdown files a session wrote sit in history as a file would in a chat; their names in messages open them too. */
 .history-docs { flex: none; align-self: stretch; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 10px 0 0; }

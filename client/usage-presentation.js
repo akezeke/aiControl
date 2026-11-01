@@ -33,3 +33,10 @@ export function usageUpdatedText(account, now = Date.now(), stale = false) {
   const age = minutes < 1 ? 'just now' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
   return `${stale ? 'Last updated' : 'Updated'} ${age}${stale ? ' · stale' : ''}`;
 }
+
+export function costPeriodView(period) {
+  const usd = period.usd;
+  const cost = Number.isFinite(usd) && usd >= 0 ? `≈$${usd.toFixed(usd > 0 && usd < .01 ? 4 : 2)}` : '—';
+  const count = value => (Number.isFinite(value) ? value : 0).toLocaleString();
+  return { cost, detail: `${period.label}: OpenCode estimated cost · ${count(period.input)} input · ${count(period.output)} output · ${count(period.cacheRead)} cache read · ${count(period.cacheWrite)} cache write tokens` };
+}

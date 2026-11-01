@@ -1,0 +1,5 @@
+Asset: client/public/heroes-opencode-portrait.webp
+Generated with the built-in imagegen tool, then resized to 192 × 192 and saved as WebP.
+
+Prompt:
+One square character portrait for a compact Heroes of Might and Magic inspired dashboard. A third distinct hero representing OpenCode, complementing the blue-plumed armored knight and elderly red-robed wizard: a confident female elven ranger with pointed ears, warm olive skin, amber eyes, auburn braid and emerald hood, green leather shoulder armor, antique brass leaf clasp and a recurved bow. Bust portrait with a large readable face and shoulders filling the canvas. Meticulous 1990s fantasy strategy pixel art, visible square pixel clusters, rich limited palette, strong dark outlines, crisp stepped shapes. Warm gold light on the face, deep forest-green shadows, dark emerald forest background. Match the existing tightly cropped pixel portraits. Exactly one square portrait, no inset frame, margin, text, logo, watermark or UI.

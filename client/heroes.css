@@ -120,6 +120,7 @@
   .agent-mark { isolation: isolate; align-items: end; justify-items: end; width: 50px; height: 50px; padding: 0 2px; border: 0; border-radius: 0; background: url('/heroes-portraits.webp') left center / 200% 100% no-repeat; image-rendering: pixelated; color: #e1edff; font-size: 12px; text-shadow: 1px 1px #000, -1px -1px #000, 1px -1px #000, -1px 1px #000; }
   .agent-mark::before { content: ''; position: absolute; inset: -4px; z-index: -1; border: 3px solid transparent; border-image: var(--ornate) 34% / 13px stretch; background: none; pointer-events: none; }
   .agent-mark.claude { color: #ffe3a0; font-size: 17px; background: url('/heroes-portraits.webp') right center / 200% 100% no-repeat; }
+  .agent-mark.opencode { background: url('/heroes-opencode-portrait.webp') center / cover no-repeat; }
   .unread-dot { border-radius: 0; background: #ffe29a; box-shadow: 1px 1px #10182b; border: 1px solid #fff1c2; }
   .session-card.subagent .agent-mark { width: 32px; height: 32px; border-radius: 0; font-size: 12px; }
   .session-card.subagent { grid-template-columns: 34px minmax(0, 1fr) auto; min-height: 64px; padding-inline: 24px; border-image-width: 22px; }
@@ -189,7 +190,7 @@
   .answer-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
   .request-box { padding: 18px 22px; border: 4px solid transparent; border-image: var(--ornate) 34% / 29px stretch; background: var(--stone); box-shadow: inset 0 0 0 3px #0e182b; }
   .request-title { color: #ffe2a1; }
-  .shot-viewer { padding: 18px; border: 8px solid transparent; border-image: var(--ornate) 34% / 35px stretch; border-radius: 0; background: var(--stone); color: var(--text); }
+  .shot-viewer { border: 8px solid transparent; border-image: var(--ornate) 34% / 35px stretch; background: var(--stone); color: var(--text); }
   .shot-full img { border-radius: 0; }
   .shot-meta { color: var(--text-2); }
   .toast { border: 3px ridge #c7a969; border-radius: 0; background: #192c4c; color: #ffe6a2; box-shadow: 3px 4px #0008; }

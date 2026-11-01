@@ -82,13 +82,14 @@ const towerParts = () => [
   [B(0.18, 0.42, 0.4, 0, 0.21, 0, 0.02), '#2f3542'], [B(0.12, 0.014, 0.01, 0, 0.33, -0.2, 0.003), '#8a8f99'], [B(0.12, 0.014, 0.01, 0, 0.3, -0.2, 0.003), '#8a8f99'],
   ...[0.08, 0.11, 0.14].map(y => [B(0.1, 0.006, 0.006, 0, y, -0.2, 0), '#4a5160']), [C(0.018, 0.018, 0.012, 0, 0, 0, 12).rotateX(Math.PI / 2).translate(0, 0.24, -0.2), '#8a8f99'],
 ];
-// Whose agent sits there, as in the list: Claude's ✳ or Codex's ⌘ on a cream disc, flat and facing +z.
+// The provider's mark on a cream disc, flat and facing +z.
 const P = (w, h, x, y, a = 0) => new THREE.PlaneGeometry(w, h).rotateZ(a).translate(x, y, 0.002);
 const markParts = provider => {
   const strokes = provider === 'codex'
     ? [...[-1, 1].flatMap(s => [P(0.08, 0.008, 0, s * 0.02), P(0.008, 0.08, s * 0.02, 0)]), ...[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([x, y]) => new THREE.RingGeometry(0.011, 0.019, 20).translate(x * 0.035, y * 0.035, 0.002))]
+    : provider === 'opencode' ? [...[-1, 1].flatMap(s => [P(0.08, 0.014, 0, s * 0.045), P(0.014, 0.09, s * 0.033, 0)]), P(0.024, 0.04, 0, 0)]
     : [0, 1, 2, 3].map(i => P(0.1, 0.014, 0, 0, i * Math.PI / 4));
-  return [[new THREE.CircleGeometry(0.075, 24), '#fffaf0'], ...strokes.map(geometry => [geometry, provider === 'codex' ? '#1d2330' : '#d97757'])];
+  return [[new THREE.CircleGeometry(0.075, 24), '#fffaf0'], ...strokes.map(geometry => [geometry, provider === 'claude' ? '#d97757' : '#1d2330'])];
 };
 // Office chair: padded seat and back on a gas post, five-star base on casters, the agent's mark on the back. Its origin is on
 // the floor under the seat.

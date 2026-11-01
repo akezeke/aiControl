@@ -16,6 +16,7 @@ import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './t
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
 import { placeShots } from './history-shots.js';
+import { ImagePanZoom } from './image-pan-zoom.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects } from './session-order.js';
 import { messagingUnavailableReason } from './messaging-status.js';
@@ -207,7 +208,7 @@ const needsInput = session => ['permission', 'question'].includes(session.status
 // office outlines them.
 const picked = () => state.filter === 'all' && !state.project ? null
   : s => (!state.project || (s.cwd || s.project) === state.project) && (state.filter === 'all' || (state.filter === 'attention' ? needsInput(s) : s.status === state.filter));
-const providerName = provider => provider === 'codex' ? 'Codex' : 'Claude Code';
+const providerName = provider => ({ codex: 'Codex', claude: 'Claude Code', opencode: 'OpenCode' })[provider] || provider;
 function age(time) { if (!time) return 'No activity time'; const seconds = Math.max(0, (Date.now() - time) / 1000); return seconds < 60 ? 'Just now' : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`; }
 
 async function api(path, body, options = {}) {
@@ -275,12 +276,14 @@ function showWorkspace() {
   const stats = el('div', 'stats'); stats.id = 'stats'; main.append(stats);
   const usage = el('section', 'usage'); usage.id = 'usage'; usage.setAttribute('aria-label', 'Usage limits'); main.append(usage);
   const toolbar = el('div', 'toolbar'); const menu = el('details', 'filter-menu'); menu.id = 'agent-filter-menu';
-  const summary = el('summary', 'quiet-button', '…'); summary.setAttribute('aria-label', 'Filter sessions by agent'); summary.title = 'Agent filter'; menu.append(summary);
+  const summary = el('summary', 'quiet-button', '…'); summary.setAttribute('aria-label', 'Session options'); summary.title = 'Session options'; menu.append(summary);
   const tabs = el('div', 'filter-options'); tabs.setAttribute('aria-label', 'Agent provider'); tabs.append(el('span', 'sidebar-label', 'SHOW AGENTS'));
-  for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
+  for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code'], ['opencode', 'OpenCode']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
   const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu, newAgentMenu()); main.append(toolbar);
+  const create = button('New OpenCode session', 'tab new-session-button', () => { menu.open = false; newOpenCodeSession(); }, 'plus');
+  tabs.append(create);
   const lost = el('section', 'lost'); lost.id = 'lost'; lost.hidden = true; lost.setAttribute('aria-label', 'Lost sessions'); main.append(lost);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
@@ -378,6 +381,7 @@ function syncScene() {
 }
 
 function renderData() {
+  document.querySelector('.new-session-dialog')?.updateConnection();
   if (!state.snapshot || !document.querySelector('#groups')) {
     const error = document.querySelector('#error'); if (error && state.error) { error.hidden = false; error.textContent = state.error; } return;
   }
@@ -427,7 +431,7 @@ function renderData() {
   });
   for (const tab of document.querySelectorAll('[data-provider]')) { tab.classList.toggle('active', tab.dataset.provider === state.provider); tab.setAttribute('aria-pressed', String(tab.dataset.provider === state.provider)); }
   for (const tab of document.querySelectorAll('[data-grouping]')) { tab.classList.toggle('active', tab.dataset.grouping === state.grouping); tab.setAttribute('aria-pressed', String(tab.dataset.grouping === state.grouping)); }
-  const filterMenu = document.querySelector('#agent-filter-menu'); filterMenu.classList.toggle('filtered', state.provider !== 'all'); filterMenu.querySelector('summary').setAttribute('aria-label', `Agent filter: ${state.provider === 'all' ? 'All agents' : providerName(state.provider)}`);
+  const filterMenu = document.querySelector('#agent-filter-menu'); filterMenu.classList.toggle('filtered', state.provider !== 'all'); filterMenu.querySelector('summary').setAttribute('aria-label', `Session options: ${state.provider === 'all' ? 'All agents' : providerName(state.provider)}`);
   const focusedSession = document.activeElement?.classList.contains('session-card') ? document.activeElement.dataset.sessionId : null;
   const groups = document.querySelector('#groups');
   const pick = picked(), visible = sessions.filter(s => (!pick || pick(s)) && (state.provider === 'all' || s.provider === state.provider) && `${s.title} ${s.project} ${s.cwd} ${s.model}`.toLowerCase().includes(state.search.toLowerCase()));
@@ -439,7 +443,7 @@ function renderData() {
   syncList(groups, visible.length ? sorted.map(([cwd]) => [cwd, null]) : [['empty', [state.filter === 'attention', sessions.length]]], data => {
     if (!data) { const group = el('section', 'project-group'); group.append(el('div', 'group-heading'), el('div', 'session-list')); return group; }
     const [attention, total] = data, empty = el('div', 'empty');
-    empty.append(icon(attention ? 'check' : 'terminal'), el('h2', '', attention ? 'Nothing needs your attention.' : total ? 'No sessions match.' : 'Your control room is ready.'), el('p', 'muted', total ? 'Sessions update automatically as your agents work.' : 'Open Codex or Claude Code on this computer. Live sessions will appear here, grouped by project.'));
+    empty.append(icon(attention ? 'check' : 'terminal'), el('h2', '', attention ? 'Nothing needs your attention.' : total ? 'No sessions match.' : 'No sessions yet.'));
     return empty;
   });
   const sessionsById = new Map();
@@ -632,9 +636,10 @@ function renderSessionHeader(header, session) {
   const goal = session.goal, cost = session.cost;
   const rows = [['Folder', session.cwd], ['Account', session.account], ['Model', session.model || 'Not reported'], ['Effort', effort && `${effort}${session.effortPending ? ' · from your next message' : ''}`], ['Mode', session.permissionMode],
     ['Context', session.context?.used && `${tokens(session.context.used)}${session.context.window ? ` of ${tokens(session.context.window)} (${percent}%)` : ''}`], ['Branch', session.branch],
-    ['Last turn', session.lastTurnMs && duration(session.lastTurnMs)], ['Cost', cost && `$${cost.usd.toFixed(2)} · +${cost.added} −${cost.removed} lines`],
+    ['Last turn', session.lastTurnMs && duration(session.lastTurnMs)], [cost?.estimated ? 'Est. cost' : 'Cost', cost && `$${cost.usd.toFixed(2)} · +${cost.added} −${cost.removed} lines`],
+    ['Tokens', session.tokens && `${session.tokens.input.toLocaleString()} in · ${session.tokens.output.toLocaleString()} out · ${session.tokens.cacheRead.toLocaleString()} cache read · ${session.tokens.cacheWrite.toLocaleString()} cache write`],
     ['Goal', goal && `${goal.objective} · ${goal.status}${goal.tokenBudget ? ` · ${tokens(goal.tokensUsed)} of ${tokens(goal.tokenBudget)} tokens` : ''}`],
-    ['Version', session.version && `Claude Code ${session.version}`], ['Session', session.nativeId || session.id], ['Connection', session.control ? 'Connected' : 'Status only']];
+    ['Version', session.version && `${providerName(session.provider)} ${session.version}`], ['Session', session.nativeId || session.id], ['Connection', session.control ? 'Connected' : 'Status only']];
   const info = el('dl', 'session-info'); for (const [key, value] of rows) if (value) info.append(el('dt', '', key), el('dd', '', value)); metadata.append(info); if (session.cwd) metadata.append(spawnButtons(session.cwd)); header.append(metadata);
   if (session.plan?.length) {
     const plan = el('details', 'plan-info'); plan.open = planOpen;
@@ -702,6 +707,7 @@ function renderSessionRequests(requests, session) {
     if (request.plan) { const rendered = renderMessageMarkdown(request.plan, Infinity), plan = el('div', 'message-text request-plan'); plan.innerHTML = rendered.html + (rendered.more || ''); box.append(plan); }
     if (request.kind !== 'question') renderRequestDetails(box, request);
     const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
+    if (request.unsupported) { box.append(el('p', 'muted', request.unsupported)); requests.append(box); continue; }
     if (request.kind === 'question') {
       const form = el('form', 'question-form');
       for (const [index, q] of request.questions.entries()) {
@@ -984,55 +990,47 @@ function shotStrip(id, { shots: group, user }) {
   }
   return strip;
 }
-// One screenshot big over a strip of them all; a thumbnail, ‹ ›, ←/→ or a swipe step through them, the picture opens full size, Esc or the backdrop closes.
+// One screenshot big over a strip of them all: pinch/scroll to zoom, drag to pan; a thumbnail, ‹ ›, ←/→ or a swipe at fit size steps; Esc or the backdrop closes.
 function showShot(id, imageId, images = shots.get(id)?.items || [], closed) {
   let at = Math.max(0, images.findIndex(image => image.id === imageId));
   if (!images.length) return;
   const dialog = el('dialog', 'shot-viewer'); dialog.setAttribute('aria-label', 'Screenshot');
-  const link = el('a', 'shot-full'); link.target = '_blank'; link.rel = 'noopener'; link.title = 'Full size';
-  const picture = el('img'); picture.alt = ''; link.append(picture);
+  const viewport = el('div', 'shot-full'); viewport.tabIndex = 0; viewport.setAttribute('aria-label', 'Image preview');
+  viewport.title = 'Pinch or scroll to zoom · Drag to pan · Double-click to zoom/reset · + / − / 0';
+  const picture = el('img'); picture.alt = ''; picture.draggable = false; viewport.append(picture);
+  const link = el('a', 'shot-button', '↗'); link.target = '_blank'; link.rel = 'noopener'; link.title = 'Full size'; link.setAttribute('aria-label', 'Open full-size image');
   const bar = el('div', 'shot-bar'), meta = el('span', 'shot-meta');
-  const step = by => { at = Math.max(0, Math.min(images.length - 1, at + by)); show(); };
+  const step = by => { const next = Math.max(0, Math.min(images.length - 1, at + by)); if (next !== at) { at = next; show(); } };
   const prev = viewerButton('‹', 'Previous (←)', () => step(-1)), next = viewerButton('›', 'Next (→)', () => step(1));
-  bar.append(prev, meta, next, viewerButton('✕', 'Close (Esc)', () => dialog.close()));
+  bar.append(prev, meta, next, link, viewerButton('✕', 'Close (Esc)', () => dialog.close()));
+  const panZoom = new ImagePanZoom(viewport, picture, step);
   const thumbs = images.map((image, n) => {
     const thumb = el('button', 'shot-thumb'); thumb.type = 'button'; thumb.setAttribute('aria-label', `Screenshot ${n + 1}`);
     thumb.title = [image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
     const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = shotUrl(id, image.id);
-    thumb.append(img); thumb.onclick = () => { at = n; show(); }; return thumb;
+    thumb.append(img); thumb.onclick = () => { if (at !== n) { at = n; show(); } }; return thumb;
   });
   const strip = el('div', 'shot-strip'); strip.append(...thumbs);
   const show = () => {
+    panZoom.reset();
     const image = images[at]; picture.src = link.href = shotUrl(id, image.id);
     thumbs.forEach((thumb, n) => thumb.classList.toggle('current', n === at)); thumbs[at].scrollIntoView({ block: 'nearest', inline: 'nearest' });
     meta.textContent = [`${at + 1}/${images.length}`, image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
+    const focused = document.activeElement;
     prev.disabled = at === 0; next.disabled = at === images.length - 1;
+    if ((focused === prev && prev.disabled) || (focused === next && next.disabled)) viewport.focus({ preventScroll: true });
   };
-  dialog.classList.toggle('has-strip', images.length > 1);
-  dialog.append(...(images.length > 1 ? [link, strip, bar] : [link, bar]));
-  dialog.addEventListener('keydown', event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); step(event.key === 'ArrowLeft' ? -1 : 1); } });
-  // A swipe steps; the picture follows the finger, and a second finger (pinch-zoom) calls the swipe off.
-  let from = null, swiped = false;
-  dialog.addEventListener('pointerdown', event => {
-    if (event.pointerType === 'mouse' || strip.contains(event.target)) return;
-    if (from) { from = null; picture.style.transform = ''; return; }
-    from = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  dialog.append(...(images.length > 1 ? [viewport, strip, bar] : [viewport, bar]));
+  dialog.addEventListener('keydown', event => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); step(event.key === 'ArrowLeft' ? -1 : 1); }
+    else if (['+', '=', '-', '0'].includes(event.key)) {
+      event.preventDefault();
+      if (event.key === '0') panZoom.reset(); else panZoom.zoom(panZoom.scale * (event.key === '-' ? 1 / 1.5 : 1.5));
+    }
   });
-  dialog.addEventListener('pointermove', event => { if (from?.id === event.pointerId) picture.style.transform = `translateX(${event.clientX - from.x}px)`; });
-  const release = event => {
-    if (from?.id !== event.pointerId) return;
-    const dx = event.clientX - from.x, dy = event.clientY - from.y;
-    from = null; picture.style.transform = '';
-    if (event.type === 'pointerup' && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) { swiped = true; step(dx < 0 ? 1 : -1); }
-  };
-  dialog.addEventListener('pointerup', release); dialog.addEventListener('pointercancel', release);
-  // Capture, so the click a swipe ends with neither opens the full-size link nor closes the viewer.
-  dialog.addEventListener('click', event => {
-    if (swiped) { swiped = false; event.preventDefault(); return; }
-    if (event.target === dialog) dialog.close();
-  }, true);
-  dialog.onclose = () => { dialog.remove(); closed?.(); };
-  app.append(dialog); dialog.showModal(); show();
+  dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+  dialog.onclose = () => { panZoom.destroy(); dialog.remove(); closed?.(); };
+  app.append(dialog); show(); dialog.showModal();
 }
 // Older pages end where the live window starts, so polling keeps the newest part current.
 function mergeHistory(earlier = [], recent) {
@@ -1123,9 +1121,44 @@ async function respond(request, payload, container, error) {
 }
 
 function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
+function newOpenCodeSession() {
+  if (document.querySelector('.new-session-dialog')) return;
+  const dialog = el('dialog', 'new-session-dialog'), form = el('form', 'new-session-form');
+  const title = el('h2', '', 'New OpenCode session'); title.id = 'new-session-title'; dialog.setAttribute('aria-labelledby', title.id);
+  const label = el('label', '', 'Folder'), folder = el('input'); folder.required = true; folder.autocomplete = 'off'; folder.spellcheck = false; folder.placeholder = '~/project'; folder.maxLength = 4096;
+  folder.setAttribute('list', 'new-session-folders'); folder.value = state.project || ''; label.append(folder);
+  const known = el('datalist'); known.id = 'new-session-folders';
+  for (const cwd of new Set((state.snapshot?.sessions || []).map(session => session.cwd).filter(Boolean))) { const option = el('option'); option.value = cwd; known.append(option); }
+  const connection = el('p', 'form-error'); connection.setAttribute('role', 'status');
+  const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
+  const actions = el('div', 'new-session-actions');
+  const cancel = button('Cancel', 'secondary', () => dialog.close());
+  const submit = button('Create', 'primary', undefined, 'plus'); submit.type = 'submit'; actions.append(cancel, submit);
+  let sending = false;
+  dialog.updateConnection = () => {
+    const provider = state.snapshot?.providers?.find(provider => provider.name === 'OpenCode');
+    connection.textContent = state.error || (!state.snapshot ? 'Connecting…' : !state.snapshot.features?.opencode ? 'Connect OpenCode: npm run setup -- --opencode auto, then npm restart.' : !provider?.connected ? provider?.detail || 'OpenCode is disconnected. Start OpenCode to reconnect.' : '');
+    connection.hidden = !connection.textContent; submit.disabled = sending || !!connection.textContent;
+  };
+  form.onsubmit = async event => {
+    event.preventDefault(); if (sending || submit.disabled) return;
+    const cwd = folder.value.trim(); if (!cwd) { folder.focus(); return; }
+    sending = true; error.textContent = ''; folder.disabled = cancel.disabled = true; dialog.updateConnection();
+    try {
+      const result = await api('spawn', { provider: 'opencode', cwd });
+      if (!dialog.isConnected) return;
+      dialog.close(); await refresh(); if (state.csrf) { openPanel(result.sessionId); toast('OpenCode session created'); }
+    } catch (e) { error.textContent = e.message; }
+    finally { sending = false; folder.disabled = cancel.disabled = false; dialog.updateConnection(); }
+  };
+  dialog.oncancel = event => { if (sending) event.preventDefault(); };
+  dialog.onclose = () => { dialog.remove(); if (!state.selected) document.querySelector('#agent-filter-menu summary')?.focus(); };
+  dialog.onclick = event => { if (event.target === dialog && !sending) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); } };
+  form.append(title, label, known, connection, error, actions); dialog.append(form); app.append(dialog); dialog.updateConnection(); dialog.showModal(); folder.focus();
+}
 function spawnButtons(cwd) {
   const actions = el('span', 'group-actions');
-  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
+  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}${choice.last ? ' · last used here' : ''}`; actions.append(b); }
   return actions;
 }
 // Sessions that went without a goodbye (server/recovery.mjs): what each was last asked, said and doing, to resume in tmux or let go.
@@ -1192,7 +1225,7 @@ function newAgentMenu() {
         if (!field.value || field.refused) { field.input.focus(); return; }
         menu.open = false; spawnAgent(field.value, { ...choice, create: true }, b);
       });
-      b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name} in tmux`; return b;
+      b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}`; return b;
     }));
     field.input.focus();
   };
@@ -1202,7 +1235,11 @@ function newAgentMenu() {
 async function spawnAgent(cwd, choice, control, slot) {
   if (state.error) return;
   control.disabled = true;
-  try { const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account, ...typeof slot === 'number' ? { slot } : {}, ...choice.create ? { create: true } : {} }); toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
+  try {
+    const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account, ...typeof slot === 'number' ? { slot } : {}, ...choice.create ? { create: true } : {} });
+    if (result.sessionId) { await refresh(); openPanel(result.sessionId); toast(`${choice.name} session created`); }
+    else toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`);
+  }
   catch (e) { toast(e.message); }
   finally { control.disabled = false; }
 }
@@ -1214,6 +1251,7 @@ async function lock() {
   try { await logout; } catch { /* local display still locks if offline */ }
 }
 document.addEventListener('keydown', event => {
+  if (document.querySelector('dialog[open]')) return;
   if (event.key !== 'Escape' && event.key !== 'Tab') return;
   const openTheme = document.querySelector('.theme-menu[open]');
   if (event.key === 'Escape' && openTheme) { openTheme.open = false; openTheme.querySelector('summary').focus(); return; }
