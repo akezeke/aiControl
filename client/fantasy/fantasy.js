@@ -12,6 +12,7 @@ import { PlatePainter } from './places.js';
 import { createSay } from './say.js';
 import { clamp, mix } from './rig.js';
 import { buildFights } from './roster.js';
+import { createTv } from './tv.js';
 import { lookFrom } from './worldmap.js';
 
 const NIGHT = 0x0e0b08, LOOK_KEY = 'fantasy-look', BUSY_MS = 1000 / 60, RESTING_MS = 1000 / 30, MOST_PIXELS = 2560 * 1600;
@@ -34,7 +35,7 @@ export function mountFantasy(container, hooks = {}) {
   // The old look's words: the fights are drawn small and blown up, but what people say is drawn sharp on a layer above them.
   const sharp = document.createElement('canvas'), words = sharp.getContext('2d'); sharp.className = 'fy-sharp'; sharp.hidden = true; paint.append(sharp);
   const painter = new PlatePainter(), props = createProps(), fights = new Map(), fired = new Map(), pointers = new Map();
-  let renderer = null, raf = 0, broken = false, last = null, latest = null, W = 1, H = 1, scale = 1, zoomed = null, shown = null, zoomT = 0, lastFrame = performance.now(), touched = 0, sinceRefresh = 0, side = 0, sideShown = 0, frozen = false, filter = null, gesture = null, covers = { bottom: 0, top: 0 }, lone = false, scrolled = -Infinity;
+  let renderer = null, tv = null, small = { wide: 1, tall: 1 }, raf = 0, broken = false, last = null, latest = null, W = 1, H = 1, scale = 1, zoomed = null, shown = null, zoomT = 0, lastFrame = performance.now(), touched = 0, sinceRefresh = 0, side = 0, sideShown = 0, frozen = false, filter = null, gesture = null, covers = { bottom: 0, top: 0 }, lone = false, scrolled = -Infinity;
   const paintH = () => H + OVERSCAN * 2;
 
   const announce = (fight, member, ability) => { if (zoomed === fight) hud.banner(ability.name, ability.line, ability.dur + .4, ability.big || ability.summon, ability.final); };
@@ -44,15 +45,20 @@ export function mountFantasy(container, hooks = {}) {
   function makeRenderer() {
     const next = new THREE.WebGLRenderer({ antialias: !low() && (devicePixelRatio || 1) < 1.5, powerPreference: 'high-performance' });
     next.outputColorSpace = THREE.LinearSRGBColorSpace; next.setClearColor(NIGHT, 1); next.autoClear = true;
-    next.domElement.classList.toggle('fy-low', low()); next.domElement.addEventListener('webglcontextlost', lost);
+    next.domElement.addEventListener('webglcontextlost', lost);
+    tv?.dispose(); tv = low() ? createTv() : null;
     if (renderer) { renderer.domElement.removeEventListener('webglcontextlost', lost); renderer.domElement.remove(); renderer.dispose(); renderer.forceContextLoss(); }
     paint.prepend(next.domElement); renderer = next;
   }
   function resize() {
     const box = container.getBoundingClientRect(); W = Math.max(1, box.width); H = Math.max(1, box.height);
-    // The old look is drawn small, about what a console put on a good screen, and at whole multiples so every pixel comes out the same size.
-    scale = low() ? 1 / Math.max(1, Math.round(Math.max(W, H * 1.2) / 720)) : Math.min(devicePixelRatio || 1, 2, Math.sqrt(MOST_PIXELS / (W * H)));
-    renderer.setPixelRatio(1); renderer.setSize(Math.round(W * scale), Math.round(paintH() * scale), false);
+    const fine = Math.min(devicePixelRatio || 1, 2, Math.sqrt(MOST_PIXELS / (W * H)));
+    // The old look is drawn small, about what a console put on a good screen, and at whole multiples so every pixel comes out the same size. Its TV gets as many of the screen's pixels as the new look would draw, a whole number to each of the small ones.
+    scale = low() ? 1 / Math.max(1, Math.round(Math.max(W, H * 1.2) / 720)) : fine;
+    small = { wide: Math.round(W * scale), tall: Math.round(paintH() * scale) };
+    const k = tv ? Math.max(1, Math.floor(fine / scale + .01)) : 1;
+    tv?.size(small.wide, small.tall, k, Math.abs(k * scale - (devicePixelRatio || 1)) < .01);
+    renderer.setPixelRatio(1); renderer.setSize(small.wide * k, small.tall * k, false);
     paint.style.width = `${W}px`; paint.style.height = `${paintH()}px`;
     measure();
   }
@@ -61,7 +67,7 @@ export function mountFantasy(container, hooks = {}) {
     const on = low(), fine = Math.min(devicePixelRatio || 1, 2), wide = on ? Math.round(W * fine) : 1, tall = on ? Math.round(paintH() * fine) : 1;
     sharp.hidden = !on;
     if (sharp.width !== wide || sharp.height !== tall) { sharp.width = wide; sharp.height = tall; } else if (on) words.clearRect(0, 0, wide, tall);
-    stage.words = on ? { context: words, fine: wide / renderer.domElement.width, height: renderer.domElement.height } : null;
+    stage.words = on ? { context: words, fine: wide / small.wide, height: small.tall } : null;
   }
   // An open panel takes the right of the screen, so the fights and their windows make do with what's left. One that leaves too little just covers them.
   function panelSide() {
@@ -190,8 +196,10 @@ export function mountFantasy(container, hooks = {}) {
       sinceRefresh += real; if (sinceRefresh > .5) { sinceRefresh = 0; refresh(); }
       sideShown = calm ? side / W : mix(sideShown, side / W, 1 - Math.exp(-real * 14));
       hud.tick(real);
+      tv?.begin(renderer);
       renderer.setScissorTest(false); renderer.clear(); renderer.setScissorTest(true);
       prepareWords();
+      const drawn = [];
       const box = seat(), full = rectOf(container, box), k = smooth(zoomT), scroller = rectOf(hud.tiles, box), reach = shown ? 0 : now - scrolled < SCROLLING_MS ? OVERSCAN : RESTING_OVERSCAN, inView = { ...scroller, top: scroller.top - reach, bottom: scroller.bottom + reach };
       if (k < 1) for (const fight of fights.values()) {
         if (fight === shown) continue;
@@ -200,13 +208,16 @@ export function mountFantasy(container, hooks = {}) {
         const rect = rectOf(tile, box), clip = clipTo(rect, inView);
         if (clip.bottom <= clip.top || clip.right <= clip.left) continue;
         fight.tick(real, frozen);
-        fight.render(renderer, toBuf(rect), toBuf(clip), scale, { bottom: (fight.lowH || 0) / (rect.bottom - rect.top), top: 0 }, real);
+        const at = { rect: toBuf(rect), clip: toBuf(clip) }; drawn.push(at);
+        fight.render(renderer, at.rect, at.clip, scale, { bottom: (fight.lowH || 0) / (rect.bottom - rect.top), top: 0 }, real);
       }
       if (shown) {
         const tile = hud.tile(shown.project), from = tile ? rectOf(tile, box) : full, rect = blend(from, full, k), clip = blend(clipTo(from, inView), full, k), height = rect.bottom - rect.top;
         shown.tick(real, frozen);
-        shown.render(renderer, toBuf(rect), toBuf(clip), scale, { bottom: mix((shown.lowH || 0) / Math.max(1, height), covers.bottom, k), top: mix(0, covers.top, k), right: mix(0, sideShown, k) }, real);
+        const at = { rect: toBuf(rect), clip: toBuf(clip) }; drawn.push(at);
+        shown.render(renderer, at.rect, at.clip, scale, { bottom: mix((shown.lowH || 0) / Math.max(1, height), covers.bottom, k), top: mix(0, covers.top, k), right: mix(0, sideShown, k) }, real);
       }
+      tv?.show(renderer, drawn);
       saying();
       // The sidebar map's camera mark stands behind the open fight's party, looking the way its camera does.
       lookFrom(hooks.mapScreen?.(), zoomed?.project ?? null, zoomed?.view?.yaw ?? 0);
@@ -332,7 +343,7 @@ export function mountFantasy(container, hooks = {}) {
       stop(); lookFrom(hooks.mapScreen?.(), null); observer.disconnect(); panelWatch.disconnect(); removeEventListener('keydown', key); document.removeEventListener('pointerdown', press, true); menu.dispose();
       for (const fight of fights.values()) fight.dispose();
       fights.clear(); say.dispose(); hud.dispose(); painter.dispose(); props.dispose(); clearLabels();
-      renderer.domElement.removeEventListener('webglcontextlost', lost); renderer.dispose(); wrap.remove();
+      tv?.dispose(); renderer.domElement.removeEventListener('webglcontextlost', lost); renderer.dispose(); wrap.remove();
     },
   };
   return scene;
