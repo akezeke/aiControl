@@ -15,6 +15,8 @@ import { buildFights } from './roster.js';
 import { lookFrom } from './worldmap.js';
 
 const NIGHT = 0x0e0b08, LOOK_KEY = 'fantasy-look', BUSY_MS = 1000 / 60, RESTING_MS = 1000 / 30, MOST_PIXELS = 2560 * 1600;
+// The canvas reaches past the screen, so a scroll that outruns the drawing still finds fights there: all of it during a scroll, and at rest just enough for one's first frames.
+const OVERSCAN = 240, RESTING_OVERSCAN = 64, SCROLLING_MS = 300;
 const smooth = t => t * t * (3 - 2 * t);
 const stored = () => { try { return localStorage.getItem(LOOK_KEY) === 'ps1'; } catch { return false; } };
 const store = low => { try { localStorage.setItem(LOOK_KEY, low ? 'ps1' : 'hd'); } catch { /* the look just won't be remembered */ } };
@@ -28,10 +30,12 @@ const within = (node, x, y) => { const r = node.getBoundingClientRect(); return 
 export function mountFantasy(container, hooks = {}) {
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches, look = { value: stored() ? 0 : 1 }, low = () => look.value < .5;
   const wrap = document.createElement('div'); wrap.className = 'fy-stage'; container.append(wrap);
+  const paint = document.createElement('div'); paint.className = 'fy-paint'; wrap.append(paint);
   // The old look's words: the fights are drawn small and blown up, but what people say is drawn sharp on a layer above them.
-  const sharp = document.createElement('canvas'), words = sharp.getContext('2d'); sharp.className = 'fy-sharp'; sharp.hidden = true; wrap.append(sharp);
+  const sharp = document.createElement('canvas'), words = sharp.getContext('2d'); sharp.className = 'fy-sharp'; sharp.hidden = true; paint.append(sharp);
   const painter = new PlatePainter(), props = createProps(), fights = new Map(), fired = new Map(), pointers = new Map();
-  let renderer = null, raf = 0, broken = false, last = null, latest = null, W = 1, H = 1, scale = 1, zoomed = null, shown = null, zoomT = 0, lastFrame = performance.now(), touched = 0, sinceRefresh = 0, side = 0, sideShown = 0, frozen = false, filter = null, gesture = null, covers = { bottom: 0, top: 0 }, lone = false;
+  let renderer = null, raf = 0, broken = false, last = null, latest = null, W = 1, H = 1, scale = 1, zoomed = null, shown = null, zoomT = 0, lastFrame = performance.now(), touched = 0, sinceRefresh = 0, side = 0, sideShown = 0, frozen = false, filter = null, gesture = null, covers = { bottom: 0, top: 0 }, lone = false, scrolled = -Infinity;
+  const paintH = () => H + OVERSCAN * 2;
 
   const announce = (fight, member, ability) => { if (zoomed === fight) hud.banner(ability.name, ability.line, ability.dur + .4, ability.big || ability.summon, ability.final); };
   const stage = { plates: painter, props, look, calm, low, announce, words: null, selected: () => hooks.selected?.(), isZoomed: fight => zoomed === fight, phone: () => Math.min(W, H) < 640 };
@@ -42,18 +46,19 @@ export function mountFantasy(container, hooks = {}) {
     next.outputColorSpace = THREE.LinearSRGBColorSpace; next.setClearColor(NIGHT, 1); next.autoClear = true;
     next.domElement.classList.toggle('fy-low', low()); next.domElement.addEventListener('webglcontextlost', lost);
     if (renderer) { renderer.domElement.removeEventListener('webglcontextlost', lost); renderer.domElement.remove(); renderer.dispose(); renderer.forceContextLoss(); }
-    wrap.prepend(next.domElement); renderer = next;
+    paint.prepend(next.domElement); renderer = next;
   }
   function resize() {
     const box = container.getBoundingClientRect(); W = Math.max(1, box.width); H = Math.max(1, box.height);
     // The old look is drawn small, about what a console put on a good screen, and at whole multiples so every pixel comes out the same size.
     scale = low() ? 1 / Math.max(1, Math.round(Math.max(W, H * 1.2) / 720)) : Math.min(devicePixelRatio || 1, 2, Math.sqrt(MOST_PIXELS / (W * H)));
-    renderer.setPixelRatio(1); renderer.setSize(Math.round(W * scale), Math.round(H * scale), false);
+    renderer.setPixelRatio(1); renderer.setSize(Math.round(W * scale), Math.round(paintH() * scale), false);
+    paint.style.width = `${W}px`; paint.style.height = `${paintH()}px`;
     measure();
   }
   // The sharp layer only exists at size in the old look; the new one draws its words with everything else.
   function prepareWords() {
-    const on = low(), fine = Math.min(devicePixelRatio || 1, 2), wide = on ? Math.round(W * fine) : 1, tall = on ? Math.round(H * fine) : 1;
+    const on = low(), fine = Math.min(devicePixelRatio || 1, 2), wide = on ? Math.round(W * fine) : 1, tall = on ? Math.round(paintH() * fine) : 1;
     sharp.hidden = !on;
     if (sharp.width !== wide || sharp.height !== tall) { sharp.width = wide; sharp.height = tall; } else if (on) words.clearRect(0, 0, wide, tall);
     stage.words = on ? { context: words, fine: wide / renderer.domElement.width, height: renderer.domElement.height } : null;
@@ -77,7 +82,7 @@ export function mountFantasy(container, hooks = {}) {
   function zoom(fight, flash = true) {
     if (zoomed === fight) return;
     if (zoomed) zoomed.resetView();
-    zoomed = fight; shown = fight;
+    zoomed = fight; shown = fight; seat();
     if (flash) fight.fx.flash(0xffffff, .55);
     hud.focus(fight.data, lone); hud.refresh(fight.data); measure(); setHover(null);
   }
@@ -159,9 +164,18 @@ export function mountFantasy(container, hooks = {}) {
   }
 
   const rectOf = (node, box) => { const r = node.getBoundingClientRect(); return { left: r.left - box.left, top: r.top - box.top, right: r.right - box.left, bottom: r.bottom - box.top }; };
-  const toBuf = r => ({ x: Math.round(r.left * scale), y: Math.round((H - r.bottom) * scale), w: Math.max(1, Math.round((r.right - r.left) * scale)), h: Math.max(1, Math.round((r.bottom - r.top) * scale)) });
+  const toBuf = r => ({ x: Math.round(r.left * scale), y: Math.round((paintH() - r.bottom) * scale), w: Math.max(1, Math.round((r.right - r.left) * scale)), h: Math.max(1, Math.round((r.bottom - r.top) * scale)) });
   const blend = (a, b, k) => ({ left: mix(a.left, b.left, k), top: mix(a.top, b.top, k), right: mix(a.right, b.right, k), bottom: mix(a.bottom, b.bottom, k) });
   const clipTo = (r, clip) => ({ left: Math.max(r.left, clip.left), top: Math.max(r.top, clip.top), right: Math.min(r.right, clip.right), bottom: Math.min(r.bottom, clip.bottom) });
+
+  // Over the tiles the canvas lives in their scroller, so the browser carries each drawn fight with its frame however late the next drawing is. A fight growing to fill the screen needs the whole stage. Either way it's placed on its own pixels, so a fight scrolling by keeps its place in them. Returns where its corner is.
+  function seat() {
+    const home = shown ? wrap : hud.under, box = container.getBoundingClientRect(), from = home.getBoundingClientRect(), snap = value => Math.round(value * scale) / scale;
+    if (paint.parentNode !== home) home.append(paint);
+    const x = snap(box.left - from.left), y = snap(box.top - OVERSCAN - from.top), move = `translate(${x}px, ${y}px)`;
+    if (paint.style.transform !== move) paint.style.transform = move;
+    return { left: from.left + x, top: from.top + y };
+  }
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
@@ -178,18 +192,18 @@ export function mountFantasy(container, hooks = {}) {
       hud.tick(real);
       renderer.setScissorTest(false); renderer.clear(); renderer.setScissorTest(true);
       prepareWords();
-      const box = container.getBoundingClientRect(), full = { left: 0, top: 0, right: W, bottom: H }, k = smooth(zoomT), scroller = rectOf(hud.tiles, box);
+      const box = seat(), full = rectOf(container, box), k = smooth(zoomT), scroller = rectOf(hud.tiles, box), reach = shown ? 0 : now - scrolled < SCROLLING_MS ? OVERSCAN : RESTING_OVERSCAN, inView = { ...scroller, top: scroller.top - reach, bottom: scroller.bottom + reach };
       if (k < 1) for (const fight of fights.values()) {
         if (fight === shown) continue;
         const tile = hud.tile(fight.project);
         if (!tile || tile.hidden) continue;
-        const rect = rectOf(tile, box), clip = clipTo(rect, scroller);
+        const rect = rectOf(tile, box), clip = clipTo(rect, inView);
         if (clip.bottom <= clip.top || clip.right <= clip.left) continue;
         fight.tick(real, frozen);
         fight.render(renderer, toBuf(rect), toBuf(clip), scale, { bottom: (fight.lowH || 0) / (rect.bottom - rect.top), top: 0 }, real);
       }
       if (shown) {
-        const tile = hud.tile(shown.project), from = tile ? rectOf(tile, box) : full, rect = blend(from, full, k), clip = blend(clipTo(from, scroller), full, k), height = rect.bottom - rect.top;
+        const tile = hud.tile(shown.project), from = tile ? rectOf(tile, box) : full, rect = blend(from, full, k), clip = blend(clipTo(from, inView), full, k), height = rect.bottom - rect.top;
         shown.tick(real, frozen);
         shown.render(renderer, toBuf(rect), toBuf(clip), scale, { bottom: mix((shown.lowH || 0) / Math.max(1, height), covers.bottom, k), top: mix(0, covers.top, k), right: mix(0, sideShown, k) }, real);
       }
@@ -248,6 +262,7 @@ export function mountFantasy(container, hooks = {}) {
   const reset = () => zoomed?.resetView();
   const key = event => { if (event.key === 'Escape' && zoomed && !lone && officeHasKeys(event)) { event.preventDefault(); unzoom(); } };
   const touch = () => { touched = performance.now(); };
+  hud.tiles.addEventListener('scroll', () => { touched = scrolled = performance.now(); }, { passive: true });
   for (const type of ['pointerdown', 'pointermove', 'wheel']) container.addEventListener(type, touch, { passive: true, capture: true });
   wrap.addEventListener('pointerdown', down); wrap.addEventListener('pointermove', move); wrap.addEventListener('pointerup', up); wrap.addEventListener('pointercancel', cancel); wrap.addEventListener('pointerleave', leave); wrap.addEventListener('wheel', wheel, { passive: false }); wrap.addEventListener('dblclick', reset);
   addEventListener('keydown', key);

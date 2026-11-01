@@ -98,7 +98,7 @@ function createTile(project, actions) {
 
 // `actions`: zoom(project), pick(project, event, id), peek(project, event), back(), open(id), hover(id), next(), list(), spawn(control), look(low), reset().
 export function createHud(box, actions) {
-  const ui = el('div', 'fy-ui'), top = el('div', 'fy-top win'), body = el('div', 'fy-body'), tiles = el('div', 'fy-tiles'), empty = el('div', 'fy-empty win');
+  const ui = el('div', 'fy-ui'), top = el('div', 'fy-top win'), body = el('div', 'fy-body'), tiles = el('div', 'fy-tiles'), under = el('div', 'fy-under'), empty = el('div', 'fy-empty win');
   const list = button('fy-nav', '', 'Show the list', () => actions.list());
   const back = button('fy-nav', '', 'Back to all fights', () => actions.back());
   const add = button('fy-nav', '', 'New agent', () => actions.spawn(add));
@@ -146,7 +146,7 @@ export function createHud(box, actions) {
   head.append(el('span', '', ''), el('span', '', ''), turnHead, el('span', 'fy-md', ''), contextHead);
   const foeList = el('div', 'fy-foelist'), sum = el('div', 'fy-sum'); foes.append(foeList, sum);
   ask.append(askShout, askText, answer); banner.append(bannerName, bannerLine); party.append(head); wins.append(foes, ask, party); hud.append(banner, spacer, wins);
-  body.append(tiles, hud, empty); ui.append(top, body); box.append(ui);
+  tiles.append(under); body.append(tiles, hud, empty); ui.append(top, body); box.append(ui);
   const tileOf = new Map(), rows = new Map(), foeLines = [];
   let order = '', laid = '', askId = null, bannerLeft = 0, bannerBig = false, limitsKey = '', focused = null;
   // Nothing says "no sessions" until a snapshot has really said so.
@@ -180,14 +180,14 @@ export function createHud(box, actions) {
     put(sum, [branches.length > 1 ? `${branches.length} branches` : branches[0], usd > 0 && `$${usd.toFixed(2)}`, (added || removed) && `+${added} −${removed}`].filter(Boolean).join(' · ')); sum.hidden = !sum.textContent; tip(sum, 'Branch, cost so far, and lines added and removed');
   };
   return {
-    ui, tiles, top, wins, body, hud,
+    ui, tiles, under, top, wins, body, hud,
     setLook,
     // The tiles of these fights, in this order; `hidden(fight)` for those the sidebar filtered out.
     setFights(fights, hidden) {
       for (const [project, tile] of tileOf) if (!fights.some(fight => fight.project === project)) { tile.tile.remove(); tileOf.delete(project); }
       for (const data of fights) { let tile = tileOf.get(data.project); if (!tile) { tile = createTile(data.project, actions); tileOf.set(data.project, tile); } tile.set(data); tile.tile.hidden = hidden(data); }
       const now = fights.map(fight => fight.project).join('\n');
-      if (now !== order) { order = now; tiles.replaceChildren(...fights.map(fight => tileOf.get(fight.project).tile)); }
+      if (now !== order) { order = now; tiles.append(...fights.map(fight => tileOf.get(fight.project).tile)); }
       empty.hidden = fights.length > 0; ui.classList.toggle('bare', !fights.length);
     },
     tile: project => tileOf.get(project)?.tile ?? null,
