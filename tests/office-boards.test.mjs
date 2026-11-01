@@ -86,17 +86,29 @@ test('Copy goes to the clipboard, or to the fallback where it can\'t', async () 
 });
 
 // The kitchen's boards as trickshot and the kitchen use them, on a canvas that counts what's drawn.
-function hung() {
+function hung(reach) {
   const drawn = { fills: 0 }, was = globalThis.document, started = [], copied = [];
   const g = new Proxy({}, { get: (target, key) => key === 'measureText' ? () => ({ width: 1 }) : key === 'fillRect' ? () => { drawn.fills++; } : key in target ? target[key] : () => {}, set: (target, key, value) => { target[key] = value; return true; } });
   const game = { progress: none(), saved: 0, entry: id => ({ id }), start: entry => started.push(entry), copy: () => copied.push(true) };
-  const boards = createKitchenBoards(game), room = new THREE.Group();
+  const boards = createKitchenBoards(game, reach), room = new THREE.Group();
   globalThis.document = { createElement: () => ({ getContext: () => g, width: 0, height: 0 }) };
   try { boards.build(room); } finally { globalThis.document = was; }
   const all = []; room.traverse(node => { if (node.userData.toggle) all.push(node); });
   const shown = node => { for (let n = node; n; n = n.parent) if (!n.visible) return false; return true; };
   return { boards, room, game, drawn, started, copied, controls: () => all.filter(shown), find: name => all.find(node => node.name === name) };
 }
+
+test('Today\'s sheet starts a level from close up; from further off a click goes over to read it', () => {
+  let near = false; const read = [], at = { x: 1, y: 2, z: 3 }, asked = [];
+  const { find, started, room } = hung({ inReach: point => { asked.push(point); return near; }, read: board => read.push(board) });
+  find('Today').userData.toggle(at);
+  for (const name of ['daily-0', 'daily-2', 'Random shot']) { find(name).userData.toggle(at); assert.equal(started.length, 0, name); }
+  assert.equal(read.length, 3); assert.ok(asked.every(point => point === at), 'by where it was hit');
+  const clip = room.children.find(node => node.userData.near); assert.ok(read.every(board => board === clip && board.userData.board), 'the clipboard, the way a click on the rest of it goes');
+  near = true;
+  find('daily-1').userData.toggle(at); find('Random shot').userData.toggle(at);
+  assert.equal(started.length, 2); assert.equal(started[0].id, 'daily-1'); assert.equal(read.length, 3);
+});
 
 test('the boards are hung ready to read, with the clipboard\'s page tabs', () => {
   const { room, controls } = hung(), read = []; room.traverse(node => { if (node.userData.board) read.push(node); });

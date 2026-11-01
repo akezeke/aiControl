@@ -214,7 +214,8 @@ export const copyText = (text, done, refused, clipboard = globalThis.navigator?.
 const DAY_MS = 86400000, DIMMED_TO = 0.5, today = () => Math.floor(Date.now() / DAY_MS), PAPER = { w: 0.26, h: 0.35, y: -0.005, z: 0.0165 };
 const hung = ({ x, y, z }, turn) => { const board = new THREE.Group(); board.position.set(x, y, z); board.rotation.y = turn; board.userData.board = true; return board; };
 const surface = (w, h, x, y, z, material = dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }), DIMMED_TO)) => { const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material); mesh.position.set(x, y, z); return mesh; };
-export function createKitchenBoards(game) {
+// `inReach`: a hit's point is close enough to start a level; from further off a click `read`s the clipboard, as one on the rest of it does.
+export function createKitchenBoards(game, { inReach = () => true, read = () => {} } = {}) {
   let page = 'monday', sheet = null, scores = null, tabs = null, saved = 0, day = 0;
   const onToday = [];
   const writePage = () => { const key = dayKey(new Date()); drawClipboard(sheet, page, page === 'today' ? dailyLines(key, game.progress) : clipboardLines(game.progress)); sheet.texture.needsUpdate = true; };
@@ -228,11 +229,12 @@ export function createKitchenBoards(game) {
       sheet = paint(paper, SHEET.w, SHEET.h); scores = paint(face, 1024, 585);
       // A control: a small mesh, clicked or E'd, never thrown at. `name`d for what it does.
       const control = (name, mesh, act) => { mesh.name = name; mesh.userData.toggle = act; mesh.userData.dropsHeld = true; clip.add(mesh); return mesh; };
+      const starts = entry => point => { if (inReach(point)) game.start(entry()); else read(clip); };
       // Over the whole clipboard, clip and all, so nothing of it stops a click from reading it.
       clip.add(paper, surface(w, h, 0, 0, 0.026, hidden));
       const tabFace = dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }), DIMMED_TO);
       tabs = paint({ material: tabFace }, TAB.cell[0], TAB.cell[1] * TABS.length);
-      const acts = [() => turnTo('monday'), () => turnTo('today'), () => game.start(randomShot(Math.random())), () => game.copy()], heights = [0.15, 0.09, -0.03, -0.09];
+      const acts = [() => turnTo('monday'), () => turnTo('today'), starts(() => randomShot(Math.random())), () => game.copy()], heights = [0.15, 0.09, -0.03, -0.09];
       TABS.forEach(([name], i) => {
         const tab = surface(TAB.w, TAB.h, w / 2 + 0.015 + TAB.w / 2, heights[i], 0.012, tabFace), uv = tab.geometry.attributes.uv;
         for (let n = 0; n < uv.count; n++) uv.setY(n, 1 - (i + 1 - uv.getY(n)) / TABS.length);
@@ -240,7 +242,7 @@ export function createKitchenBoards(game) {
       });
       // Today's challenges: over each one's box on the sheet.
       [0, 1, 2].forEach(i => {
-        const entry = control(`daily-${i}`, surface(PAPER.w, TODAY.tall / SHEET.h * PAPER.h, 0, PAPER.y + (0.5 - (TODAY.top + (i + 0.5) * TODAY.tall) / SHEET.h) * PAPER.h, 0.027, hidden), () => game.start(game.entry(`daily-${i}`)));
+        const entry = control(`daily-${i}`, surface(PAPER.w, TODAY.tall / SHEET.h * PAPER.h, 0, PAPER.y + (0.5 - (TODAY.top + (i + 0.5) * TODAY.tall) / SHEET.h) * PAPER.h, 0.027, hidden), starts(() => game.entry(`daily-${i}`)));
         onToday.push(entry); entry.visible = false;
       });
       clip.userData.near = 0.45; // it's small

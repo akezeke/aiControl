@@ -154,7 +154,7 @@ export function mountOffice(container, hooks) {
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => !!reducedMotion?.matches });
-  room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot));
+  room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip) }));
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
