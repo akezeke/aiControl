@@ -6,14 +6,17 @@ import { officeHasKeys, sceneFocused } from '../scene-keys.js';
 import { createCard, createMenu } from '../scene-ui.js';
 import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
-import { groundCells, paintGround, paintHood, paintLotShade, timeOfDay } from './ground.js';
-import { buildTower, annex, boat, duck, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant } from './generator.js';
+import { bareCells, groundCells, paintGround, paintHood, paintLotShade, timeOfDay, WIRE_SAG } from './ground.js';
+import { buildTower, annex, boat, duck, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant, PYLON_ARM, PYLON_REACH } from './generator.js';
 import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
 import { hop, hum, phaseAt, sparks, STEAM_MS, traffic, BURSTS, burst, momentOf, jibBeat } from './juice.js';
 import { birdsAt, boatsAt, cloudBlob, cloudsAt, ducksAt, seaFrame, SEA_FRAMES, SEA_KINDS } from './surroundings.js';
-import { powerRoutes, pulsesAt, routeDots } from './power.js';
+import { powerLines, powerRoutes, pulsesAt, routeDots } from './power.js';
+import { BOOT, CityBoot } from './boot.js';
+import { takeBootAsk } from './boot-ask.js';
+import { createBootCard, createBootShade, drawRising } from './boot-paint.js';
 import { ZOOMS, overscanned, fitStep, cityBox, clampCamera, startCamera, focusHood, focusBuildings, toCanvas, fromCanvas, hitSprites, stopRatio, eyeOf, cameraFor, canvasTransform, between, zoomAbout, settleStep, flickOf, keyPan } from './view.js';
 import { createControls, createLabels } from './labels.js';
 import { paintMap, trackMap, steerMap } from './minimap.js';
@@ -37,6 +40,8 @@ const BOAT_SAILS = ['#e83b3b', '#0eaf9b', '#f9c22b'];
 const POWER = { claude: '#e83b3b', codex: '#0eaf9b' }, POWER_HEAD = '#fbff86', POWER_DOTS = 6;
 const BIRD_DAY = '#2e222f', BIRD_NIGHT = '#c7dcd0', BIRD_LIFT = 46, CLOUD_INK = 'rgba(46, 34, 47, .16)', cloudSprites = new Map();
 const PLANTS = { claude: [coolingPlant, '#e83b3b'], codex: [stackPlant, '#0eaf9b'] };
+// The intro: how long it may spend baking in one frame while the card hides the city, how soon a crane follows the power, and the trail behind a spark on the wires.
+const BOOT_BAKE_MS = 12, BOOT_CRANE_MS = 250, WIRE_SPARK = '#f9c22b';
 
 export function webglAvailable() {
   try { return !!document.createElement('canvas').getContext('2d'); } catch { return false; }
@@ -76,6 +81,7 @@ export function mountCity(box, hooks = {}) {
   let view = 0, camera = null, eye = null, size = { width: 1, height: 1, scale: 1 }, ratio = 0, boxW = 0, boxH = 0, placed = '', labelsStale = false;
   let raf = 0, timer = 0, dirty = true, lastDrawn = '', glowDrawn = '', seaNow = null, seaFrameDrawn = 0, failure = null, gone = false, frames = 0, bakeMs = [], groundMs = [], paintedAt = 0;
   const keysDown = new Map(); let keysFrom = 0, keysAt = 0, keysGoing = null;
+  let boot = null, bootCard = null, bootShade = null, bootReady = false, bareGrounds = new Map();
   let glide = null, coast = null, drawn = [], plantsDrawn = [], routes = [], pulses = [], birds = [], clouds = [], litPlant = null, selectedHood = null, hoveredHood = null, card = null, labels = null, menu = null, animating = false, steaming = false, test = null, slot, dismissed = false;
 
   const dpr = () => window.devicePixelRatio || 1;
@@ -146,44 +152,47 @@ export function mountCity(box, hooks = {}) {
     const towerOf = building => {
       const { id, look, x, z } = building, stage = { ...lifecycle.stage(id, now, reduced), target: building.storeys };
       if (stage.gone) return false;
-      const signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(id), { windows } = signal, phase = phaseOf(id, signal, now), dim = dimmed(building);
-      if (signal.twinkle && !reduced) animating = true;
+      const signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(id), { windows } = signal, dim = dimmed(building), up = boot?.tower(id), seen = up && !up.lit ? { windows: 'dark', twinkle: false, asleep: signal.asleep } : signal, phase = phaseOf(id, seen, now);
+      if (seen.twinkle && !reduced) animating = true;
       hopped(id, `${windows}|${building.storeys}`, now, reduced || stage.puff);
       if (stage.puff) fire('fall', id, x, z, now);
       else { if (stage.rising && !states.has(id)) fire('spawn', id, x, z, now); noticed(id, signal, building.storeys, x, z, now, dim, reduced); }
-      stand(`${id}|${stage.storeys}|${windows}|${phase}|${!!signal.asleep}`, id, x, z, () => buildTower(look, windows, stage.storeys, phase), stage.puff ? null : id, dim, { asleep: signal.asleep, beacon: signal.beacon && !dim && blink, named: true, bounce: bounceOf(id, signal, dim, now, reduced), sparks: signal.twinkle && !dim && !reduced ? sparks(now, id) : null });
+      if (up?.lands) fire('spawn', id, x, z, now);
+      // Baked while the card is up, so that the windows don't have to queue to come on.
+      if (seen !== signal && boot.t <= BOOT.CARD) { const later = phaseOf(id, signal, now); stand(`${id}|${stage.storeys}|${windows}|${later}|${!!signal.asleep}`, id, x, z, () => buildTower(look, windows, stage.storeys, later), null, dim, { asleep: signal.asleep, later: true }); }
+      stand(`${id}|${stage.storeys}|${seen.windows}|${phase}|${!!signal.asleep}`, id, x, z, () => buildTower(look, seen.windows, stage.storeys, phase), stage.puff ? null : id, dim, { asleep: signal.asleep, beacon: seen.beacon && !dim && blink, named: true, bounce: bounceOf(id, seen, dim, now, reduced), sparks: seen.twinkle && !dim && !reduced ? sparks(now, id) : null, ...(up && { reveal: up.rise, glowOff: !up.lit }) });
       const [craneX, craneZ] = craneSpot(view);
       // While it's working a tower has a crane at it: the plainest thing in the city that says so. It stands still under reduced motion.
-      if (signal.twinkle && !stage.crane) {
+      if (seen.twinkle && !stage.crane) {
         const beat = reduced ? 0 : jibBeat(now, id, JIB_BEATS), mast = Math.min(CRANE_MAST_MAX, Math.max(CRANE_MAST_MIN, Math.ceil((stage.storeys * 3 + 12) / 4) * 4));
-        stand(`site:${beat}:${mast}`, `site:${id}`, x + craneX, z + craneZ, () => siteCrane(beat, mast, view), null, dim);
+        stand(`site:${beat}:${mast}`, `site:${id}`, x + craneX, z + craneZ, () => siteCrane(beat, mast, view), null, dim, up && { reveal: Math.min(1, (boot.t - up.litAt) / BOOT_CRANE_MS) });
       }
       if (stage.crane) stand('crane', `crane:${id}`, x + craneX, z + craneZ, () => ({ stack: crane(true) }), null, dim);
-      effects(id, x, z, signal, stage, dim);
+      effects(id, x, z, seen, stage, dim);
       return true;
     };
     const annexOf = (building, i, kid) => {
       const stage = { ...lifecycle.stage(kid.id, now, reduced), target: kid.leaving ? 0 : kid.storeys };
       if (stage.gone) return false;
-      const at = annexAt(building, i, view), group = `${building.id}+${i}`, signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(kid.id), dim = dimmed(building, kid.id), phase = phaseOf(kid.id, signal, now);
+      const at = annexAt(building, i, view), group = `${building.id}+${i}`, signal = stage.puff ? { windows: 'dark', twinkle: false } : signalOf(kid.id), dim = dimmed(building, kid.id), up = boot?.tower(kid.id), seen = up && !up.lit ? { windows: 'dark', twinkle: false, asleep: signal.asleep } : signal, phase = phaseOf(kid.id, seen, now);
       hopped(kid.id, `${signal.windows}|${kid.storeys}`, now, reduced || stage.puff);
       if (stage.puff) fire('fall', group, at.x, at.z, now); else if (stage.rising && !states.has(kid.id)) { states.set(kid.id, true); fire('spawn', group, at.x, at.z, now); }
-      stand(`${group}|${stage.storeys}|${signal.windows}|${phase}|${!!signal.asleep}`, group, at.x, at.z, () => annex(building.look, i, signal.windows, stage.storeys, phase), stage.puff ? null : kid.id, dim, { asleep: signal.asleep, beacon: signal.beacon && !dim && blink, bounce: bounceOf(kid.id, signal, dim, now, reduced) });
-      effects(group, at.x, at.z, signal, stage, dim);
+      stand(`${group}|${stage.storeys}|${seen.windows}|${phase}|${!!signal.asleep}`, group, at.x, at.z, () => annex(building.look, i, seen.windows, stage.storeys, phase), stage.puff ? null : kid.id, dim, { asleep: signal.asleep, beacon: seen.beacon && !dim && blink, bounce: bounceOf(kid.id, seen, dim, now, reduced), ...(up && { reveal: up.rise, glowOff: !up.lit }) });
+      effects(group, at.x, at.z, seen, stage, dim);
       return true;
     };
     animating = false; steaming = false;
     const quiet = !!selectedHood;
-    cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${stackId(stack)}`, `prop:${i}`, x, z, () => ({ stack }), null, quiet, { baked: true }));
+    cells.props.forEach(({ stack, x, z }, i) => stand(`prop:${stackId(stack)}`, `prop:${i}`, x, z, () => ({ stack }), null, quiet, { baked: true, ...(boot && { reveal: boot.prop(x, z), glowOff: !boot.lit(x, z) }) }));
     for (const { provider, key, x, z, connected } of plan.plants) {
-      const [make, stripe] = PLANTS[provider], lit = connected && !error, on = lit && !reduced, phase = on ? Math.floor(now / STEAM_MS) % 4 : 0;
+      const [make, stripe] = PLANTS[provider], rising = boot?.plant(key), lit = connected && !error && (!rising || rising.on), on = lit && !reduced, phase = on ? Math.floor(now / STEAM_MS) % 4 : 0;
       if (on) steaming = true;
-      stand(`plant:${provider}|${on}|${lit}|${phase}`, `plant:${key}`, x, z, () => ({ stack: make(stripe, on, lit, phase) }), null, quiet, { plant: key });
+      stand(`plant:${provider}|${on}|${lit}|${phase}`, `plant:${key}`, x, z, () => ({ stack: make(stripe, on, lit, phase) }), null, quiet, { plant: key, ...(rising && { reveal: rising.rise, glowOff: !rising.on }) });
     }
     for (const building of plan.buildings) if (towerOf(building)) building.subagents.forEach((kid, i) => annexOf(building, i, kid));
     if (!reduced) {
       const busy = plan.buildings.filter(({ id }) => sessions.has(id) && !signalOf(id).asleep);
-      for (const { id, x, z, along, colour } of traffic(plan.roads, busy, now)) { stand(`car:${colour}:${along}`, `car:${id}`, x, z, () => ({ stack: car(colour, along) }), null, quiet, { moves: true }); }
+      for (const { id, x, z, along, colour } of traffic(plan.roads, busy, now)) { if (boot && !boot.lit(x, z)) continue; stand(`car:${colour}:${along}`, `car:${id}`, x, z, () => ({ stack: car(colour, along) }), null, quiet, { moves: true }); }
     }
     if (!reduced) boatsAt(plan.bounds, now).forEach(({ x, z, along, dir }, i) => stand(`boat:${i}:${along}:${dir}`, `boat:${i}`, x, z, () => ({ stack: boat(BOAT_SAILS[i % BOAT_SAILS.length], along, dir) }), null, quiet, { moves: true }));
     if (!reduced) ducksAt(cells.lakes, now).forEach(({ x, z, along, dir, young }, i) => stand(`duck:${along}:${dir}:${young}`, `duck:${i}`, x, z, () => ({ stack: duck(along, dir, young) }), null, quiet, { moves: true }));
@@ -204,6 +213,12 @@ export function mountCity(box, hooks = {}) {
     let ground = grounds.get(view);
     if (!ground) { const started = performance.now(), painted = paintGround(cells, view); ground = { ...painted, image: toImage(painted) }; grounds.set(view, ground); groundMs.push(performance.now() - started); }
     return ground;
+  };
+  // The ground the intro starts from.
+  const bareGround = () => {
+    let bare = bareGrounds.get(view);
+    if (!bare) { const painted = paintGround(bareCells(cells), view); bare = { ...painted, image: toImage(painted) }; bareGrounds.set(view, bare); }
+    return bare;
   };
   // Foam and glints. The ground underneath is never redrawn for them, only painted over, and a frame of them is worked out once per view.
   const seaList = frame => { const key = `${view}:${frame}`; let list = seas.get(key); if (!list) { list = seaFrame(cells.water, frame, view); seas.set(key, list); } return list; };
@@ -270,7 +285,7 @@ export function mountCity(box, hooks = {}) {
   };
   const paint = list => {
     frames++;
-    const ground = groundImage(), [gx, gy] = toCanvas(camera, size, 0, 0);
+    const ground = boot && boot.t < BOOT.POWER_FROM ? bareGround() : groundImage(), [gx, gy] = toCanvas(camera, size, 0, 0);
     paintGroundSheet(ground, gx, gy);
     for (const { sx, sy, sprite } of clouds) ctx.drawImage(sprite, sx + gx, sy + gy);
     const chosen = selectedHood && plan.hoods.find(hood => hood.key === selectedHood), lit = chosen && litHood(chosen);
@@ -290,9 +305,10 @@ export function mountCity(box, hooks = {}) {
     const placed = list.filter(({ item }) => !item.over).map(({ item, sprite }) => { const [x, y] = toCanvas(camera, size, item.sx, item.sy); return { sprite, x, y, item, opens: item.opens, left: x - sprite.originX, top: y - sprite.originY }; });
     drawn = placed.filter(item => item.opens); plantsDrawn = placed.filter(({ item }) => item.plant);
     syncLabels(placed);
-    for (const { sprite, x, y, item } of placed) if (sprite.shadowImage && !item.baked) ctx.drawImage(sprite.shadowImage, x - sprite.shadow.originX, y - sprite.shadow.originY);
+    for (const { sprite, x, y, item } of placed) if (sprite.shadowImage && !item.baked && !(item.reveal < 1)) ctx.drawImage(sprite.shadowImage, x - sprite.shadow.originX, y - sprite.shadow.originY);
     // A hop lifts and squashes the picture and leaves the shadow on the ground.
-    for (const { sprite, x, y, item } of placed) if (sprite.image) drawBounced(ctx, sprite.image, sprite, x, y, item.bounce);
+    for (const { sprite, x, y, item } of placed) if (sprite.image) { if (item.reveal < 1) drawRising(ctx, sprite, x - sprite.originX, y - sprite.originY, item.reveal); else drawBounced(ctx, sprite.image, sprite, x, y, item.bounce); }
+    if (boot) paintBootDark(gx, gy);
     ctx.fillStyle = hour === 'night' ? BIRD_NIGHT : BIRD_DAY;
     for (const { sx, sy, wings } of birds) { const px = sx + gx, py = sy + gy; ctx.fillRect(px - 1, py, 3, 1); ctx.fillRect(px - 2, py - 1 + wings * 2, 1, 1); ctx.fillRect(px + 2, py - 1 + wings * 2, 1, 1); }
     // Effects last: they are in the air, in front of whatever stands there.
@@ -312,21 +328,38 @@ export function mountCity(box, hooks = {}) {
     const spray = target => { for (const entry of placed) if (entry.item.sparks) { const [x, y] = crown(entry); for (const spark of entry.item.sparks) { target.fillStyle = spark.colour; target.fillRect(x + spark.x, y + spark.y, 1, 1); } } };
     spray(ctx);
     flash(ctx, false, crown, under);
+    if (boot) paintBootSparks(ctx);
     // Cars and steam don't glow, and this is the dearest part of a paint: it waits until something that does has changed.
-    const glowing = bloom && [gx, gy, chosen?.key, size.width, size.height, ...placed.filter(({ sprite, item }) => sprite.glowImage || item.sparks || item.beacon).map(({ sprite, x, y, item }) => `${item.key}:${sprite.glowImage ? 1 : 0}:${x},${y}:${item.beacon ? 1 : 0}:${item.bounce?.lift ?? ''},${item.bounce?.squash ?? ''}:${item.sparks?.map(spark => spark.x * 100 + spark.y) ?? ''}`), ...[...bursts.values()].filter(({ kind }) => BURSTS[kind].glow).map(({ group }) => `${group}:${paintedAt}`)].join();
+    const glowing = bloom && [gx, gy, chosen?.key, size.width, size.height, ...(boot && boot.t >= BOOT.POWER_FROM ? [boot.t] : []), ...placed.filter(({ sprite, item }) => (sprite.glowImage && !item.glowOff) || item.sparks || item.beacon).map(({ sprite, x, y, item }) => `${item.key}:${sprite.glowImage && !item.glowOff ? 1 : 0}:${x},${y}:${item.beacon ? 1 : 0}:${item.bounce?.lift ?? ''},${item.bounce?.squash ?? ''}:${item.sparks?.map(spark => spark.x * 100 + spark.y) ?? ''}`), ...[...bursts.values()].filter(({ kind }) => BURSTS[kind].glow).map(({ group }) => `${group}:${paintedAt}`)].join();
     if (bloom && glowing !== glowDrawn) {
       glowDrawn = glowing;
       const shiftX = lampOffset(gx), shiftY = lampOffset(gy), kx = glowCanvas.width / size.width, ky = glowCanvas.height / size.height;
       lampsCtx.setTransform(1, 0, 0, 1, 0, 0); lampsCtx.clearRect(0, 0, lamps.width, lamps.height); lampsCtx.setTransform(1, 0, 0, 1, shiftX, shiftY);
       if (lit) lampsCtx.drawImage(lit.edgeImage, gx - lit.originX, gy - lit.originY);
-      for (const { sprite, x, y, item } of placed) if (sprite.glowImage) drawBounced(lampsCtx, sprite.glowImage, sprite, x, y, item.bounce);
+      for (const { sprite, x, y, item } of placed) if (sprite.glowImage && !item.glowOff) drawBounced(lampsCtx, sprite.glowImage, sprite, x, y, item.bounce);
       spray(lampsCtx);
+      if (boot) paintBootSparks(lampsCtx);
       flash(lampsCtx, false, crown, under, true);
       lampsCtx.fillStyle = BEACON;
       for (const entry of placed) if (entry.item.beacon) { const [x, y] = crown(entry); lampsCtx.fillRect(x - 1, y - 3, 3, 3); }
       bloom.draw(glowCtx, lamps, -shiftX * kx, -shiftY * ky, lamps.width * kx, lamps.height * ky);
     }
     followMenu();
+  };
+
+  // Night until the power reaches it. Dust goes on top, or the towers would land in the dark with no one to see.
+  const paintBootDark = (gx, gy) => {
+    bootShade ??= createBootShade();
+    bootShade.paint(ctx, size.width, size.height, boot, (px, py) => unproject(px - gx, py - gy, view));
+    flash(ctx, true);
+  };
+  const paintBootSparks = target => {
+    const [gx, gy] = toCanvas(camera, size, 0, 0);
+    for (const { x, z, head, provider } of boot.sparks()) { const [sx, sy] = screen(x, z, view), px = Math.floor(sx) + gx, py = Math.floor(sy) + gy; target.fillStyle = head ? POWER_HEAD : POWER[provider]; target.fillRect(px - 1, py, head ? 3 : 2, head ? 2 : 1); }
+    for (const { x, z, along, k, head } of boot.wireSparks()) for (const side of [-PYLON_REACH, PYLON_REACH]) {
+      const [sx, sy] = screen(x + (along ? 0 : side), z + (along ? side : 0), view), px = Math.round(sx) + gx, py = Math.round(sy - PYLON_ARM + WIRE_SAG * 4 * k * (1 - k)) + gy;
+      target.fillStyle = head ? POWER_HEAD : WIRE_SPARK; target.fillRect(px - 1, py - 1, head ? 3 : 2, head ? 3 : 2);
+    }
   };
 
   // The DOM over the city, kept in step with whatever was just drawn. The labels only touch what changed.
@@ -415,6 +448,7 @@ export function mountCity(box, hooks = {}) {
     if (!plan || !camera) return false;
     syncMap();
     paintedAt = now;
+    if (boot) runBoot(now);
     for (const [key, { kind, at }] of bursts) if (now - at >= BURSTS[kind].ms) { bursts.delete(key); dirty = true; }
     if (bursts.size) dirty = true;
     if (glide) {
@@ -439,9 +473,12 @@ export function mountCity(box, hooks = {}) {
     if (items.some(item => item.moves)) animating = true;
     if (items.length * 6 > sprites.max) sprites.max = items.length * 6;
     let baked = false, waiting = false;
+    // Behind the card it can take its time over more of them: nobody is looking, and the clock waits.
+    const bakeUntil = boot && boot.t <= BOOT.CARD ? performance.now() + BOOT_BAKE_MS : 0;
     for (const item of items) {
       let sprite = sprites.get(item.key);
-      if (!sprite && !baked) { sprite = bake(item); baked = true; } else if (!sprite) waiting = true;
+      if (!sprite && (!baked || performance.now() < bakeUntil)) { sprite = bake(item); baked = true; } else if (!sprite) waiting = true;
+      if (item.later) continue;
       if (sprite) shown.set(item.group, sprite); else sprite = shown.get(item.group);
       if (sprite) ready.push({ item, sprite });
     }
@@ -453,6 +490,7 @@ export function mountCity(box, hooks = {}) {
     const drawing = (seaNow ? `sea${frameOfSea},` : '') + pulses.map(({ x, z }) => `${x},${z}`).join(' ') + birds.map(({ sx, sy, wings }) => `${sx},${sy},${wings}`).join(' ') + clouds.map(({ sx, sy }) => `${sx},${sy}`).join(' ') + ready.map(({ item, sprite }) => `${item.key}:${sprite.width}:${item.lift ?? ''}:${item.moves ? `${item.sx},${item.sy}` : ''}:${item.beacon ? 1 : 0}:${item.bounce ? `${item.bounce.lift},${item.bounce.squash}` : ''}:${item.sparks ? item.sparks.map(spark => spark.x * 100 + spark.y).join('/') : ''}`).join();
     if (dirty || baked || drawing !== lastDrawn) { paint(ready); lastDrawn = drawing; dirty = false; }
     if (labelsStale) { moveLabels(); followMenu(); }
+    bootReady = !waiting && !baked;
     return waiting || baked;
   };
   const moving = () => plan && animating;
@@ -462,14 +500,42 @@ export function mountCity(box, hooks = {}) {
     if (gone || document.hidden) return;
     try {
       const more = step(now);
-      if (more || dirty || glide || coast || keysDown.size || hops.size || bursts.size) schedule();
+      if (more || dirty || boot || glide || coast || keysDown.size || hops.size || bursts.size) schedule();
       else if (moving()) timer = setTimeout(() => { timer = 0; schedule(); }, STEP_MS);
       else if (steaming) timer = setTimeout(() => { timer = 0; schedule(); }, STEAM_MS - now % STEAM_MS + 1);
     } catch (problem) { failure = problem; } // The next update throws it, and syncScene falls back to the list.
   };
   const schedule = () => { if (!raf && !gone && !document.hidden) raf = requestAnimationFrame(frame); };
   const wake = () => { dirty = true; cancel(); schedule(); };
-  const onVisible = () => { if (!document.hidden) wake(); };
+  const onVisible = () => { if (document.hidden) boot?.skip(); else wake(); };
+
+  // ---- The intro. Nothing here touches the city's own state: towers go on working out their real signals underneath, so that the end of it isn't a change.
+  const skipBoot = () => { if (boot && !boot.over) { boot.skip(); wake(); } };
+  const bootListeners = [[document, 'pointerdown'], [window, 'keydown'], [box, 'wheel']];
+  // Only on arrival, and never over a chat. Dropped rather than saved for later: the city it would build is already there.
+  const startBoot = () => {
+    if (!takeBootAsk(document.documentElement, performance.now()) || !camera || hooks.selected?.() || document.hidden || reducedMotion()) return;
+    boot = new CityBoot(plan, routes, powerLines(plan)); bootReady = false;
+    bootCard = createBootCard(box);
+    box.classList.add('city-booting');
+    groundImage(); bareGround();
+    for (const [target, type] of bootListeners) target.addEventListener(type, skipBoot, { capture: true, passive: true });
+  };
+  const endBoot = () => {
+    const { skipped } = boot;
+    boot = null; bootCard?.dispose(); bootCard = null; bootShade = null; bareGrounds.clear(); dirty = true;
+    box.classList.remove('city-booting');
+    for (const [target, type] of bootListeners) target.removeEventListener(type, skipBoot, { capture: true });
+    if (!skipped) labels.pop();
+  };
+  const runBoot = now => {
+    if (hooks.selected?.() || reducedMotion()) boot.skip();
+    boot.tick(now, bootReady && (!bootCard || bootCard.ready));
+    dirty = true;
+    const title = boot.card();
+    if (title.gone) { bootCard?.dispose(); bootCard = null; } else bootCard?.draw(title);
+    if (boot.over) endBoot();
+  };
   document.addEventListener('visibilitychange', onVisible);
   // Dawn and dusk. Twice a day it repaints the ground and everything cut from it, so once a minute is plenty to notice.
   clock = setInterval(() => {
@@ -740,12 +806,13 @@ export function mountCity(box, hooks = {}) {
       // Someone else may have just taken the lot it was asking about.
       if (lots.asked && menu.open && !menu.asking) { const lot = lotOf(lots.asked); if (!lot || lot.sessionId) menu.close(); }
       if (!camera) place();
+      if (!before) startBoot();
       // One agent not being there may just mean it isn't installed; that shows on its plant. Lost means nothing can be reached.
       controls.setLost(!!error || !!snapshot.providers?.length && snapshot.providers.every(provider => !provider.connected));
       controls.setWaiting(snapshot.sessions.filter(session => ['permission', 'question'].includes(session.status)).length);
       mapRev++; dirty = true; cancel();
       // Drawn here, not left to the next frame, so that a canvas that can't draw is caught by syncScene.
-      if (step(performance.now()) || moving() || glide || coast) schedule();
+      if (step(performance.now()) || moving() || boot || glide || coast) schedule();
     },
     pick(next, open) {
       if (gone) return;
@@ -759,13 +826,14 @@ export function mountCity(box, hooks = {}) {
     talkTo,
     fire(id) { if (gone) return; fired.set(id, performance.now()); if (snapshot) scene.update(snapshot, { error }); },
     unmount() {
+      if (boot) { boot.skip(); endBoot(); }
       gone = true; cancel(); clearInterval(clock); mapOff?.(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('pointerdown', onPress, true);
       for (const [target, type, listener] of listening) target.removeEventListener(type, listener);
       box.removeEventListener('wheel', onWheel); controls.dispose(); card.dispose(); labels.dispose(); menu.dispose();
       sprites.clear(); shown.clear(); grounds.clear(); ghosts.clear(); fired.clear(); canvas.remove(); glowCanvas.remove(); plan = null;
     },
     // For the local harness: no cost unless something calls it.
-    inspect: () => ({ camera, eye, glide: !!glide, coast: !!coast, placed, size, view, frames, bakeMs: [...bakeMs], groundMs: [...groundMs], cached: sprites.size, plan, lots: { ...lots }, drawn, ghosts: ghosts.size, animating }),
+    inspect: () => ({ camera, eye, glide: !!glide, coast: !!coast, placed, size, view, frames, bakeMs: [...bakeMs], groundMs: [...groundMs], cached: sprites.size, plan, lots: { ...lots }, drawn, ghosts: ghosts.size, animating, boot: boot?.t ?? null }),
   };
   return scene;
 }

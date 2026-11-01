@@ -3,6 +3,8 @@
 #city > canvas { display: block; image-rendering: pixelated; transform-origin: 0 0; will-change: transform; }
 @media (max-width: 640px) { :root[data-theme-choice=city]:not([data-scene-fallback], [data-scene-list]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
 #city > canvas { cursor: grab; touch-action: none; }
+#city > .city-boot-card { position: absolute; left: 0; top: 0; z-index: 3000; pointer-events: none; image-rendering: pixelated; }
+#city.city-booting .city-labels { visibility: hidden; }
 #city > .city-glow { position: absolute; left: 0; top: 0; image-rendering: auto; pointer-events: none; mix-blend-mode: screen; }
 
 .city-controls { position: absolute; top: 8px; right: 8px; z-index: 1500; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; max-width: calc(100% - 16px); }

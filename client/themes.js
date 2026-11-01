@@ -1,5 +1,6 @@
 import { setAlienAmbienceEnabled } from './alien-ambience.js';
 import { sceneFor } from './scenes.js';
+import { askForBoot } from './city/boot-ask.js';
 
 // `look` picks the CSS theme; Orbit's `scheme` is fixed, or follows the system when absent.
 export const themes = [
@@ -48,6 +49,14 @@ const bootLines = ['INTERFACE 2037 ............ READY', 'MU/TH/UR 6000 MAINFRAME
 export function bootSequence(force = false) {
   const theme = document.documentElement.dataset.theme;
   const previousOverlays = document.querySelectorAll('.boot, .eva-boot, .heroes-boot');
+  // Metropolis has no overlay: it builds the real city, once the scene has one to build.
+  if (theme === 'city') {
+    previousOverlays.forEach(overlay => overlay.remove());
+    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+    try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
+    askForBoot(document.documentElement, performance.now());
+    return;
+  }
   if (!['alien', 'command', 'heroes'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) { previousOverlays.forEach(overlay => overlay.remove()); return; }
   try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
   previousOverlays.forEach(overlay => overlay.remove());

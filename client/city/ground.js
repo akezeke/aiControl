@@ -69,6 +69,12 @@ function landscape(W, D, x0, z0, w, d, time) {
   return land;
 }
 
+// The ground before anything stands on it, for the intro: no wires, and no shadows of props that aren't up yet.
+export function bareCells(cells) {
+  const rgb = cells.rgb.slice(), { unshaded } = cells;
+  for (let n = 0; n < unshaded.length; n += 4) { const i = unshaded[n] * 3; rgb[i] = unshaded[n + 1]; rgb[i + 1] = unshaded[n + 2]; rgb[i + 2] = unshaded[n + 3]; }
+  return { ...cells, rgb, wires: [] };
+}
 export function groundCells(plan, time = 'day') {
   const { w: W, d: D } = plan.bounds, x0 = -MARGIN, z0 = -MARGIN, w = W + MARGIN * 2, d = D + MARGIN * 2, rgb = new Uint8Array(w * d * 3), props = [], soil = soilOf(time), lawn = soil.land;
   const set = (x, z, c) => { const a = Math.floor(x) - x0, b = Math.floor(z) - z0; if (a < 0 || b < 0 || a >= w || b >= d) return; const i = (a + b * w) * 3; rgb[i] = c[0]; rgb[i + 1] = c[1]; rgb[i + 2] = c[2]; };
@@ -188,7 +194,9 @@ export function groundCells(plan, time = 'day') {
       if (a >= 0 && b >= 0 && a < w && b < d) shaded[a + b * w] = 1;
     }
   }
+  const unshaded = [];
   for (let i = 0; i < shaded.length; i++) if (shaded[i]) {
+    unshaded.push(i, rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
     const dark = nearest([0, 1, 2].map(k => rgb[i * 3 + k] + (C.shadow[k] - rgb[i * 3 + k]) * DARK));
     rgb[i * 3] = dark[0]; rgb[i * 3 + 1] = dark[1]; rgb[i * 3 + 2] = dark[2];
   }
@@ -199,7 +207,7 @@ export function groundCells(plan, time = 'day') {
     for (let i = 0; i < shore.length; i += 2) if (stillWet(shore[i], shore[i + 1])) { water.shore.push(shore[i], shore[i + 1]); water.past.push(past[i / 2]); }
     for (let i = 0; i < glint.length; i += 2) if (stillWet(glint[i], glint[i + 1])) water.glint.push(glint[i], glint[i + 1]);
   }
-  return { x0, z0, w, d, rgb, props, water, lakes: lakesOf(plan).filter(lake => lake.big), lights, wires: [...lines.wires, ...lines.feeds], wireInk: hex(time === 'night' ? '#7f708a' : '#3e3546') };
+  return { x0, z0, w, d, rgb, unshaded: Uint32Array.from(unshaded), props, water, lakes: lakesOf(plan).filter(lake => lake.big), lights, wires: [...lines.wires, ...lines.feeds], wireInk: hex(time === 'night' ? '#7f708a' : '#3e3546') };
 }
 
 // A pool of warm light under each lamp, in rings with a dithered edge. The ground is the same palette as ever, just nearer the lamp's colour.
@@ -419,7 +427,7 @@ export function paintLotShade(view, time = 'day') {
   return { width, height, rgba, originX: -minX, originY: -minY };
 }
 
-const WIRE_SAG = 3;
+export const WIRE_SAG = 3;
 // World (x, z) lands on pixel (screen x + originX, screen y + originY).
 export function paintGround({ x0, z0, w, d, rgb, wires = [], wireInk }, view) {
   const corners = [[x0, z0], [x0 + w, z0], [x0, z0 + d], [x0 + w, z0 + d]].map(([x, z]) => screen(x, z, view));

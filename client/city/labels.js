@@ -2,7 +2,7 @@
 import { glyph } from './glyphs.js';
 import { clearOf, offMap, placeBubble } from './view.js';
 
-const TAIL = 6, INK = '#2e222f';
+const TAIL = 6, INK = '#2e222f', POP_GROUPS = 4, POP_APART = 60;
 const POP = [{ transform: 'scale(.6)' }, { transform: 'scale(1.15)', offset: .5 }, { transform: 'scale(1)' }], POP_TIMING = { duration: 220, easing: 'steps(5)', composite: 'add' };
 
 // A 7 x 7 pixel icon, so that no emoji brings in a colour from outside the palette.
@@ -57,6 +57,15 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, o
   const settle = entry => { if (project) place(entry); };
 
   return {
+    // Everything showing comes up at once, a few at a time, as the city's intro ends.
+    pop() {
+      let i = 0;
+      for (const { node } of shown.values()) {
+        if (node.hidden) continue;
+        const delay = i++ % POP_GROUPS * POP_APART;
+        node.animate(POP, { ...POP_TIMING, delay, fill: 'backwards' }); node.animate({ opacity: [0, 1] }, { duration: 1, delay, fill: 'backwards' });
+      }
+    },
     // items: [{ id, ax, ay, name, bubble: { icon, text, highlight, terse } | null, unread, dim, mood: 'working' | 'asleep' | null }]. A building with nothing to say still has its name.
     sync(items, step) {
       layer.classList.toggle('icons', step === 1); layer.classList.toggle('near', step > 2);
