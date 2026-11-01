@@ -1,5 +1,5 @@
 import './usage.css';
-import { usageWindowView, usageUpdatedText } from './usage-presentation.js';
+import { usageWindowView, usageUpdatedText, costPeriodView } from './usage-presentation.js';
 import { renderPower } from './theme-console.js';
 import { providerIcon } from './provider-icons.js';
 
@@ -30,6 +30,11 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
     row.append(mark);
     if (labelled) { const tag = node('span', 'usage-tag', account.label || ''); tag.title = account.name; row.append(tag); }
     const windows = node('div', 'usage-windows');
+    for (const period of account.periods || []) {
+      const view = costPeriodView(period), cell = node('div', 'usage-cost');
+      cell.title = view.detail; cell.setAttribute('aria-label', `${view.detail}: ${view.cost}${stale ? ', last known' : ''}`);
+      cell.append(node('span', 'usage-label', period.label), node('strong', 'usage-percent', view.cost)); windows.append(cell);
+    }
     for (const window of account.windows || []) {
       const view = usageWindowView(window, now);
       const cell = node('div', `usage-window ${view.tone}${view.expired ? ' usage-expired' : ''}${window.scope || view.shortLabel.length > 3 ? ' usage-wide' : ''}${view.pace >= 100 && window.usedPercent < 100 ? ' usage-pace' : ''}`);
@@ -58,7 +63,8 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
       windows.append(status);
     }
     row.append(windows);
-    if (stale && account.windows?.length) row.append(node('span', 'usage-state', 'stale'));
+    if (stale && (account.windows?.length || account.periods?.length)) row.append(node('span', 'usage-state', 'stale'));
+    if (account.status === 'partial') row.append(node('span', 'usage-state', 'partial'));
     rows.append(row);
   }
   container.replaceChildren(rows);

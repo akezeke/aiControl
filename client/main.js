@@ -12,6 +12,7 @@ import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './t
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
 import { placeShots } from './history-shots.js';
+import { ImagePanZoom } from './image-pan-zoom.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects } from './session-order.js';
 import { messagingUnavailableReason } from './messaging-status.js';
@@ -168,7 +169,7 @@ function brand() {
 }
 function badge(status) { const [label, color] = statuses[status] || statuses.unknown; const node = el('span', `badge ${color}`); node.append(el('i', 'dot'), el('span', '', label)); return node; }
 const needsInput = session => ['permission', 'question'].includes(session.status);
-const providerName = provider => provider === 'codex' ? 'Codex' : 'Claude Code';
+const providerName = provider => ({ codex: 'Codex', claude: 'Claude Code', opencode: 'OpenCode' })[provider] || provider;
 function age(time) { if (!time) return 'No activity time'; const seconds = Math.max(0, (Date.now() - time) / 1000); return seconds < 60 ? 'Just now' : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`; }
 
 async function api(path, body, options = {}) {
@@ -236,7 +237,7 @@ function showWorkspace() {
   const toolbar = el('div', 'toolbar'); const menu = el('details', 'filter-menu'); menu.id = 'agent-filter-menu';
   const summary = el('summary', 'quiet-button', '…'); summary.setAttribute('aria-label', 'Filter sessions by agent'); summary.title = 'Agent filter'; menu.append(summary);
   const tabs = el('div', 'filter-options'); tabs.setAttribute('aria-label', 'Agent provider'); tabs.append(el('span', 'sidebar-label', 'SHOW AGENTS'));
-  for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
+  for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code'], ['opencode', 'OpenCode']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
   const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu); main.append(toolbar);
@@ -543,9 +544,10 @@ function renderSessionHeader(header, session) {
   const goal = session.goal, cost = session.cost;
   const rows = [['Folder', session.cwd], ['Account', session.account], ['Model', session.model || 'Not reported'], ['Effort', effort && `${effort}${session.effortPending ? ' · from your next message' : ''}`], ['Mode', session.permissionMode],
     ['Context', session.context?.used && `${tokens(session.context.used)}${session.context.window ? ` of ${tokens(session.context.window)} (${percent}%)` : ''}`], ['Branch', session.branch],
-    ['Last turn', session.lastTurnMs && duration(session.lastTurnMs)], ['Cost', cost && `$${cost.usd.toFixed(2)} · +${cost.added} −${cost.removed} lines`],
+    ['Last turn', session.lastTurnMs && duration(session.lastTurnMs)], [cost?.estimated ? 'Est. cost' : 'Cost', cost && `$${cost.usd.toFixed(2)} · +${cost.added} −${cost.removed} lines`],
+    ['Tokens', session.tokens && `${session.tokens.input.toLocaleString()} in · ${session.tokens.output.toLocaleString()} out · ${session.tokens.cacheRead.toLocaleString()} cache read · ${session.tokens.cacheWrite.toLocaleString()} cache write`],
     ['Goal', goal && `${goal.objective} · ${goal.status}${goal.tokenBudget ? ` · ${tokens(goal.tokensUsed)} of ${tokens(goal.tokenBudget)} tokens` : ''}`],
-    ['Version', session.version && `Claude Code ${session.version}`], ['Session', session.nativeId || session.id], ['Connection', session.control ? 'Connected' : 'Status only']];
+    ['Version', session.version && `${providerName(session.provider)} ${session.version}`], ['Session', session.nativeId || session.id], ['Connection', session.control ? 'Connected' : 'Status only']];
   const info = el('dl', 'session-info'); for (const [key, value] of rows) if (value) info.append(el('dt', '', key), el('dd', '', value)); metadata.append(info); if (session.cwd) metadata.append(spawnButtons(session.cwd)); header.append(metadata);
   if (session.plan?.length) {
     const plan = el('details', 'plan-info'); plan.open = planOpen;
@@ -842,46 +844,39 @@ function shotStrip(id, { shots: group, user }) {
   }
   return strip;
 }
-// One screenshot big; ‹ ›, ←/→ or a swipe step through the session's others, the picture opens full size, Esc or the backdrop closes.
+// Full-screen screenshots: pinch/scroll to zoom, drag to pan, swipe at fit size to step.
 function showShot(id, imageId) {
   const images = shots.get(id)?.images || []; let at = Math.max(0, images.findIndex(image => image.id === imageId));
   if (!images.length) return;
   const dialog = el('dialog', 'shot-viewer'); dialog.setAttribute('aria-label', 'Screenshot');
-  const link = el('a', 'shot-full'); link.target = '_blank'; link.rel = 'noopener'; link.title = 'Full size';
-  const picture = el('img'); picture.alt = ''; link.append(picture);
+  const viewport = el('div', 'shot-full'); viewport.tabIndex = 0; viewport.setAttribute('aria-label', 'Image preview');
+  viewport.title = 'Pinch or scroll to zoom · Drag to pan · Double-click to zoom/reset · + / − / 0';
+  const picture = el('img'); picture.alt = ''; picture.draggable = false; viewport.append(picture);
+  const link = el('a', 'shot-button', '↗'); link.target = '_blank'; link.rel = 'noopener'; link.title = 'Full size'; link.setAttribute('aria-label', 'Open full-size image');
   const bar = el('div', 'shot-bar'), meta = el('span', 'shot-meta');
   const control = (text, label, action) => { const b = el('button', 'shot-button', text); b.type = 'button'; b.setAttribute('aria-label', label); b.title = label; b.onclick = action; return b; };
-  const step = by => { at = Math.max(0, Math.min(images.length - 1, at + by)); show(); };
+  const step = by => { const next = Math.max(0, Math.min(images.length - 1, at + by)); if (next !== at) { at = next; show(); } };
   const prev = control('‹', 'Previous (←)', () => step(-1)), next = control('›', 'Next (→)', () => step(1));
-  bar.append(prev, meta, next, control('✕', 'Close (Esc)', () => dialog.close()));
+  bar.append(prev, meta, next, link, control('✕', 'Close (Esc)', () => dialog.close()));
+  const panZoom = new ImagePanZoom(viewport, picture, step);
   const show = () => {
+    panZoom.reset();
     const image = images[at]; picture.src = link.href = shotUrl(id, image.id);
     meta.textContent = [`${at + 1}/${images.length}`, image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
+    const focused = document.activeElement;
     prev.disabled = at === 0; next.disabled = at === images.length - 1;
+    if ((focused === prev && prev.disabled) || (focused === next && next.disabled)) viewport.focus({ preventScroll: true });
   };
-  dialog.append(link, bar);
-  dialog.addEventListener('keydown', event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); step(event.key === 'ArrowLeft' ? -1 : 1); } });
-  // A swipe steps; the picture follows the finger, and a second finger (pinch-zoom) calls the swipe off.
-  let from = null, swiped = false;
-  dialog.addEventListener('pointerdown', event => {
-    if (event.pointerType === 'mouse') return;
-    if (from) { from = null; picture.style.transform = ''; return; }
-    from = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  dialog.append(viewport, bar);
+  dialog.addEventListener('keydown', event => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); step(event.key === 'ArrowLeft' ? -1 : 1); }
+    else if (['+', '=', '-', '0'].includes(event.key)) {
+      event.preventDefault();
+      if (event.key === '0') panZoom.reset(); else panZoom.zoom(panZoom.scale * (event.key === '-' ? 1 / 1.5 : 1.5));
+    }
   });
-  dialog.addEventListener('pointermove', event => { if (from?.id === event.pointerId) picture.style.transform = `translateX(${event.clientX - from.x}px)`; });
-  const release = event => {
-    if (from?.id !== event.pointerId) return;
-    const dx = event.clientX - from.x, dy = event.clientY - from.y;
-    from = null; picture.style.transform = '';
-    if (event.type === 'pointerup' && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) { swiped = true; step(dx < 0 ? 1 : -1); }
-  };
-  dialog.addEventListener('pointerup', release); dialog.addEventListener('pointercancel', release);
-  // Capture, so the click a swipe ends with neither opens the full-size link nor closes the viewer.
-  dialog.addEventListener('click', event => {
-    if (swiped) { swiped = false; event.preventDefault(); return; }
-    if (event.target === dialog) dialog.close();
-  }, true);
-  dialog.onclose = () => dialog.remove();
+  dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+  dialog.onclose = () => { panZoom.destroy(); dialog.remove(); };
   app.append(dialog); show(); dialog.showModal();
 }
 // Older pages end where the live window starts, so polling keeps the newest part current.
@@ -975,13 +970,17 @@ async function respond(request, payload, container, error) {
 function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
 function spawnButtons(cwd) {
   const actions = el('span', 'group-actions');
-  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
+  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}${choice.last ? ' · last used here' : ''}`; actions.append(b); }
   return actions;
 }
 async function spawnAgent(cwd, choice, control) {
   if (state.error) return;
   control.disabled = true;
-  try { const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account }); toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`); }
+  try {
+    const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account });
+    if (result.sessionId) { await refresh(); openPanel(result.sessionId); toast(`${choice.name} session created`); }
+    else toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`);
+  }
   catch (e) { toast(e.message); }
   finally { control.disabled = false; }
 }

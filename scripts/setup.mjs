@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { root, dataDir, settingsFile, prepareData, tailscaleSelf, checkCert, readSettings, claudeAccounts } from '../server/config.mjs';
+import { openCodeConfig } from '../server/opencode.mjs';
+import { hiddenInput } from './password.mjs';
 
 // Claude Code folders in use, whatever their name: the configured ones, CLAUDE_CONFIG_DIR and any folder in ~ or ~/.config
 // holding a login or sessions and transcripts.
@@ -20,6 +22,7 @@ export async function setup() {
   const self = tailscaleSelf();
   let settings = { mode: 'local' };
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  let openCodePassword = false;
   try {
     if (!self) console.log('Tailscale is not running: local mode (this computer only). Run npm run setup after starting Tailscale to change.');
     else {
@@ -46,7 +49,20 @@ export async function setup() {
       const answer = (await rl.question(`Claude accounts [${dirs.join(', ')}], or comma-separated folders: `)).trim();
       settings.claudeDirs = answer ? answer.split(',').map(dir => dir.trim()).filter(Boolean) : dirs;
     }
+    const existing = readSettings().opencode;
+    const answer = (await rl.question(`OpenCode server URL${existing?.url ? ` [${existing.url}]` : ' (blank to skip)'}, or "off": `)).trim();
+    if (answer !== 'off' && (answer || existing?.url)) {
+      settings.opencode = openCodeConfig({ ...existing, url: answer || existing.url });
+      const auth = (await rl.question(`OpenCode server password: keep${settings.opencode.password ? ' saved' : ' empty'}, change, or clear [keep]: `)).trim().toLowerCase();
+      if (auth === 'clear') settings.opencode.password = '';
+      if (auth === 'change') {
+        openCodePassword = true;
+        settings.opencode.username = (await rl.question(`OpenCode username [${settings.opencode.username}]: `)).trim() || settings.opencode.username;
+      }
+    }
   } finally { rl.close(); }
+  if (openCodePassword) settings.opencode.password = await hiddenInput('OpenCode server password: ');
+  if (settings.opencode) settings.opencode = openCodeConfig(settings.opencode);
   await writeFile(settingsFile, JSON.stringify(settings, null, 2) + '\n', { mode: 0o600 });
   console.log(`Saved ${settings.mode}${settings.mode === 'tailscale' ? (settings.cert ? ' HTTPS' : ' HTTP') : ''}${settings.claudeDirs ? `, ${settings.claudeDirs.length} Claude account${settings.claudeDirs.length === 1 ? '' : 's'}` : ''} settings to .local/config.json.`);
 }

@@ -147,7 +147,7 @@
   .message-composer, .chat-requests { padding-top: 16px; background: url('/diablo-trim.webp') center top / auto 8px repeat-x, var(--stone); border-top: 0; }
   .history-shot { padding: 4px; border: 8px solid transparent; border-image: url('/diablo-frame.webp') 256 / 16px / 0 stretch; border-radius: 0; background: #100b07; box-shadow: 2px 3px #0008; }
   .history-shot img { border-radius: 0; image-rendering: auto; }
-  .shot-viewer { border: 18px solid transparent; border-image: url('/diablo-frame.webp') 256 / 30px / 4px stretch; border-radius: 0; padding: 12px; background: var(--stone); color: var(--text); box-shadow: 0 20px 60px #000; }
+  .shot-viewer { border: 18px solid transparent; border-image: url('/diablo-frame.webp') 256 / 30px / 0 stretch; background: var(--stone); color: var(--text); }
   .shot-full img { border: 1px solid #0a0805; border-radius: 0; image-rendering: auto; }
   .shot-button { border: 2px outset #79603d; border-radius: 0; background: #292016; color: var(--accent-2); }
   .shot-meta { font-family: var(--pixel); font-size: 19px; }

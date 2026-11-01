@@ -189,7 +189,7 @@
   .answer-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
   .request-box { padding: 18px 22px; border: 4px solid transparent; border-image: var(--ornate) 34% / 29px stretch; background: var(--stone); box-shadow: inset 0 0 0 3px #0e182b; }
   .request-title { color: #ffe2a1; }
-  .shot-viewer { padding: 18px; border: 8px solid transparent; border-image: var(--ornate) 34% / 35px stretch; border-radius: 0; background: var(--stone); color: var(--text); }
+  .shot-viewer { border: 8px solid transparent; border-image: var(--ornate) 34% / 35px stretch; background: var(--stone); color: var(--text); }
   .shot-full img { border-radius: 0; }
   .shot-meta { color: var(--text-2); }
   .toast { border: 3px ridge #c7a969; border-radius: 0; background: #192c4c; color: #ffe6a2; box-shadow: 3px 4px #0008; }

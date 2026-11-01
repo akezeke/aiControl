@@ -9,6 +9,9 @@
 .usage-windows { display: flex; align-items: center; flex: 1; gap: 14px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .usage-window { display: grid; grid-template-columns: max-content minmax(20px, 1fr) max-content max-content; align-items: center; gap: 5px; flex: 1 0 128px; min-width: 128px; font-size: 11px; line-height: 22px; white-space: nowrap; color: var(--text); font-variant-numeric: tabular-nums; }
 .usage-window.usage-wide { flex-basis: 170px; min-width: 170px; }
+.usage-account:has(.usage-cost) .usage-windows { flex-wrap: wrap; gap: 2px 14px; }
+.usage-cost { display: flex; align-items: center; gap: 8px; flex: 1 1 105px; font-size: 11px; line-height: 22px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+:root .usage-account .usage-cost .usage-percent { display: inline; }
 .usage-label { max-width: 12ch; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
 .usage-percent { font-weight: 650; }
 .usage-reset, .usage-note { font-size: 11px; color: var(--text-3); }
