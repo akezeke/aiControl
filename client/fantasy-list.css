@@ -171,9 +171,11 @@
   .theme-choice[aria-pressed=true] { background: none; color: #fff; }
   .theme-choice[aria-pressed=true]::after { content: none; }
   .theme-choice[aria-pressed=true]::before { content: ''; position: absolute; left: -6px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
-  .brand-variant.fantasy .brand-mark { width: 30px; height: 30px; padding: 0; background: url('/fantasy/mark.svg') center / contain no-repeat; box-shadow: none; }
+  /* The crest and a gold wordmark, as on the title screen. */
+  .brand-variant.fantasy .brand-mark { width: 36px; height: 36px; margin: -3px -2px; padding: 0; background: url('/fantasy/mark.svg') center / contain no-repeat; box-shadow: none; filter: drop-shadow(0 2px 0 #0008); }
   .brand-variant.fantasy .brand-mark i { display: none; }
-  .brand-variant.fantasy .brand-name { font: 800 20px/1 var(--display); letter-spacing: 0; text-shadow: var(--fy-ink); }
+  .brand-variant.fantasy .brand-name { overflow: visible; padding: 0 .1em; font: 900 16px/1.1 'Cinzel Decorative', Georgia, serif; letter-spacing: 0; color: #ffd84f; text-shadow: none; filter: drop-shadow(0 1px 0 #2a1404) drop-shadow(0 2px 0 #2a1404); }
+  @supports (background-clip: text) or (-webkit-background-clip: text) { .brand-variant.fantasy .brand-name { color: transparent; background: var(--fy-gold); -webkit-background-clip: text; background-clip: text; } }
 
   /* A message is a dialogue window, the speaker's name on a tab across its top edge. */
   .history-content { padding-top: 24px; }
@@ -225,23 +227,38 @@
   :root[data-theme=fantasy] .usage-accounts { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }
 
-/* The title screen: the logo over a plate, with the PIN in a window and the hand pointing at it. */
+/* The title screen: the party squaring up to a wyvern (baked by fantasy-title.html), the crest and a gold wordmark over the canopy,
+   the PIN in a window with the hand pointing at it. Portrait screens get a still shot over the party's shoulders with the canopy left clear. */
 :root[data-theme=fantasy] {
-  .login-screen { isolation: isolate; overflow: hidden; align-content: center; }
-  .login-screen::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(#0000 30%, #04201ae6), url('/fantasy/mesa-back.webp') center / cover; }
-  .login-card { width: min(100%, 420px); padding: 0; gap: clamp(28px, 9vh, 72px); background: none; border: 0; box-shadow: none; }
+  .login-screen { isolation: isolate; overflow: hidden; align-content: center; background: #0b1a17; }
+  .login-screen::before { content: ''; position: absolute; inset: 0; z-index: -1; background: radial-gradient(60% 34% at 50% 30%, #04201ab3, #0000), radial-gradient(120% 90% at 50% 45%, #0000 55%, #020d0bcc), linear-gradient(#0000 70%, #04201a99), url('/fantasy/title.webp') center 62% / cover; }
+  .login-screen::after { content: ''; position: absolute; inset: 0 0 -360px; z-index: -1; pointer-events: none; opacity: .7; background-size: 280px 360px; background-image: radial-gradient(circle at 12% 18%, #e8ffb4 0 1.5px, #0000 2.5px), radial-gradient(circle at 58% 64%, #c8f8a0 0 1px, #0000 2px), radial-gradient(circle at 83% 31%, #fff4c4 0 1.5px, #0000 2.5px), radial-gradient(circle at 37% 88%, #c8f8a0 0 1px, #0000 2px), radial-gradient(circle at 71% 9%, #e8ffb4 0 1px, #0000 2px); }
+  .login-card { width: min(100%, 560px); padding: 0; gap: clamp(28px, 8vh, 64px); background: none; border: 0; box-shadow: none; }
   .login-symbol { display: none; }
-  .login-card .brand-variant.fantasy { gap: clamp(8px, 2vw, 16px); }
-  .login-card .brand-variant.fantasy .brand-mark { width: clamp(40px, 9vw, 72px); height: clamp(40px, 9vw, 72px); filter: drop-shadow(0 3px 0 #0008); }
-  .login-card .brand-variant.fantasy .brand-name { font: 800 clamp(36px, 8vw, 68px)/1 var(--display); color: #fff; white-space: nowrap; text-shadow: 0 3px 0 #000b, 0 0 26px #0009; }
-  .login-form { position: relative; width: min(100%, 320px); align-self: center; gap: 8px; padding: 9px 11px 9px 47px; background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; }
+  .login-card .brand-variant.fantasy { flex-direction: column; gap: clamp(6px, 1.4vh, 12px); }
+  .login-card .brand-variant.fantasy .brand-mark { margin: 0; width: clamp(64px, 15vw, 116px); height: clamp(64px, 15vw, 116px); filter: drop-shadow(0 4px 0 #0009) drop-shadow(0 0 18px #ffc73855); }
+  .login-card .brand-variant.fantasy .brand-name { font-size: clamp(30px, 8.4vw, 68px); line-height: 1.05; filter: drop-shadow(0 1px 0 #3a1c04) drop-shadow(0 3px 0 #2a1404) drop-shadow(0 6px 14px #000c); }
+  .login-card .brand-variant.fantasy::after { content: 'AI Control'; font: 800 clamp(11px, 1.6vw, 14px)/1 var(--display); letter-spacing: .42em; text-indent: .42em; text-transform: uppercase; color: #e4e3cb; text-shadow: 0 2px 0 #000b, 0 0 10px #000; }
+  @supports (background-clip: text) or (-webkit-background-clip: text) {
+    .login-card .brand-variant.fantasy .brand-name { color: transparent; -webkit-text-stroke: 1px #6a3a08; background: linear-gradient(100deg, #0000 42%, #fffbe0d0 50%, #0000 58%) -200% 0 / 200% 100% no-repeat, var(--fy-gold); -webkit-background-clip: text; background-clip: text; }
+  }
+  .login-form { position: relative; width: min(100%, 320px); align-self: center; gap: 8px; padding: 9px 11px 9px 47px; background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: 0 10px 30px #000a; }
   .login-form::before { content: ''; position: absolute; left: 7px; top: 18px; width: 42px; height: 24px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
   .login-form input { min-height: 42px; }
   .login-form .primary { margin-top: 0; min-height: 38px; }
   .login-form .form-error:empty { display: none; }
+  @media (max-aspect-ratio: 4/5) {
+    .login-screen { align-content: start; }
+    .login-screen::before { background: radial-gradient(90% 30% at 50% 18%, #04201ab3, #0000), linear-gradient(#0000 75%, #04201a99), url('/fantasy/title-portrait.webp') center 40% / cover; }
+    .login-card { gap: clamp(18px, 4vh, 40px); }
+  }
   @media (prefers-reduced-motion: no-preference) {
     .login-screen::before { animation: fy-title-drift 40s ease-in-out infinite alternate; }
-    .login-form { animation: fy-window-open .2s ease-out both; transform-origin: top; }
+    .login-screen::after { animation: fy-motes 24s linear infinite; }
+    .login-card .brand-variant.fantasy { animation: fy-title-in .6s cubic-bezier(.2, .8, .2, 1) both; }
+    .login-card .brand-variant.fantasy .brand-mark { animation: fy-gem-glint .6s ease-out .45s; }
+    .login-card .brand-variant.fantasy .brand-name { animation: fy-title-sheen 7s ease-in-out 1s infinite; }
+    .login-form { animation: fy-window-open .2s ease-out .35s both; transform-origin: top; }
   }
 }
 /* Scrollbars are the windows' stone edge on their dark ground. Forced colours keep the system's. */
@@ -260,6 +277,9 @@
 .world-look { display: none; }
 @keyframes fy-world-blink { 50% { opacity: .15; } }
 @keyframes fy-title-drift { to { transform: scale(1.07); } }
+@keyframes fy-motes { to { transform: translateY(-360px); } }
+@keyframes fy-title-in { from { opacity: 0; transform: scale(1.12); filter: blur(4px); } }
+@keyframes fy-title-sheen { 0%, 70% { background-position: -200% 0, 0 0; } 100% { background-position: 200% 0, 0 0; } }
 @keyframes fy-window-open { from { transform: scaleY(.1); opacity: 0; } }
 
 /* The boot: black, a gem assembling from four facets, its name, and a fade into whatever is underneath. */

@@ -70,7 +70,7 @@
   --fy-win: url('/fantasy/dither.svg') 0 0 / 8px 8px, linear-gradient(120deg, #18705c 6.25%, #186858 0 12.5%, #146454 0 18.75%, #14604c 0 25%, #105848 0 31.25%, #105444 0 37.5%, #104c3c 0 43.75%, #0c4838 0 50%, #0c4434 0 56.25%, #0c4034 0 62.5%, #0c3c30 0 68.75%, #08382c 0 75%, #083428 0 81.25%, #083024 0 87.5%, #082c20 0 93.75%, #08281c 0);
   --fy-frame: url('/fantasy/frame.svg') 3 3 4 3 / 6px 6px 8px 6px / 0 0 2px 0; --fy-well: url('/fantasy/frame-sunk.svg') 2 / 4px;
   --fy-slot: #6f7168 #d4d4ca #f4f2ea #8d8f85; --fy-fill: linear-gradient(#c8f8a0 0 2px, #48c070 0 calc(100% - 2px), #207840 0);
-  --fy-ink: 1px 1px 0 #000b; --fy-tab: #0a3a2f;
+  --fy-ink: 1px 1px 0 #000b; --fy-tab: #0a3a2f; --fy-gold: linear-gradient(#fffbe0 12%, #ffd84f 46%, #c87d12 54%, #ffe68c 88%);
 }
 
 /* HEROES: blue stone, gold fittings and parchment from a 2D fantasy strategy screen. */

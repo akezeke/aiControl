@@ -22,6 +22,9 @@ Copyright 2022 The Black-Ops Project Authors (https://github.com/googlefonts/goo
 comic-neue-bold.woff2 (Comic Neue Bold):
 Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue)
 
+cinzel-decorative-900.woff2 (Cinzel Decorative Black):
+Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)
+
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
 http://scripts.sil.org/OFL
