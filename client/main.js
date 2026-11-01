@@ -7,6 +7,7 @@ import './simpsons.css';
 import './diablo.css';
 import './heroes.css';
 import './provider-icons.css';
+import './agent-header.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
@@ -22,6 +23,8 @@ import { renderMessageMarkdown } from './message-markdown.js';
 import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
 import { hireChoices } from './hire.js';
+import { agentSettings } from './agent-settings.js';
+import { budgetDialog } from './spend.js';
 import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
 
 const app = document.querySelector('#app');
@@ -300,7 +303,7 @@ function syncOffice() {
 }
 
 function renderData() {
-  document.querySelector('.new-session-dialog')?.updateConnection();
+  document.querySelector('.new-session-dialog')?.updateConnection?.();
   if (!state.snapshot || !document.querySelector('#groups')) {
     const error = document.querySelector('#error'); if (error && state.error) { error.hidden = false; error.textContent = state.error; } return;
   }
@@ -322,7 +325,7 @@ function renderData() {
   const error = document.querySelector('#error'); error.hidden = !state.error; error.textContent = state.error ? `${state.error} Showing the last received status. Actions are disabled until reconnected.` : '';
   document.querySelector('#machine').textContent = state.snapshot.machine;
   const usage = document.querySelector('#usage'), usageSignature = JSON.stringify([state.snapshot.usage, !!state.error, Math.floor(Date.now() / 60_000)]);
-  if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error }); }
+  if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error, editBudget: account => budgetDialog(account, async weeklyUSD => { await api('usage/opencode/budget', { weeklyUSD }); toast('Weekly budget saved'); await refresh(); }) }); }
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
   const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); };
@@ -509,7 +512,8 @@ function renderPanel() {
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
     session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireChoices(state.snapshot, session.cwd).map(choice => choice.label)]);
-  if (signature !== panelSignature) {
+  const settingsActive = panel.querySelector('.agent-settings:focus-within, .agent-settings[data-busy]');
+  if (signature !== panelSignature && (!settingsActive || state.error)) {
     panelSignature = signature;
     renderSessionHeader(panel.querySelector('.chat-header'), session);
   }
@@ -533,13 +537,22 @@ function renderSessionHeader(header, session) {
   const next = nextWaiting(session.id);
   if (next) { const b = button('Next', 'quiet-button next-button', openNext, 'next'); b.title = `Next waiting (n): ${next.title}`; actions.append(b); }
   if (session.status === 'working' && session.messaging?.interrupt) { const stop = button('Stop', 'quiet-button stop-button', () => interrupt(session, stop), 'stop'); stop.title = 'Interrupt the current turn'; stop.disabled = !!state.error; actions.append(stop); }
-  if ((session.status === 'idle' || session.asks) && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = `End this session with ${session.messaging.via === 'tmux' ? '/exit' : 'SIGTERM'} (refused while anything is still running)`; fire.disabled = !!state.error; actions.append(fire); }
-  if (session.messaging?.effort && session.efforts?.length) actions.append(effortPicker(session));
+  if ((session.status === 'idle' || session.asks) && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = session.provider === 'codex' ? 'End and archive this session and its subagents; history remains resumable (refused while work is running or queued)' : session.provider === 'opencode' ? 'Archive this idle session and its subagents; keep history and the terminal open (refused while work is running or queued)' : `End this session with ${session.messaging.via === 'tmux' ? '/exit' : 'SIGTERM'} (refused while anything is still running)`; fire.disabled = !!state.error; actions.append(fire); }
   actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
-  const title = el('h2', 'panel-title', session.title); title.title = session.title; header.append(title);
+  const identity = el('div', 'agent-identity'), portrait = el('span', `agent-mark ${session.provider}`);
+  portrait.append(providerIcon(session.provider)); portrait.setAttribute('aria-hidden', 'true');
+  const heading = el('div', 'agent-heading'), title = el('h2', 'panel-title', session.title); title.title = session.title;
+  const byline = el('div', 'agent-byline'); byline.append(el('span', 'agent-provider', providerName(session.provider)), el('span', 'agent-project', [session.account, session.project].filter(Boolean).join(' · '))); byline.title = [providerName(session.provider), session.account, session.cwd].filter(Boolean).join(' · ');
+  heading.append(title, byline); identity.append(portrait, heading); header.append(identity);
+  if (session.messaging?.model || session.messaging?.effort) header.append(agentSettings(session, { api, disabled: !!state.error,
+    changed: (result, kind) => { if (!state.csrf) return; pendingEffort.delete(session.id); toast(result.warning || `${kind === 'model' ? 'Model' : 'Effort'} saved${result.pending ? ' · from your next message here' : ''}`); panelSignature = ''; refresh(); },
+    failed: error => toast(error.message),
+  }));
   const metadata = el('details', 'chat-info'); metadata.open = expanded;
   const effort = pendingEffort.get(session.id) || session.effort, percent = contextPercent(session.context);
-  const summary = el('summary', '', [providerName(session.provider), session.account, session.project, session.model?.replace(/^claude-/, ''), effort].filter(Boolean).join(' · '));
+  const summary = el('summary'); summary.append(el('span', 'details-label', 'Details'));
+  if (session.branch) summary.append(el('span', 'header-branch', session.branch));
+  if (session.cost) summary.append(chip(`$${session.cost.usd.toFixed(2)}`, 'header-cost', session.cost.estimated ? 'Estimated session cost' : 'Session cost'));
   if (modeLabels[session.permissionMode]) summary.append(chip(modeLabels[session.permissionMode], `mode-chip ${session.permissionMode}`, 'Permission mode'));
   if (compacting(session)) summary.append(chip('compacting', 'compact-chip', 'Compacting context'));
   if (session.context?.used) summary.append(chip(percent != null ? `${percent}%` : tokens(session.context.used), `ctx-chip${percent >= 80 ? ' high' : ''}`, 'Context used'));
@@ -561,23 +574,6 @@ function renderSessionHeader(header, session) {
     plan.append(line, list); header.append(plan);
   }
   if (state.error) header.append(el('p', 'connection-error', 'Reconnecting. Actions are temporarily disabled.'));
-}
-function effortPicker(session) {
-  const select = el('select', 'quiet-button effort-select'); select.setAttribute('aria-label', 'Reasoning effort');
-  select.title = session.provider === 'codex' ? 'Effort · Codex applies it from your next message sent here' : 'Effort';
-  const current = pendingEffort.get(session.id) || session.effort;
-  if (!session.efforts.includes(current)) { const blank = el('option', '', 'effort'); blank.value = ''; blank.disabled = true; select.append(blank); }
-  for (const level of session.efforts) { const option = el('option', '', level); option.value = level; select.append(option); }
-  select.value = session.efforts.includes(current) ? current : ''; select.disabled = !!state.error;
-  select.onchange = async () => {
-    const effort = select.value; select.disabled = true;
-    try {
-      const result = await api(`sessions/${encodeURIComponent(session.id)}/effort`, { effort });
-      if (session.provider === 'claude') pendingEffort.set(session.id, effort);
-      toast(result.pending ? `Effort ${effort} from your next message` : `Effort ${effort}`); panelSignature = ''; await refresh();
-    } catch (error) { toast(error.message); select.value = session.efforts.includes(current) ? current : ''; select.disabled = false; }
-  };
-  return select;
 }
 // The first click arms it for a few seconds; the second ends the session. The server refuses if anything is still running.
 async function fireSession(session, control) {
@@ -998,7 +994,7 @@ function newOpenCodeSession() {
     try {
       const result = await api('spawn', { provider: 'opencode', cwd });
       if (!dialog.isConnected) return;
-      dialog.close(); await refresh(); if (state.csrf) { openPanel(result.sessionId); toast('OpenCode session created'); }
+      dialog.close(); await refresh(); if (state.csrf) { openPanel(result.sessionId); toast(result.warning || 'OpenCode session created'); }
     } catch (e) { error.textContent = e.message; }
     finally { sending = false; folder.disabled = cancel.disabled = false; dialog.updateConnection(); }
   };
@@ -1017,7 +1013,7 @@ async function spawnAgent(cwd, choice, control) {
   control.disabled = true;
   try {
     const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account });
-    if (result.sessionId) { await refresh(); openPanel(result.sessionId); toast(`${choice.name} session created`); }
+    if (result.sessionId) { await refresh(); openPanel(result.sessionId); toast(result.warning || `${choice.name} session created`); }
     else toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`);
   }
   catch (e) { toast(e.message); }

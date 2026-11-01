@@ -110,6 +110,8 @@ const messages = {
   cancel: async () => ({ ok: true }),
   interrupt: async id => { const s = sessions.find(s => s.id === id); if (s) s.status = 'idle'; return { ok: true }; },
   fire: async id => { const at = sessions.findIndex(s => s.id === id); if (at >= 0) sessions.splice(at, 1); return { ok: true }; },
+  models: async id => { const s = sessions.find(s => s.id === id); return s ? [{ id: s.model || 'demo-model', name: s.model || 'Demo model', efforts: s.efforts || ['low', 'medium', 'high'] }] : []; },
+  model: async (id, body) => { const s = sessions.find(s => s.id === id); if (s) s.model = body.model; return { ok: true, model: s?.model, effort: s?.effort }; },
   effort: async (id, body) => { const s = sessions.find(s => s.id === id); if (s) s.effort = body.effort; return { ok: true }; },
   history: async id => ({ messages: [msg('user', 'An older request from earlier today.', 400), msg('assistant', 'Older reply.', 399), ...(sessions.find(s => s.id === id)?.messages || [])], more: false }),
   images: async id => ({ images: (shots[id] || []).map(([, minutes, agent], n) => ({ id: `${agent ? 'a1b2c3.' : ''}0000000${n}-0000-4000-8000-000000000000:0`, type: 'image/webp', at: ago(minutes), tool: true, ...(agent && { agent }) })) }),

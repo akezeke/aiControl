@@ -7,6 +7,7 @@ import { fail } from './requests.mjs';
 import { TranscriptReader, claudeSessionTitle, claudeActivity, turnTool } from './messages.mjs';
 import { TranscriptImages, imageLimit } from './images.mjs';
 import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
+import { claudeModels } from './claude-models.mjs';
 import { processMatches } from './processes.mjs';
 export { processMatches } from './processes.mjs';
 
@@ -50,6 +51,7 @@ const sameCall = (pending, done) => Object.entries(pending ?? {}).every(([key, v
 
 export class ClaudeAdapter {
   sessions = new Map();
+  chosenSettings = new Map();
   hooks = new Map();
   sockets = new Set();
   registrations = new Map();
@@ -214,7 +216,18 @@ export class ClaudeAdapter {
     });
     socket.on('close', () => { this.sockets.delete(socket); if (sourceKey) this.store.removeSource(sourceKey); });
   }
-  list() { return [...this.sessions.values()]; }
+  list() { return [...this.sessions.values()].map(session => {
+    const chosen = this.chosenSettings.get(session.nativeId);
+    // A new transcript setting supersedes the immediate terminal-command result.
+    if (chosen && (chosen.observedModel !== session.model || chosen.observedEffort !== session.effort)) this.chosenSettings.delete(session.nativeId);
+    const settings = this.chosenSettings.get(session.nativeId)?.settings;
+    return { ...session, ...settings, messaging: { ...session.messaging, model: !!session.messaging?.effort } };
+  }); }
+  rememberSettings(sessionId, settings) {
+    const observed = this.sessions.get(sessionId);
+    this.chosenSettings.set(sessionId, { settings, observedModel: observed?.model, observedEffort: observed?.effort });
+    return { ok: true, ...settings };
+  }
   // New sessions in a project use the account of its latest Claude session.
   accountFor(cwd, label) {
     if (label !== undefined) { const account = this.accounts.find(account => account.label === label); if (!account) throw fail('Unknown Claude account.', 400); return account; }
@@ -236,7 +249,26 @@ export class ClaudeAdapter {
     return result;
   }
   async interrupt(sessionId) { return this.messaging.interrupt(await this.record(sessionId)); }
-  async setEffort(sessionId, effort) { return this.messaging.setEffort(await this.record(sessionId), effort); }
+  async modelOptions(sessionId) {
+    const record = await this.record(sessionId), account = this.owners.get(sessionId);
+    return claudeModels(record.cwd, account?.dir);
+  }
+  async setModel(sessionId, model) {
+    const options = await this.modelOptions(sessionId), selected = options.find(option => option.id === model);
+    if (!selected) throw fail('Unknown model. Refresh the model list.');
+    await this.messaging.setModel(await this.record(sessionId), model);
+    // /model restores Claude's preference for the selected model; the next transcript reports its effort.
+    const settings = { model, effort: '', efforts: selected.efforts };
+    return this.rememberSettings(sessionId, settings);
+  }
+  async setEffort(sessionId, effort) {
+    const session = this.list().find(session => session.nativeId === sessionId), options = await this.modelOptions(sessionId);
+    const selected = options.find(option => option.id === session?.model) || options.find(option => option.resolvedModel === session?.model);
+    if (!selected?.efforts.includes(effort)) throw fail('This model does not support that effort level.');
+    await this.messaging.setEffort(await this.record(sessionId), effort);
+    const settings = { model: selected.id, effort, efforts: selected.efforts };
+    return this.rememberSettings(sessionId, settings);
+  }
   // Firing ends the session (/exit in tmux, else SIGTERM), so it has to be quiet: idle by its registration and its hooks for a few seconds, not
   // compacting, no subagent or workflow working and nothing left running from its Bash tool, background ones included.
   // All of it is checked again just before Enter (with /exit typed) or the signal.

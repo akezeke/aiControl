@@ -42,6 +42,26 @@ export class OpenCodeAPI {
       this.version = info.version; this.v2 = false;
     }
   }
+  async models(directory) {
+    if (this.v2) {
+      const result = await this.client.request('/api/model', { query: { 'location[directory]': directory } });
+      return array(result.data).filter(model => model.enabled).map(model => ({ id: `${model.providerID}/${model.id}`, name: `${model.name} · ${model.providerID}`, efforts: (model.variants || []).map(variant => variant.id).filter(Boolean), defaultEffort: '' }));
+    }
+    const result = await this.client.request('/provider', { directory });
+    return array(result.all).filter(provider => result.connected?.includes(provider.id)).flatMap(provider => Object.values(provider.models || {}).map(model => ({ id: `${provider.id}/${model.id}`, name: `${model.name || model.id} · ${provider.id}`, efforts: Object.keys(model.variants || {}), defaultEffort: '' })));
+  }
+  modelRef(model, effort) {
+    const slash = model.indexOf('/');
+    if (slash < 1 || slash === model.length - 1) throw fail('Invalid OpenCode model.');
+    return { providerID: model.slice(0, slash), id: model.slice(slash + 1), ...(effort ? { variant: effort } : {}) };
+  }
+  async selectModel(id, model, effort) {
+    if (this.v2) await this.client.request(`/api/session/${id}/model`, { method: 'POST', body: { model: this.modelRef(model, effort) } });
+    return { pending: !this.v2 };
+  }
+  async inbox(id) { return array((await this.client.request(`/api/session/${id}/inbox`)).data); }
+  async terminals(id) { return array((await this.client.request(`/api/experimental/session/${id}/terminal`)).data); }
+  archive(id) { return this.client.request(`/api/session/${id}`, { method: 'PATCH', body: { archived: true } }); }
   async sessions(limit) {
     await this.detect();
     if (!this.v2) return array(await this.client.request('/experimental/session', { query: { limit, archived: true } }));
@@ -105,13 +125,14 @@ export class OpenCodeAPI {
     } while (cursor);
     return messagesV2(rows.reverse());
   }
-  send(id, directory, text) {
+  send(id, directory, text, settings) {
+    const model = settings?.model && this.modelRef(settings.model, settings.effort);
     return this.client.request(this.v2 ? `/api/session/${id}/prompt` : `/session/${id}/prompt_async`,
-      { method: 'POST', body: this.v2 ? { text } : { parts: [{ type: 'text', text }] }, ...!this.v2 ? { directory } : {} });
+      { method: 'POST', body: this.v2 ? { text } : { parts: [{ type: 'text', text }], ...model ? { model: { providerID: model.providerID, modelID: model.id }, ...(model.variant ? { variant: model.variant } : {}) } : {} }, ...!this.v2 ? { directory } : {} });
   }
   interrupt(id, directory) { return this.client.request(this.v2 ? `/api/session/${id}/interrupt` : `/session/${id}/abort`, { method: 'POST', ...!this.v2 ? { directory } : {} }); }
-  async create(directory) {
-    const result = await this.client.request(this.v2 ? '/api/session' : '/session', { method: 'POST', body: this.v2 ? { location: { directory } } : {}, ...!this.v2 ? { directory } : {} });
+  async create(directory, settings = {}) {
+    const result = await this.client.request(this.v2 ? '/api/session' : '/session', { method: 'POST', body: this.v2 ? { location: { directory }, ...settings.model ? { model: this.modelRef(settings.model, settings.effort) } : {} } : {}, ...!this.v2 ? { directory } : {} });
     return this.v2 ? infoV2(result.data, this.version) : result;
   }
 }

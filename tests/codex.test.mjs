@@ -48,6 +48,33 @@ async function connected(t, options, adapterOptions = {}) {
 }
 const message = (text, mode = 'send') => ({ text, mode, clientMessageId: randomUUID() });
 
+test('model and effort updates use thread settings and native defaults without changing permissions', async t => {
+  const { adapter, server } = await connected(t, { status: 'idle' });
+  server.models = [{ id: 'new', model: 'new', displayName: 'New model', supportedReasoningEfforts: [{ reasoningEffort: 'high' }], defaultReasoningEffort: 'high' }];
+  await adapter.loadModels();
+  assert.equal((await adapter.modelOptions('live-thread')).find(model => model.id === 'new').name, 'New model');
+  await assert.rejects(adapter.setModel('live-thread', 'unknown'), /Unknown model/);
+  await adapter.setModel('live-thread', 'new');
+  assert.deepEqual(server.messages.find(message => message.method === 'thread/settings/update').params, { threadId: 'live-thread', model: 'new', effort: 'high' });
+  assert.equal(adapter.list()[0].model, 'new');
+  await adapter.refresh(); assert.equal(adapter.list()[0].model, 'new');
+  await assert.rejects(adapter.setEffort('live-thread', 'medium'), /Unknown effort/);
+  await adapter.saveDefaults({ model: 'new', effort: 'high' });
+  assert.deepEqual(server.messages.find(message => message.method === 'config/batchWrite').params.edits.map(edit => edit.keyPath), ['model', 'model_reasoning_effort']);
+  server.settingsError = { code: -32600, message: 'Update refused' };
+  await assert.rejects(adapter.setModel('live-thread', 'test-model'), /Update refused/);
+  assert.equal(adapter.list()[0].model, 'new');
+});
+
+test('effort uses immediate settings, falling back only for an older unsupported server', async t => {
+  const { adapter, server } = await connected(t, { status: 'idle' });
+  assert.equal((await adapter.setEffort('live-thread', 'high')).pending, undefined);
+  assert.equal(adapter.list()[0].effort, 'high');
+  server.settingsError = { code: -32601, message: 'Unsupported' };
+  assert.equal((await adapter.setEffort('live-thread', 'medium')).pending, true);
+  assert.equal(adapter.sessions.get('live-thread').nextEffort, 'medium');
+});
+
 test('Codex reads account usage on connect, keeps sessions usable on failure and refreshes after reconnect', async t => {
   const { adapter, server } = await connected(t, {}, { retryDelayMs: 20, rpcTimeoutMs: 100 });
   await until(() => adapter.usage.snapshot().status === 'ready', 'Account usage did not load.');

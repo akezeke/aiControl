@@ -244,6 +244,13 @@ test('new agents open in the tmux session working in the project, never the serv
   const personal = run('');
   await spawnAgent('/w/app', 'claude', { tmux: personal.tmux, configDir: "/home/u/.claude-it's" });
   assert.deepEqual(personal.calls[2].slice(3), ["CLAUDE_CONFIG_DIR='/home/u/.claude-it'\\''s' claude", 'Enter']);
+  const saved = run('work\t/w/app\n');
+  await spawnAgent('/w/app', 'claude', { tmux: saved.tmux, model: 'opus', effort: 'high' });
+  assert.equal(saved.calls[2][3], "claude --model 'opus' --effort 'high'");
+  const open = run('work\t/w/app\n');
+  await spawnAgent('/w/app', 'opencode', { tmux: open.tmux, sessionId: 'ses_created' });
+  assert.equal(open.calls[1][0], 'new-window'); assert.match(open.calls[2][3], /opencode-terminal\.mjs' 'ses_created'$/);
+  await assert.rejects(spawnAgent('/w/app', 'opencode', { tmux: open.tmux, sessionId: 'ses_id; exit' }), /Invalid/);
 });
 
 test('Stop sends Escape only to a busy, verified pane; effort is typed as /effort', async () => {
@@ -258,6 +265,15 @@ test('Stop sends Escape only to a busy, verified pane; effort is typed as /effor
   await effort.adapter.setEffort(paneRecord, 'high');
   assert.equal(effort.calls.find(args => args[0] === 'load-buffer').at(-1), '/effort high');
   await assert.rejects(effort.adapter.setEffort(paneRecord, 'turbo; rm -rf'), /Unknown effort/);
+});
+
+test('model settings never overwrite a terminal draft or type unvalidated commands', async () => {
+  const selected = tmuxFixture(); await selected.adapter.setModel(paneRecord, 'claude-test[1m]');
+  assert.equal(selected.calls.find(args => args[0] === 'load-buffer').at(-1), '/model claude-test[1m]');
+  await assert.rejects(selected.adapter.setModel(paneRecord, 'opus\n/exit'), /Invalid model/);
+  const draft = tmuxFixture({ typed: 'unfinished draft' });
+  await assert.rejects(draft.adapter.setModel(paneRecord, 'opus'), /draft/);
+  assert.equal(draft.calls.some(args => args[0] === 'load-buffer'), false);
 });
 
 test('the prompt reads empty under Claude’s dim placeholder, and only a prompt between two rules counts', async () => {

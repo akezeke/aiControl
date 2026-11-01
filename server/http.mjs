@@ -16,7 +16,7 @@ async function body(req) {
   try { return JSON.parse(raw); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, budget }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -58,6 +58,10 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         res.setHeader('Set-Cookie', auth.cookie('', 0)); json(res, 200, { ok: true }); return;
       }
       if (path === '/api/snapshot' && req.method === 'GET') { json(res, 200, snapshot(), req); return; }
+      if (path === '/api/usage/opencode/budget' && req.method === 'POST') {
+        if (!budget) throw fail('Spend budgets are unavailable.', 503);
+        const result = await budget((await body(req)).weeklyUSD); auth.touch(session); json(res, 200, result); return;
+      }
       if (path === '/api/spawn' && req.method === 'POST') {
         if (!spawn) throw fail('Starting agents is not available.', 503);
         const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;
@@ -72,18 +76,19 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         const { type, data } = await messages.image(id, imageId);
         res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Content-Length', data.length); res.setHeader('Content-Security-Policy', "default-src 'none'"); res.end(data); return;
       }
-      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|fire|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
-      if (sessionRoute && req.method === (sessionRoute[2] === 'history' ? 'GET' : 'POST')) {
+      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|fire|model|models|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
+      if (sessionRoute && req.method === (['history', 'models'].includes(sessionRoute[2]) ? 'GET' : 'POST')) {
         if (!messages) throw fail('Messaging is not available.', 503);
         let id, queuedId;
         try { id = decodeURIComponent(sessionRoute[1]); queuedId = sessionRoute[3] && decodeURIComponent(sessionRoute[3]); } catch { throw fail('Invalid session ID.'); }
         const action = sessionRoute[2];
+        if (action === 'models') { if (!messages.models) throw fail('Model selection is unavailable.', 503); json(res, 200, { models: await messages.models(id) }, req); return; }
         if (action === 'history') {
           // Reading older messages is not activity; the 3-second poll isn't either.
           const limit = Math.min(200, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
           json(res, 200, await messages.history(id, limit), req); return;
         }
-        const result = action === 'messages' ? await messages.send(id, await body(req)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
+        const result = action === 'messages' ? await messages.send(id, await body(req)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
         auth.touch(session); json(res, 200, result); return;
       }
       const match = /^\/api\/requests\/([a-f0-9-]{36})\/respond$/.exec(path);

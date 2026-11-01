@@ -1,9 +1,10 @@
 import { fail, slashCommand } from './requests.mjs';
-import { openCodeSession, openCodeMessages, usageRecords, usagePeriods, tokenUsage } from './opencode-data.mjs';
+import { openCodeSession, openCodeMessages, usageRecords, usagePeriods, weeklyUsage, tokenUsage } from './opencode-data.mjs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { OpenCodeAPI } from './opencode-api.mjs';
+import { fireOpenCode } from './opencode-fire.mjs';
 
 export function openCodeConfig(value) {
   if (value?.service === true) return { service: true };
@@ -68,11 +69,14 @@ export class OpenCodeAdapter {
   constructor(store, config, { fetch: fetcher, now = Date.now, intervalMs = 3000, serviceFile = join(process.env.XDG_STATE_HOME || join(homedir(), '.local/state'), 'opencode/service.json') } = {}) {
     this.store = store; this.config = openCodeConfig(config); this.now = now; this.intervalMs = intervalMs;
     this.sessions = new Map(); this.usage = new Map(); this.requestKeys = new Set(); this.submissions = new Map();
+    this.modelCatalogs = new Map(); this.chosenSettings = new Map();
+    this.firing = new Set(); this.sending = new Set(); this.archived = new Set();
     this.controller = new AbortController(); this.fetch = fetcher; this.serviceFile = serviceFile;
     if (this.config && !this.config.service) this.connect(this.config);
     this.connected = false; this.detail = this.config ? 'Connecting to OpenCode…' : ''; this.usageUpdatedAt = null;
   }
   connect(config) {
+    this.modelCatalogs.clear();
     this.client = new OpenCodeClient(config, { fetch: this.fetch, signal: this.controller.signal });
     this.api = new OpenCodeAPI(this.client);
   }
@@ -87,7 +91,8 @@ export class OpenCodeAdapter {
     this.requestKeys.clear();
     for (const session of this.sessions.values()) { session.status = 'offline'; session.control = false; session.messaging = { send: false, interrupt: false }; }
   }
-  list() { return [...this.sessions.values()]; }
+  list() { return [...this.sessions.values()].map(session => ({ ...session, ...this.chosenSettings.get(session.nativeId), messaging: { ...session.messaging, model: this.connected, effort: this.connected, fire: this.connected && this.api.v2 && !session.parentId } })); }
+  fire(id) { return fireOpenCode(this, id); }
   refresh() {
     if (!this.config || this.controller.signal.aborted) return Promise.resolve();
     if (this.pending) return this.pending;
@@ -107,6 +112,7 @@ export class OpenCodeAdapter {
     }
     const rows = await this.api.sessions(maxSessions);
     const infos = rows.filter(info => /^ses[\w-]+$/.test(info.id) && typeof info.directory === 'string');
+    for (const id of this.archived) if (!infos.some(info => info.id === id && !info.time?.archived)) this.archived.delete(id);
     const directories = [...new Set(infos.filter(info => !info.time?.archived).map(info => info.directory))];
     const states = new Map(), requests = [], active = this.api.v2 ? await this.api.status() : null;
     await eachLimit(directories, async directory => {
@@ -126,7 +132,7 @@ export class OpenCodeAdapter {
     for (const [id, session] of this.sessions) if (!live.has(id)) { this.sessions.delete(id); this.store.removeSession(session.id); }
     const all = new Set(infos.map(info => info.id));
     for (const id of this.usage.keys()) if (!all.has(id)) this.usage.delete(id);
-    const month = usagePeriods([], this.now())[1].from;
+    const month = Math.min(usagePeriods([], this.now())[1].from, weeklyUsage([], this.now()).from);
     let incomplete = rows.length >= maxSessions;
     await eachLimit(infos, async info => {
       const prior = this.sessions.get(info.id), status = states.get(info.id)?.type;
@@ -157,7 +163,7 @@ export class OpenCodeAdapter {
         session = { ...(prior || openCodeSession(info)), messagesState: prior?.messages?.length ? 'stale' : 'unavailable' };
       }
       if (monthly && !this.usage.has(info.id)) incomplete = true;
-      if (!info.time?.archived) {
+      if (!info.time?.archived && !this.archived.has(info.id)) {
         session ||= openCodeSession(info);
         Object.assign(session, { status: working ? 'working' : 'idle', control: true, messaging: { send: true, interrupt: true },
           detail: status === 'retry' ? 'OpenCode is retrying the request' : '', updatedAt: info.time?.updated || 0 });
@@ -191,11 +197,11 @@ export class OpenCodeAdapter {
     this.requestKeys = keys;
   }
   usageSnapshot() {
-    const periods = usagePeriods([...this.usage.values()].flatMap(value => value.records), this.now());
-    const incomplete = this.usageIncomplete || periods.some(period => period.incomplete);
-    const missing = [...this.usage].flatMap(([id, value]) => value.records.filter(record => record.usd === null && record.at >= periods[1].from && record.at <= this.now()).map(record => ({ ...record, working: this.sessions.get(id)?.status === 'working' })));
+    const records = [...this.usage.values()].flatMap(value => value.records), periods = usagePeriods(records, this.now()), week = weeklyUsage(records, this.now());
+    const incomplete = this.usageIncomplete || week.incomplete || periods.some(period => period.incomplete);
+    const missing = [...this.usage].flatMap(([id, value]) => value.records.filter(record => record.usd === null && record.at >= Math.min(periods[1].from, week.from) && record.at <= this.now()).map(record => ({ ...record, working: this.sessions.get(id)?.status === 'working' })));
     const updating = !this.usageIncomplete && missing.length > 0 && missing.every(record => record.pending && record.working);
-    return { provider: 'opencode', name: 'OpenCode', windows: [], periods: this.usageUpdatedAt ? periods : [], updatedAt: this.usageUpdatedAt,
+    return { provider: 'opencode', name: 'OpenCode', windows: [], periods: this.usageUpdatedAt ? periods : [], week: this.usageUpdatedAt ? week : null, updatedAt: this.usageUpdatedAt,
       status: !this.connected ? this.usageUpdatedAt ? 'stale' : 'unavailable' : updating ? 'updating' : incomplete ? 'partial' : 'ready',
       detail: !this.connected ? this.detail : `${updating ? 'A turn is still running; its final cost is not reported yet. ' : incomplete ? 'Some history or costs are unavailable; totals are incomplete. ' : ''}OpenCode estimates for recorded sessions, using this computer’s calendar. Free, subscription or unpriced models may report $0.`, estimated: true };
   }
@@ -210,16 +216,43 @@ export class OpenCodeAdapter {
     const session = this.require(id), rows = await this.api.messages(id, session.cwd, limit + 1);
     return { messages: openCodeMessages(rows, limit), more: rows.length > limit };
   }
+  async modelsFor(cwd) {
+    const cached = this.modelCatalogs.get(cwd);
+    if (cached && this.now() - cached.at < 60_000) return cached.models;
+    const models = await this.api.models(cwd); this.modelCatalogs.set(cwd, { at: this.now(), models });
+    if (this.modelCatalogs.size > 100) this.modelCatalogs.delete(this.modelCatalogs.keys().next().value);
+    return models;
+  }
+  async modelOptions(id) { return this.modelsFor(this.require(id).cwd); }
+  async setModel(id, model, effort) {
+    const session = this.require(id), selected = (await this.modelOptions(id)).find(option => option.id === model);
+    if (!selected) throw fail('Unknown model. Refresh the model list.');
+    const current = effort ?? this.chosenSettings.get(id)?.effort ?? session.effort;
+    const settings = { model, effort: selected.efforts.includes(current) ? current : '', efforts: selected.efforts };
+    const result = await this.api.selectModel(id, settings.model, settings.effort);
+    Object.assign(session, settings);
+    if (!this.api.v2) this.chosenSettings.set(id, settings);
+    return { ok: true, ...result, ...settings };
+  }
+  async setEffort(id, effort) {
+    const session = this.require(id), model = this.chosenSettings.get(id)?.model || session.model;
+    const selected = (await this.modelOptions(id)).find(option => option.id === model);
+    if (typeof effort !== 'string' || (effort && !selected?.efforts.includes(effort))) throw fail('Unknown effort level.');
+    return this.setModel(id, model, effort);
+  }
   async sendMessage(id, body) {
+    if (this.firing.has(id)) throw fail('This session is being archived.', 409);
     const session = this.require(id), text = typeof body?.text === 'string' ? body.text.trim() : '';
     if (typeof text !== 'string' || !text || text.length > 12_000) throw fail('Enter a message of up to 12,000 characters.');
     if (slashCommand(text)) throw fail('Use OpenCode’s terminal for slash commands.');
     if (typeof body.clientMessageId !== 'string' || !/^[\w:-]{1,120}$/.test(body.clientMessageId)) throw fail('Invalid message ID.');
     const key = `${id}:${body.clientMessageId}`, existing = this.submissions.get(key);
     if (existing) { if (existing.text !== text) throw fail('This message ID was already used.'); return existing.promise; }
+    if (this.sending.has(id)) throw fail('A message is being sent. Wait for it to finish.', 409);
     // Retain ambiguous failures as well as successes: a timed-out POST must never be resent automatically.
-    const promise = this.api.send(id, session.cwd, text)
-      .then(() => { session.status = 'working'; return { status: 'sent' }; });
+    this.sending.add(id);
+    const promise = this.api.send(id, session.cwd, text, this.chosenSettings.get(id))
+      .then(() => { session.status = 'working'; return { status: 'sent' }; }).finally(() => this.sending.delete(id));
     this.submissions.set(key, { text, promise });
     if (this.submissions.size > 1000) this.submissions.delete(this.submissions.keys().next().value);
     return promise;
@@ -229,10 +262,16 @@ export class OpenCodeAdapter {
     await this.api.interrupt(id, session.cwd);
     await this.refresh(); return { status: 'interrupted' };
   }
-  async spawn(cwd) {
+  async spawn(cwd, settings = {}) {
     if (!this.connected) throw fail('OpenCode is disconnected. Start its server first.', 503);
-    const info = await this.api.create(cwd);
+    if (settings.model) {
+      const model = (await this.modelsFor(cwd)).find(model => model.id === settings.model);
+      if (!model) throw fail('The saved OpenCode model is unavailable. Choose another model in an existing session.');
+      if (settings.effort && !model.efforts.includes(settings.effort)) settings = { ...settings, effort: '' };
+    }
+    const info = await this.api.create(cwd, settings);
     nativeId(info.id); this.sessions.set(info.id, openCodeSession(info));
+    if (settings.model) { Object.assign(this.sessions.get(info.id), settings); if (!this.api.v2) this.chosenSettings.set(info.id, settings); }
     return { sessionId: `opencode:${info.id}` };
   }
 }

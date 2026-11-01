@@ -150,6 +150,38 @@ test('questions require complete valid answers and preserve protocol IDs', async
   assert.deepEqual(response, { answers: { format: { answers: ['CSV'] } } });
 });
 
+test('model catalogs require login and model, effort, Fire require origin and CSRF for every provider', async t => {
+  const { file } = await fixture(t), auth = new Auth(file), origin = 'https://control.test:47841', calls = [];
+  const messages = Object.fromEntries(['models', 'model', 'effort', 'fire'].map(kind => [kind, async (id, body) => { calls.push({ kind, id, body }); return kind === 'models' ? [] : { ok: true }; }]));
+  const handler = createHandler({ auth, origin, store: new RequestStore(), snapshot: () => ({}), vite: () => {}, messages });
+  assert.equal((await request(handler, '/api/sessions/codex%3Ax/models')).status, 401);
+  const login = await request(handler, '/api/login', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: { password } });
+  const headers = { origin, 'content-type': 'application/json', cookie: login.headers['set-cookie'].split(';')[0], 'x-csrf-token': login.body.csrf };
+  for (const provider of ['codex', 'claude', 'opencode']) {
+    const path = `/api/sessions/${provider}%3Ax`;
+    assert.deepEqual((await request(handler, path + '/models', { headers })).body, { models: [] });
+    for (const kind of ['model', 'effort', 'fire']) {
+      const body = { [kind]: 'selected' };
+      assert.equal((await request(handler, path + '/' + kind, { method: 'POST', headers: { ...headers, 'x-csrf-token': 'invalid' }, body })).status, 403);
+      assert.equal((await request(handler, path + '/' + kind, { method: 'POST', headers: { ...headers, origin: 'https://wrong.test' }, body })).status, 403);
+      assert.equal((await request(handler, path + '/' + kind, { method: 'POST', headers, body })).status, 200);
+    }
+  }
+  assert.equal(calls.length, 12);
+});
+
+test('weekly budget edits require login, same origin and CSRF', async t => {
+  const { file } = await fixture(t), auth = new Auth(file), origin = 'https://control.test:47841', values = [];
+  const handler = createHandler({ auth, origin, store: new RequestStore(), snapshot: () => ({}), vite: () => {}, budget: async value => { values.push(value); return { weeklyUSD: value }; } });
+  const path = '/api/usage/opencode/budget', body = { weeklyUSD: 50 };
+  assert.equal((await request(handler, path, { method: 'POST', headers: { origin }, body })).status, 401);
+  const login = await request(handler, '/api/login', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: { password } });
+  const headers = { origin, 'content-type': 'application/json', cookie: login.headers['set-cookie'].split(';')[0], 'x-csrf-token': login.body.csrf };
+  assert.equal((await request(handler, path, { method: 'POST', headers: { ...headers, origin: 'https://wrong.test' }, body })).status, 403);
+  assert.equal((await request(handler, path, { method: 'POST', headers: { ...headers, 'x-csrf-token': 'wrong' }, body })).status, 403);
+  assert.deepEqual((await request(handler, path, { method: 'POST', headers, body })).body, { weeklyUSD: 50 }); assert.deepEqual(values, [50]);
+});
+
 test('Codex permissions and statuses use documented responses', () => {
   const command = codexRequest({ method: 'item/commandExecution/requestApproval', params: { threadId: 't', command: 'npm test', availableDecisions: ['accept', 'cancel'] } });
   assert.deepEqual(command.view.actions.map(a => a.value), ['accept', 'cancel']);

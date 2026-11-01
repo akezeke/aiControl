@@ -5,6 +5,7 @@ import { fail, slashCommand } from './requests.mjs';
 import { codexMessage, messageLimit, recentMessages, textContent, planSteps } from './messages.mjs';
 import { UsagePoller, codexUsageWindows } from './usage.mjs';
 import { CodexImages } from './codex-images.mjs';
+import { fireCodex } from './codex-fire.mjs';
 
 export const codexSocketPath = () => join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'app-server-control', 'app-server-control.sock');
 export function connectCodexSocket(path, connectionOptions = {}) {
@@ -71,6 +72,7 @@ const codexGoal = goal => goal && { objective: String(goal.objective || '').slic
 
 export class CodexAdapter {
   sessions = new Map();
+  archived = new Set();
   calls = new Map();
   resolutions = new Map();
   joined = new Set();
@@ -80,6 +82,7 @@ export class CodexAdapter {
   images = new CodexImages();
   submissions = new Map();
   models = new Map();
+  modelCatalog = new Map();
   startingQueue = new Set();
   queueAttempts = new Set();
   sendingMessages = new Set();
@@ -159,8 +162,9 @@ export class CodexAdapter {
   }
   // Live fields (plan, context, goal, effort) arrive as notifications and survive the periodic re-read.
   upsert(thread) {
+    if (this.archived.has(thread.id)) return;
     const previous = this.sessions.get(thread.id);
-    this.sessions.set(thread.id, { detail: '', messages: [], messagesState: 'loading', queuedMessages: [], queueAvailable: false, queueError: '', ...previous, id: `codex:${thread.id}`, nativeId: thread.id, provider: 'codex', title: thread.name || thread.preview?.slice(0, 130) || 'Codex session', cwd: thread.cwd, project: basename(thread.cwd || 'Unknown'), status: codexStatus(thread.status), updatedAt: Math.max(previous?.updatedAt || 0, thread.updatedAt * 1000 || 0), model: thread.model, effort: previous?.nextEffort || thread.reasoningEffort || previous?.effort || '', efforts: this.models.get(thread.model) || [], branch: thread.gitInfo?.branch, parentId: thread.parentThreadId, control: this.joined.has(thread.id) });
+    this.sessions.set(thread.id, { detail: '', messages: [], messagesState: 'loading', queuedMessages: [], queueAvailable: false, queueError: '', ...previous, id: `codex:${thread.id}`, nativeId: thread.id, provider: 'codex', title: thread.name || thread.preview?.slice(0, 130) || 'Codex session', cwd: thread.cwd, project: basename(thread.cwd || 'Unknown'), status: codexStatus(thread.status), idleSince: thread.status?.type === 'idle' ? previous?.idleSince || Date.now() : null, updatedAt: Math.max(previous?.updatedAt || 0, thread.updatedAt * 1000 || 0), model: thread.model, effort: previous?.nextEffort || thread.reasoningEffort || previous?.effort || '', efforts: this.models.get(thread.model) || [], branch: thread.gitInfo?.branch, parentId: thread.parentThreadId, control: this.joined.has(thread.id) });
   }
   async refresh() {
     if (this.refreshing || !this.connected) return;
@@ -174,13 +178,14 @@ export class CodexAdapter {
         if (!current()) return;
         loaded.push(...page.data); cursor = page.nextCursor;
       } while (cursor);
+      for (const id of this.archived) if (!loaded.includes(id)) this.archived.delete(id);
       for (const id of this.sessions.keys()) if (!loaded.includes(id)) { this.store.removeSession(`codex:${id}`); this.sessions.delete(id); this.joined.delete(id); this.fresh.delete(id); this.images.delete(id); }
       // Only join already-loaded threads; never resume a saved conversation from disk.
       for (let start = 0; start < loaded.length; start += 8) await Promise.all(loaded.slice(start, start + 8).map(async id => {
         try {
           if (!current()) return;
           const result = await this.rpc('thread/read', { threadId: id, includeTurns: false });
-          if (!current()) return;
+          if (!current() || this.archived.has(id)) return;
           this.upsert(result.thread);
           if (!this.joined.has(id)) {
             try { await this.rpc('thread/resume', { threadId: id, excludeTurns: true }); }
@@ -204,7 +209,11 @@ export class CodexAdapter {
       let cursor;
       do {
         const page = await this.rpc('model/list', { includeHidden: true, ...(cursor ? { cursor } : {}) }, { closeOnTimeout: false });
-        for (const model of page.data ?? []) { const efforts = (model.supportedReasoningEfforts ?? []).map(option => option.reasoningEffort).filter(Boolean); this.models.set(model.id, efforts); this.models.set(model.model, efforts); }
+        for (const model of page.data ?? []) {
+          const efforts = (model.supportedReasoningEfforts ?? []).map(option => option.reasoningEffort).filter(Boolean);
+          this.models.set(model.id, efforts); this.models.set(model.model, efforts);
+          this.modelCatalog.set(model.model || model.id, { id: model.model || model.id, name: model.displayName || model.model || model.id, efforts, defaultEffort: model.defaultReasoningEffort, hidden: !!model.hidden });
+        }
         cursor = page.nextCursor;
       } while (cursor && this.models.size < 500);
     } catch { /* no effort picker */ }
@@ -410,13 +419,39 @@ export class CodexAdapter {
     await this.rpc('turn/interrupt', { threadId, turnId });
     return { ok: true };
   }
-  // The app-server changes effort only with turn/start, so it applies from the next message sent here.
-  setEffort(threadId, effort) {
+  async modelOptions(threadId) {
+    const session = this.requireMessaging(threadId);
+    if (!this.modelCatalog.size) await this.loadModels();
+    return [...this.modelCatalog.values()].filter(model => !model.hidden || model.id === session.model);
+  }
+  fire(threadId) { return fireCodex(this, threadId); }
+  forgetArchived(id) {
+    this.archived.add(id); this.sessions.delete(id); this.joined.delete(id); this.fresh.delete(id); this.images.delete(id); this.store.removeSession(`codex:${id}`);
+  }
+  async setModel(threadId, model) {
+    const session = this.requireMessaging(threadId), selected = (await this.modelOptions(threadId)).find(option => option.id === model);
+    if (!selected) throw fail('Unknown model. Refresh the model list.');
+    const effort = selected.efforts.includes(session.effort) ? session.effort : selected.defaultEffort;
+    await this.rpc('thread/settings/update', { threadId, model, ...(effort ? { effort } : {}) });
+    Object.assign(session, { model, effort: effort || '', efforts: selected.efforts }); delete session.nextEffort;
+    return { ok: true, model, effort: effort || '' };
+  }
+  async setEffort(threadId, effort) {
     const session = this.requireMessaging(threadId);
     if (!session.efforts?.includes(effort)) throw fail('Unknown effort level.');
     if (effort === session.effort && !session.nextEffort) return { ok: true };
-    session.nextEffort = effort; session.effort = effort;
-    return { ok: true, pending: true };
+    try { await this.rpc('thread/settings/update', { threadId, effort }); }
+    catch (error) {
+      // Older servers can only carry an effort override on the next dashboard message.
+      if (error.rpcCode !== -32601) throw error;
+      session.nextEffort = effort; session.effort = effort; return { ok: true, pending: true, model: session.model, effort };
+    }
+    session.effort = effort; delete session.nextEffort;
+    return { ok: true, model: session.model, effort };
+  }
+  async saveDefaults({ model, effort }) {
+    const edits = [{ keyPath: 'model', value: model, mergeStrategy: 'replace' }, ...effort ? [{ keyPath: 'model_reasoning_effort', value: effort, mergeStrategy: 'replace' }] : []];
+    await this.rpc('config/batchWrite', { edits, reloadUserConfig: false });
   }
   async cancelQueuedMessage(threadId, id) {
     this.requireMessaging(threadId);
@@ -450,19 +485,20 @@ export class CodexAdapter {
       return;
     }
     const p = message.params ?? {};
+    if (message.method === 'thread/archived') { this.forgetArchived(p.threadId); return; }
     if (message.method === 'account/updated') { this.usage.reset(); if (this.connected) this.usage.start(); }
     if (message.method === 'serverRequest/resolved') {
       const key = `codex:${JSON.stringify(p.requestId)}`;
       this.store.removeSource(key); this.resolutions.get(key)?.resolve(); this.resolutions.delete(key); return;
     }
     const live = this.sessions.get(p.threadId);
-    if (message.method === 'thread/status/changed' && live) live.status = codexStatus(p.status);
+    if (message.method === 'thread/status/changed' && live) { live.status = codexStatus(p.status); live.idleSince = live.status === 'idle' ? live.idleSince || Date.now() : null; }
     if (live) {
       if (message.method === 'thread/tokenUsage/updated') live.context = { used: p.tokenUsage?.last?.totalTokens || 0, window: p.tokenUsage?.modelContextWindow || null };
       if (message.method === 'turn/plan/updated') live.plan = planSteps(p.plan);
       if (message.method === 'thread/goal/updated') live.goal = codexGoal(p.goal);
       if (message.method === 'thread/goal/cleared') live.goal = null;
-      if (message.method === 'thread/settings/updated' && p.threadSettings) { live.model = p.threadSettings.model || live.model; if (!live.nextEffort) live.effort = p.threadSettings.effort || live.effort; }
+      if (message.method === 'thread/settings/updated' && p.threadSettings) { live.model = p.threadSettings.model || live.model; live.efforts = this.models.get(live.model) || []; if (!live.nextEffort) live.effort = p.threadSettings.effort || live.effort; }
       // Errors and reroutes have no item; they join the history as notices.
       const note = message.method === 'error' ? { text: `${p.error?.message || 'Error'}${p.willRetry ? ' · retrying' : ''}`, error: !p.willRetry }
         : message.method === 'model/rerouted' ? { text: `Model rerouted: ${p.fromModel} → ${p.toModel}` } : null;
@@ -504,7 +540,7 @@ export class CodexAdapter {
   list() {
     return [...this.sessions.values()].map(({ nextEffort, ...session }) => {
       const send = this.connected && (this.joined.has(session.nativeId) || this.fresh.has(session.nativeId));
-      return { ...session, ...(nextEffort ? { effortPending: true } : {}), messaging: { send, queue: send && this.joined.has(session.nativeId) && session.queueAvailable, interrupt: send && this.joined.has(session.nativeId), effort: send && session.efforts.length > 0 } };
+      return { ...session, ...(nextEffort ? { effortPending: true } : {}), messaging: { send, model: send, fire: send && !session.parentId, queue: send && this.joined.has(session.nativeId) && session.queueAvailable, interrupt: send && this.joined.has(session.nativeId), effort: send && session.efforts.length > 0 } };
     });
   }
   stop() { this.stopped = true; clearTimeout(this.retry); clearInterval(this.timer); this.connection?.close(); }

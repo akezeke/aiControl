@@ -21,6 +21,8 @@ function fixture(t, options = {}) {
     if (state.offline) throw new Error('secret');
     const json = value => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
     if (path === '/api/info') return json({ version: '2.2.5' });
+    if (path === '/api/model') return json({ data: [{ providerID: 'anthropic', id: 'test-model', name: 'Test', enabled: true, variants: [{ id: 'high' }, { id: 'max' }] }, { providerID: 'other', id: 'disabled', enabled: false }] });
+    if (path.endsWith('/model')) { const session = state.sessions.find(session => session.id === path.split('/')[3]); session.model = body.model; return json({ data: session }); }
     if (path === '/api/session' && options.method === 'GET') return json(state.sessionPages?.[url.searchParams.get('cursor') || 'first'] || { data: state.sessions, cursor: {} });
     if (path === '/api/session/active') return json({ data: state.active });
     if (path === '/api/permission/request') return json({ data: state.permissions });
@@ -29,8 +31,11 @@ function fixture(t, options = {}) {
     if (path.endsWith('/message')) return json(state.pages?.[url.searchParams.get('cursor') || 'first'] || { data: state.messages, cursor: {} });
     if (path.endsWith('/prompt')) { if (state.sendError) throw new Error('ambiguous'); return json({ data: { id: 'msg_input' } }); }
     if (path.endsWith('/interrupt')) { state.active = {}; return json({ interrupted: true }); }
+    if (path.endsWith('/terminal')) { if (state.terminalError) return new Response('', { status: 503 }); return json({ data: state.terminals || [] }); }
+    if (path.endsWith('/inbox')) return json({ data: state.inbox || [] });
+    if (/^\/api\/session\/ses/.test(path) && options.method === 'PATCH') { state.sessions.find(session => session.id === path.split('/')[3]).time.archived = now; return new Response(null, { status: 204 }); }
     if (path === '/api/session' && options.method === 'POST') { const created = info('ses_created', body.location.directory); state.sessions.push(created); return json({ data: created }); }
-    if (/^\/api\/session\/ses/.test(path)) return json({ data: info(path.split('/')[3]) });
+    if (/^\/api\/session\/ses/.test(path)) return json({ data: state.sessions.find(session => session.id === path.split('/')[3]) || info(path.split('/')[3]) });
     throw new Error(`Unexpected endpoint: ${path}`);
   };
   const adapter = new OpenCodeAdapter(store, options.serviceFile ? { service: true } : { url: 'http://127.0.0.1:4096' }, { fetch: fetcher, now: () => state.now, ...options });
@@ -52,6 +57,36 @@ test('V2 discovers sessions, active status, projected messages, model and costs'
   assert.equal(calls.find(call => call.path === '/api/permission/request').query.get('location[directory]'), '/work/first');
   assert.equal(calls.filter(call => call.path === '/api/session/active').length, 1);
   assert.equal(calls.find(call => call.path === '/api/session').query.has('archived'), false);
+});
+
+test('V2 Fire archives the idle session tree, preserves history, and refuses running or queued work', async t => {
+  const { adapter, state, calls } = fixture(t); state.now += 10000; state.sessions.push({ ...info('ses_child'), parentID: 'ses_first' });
+  await adapter.refresh(); assert.equal(adapter.list().find(session => session.nativeId === 'ses_first').messaging.fire, true);
+  state.active = { ses_child: { type: 'running' } }; await assert.rejects(adapter.fire('ses_first'), /working/);
+  state.active = {}; state.inbox = [{}]; await assert.rejects(adapter.fire('ses_first'), /queued/);
+  state.inbox = []; state.terminals = [{ status: 'running' }]; await assert.rejects(adapter.fire('ses_first'), /terminal/);
+  state.terminals = []; state.terminalError = true; await assert.rejects(adapter.fire('ses_first'));
+  state.terminalError = false; state.permissions = [{ id: 'perm', sessionID: 'ses_child' }]; await assert.rejects(adapter.fire('ses_first'), /answer/);
+  state.permissions = []; assert.equal(calls.some(call => call.method === 'PATCH'), false);
+  assert.deepEqual(await adapter.fire('ses_first'), { ok: true, archived: true });
+  assert.deepEqual(calls.filter(call => call.method === 'PATCH').map(call => [call.path, call.body]), [['/api/session/ses_child', { archived: true }], ['/api/session/ses_first', { archived: true }]]);
+  assert.equal(calls.some(call => call.method === 'DELETE'), false); assert.equal(adapter.list().length, 0); assert.equal(adapter.firing.size, 0);
+  await adapter.refresh(); assert.equal(adapter.list().length, 0);
+});
+
+test('V2 offers connected models, applies variants and keeps defaults on creation', async t => {
+  const { adapter, calls } = fixture(t); await adapter.refresh();
+  const models = await adapter.modelOptions('ses_first'); assert.equal(models.length, 1);
+  assert.deepEqual(models[0].efforts, ['high', 'max']);
+  await assert.rejects(adapter.setModel('ses_first', 'other/disabled'), /Unknown model/);
+  await assert.rejects(adapter.setEffort('ses_first', 'ultra'), /Unknown effort/);
+  await adapter.setEffort('ses_first', 'max');
+  assert.deepEqual(calls.find(call => call.path.endsWith('/model') && call.method === 'POST').body, { model: { providerID: 'anthropic', id: 'test-model', variant: 'max' } });
+  await adapter.refresh(); assert.equal(adapter.list()[0].effort, 'max');
+  await adapter.setEffort('ses_first', '');
+  assert.equal(calls.filter(call => call.path.endsWith('/model') && call.method === 'POST').at(-1).body.model.variant, undefined);
+  await adapter.spawn('/work/new', { model: models[0].id, effort: 'high' });
+  assert.deepEqual(calls.find(call => call.path === '/api/session' && call.method === 'POST').body.model, { providerID: 'anthropic', id: 'test-model', variant: 'high' });
 });
 
 test('V2 follows session and message cursors for complete usage, keeping history chronological', async t => {

@@ -14,6 +14,8 @@ import { UsagePoller, claudeUsageReader } from './usage.mjs';
 import { createHandler } from './http.mjs';
 import { fail } from './requests.mjs';
 import { spawnAgent } from './claude-messaging.mjs';
+import { AgentDefaults } from './agent-defaults.mjs';
+import { SpendBudget } from './spend-budget.mjs';
 import { root, authFile, dataDir, hookSocket, port, claudeAccounts, readSettings } from './config.mjs';
 
 export async function startServer({ host, hostname, tls = null }) {
@@ -28,13 +30,15 @@ export async function startServer({ host, hostname, tls = null }) {
   const accounts = claudeAccounts();
   const claude = new ClaudeAdapter(store, hookSocket, { accounts });
   const opencode = new OpenCodeAdapter(store, readSettings().opencode);
+  const defaults = new AgentDefaults();
+  const spendBudget = await new SpendBudget().load();
   // One usage row per Claude account, each with its own credentials.
   const claudeUsage = accounts.map(({ dir, label }) => ({ label, poller: new UsagePoller('claude', label ? `Claude Code · ${label}` : 'Claude Code', claudeUsageReader({ credentialsFile: join(dir, '.credentials.json') })) }));
   // Loading the .mjs directly avoids temporary bundled configs triggering Node 22's imported-module watcher.
   const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), configLoader: 'native', server: { middlewareMode: true, hmr: false, allowedHosts: origins.map(o => new URL(o).hostname) } });
   const snapshot = () => {
     const sessions = mergeSessions([...codex.list(), ...claude.list(), ...opencode.list()], store.list());
-    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
+    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [{ ...opencode.usageSnapshot(), budget: { weeklyUSD: spendBudget.weeklyUSD } }] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -43,26 +47,44 @@ export async function startServer({ host, hostname, tls = null }) {
   };
   const claudeId = id => id.startsWith('claude:') && id.slice(7);
   const openCodeId = id => id.startsWith('opencode:') && id.slice(9);
+  const settingTarget = id => openCodeId(id) ? [opencode, openCodeId(id), 'opencode'] : claudeId(id) ? [claude, claudeId(id), 'claude'] : [codex, messageTarget(id), 'codex'];
+  const setAgentSetting = async (id, kind, value) => {
+    const [adapter, nativeId, provider] = settingTarget(id);
+    const result = await adapter[kind === 'model' ? 'setModel' : 'setEffort'](nativeId, value);
+    const session = adapter.list().find(session => session.nativeId === nativeId) || {};
+    const settings = { model: result.model || session.model, effort: result.effort ?? session.effort ?? '' };
+    try {
+      await defaults.save(provider, session.account, settings);
+      if (provider === 'codex') await codex.saveDefaults(settings);
+    } catch { return { ...result, ...settings, warning: 'Setting changed, but the default for new sessions could not be saved.' }; }
+    return { ...result, ...settings };
+  };
   const unsupportedOpenCode = () => { throw fail('This control is not available for OpenCode.', 409); };
   const messages = {
     send: (id, body) => openCodeId(id) ? opencode.sendMessage(openCodeId(id), body) : claudeId(id) ? claude.sendMessage(claudeId(id), body) : codex.sendMessage(messageTarget(id), body),
     cancel: (id, queuedId) => openCodeId(id) ? unsupportedOpenCode() : codex.cancelQueuedMessage(messageTarget(id), queuedId),
     interrupt: id => openCodeId(id) ? opencode.interrupt(openCodeId(id)) : claudeId(id) ? claude.interrupt(claudeId(id)) : codex.interrupt(messageTarget(id)),
-    fire: id => claudeId(id) ? claude.fire(claudeId(id)) : Promise.reject(fail('Only Claude sessions can be fired for now.', 409)),
-    effort: (id, body) => openCodeId(id) ? unsupportedOpenCode() : claudeId(id) ? claude.setEffort(claudeId(id), body?.effort) : codex.setEffort(messageTarget(id), body?.effort),
+    fire: id => openCodeId(id) ? opencode.fire(openCodeId(id)) : claudeId(id) ? claude.fire(claudeId(id)) : codex.fire(messageTarget(id)),
+    models: id => { const [adapter, nativeId] = settingTarget(id); return adapter.modelOptions(nativeId); },
+    model: (id, body) => setAgentSetting(id, 'model', body?.model),
+    effort: (id, body) => setAgentSetting(id, 'effort', body?.effort),
     history: (id, limit) => openCodeId(id) ? opencode.history(openCodeId(id), limit) : claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
     images: id => openCodeId(id) ? { images: [] } : claudeId(id) ? claude.imageList(id) : codex.imageList(messageTarget(id)),
     image: (id, imageId) => openCodeId(id) ? unsupportedOpenCode() : claudeId(id) ? claude.image(id, imageId) : codex.image(messageTarget(id), imageId),
   };
   // Any existing directory (~ expands). Claude starts under the account asked for, or the one the project last used.
-  const spawn = ({ cwd, provider, account: label } = {}) => {
+  const spawn = async ({ cwd, provider, account: label } = {}) => {
     if (typeof cwd === 'string') cwd = cwd.trim().replace(/^~(?=\/|$)/, homedir()).replace(/(.)\/+$/, '$1');
     if (typeof cwd !== 'string' || !isAbsolute(cwd) || !statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return Promise.reject(fail('No such folder.', 404));
-    if (provider === 'opencode') return opencode.spawn(cwd);
+    if (provider === 'opencode') {
+      const created = await opencode.spawn(cwd, await defaults.read(provider));
+      try { return { ...created, ...await spawnAgent(cwd, provider, { sessionId: created.sessionId.slice(9) }) }; }
+      catch { return { ...created, warning: 'Session created, but its tmux terminal could not open.' }; }
+    }
     const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
-    return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' });
+    return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '', ...await defaults.read(provider, account?.label) });
   };
-  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn });
+  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, budget: value => spendBudget.save(value) });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {

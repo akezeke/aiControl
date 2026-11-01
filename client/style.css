@@ -60,6 +60,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .new-session-form .form-error { margin: 0; overflow-wrap: anywhere; }
 .new-session-form .form-error:empty { display: none; }
 .new-session-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.settings-error { color: var(--danger); font-size: 12px; }
 .filter-options .new-session-button { display: flex; align-items: center; gap: 7px; margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0; padding-top: 12px; }
 :is(input, textarea)::placeholder { color: var(--text-3); opacity: 1; }
 

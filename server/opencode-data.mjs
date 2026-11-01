@@ -4,7 +4,8 @@ import { recentMessages, planSteps } from './messages.mjs';
 const number = value => Number.isFinite(value) && value >= 0 ? value : 0;
 export const tokenUsage = tokens => ({ input: number(tokens?.input), output: number(tokens?.output), reasoning: number(tokens?.reasoning), cacheRead: number(tokens?.cache?.read), cacheWrite: number(tokens?.cache?.write) });
 export const emptyUsage = () => ({ usd: 0, input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 });
-const add = (target, source) => { for (const key of Object.keys(target)) target[key] += number(source[key]); };
+const usageKeys = ['usd', 'input', 'output', 'reasoning', 'cacheRead', 'cacheWrite'];
+const add = (target, source) => { for (const key of usageKeys) target[key] += number(source[key]); };
 
 // The assistant message already totals its step-finish parts. Counting both doubles spend.
 export function usageRecords(rows) {
@@ -23,6 +24,19 @@ export function usagePeriods(records, now = Date.now()) {
     for (const record of records) if (record.at >= period.from && record.at <= now) { add(usage, record); missing ||= record.usd === null; }
     return { ...period, ...usage, incomplete: missing };
   });
+}
+
+export function weeklyUsage(records, now = Date.now()) {
+  const date = new Date(now), monday = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (date.getDay() + 6) % 7);
+  const days = Array.from({ length: 7 }, (_, index) => ({ at: new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index).getTime(), ...emptyUsage(), incomplete: false }));
+  const resetsAt = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7).getTime();
+  for (const record of records) {
+    if (record.at < monday.getTime() || record.at > now || record.at >= resetsAt) continue;
+    const day = days.findLast(day => record.at >= day.at);
+    if (day) { add(day, record); day.incomplete ||= record.usd === null; }
+  }
+  const total = emptyUsage(); for (const day of days) add(total, day);
+  return { ...total, from: monday.getTime(), resetsAt, incomplete: days.some(day => day.incomplete), days };
 }
 
 export function openCodeMessages(rows, limit = 20) {
@@ -57,6 +71,7 @@ export function openCodeSession(info, rows = [], previous = {}) {
   return { ...previous, id: `opencode:${info.id}`, nativeId: info.id, provider: 'opencode', title: info.title || 'OpenCode session',
     cwd: info.directory, project: basename(info.directory || '') || 'OpenCode', parentId: info.parentID ? `opencode:${info.parentID}` : null,
     model: [provider, model].filter(Boolean).join('/'), version: info.version, updatedAt: info.time?.updated || 0,
+    effort: info.model?.variant || assistant?.model?.variant || '',
     status: previous.status || 'idle', messages, messagesState: messages.length ? 'ready' : 'empty',
     ...(usage ? { context: { used: usage.input + usage.output + usage.cacheRead + usage.cacheWrite } } : {}),
     ...(info.tokens ? { tokens: tokenUsage(info.tokens) } : {}),

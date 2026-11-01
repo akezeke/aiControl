@@ -26,6 +26,12 @@ export function mockCodexServer({ status = 'active', question = true, items, rat
           const thread = fixture.startedThreads.find(thread => thread.id === message.params?.threadId) || fixture.thread;
           if (fixture.ignoreMethod && fixture.ignoreMethod === message.method) return;
           if (message.method === 'initialize') send({ id: message.id, result: {} });
+          if (message.method === 'model/list') send({ id: message.id, result: { data: fixture.models || [{ id: 'test-model', model: 'test-model', displayName: 'Test', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }, { reasoningEffort: 'high' }], defaultReasoningEffort: 'medium' }], nextCursor: null } });
+          if (message.method === 'thread/settings/update') {
+            if (fixture.settingsError) send({ id: message.id, error: fixture.settingsError });
+            else { if (message.params.model) thread.model = message.params.model; if (message.params.effort) thread.reasoningEffort = message.params.effort; send({ id: message.id, result: {} }); }
+          }
+          if (message.method === 'config/batchWrite') send({ id: message.id, result: {} });
           if (message.method === 'account/rateLimits/read') send({ id: message.id, ...(fixture.usageError ? { error: fixture.usageError } : { result: fixture.rateLimits }) });
           if (message.method === 'thread/loaded/list') send({ id: message.id, result: { data: [fixture.thread.id, ...fixture.startedThreads.map(thread => thread.id)], nextCursor: null } });
           if (message.method === 'thread/start') {

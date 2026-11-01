@@ -1,0 +1,85 @@
+/* Explicit grid areas keep controls out of the title/actions row in every theme. */
+:root .chat-header {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-areas: 'back identity actions' 'settings settings settings' 'info info info';
+  gap: 8px 10px; padding: max(12px, env(safe-area-inset-top)) 16px 10px;
+}
+:root .chat-header .back-button { width: 36px; min-height: 36px; }
+.agent-identity { grid-area: identity; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.agent-identity .agent-mark { position: relative; flex: none; width: 38px; height: 38px; margin: 0; }
+.agent-heading { min-width: 0; }
+:root .chat-header .panel-title { margin: 0; font-size: 16px; line-height: 1.35; letter-spacing: .01em; }
+.agent-byline { display: flex; gap: 7px; min-width: 0; margin-top: 3px; font-size: 11px; line-height: 1.4; color: var(--text-3); }
+.agent-provider { flex: none; font-weight: 600; color: var(--text-2); }
+.agent-project { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-project::before { content: '·'; margin-right: 7px; opacity: .65; }
+:root .chat-header .panel-heading-actions { gap: 5px; }
+:root .chat-header .panel-heading-actions > .quiet-button,
+:root .chat-header .theme-menu > summary { min-height: 36px; padding: 7px 9px; }
+:root .chat-header .agent-settings { grid-area: settings; display: grid; grid-template-columns: minmax(0, 1fr) minmax(108px, .32fr); gap: 7px; margin: 2px 0 0; min-width: 0; }
+.setting-field { position: relative; display: grid; min-width: 0; padding: 6px 11px 5px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--sunken); transition: border-color .15s, box-shadow .15s; }
+.setting-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.setting-label { color: var(--text-3); font-size: 9px; font-weight: 650; line-height: 1.3; letter-spacing: .09em; text-transform: uppercase; pointer-events: none; }
+:root .chat-header .setting-select { display: block; width: 100%; min-width: 0; max-width: 100%; min-height: 22px; height: 22px; padding: 0 18px 0 0; margin: 0; border: 0; border-image: none; border-radius: 0; box-shadow: none; background: transparent; color: var(--text); font: 550 12px/22px var(--font); text-overflow: ellipsis; cursor: pointer; appearance: none; outline: none; }
+.setting-field::after { content: ''; position: absolute; right: 12px; bottom: 12px; width: 5px; height: 5px; border-right: 1.5px solid var(--text-3); border-bottom: 1.5px solid var(--text-3); transform: rotate(45deg); pointer-events: none; }
+.setting-select option { background: var(--panel); color: var(--text); }
+.setting-field:has(select:disabled) { opacity: .6; }
+.setting-select:disabled { cursor: default; }
+.agent-settings .settings-error:empty { display: none; }
+.agent-settings .settings-error { align-self: center; font-size: 11px; }
+.agent-settings .settings-retry { justify-self: end; min-height: 28px; padding: 4px 10px; }
+:root .chat-header .chat-info { width: 100%; }
+:root .chat-header .chat-info > summary { gap: 7px; min-height: 22px; font-size: 11px; }
+.details-label { flex: none; }
+.header-branch { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
+.header-cost { margin-left: auto; }
+:root .chat-header .chat-info .chip { flex: none; font-size: 10px; }
+:root .chat-header .plan-info { grid-column: 1 / -1; margin-top: 0; }
+
+/* Each header uses the theme's materials; controls keep the same readable geometry. */
+:root[data-theme=modern] .chat-header { box-shadow: 0 3px 14px #10182806; }
+:root[data-theme=modern] .setting-field { background: var(--panel-2); }
+:root:is([data-theme=alien], [data-theme=command]) .chat-header { grid-template-areas: 'label label label' 'back identity actions' 'settings settings settings' 'info info info'; }
+:root:is([data-theme=alien], [data-theme=command]) .chat-header::before { margin: 0; max-width: 100%; font-size: 10px; line-height: 1.5; }
+:root[data-theme=alien] .setting-field { border-color: #25492b; border-radius: 0; background: linear-gradient(90deg, #0b2111, #031007); box-shadow: inset 3px 0 #2d6336; }
+:root[data-theme=alien] .setting-label { color: #62a86c; }
+:root[data-theme=alien] .chat-header .setting-select { font-family: var(--mono); color: #b1f6bc; text-shadow: 0 0 8px #74fd8526; }
+:root[data-theme=command] .setting-field { border: 1px inset #788363; border-radius: 0; background: #111b10; box-shadow: inset 0 2px 5px #0007; }
+:root[data-theme=command] .setting-label { color: #95a781; }
+:root[data-theme=command] .chat-header .setting-select { color: #d9eab6; font-family: var(--mono); }
+:root[data-theme=heroes] .chat-header { padding: max(16px, env(safe-area-inset-top)) 18px 12px; border-image-width: 16px; row-gap: 9px; }
+:root[data-theme=heroes] .agent-identity .agent-mark { width: 44px; height: 48px; border-image-width: 7px; }
+:root[data-theme=heroes] .agent-identity .provider-icon { width: 18px; height: 18px; }
+:root[data-theme=heroes] .chat-header .panel-title { font-size: 17px; color: #ffe7ad; text-shadow: 1px 2px #070f22; }
+:root[data-theme=heroes] .agent-byline { color: #aebed7; }
+:root[data-theme=heroes] .agent-provider { color: #dbca9c; }
+:root[data-theme=heroes] .setting-field { border: 1px solid #8d784b; border-radius: 0; background: linear-gradient(#101f3b, #192c4d); box-shadow: inset 0 1px #ffffff0d, 0 1px #020918; }
+:root[data-theme=heroes] .setting-label { color: #b4a27b; }
+:root[data-theme=heroes] .chat-header .setting-select { color: #ffe8b6; }
+:root[data-theme=diablo] .chat-header { padding-left: 42px; }
+:root[data-theme=diablo] .setting-field { border: 1px solid #5c4635; border-radius: 0; background: linear-gradient(#100e0d, #201813); box-shadow: inset 0 1px 4px #0009; }
+:root[data-theme=diablo] .setting-label { color: #af926f; }
+:root[data-theme=diablo] .chat-header .setting-select { color: #e6ccb0; }
+:root[data-theme=office] .setting-field { border-color: var(--line-2); background: var(--panel); box-shadow: 0 2px 3px #181b2510; }
+:root[data-theme=office] .agent-identity .agent-mark { transform: rotate(-4deg); }
+:root[data-theme=simpsons] .chat-header { padding-bottom: 10px; }
+:root[data-theme=simpsons] .setting-field { border: 2px solid var(--ink); border-radius: 5px; background: #fff9db; box-shadow: 2px 2px var(--ink); }
+:root[data-theme=simpsons] .setting-label { color: #736234; }
+:root[data-theme=simpsons] .chat-header .setting-select { color: #352c28; }
+
+@media (max-width: 640px) {
+  :root .chat-header { grid-template-columns: 36px minmax(0, 1fr) auto; grid-template-areas: 'back . actions' 'identity identity identity' 'settings settings settings' 'info info info'; gap: 7px 8px; padding: max(7px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); }
+  :root:is([data-theme=alien], [data-theme=command]) .chat-header::before { display: none; }
+  :root .chat-header .panel-title { font-size: 15px; -webkit-line-clamp: 2; }
+  :root .chat-header .panel-heading-actions > .quiet-button:not(.armed) { width: 36px; padding: 0; }
+  :root .chat-header .agent-settings { grid-template-columns: minmax(0, 1fr) 104px; }
+  :root[data-theme=heroes] .chat-header { padding: 10px 14px 12px; }
+  :root[data-theme=diablo] .chat-header::before { display: none; }
+}
+@media (max-height: 500px) and (max-width: 640px) {
+  :root .chat-header { grid-template-areas: 'back identity actions' 'settings settings settings'; padding-top: 4px; row-gap: 4px; }
+  .chat-header .agent-mark, .chat-header .agent-byline { display: none; }
+  :root .chat-header .panel-title { -webkit-line-clamp: 1; font-size: 13px; }
+  .chat-header .chat-info { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .setting-field { transition: none; } }

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { lstat, realpath } from 'node:fs/promises';
 import { dirname, basename, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { fail, slashCommand } from './requests.mjs';
 import { parentPid, listProcesses } from './processes.mjs';
 
@@ -14,8 +15,9 @@ const runTmux = (args, input) => new Promise((resolve, reject) => {
 // A new agent gets a window in the tmux session already working in this project, else in a session
 // named after it. The command is typed into a shell, so an error or exit stays readable there.
 // configDir starts Claude under another account (CLAUDE_CONFIG_DIR); empty means the default ~/.claude.
-export async function spawnAgent(cwd, provider, { configDir = '', tmux = runTmux, update = updateCodex } = {}) {
-  if (!['claude', 'codex'].includes(provider)) throw fail('Unknown agent.');
+export async function spawnAgent(cwd, provider, { configDir = '', sessionId, model, effort, tmux = runTmux, update = updateCodex } = {}) {
+  if (!['claude', 'codex', 'opencode'].includes(provider)) throw fail('Unknown agent.');
+  if (provider === 'opencode' && !/^ses[\w-]+$/.test(sessionId || '')) throw fail('Invalid OpenCode session ID.');
   const panes = (await tmux(['list-panes', '-a', '-F', '#{session_name}\t#{pane_current_path}']).catch(() => '')).split('\n').map(line => line.split('\t'));
   // npm stop ends the server's own session, so agents never go there.
   let name = panes.find(([session, path]) => path === cwd && session !== 'aiControl')?.[0] || basename(cwd).replace(/[^\w-]/g, '_');
@@ -24,7 +26,13 @@ export async function spawnAgent(cwd, provider, { configDir = '', tmux = runTmux
   try {
     const pane = (await tmux([...target, '-d', '-c', cwd, '-n', provider, '-P', '-F', '#{pane_id}'])).trim();
     // A plain `codex` joins the shared app server the dashboard watches; any -c override runs a private one it never sees.
-    const command = provider === 'codex' ? 'codex' : configDir ? `CLAUDE_CONFIG_DIR='${configDir.replaceAll("'", "'\\''")}' claude` : 'claude';
+    const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
+    let command = provider === 'opencode' ? [process.execPath, fileURLToPath(new URL('../scripts/opencode-terminal.mjs', import.meta.url)), sessionId].map(quote).join(' ')
+      : provider === 'codex' ? 'codex' : configDir ? `CLAUDE_CONFIG_DIR=${quote(configDir)} claude` : 'claude';
+    if (provider === 'claude') {
+      if (model) command += ` --model ${quote(model)}`;
+      if (effort && claudeEfforts.includes(effort)) command += ` --effort ${quote(effort)}`;
+    }
     await tmux(['send-keys', '-t', pane, command, 'Enter']);
     if (provider === 'codex') update(pane, { tmux }).catch(() => {});
     return { session: name, pane, window: (await tmux(['display-message', '-p', '-t', pane, '#{window_index}']).catch(() => '')).trim() };
@@ -156,7 +164,12 @@ export class ClaudeMessaging {
   // /effort runs immediately, even mid-turn.
   async setEffort(record, effort) {
     if (!claudeEfforts.includes(effort)) throw fail('Unknown effort level.');
-    await this.type(await this.readyPane(record), { text: `/effort ${effort}`, clientMessageId: randomUUID() });
+    await this.type(await this.readyPane(record), { text: `/effort ${effort}`, clientMessageId: randomUUID(), requireEmpty: true });
+    return { ok: true };
+  }
+  async setModel(record, model) {
+    if (typeof model !== 'string' || !/^[a-zA-Z0-9][\w.:[\]/-]{0,199}$/.test(model)) throw fail('Invalid model.');
+    await this.type(await this.readyPane(record), { text: `/model ${model}`, clientMessageId: randomUUID(), requireEmpty: true });
     return { ok: true };
   }
   // What Claude's Bash tool still runs, in the foreground or background (dev servers, monitors): each command is a shell,
@@ -230,6 +243,7 @@ export class ClaudeMessaging {
     // Strip control characters so text cannot end the bracketed paste or send keys.
     const text = body.text.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
     const run = async () => {
+      if (body.requireEmpty && await this.inputText(pane) !== '') throw fail('Clear the draft in Claude’s terminal before changing its settings.', 409);
       await this.paste(pane, text, body.clientMessageId);
       // A busy or long session can take a while to take in a paste, and an early Enter hits an empty
       // prompt. So wait until the text shows in the input line, press Enter, and press again only
