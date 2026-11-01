@@ -138,6 +138,7 @@ test('what hides the throw button calls a charge off: both ask the one condition
   assert.match(source, /if \(charge\.active\) \{\s*if \(!canThrow\(\)\) callOff\(\);/, 'stops once it applies');
   assert.match(source, /overlays\.showThrow\(touched && \(canCharge\(\) \|\| again\) && clearToThrow\(\), again\)/);
   assert.equal(source.split('officeHasKeys(noEvent)').length, 2, 'asked in the one place');
+  assert.ok(clear.trim().endsWith('officeHasKeys(noEvent)'), 'its document-wide query last, after the cheap gates');
 });
 test('every fit goes when the office does, not only the one on the hand at the time', () => {
   const hand = createHand(new THREE.Group()); let body; const fits = new Set(), gone = new Set(); hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });

@@ -101,7 +101,7 @@ export function mountOffice(container, hooks) {
   const thrower = () => playing?.free ? playing : props;
   const canCharge = () => (!playing || playing.free) && thrower().holding && !view.overview && !menu.open;
   // What hides the throw button calls a charge off: a second finger on a speech bubble or Next walks you away, and a charge would run on with its button gone.
-  const clearToThrow = () => officeHasKeys(noEvent) && !overlays.copying && !office.talking && !player.flight, canThrow = () => canCharge() && clearToThrow();
+  const clearToThrow = () => !overlays.copying && !office.talking && !player.flight && officeHasKeys(noEvent), canThrow = () => canCharge() && clearToThrow();
   const startCharge = () => { if (!canThrow()) return false; charge.press(clock()); return true; };
   const callOff = () => { keyed = false; if (!charge.active) return false; charge.cancel(); thrower().abort(); return true; };
   const letGo = at => {
