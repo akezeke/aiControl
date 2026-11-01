@@ -59,12 +59,13 @@ const RATE = 1 / (4 * STEP); // path samples per second
 const EMPTY = Object.freeze([]);
 const touch = c => ({ type: 'contact', surface: c.surface, speed: c.speed, pos: c.pos, time: c.time });
 
-export function createRun({ start, reducedMotion = false }) {
-  let from = null, clock = 0, next = 0, hits = EMPTY; // from: where the item was let go; next: the first of hits not yet emitted
+// `now`: real seconds, as frames' dt are clamped and a slow machine's would stretch RETRY and LONGEST. Without it, flown adds up the dts it's given.
+export function createRun({ start, reducedMotion = false, now = null }) {
+  let from = null, clock = 0, next = 0, hits = EMPTY, released = 0; // from: where the item was let go; next: the first of hits not yet emitted
   const rate = reducedMotion ? 1 : FLIGHT;
   const run = {
     state: 'aiming', timeScale: 1, result: null, time: 0, flown: 0, // flown: real seconds since release
-    shoot(body, zone) { from = body.pos.toArray(); run.result = runShot(body, zone); hits = run.result.contacts; run.state = 'flying'; run.time = clock = run.flown = 0; next = 0; run.timeScale = rate; },
+    shoot(body, zone) { from = body.pos.toArray(); run.result = runShot(body, zone); hits = run.result.contacts; run.state = 'flying'; run.time = clock = run.flown = 0; next = 0; run.timeScale = rate; released = now?.() ?? 0; },
     reset() { run.state = 'aiming'; run.timeScale = 1; run.result = null; run.time = clock = run.flown = 0; next = 0; hits = EMPTY; from = null; },
     get retrying() { return run.state === 'done' || run.state === 'flying' && run.flown >= RETRY; },
     // The item's place now: aiming, at `start`; flying, along the path (the throw point, a sample every 1/60 s, then where it ended).
@@ -82,7 +83,7 @@ export function createRun({ start, reducedMotion = false }) {
       const r = run.result; if (run.state !== 'flying') return EMPTY;
       const turn = reducedMotion ? Infinity : r.made ? r.time - SLOW_FOR : r.contacts.at(-1)?.time ?? r.time, after = r.made ? SLOW : 1, real = dt > 0 ? dt : 0, events = [];
       let t = clock, left = real; // a negative or NaN dt waits
-      run.flown += real;
+      run.flown = now ? now() - released : run.flown + real;
       if (t < turn) { const till = (turn - t) / rate; if (left < till) { t += left * rate; left = 0; } else { t = turn; left -= till; } }
       t += left * after;
       clock = Math.min(t, r.time); run.time = clock;

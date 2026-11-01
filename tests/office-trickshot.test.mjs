@@ -23,7 +23,7 @@ const WEDGED = { yaw: rad(-129), pitch: rad(17), charge: 1 }; // a rubber ball f
 const SKIDS = { yaw: STARTS.island.stand, pitch: rad(-30), charge: 1 }; // the paper ball at the floor: a miss
 const aRetry = t => { for (let i = 0; i < 2000 && !t.game.retrying; i++) t.game.update(DT, null, false, true); assert.ok(t.game.retrying); };
 
-function setup({ aim, reduced = false, holding = false, store, score, share } = {}) {
+function setup({ aim, reduced = false, holding = false, store, score, share, clock } = {}) {
   const calls = [], saved = [], group = new THREE.Group(), camera = { position: V(0, EYE, 0) };
   const props = { holding, throw(direction, drop) { calls.push(['drop', direction, drop]); props.holding = false; }, loose: () => [] };
   const hand = { palm: new THREE.Object3D(), held: null, hold(mesh, radius) { calls.push(['hold', mesh, radius]); hand.held = mesh; }, free() { calls.push(['free']); hand.held?.removeFromParent(); hand.held = null; }, pull(level) { calls.push(['pull', level]); } };
@@ -31,7 +31,7 @@ function setup({ aim, reduced = false, holding = false, store, score, share } = 
   const view = { plays: [], play(pose) { view.plays.push(pose); }, gameAmount: 0 };
   const memory = store ?? { value: null, getItem() { return memory.value; }, setItem(key, value) { memory.value = value; saved.push(value); } };
   const onPlay = game => { calls.push(['play', game]); camera.position.set(game.stand().x, EYE, game.stand().z); };
-  const game = createTrickshot({ kitchen, hand, camera, props, view, onPlay, aim, score, share, store: memory, reducedMotion: () => reduced });
+  const game = createTrickshot({ kitchen, hand, camera, props, view, onPlay, aim, score, share, store: memory, reducedMotion: () => reduced, clock });
   game.build(group);
   return { game, calls, saved, group, camera, props, hand, kitchen, view, memory };
 }
@@ -290,6 +290,16 @@ test('going again on a shot that\'s made still counts it: a stray tap can\'t los
     assert.equal(t.game.run.state, 'aiming'); assert.equal(t.saved.length, 1); assert.equal(t.game.progress.best.paper, r.score); assert.equal(t.game.score, `${r.points} × ${r.multiplier} = ${r.score}`);
     assert.equal(t.hand.held, item(t, 'paper'));
   }
+});
+
+test('at 4 fps a retry still waits one real second and a miss ten, with the frames clamped to a tenth', () => {
+  let time = 0; const t = setup({ clock: () => time }), frame = () => { time += 0.25; t.game.update(0.1, null, false, true); };
+  begin(t, 'rubber'); throwIt(t, WEDGED); assert.ok(!t.game.run.result.made);
+  for (let i = 0; i < 3; i++) frame(); assert.equal(t.game.retrying, false);
+  frame(); assert.equal(t.game.retrying, true);
+  for (let i = 4; i < LONGEST * 4 - 1; i++) frame(); assert.equal(t.game.run.state, 'flying');
+  frame(); assert.notEqual(t.game.run.state, 'flying', 'done at ten');
+  assert.match(readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8'), /createTrickshot\(\{[^\n]*\bclock\b/, 'the office gives it its clock');
 });
 
 test('a long miss, cut off mid-air, comes straight back to hand and says so', () => {

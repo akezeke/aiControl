@@ -159,6 +159,15 @@ test('a retry waits a second of real time from the release, whatever the rate', 
   const run = createRun({ start }); run.shoot(onBin(), ZONES.bin); run.advance(1e6); assert.equal(run.state, 'done'); assert.equal(run.retrying, true);
 });
 
+test('given a clock, RETRY and LONGEST go by it, however few frames there are and however clamped their dt', () => {
+  let time = 100; const run = createRun({ start, now: () => time }); run.shoot(makeBody(kind(0.85), V(-2, 2.5, -2.5), V(1, 0, 0)), null);
+  time += RETRY - 0.05; run.advance(0.1); assert.equal(run.retrying, false); assert.ok(Math.abs(run.flown - (RETRY - 0.05)) < 1e-9, `${run.flown}`);
+  time += 0.1; run.advance(0.1); assert.equal(run.retrying, true); assert.equal(run.state, 'flying');
+  time += LONGEST - RETRY; run.advance(0.1); assert.equal(run.state, 'done', 'cut off at a tenth of a second of dt a frame');
+  assert.ok(run.time < run.result.time, 'short of the end'); run.reset(); assert.equal(run.flown, 0); assert.equal(run.retrying, false);
+  time = 200; run.shoot(makeBody(kind(0.85), V(-2, 2.5, -2.5), V(1, 0, 0)), null); run.advance(0.1); assert.equal(run.flown, 0, 'from this release, not the last'); assert.equal(run.retrying, false);
+});
+
 test('a long miss is cut off at 10 s of real time, where a made shot plays on', () => {
   const run = createRun({ start }); run.shoot(makeBody(kind(0.85), V(-2, 2.5, -2.5), V(1, 0, 0)), null);
   const r = run.result; assert.ok(r.time > LONGEST * FLIGHT + 1 && !r.made, `${r.time}`);

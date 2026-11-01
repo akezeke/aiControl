@@ -79,7 +79,7 @@ const knock = (surface, speed) => {
 };
 
 // `aim()` is where a throw would go right now: { direction, charge }. `score(goal, verdict, copy)` shows what the shot asks and how it went (goalOf's list and a line or null), or a null goal clears it; `copy`: it's after a daily shot, so game.copy() has something to say. `share(line)` copies a line.
-export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score, share, store, reducedMotion = () => false }) {
+export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score, share, store, reducedMotion = () => false, clock = null }) {
   const progress = loadProgress(store), items = {}, holders = {}, hits = {}, rested = {};
   const marker = makeMarker(), arc = createArc(), axis = new THREE.Vector3(), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: SHOT_FOV, hands: false };
   const follow = { at: new THREE.Vector3(), look: new THREE.Vector3(), ahead: new THREE.Vector3(), spot: new THREE.Vector3(), step: new THREE.Vector3(), from: new THREE.Vector3() };
@@ -226,7 +226,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       kitchen.shut(true);
       entry = pending ?? MONDAY[0]; pending = null; kind = ITEMS[entry.item]; mesh = items[entry.id] ?? items[MONDAY.find(e => e.item === entry.item).id];
       const { x, z } = STARTS[entry.start];
-      game.run = createRun({ start: [x, EYE, z], reducedMotion: reducedMotion() }); game.score = null;
+      game.run = createRun({ start: [x, EYE, z], reducedMotion: reducedMotion(), now: clock }); game.score = null;
       inHand(); label();
       overTarget();
     },
