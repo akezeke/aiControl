@@ -1,22 +1,20 @@
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { dataDir, root } from '../server/config.mjs';
-import { processCommand as command, processInfo, parentPid } from '../server/processes.mjs';
+import { processCommand as command, parentPid } from '../server/processes.mjs';
 
 const serverPath = join(root, 'scripts/server.mjs');
 // A watcher whose server crashed has no server.json; ending the tmux session stops it.
 function endSession() { try { execFileSync('tmux', ['kill-session', '-t', '=aiControl'], { stdio: 'ignore' }); return true; } catch { return false; } }
-// The outermost `node --watch` running the server, or the server itself when unwatched. Node 22.14 can nest a second
-// watcher (start.mjs); ending only the inner one leaves the outer waiting for a file change, holding the tmux session.
+// A node watching the server. The shell running start.mjs's pipeline (`sh -c '… --watch … | tee …'`) names the same
+// flags and path but isn't one; nor can a process's name tell them apart, as Node 24 calls its main thread MainThread.
+const watching = line => line.includes('--watch') && line.includes(serverPath) && !/^\S+\s+-c\s/.test(line);
+// The outermost watcher, or the server itself when unwatched. Should a second watcher be nested (start.mjs), ending only
+// the inner one leaves the outer waiting for a file change, holding the tmux session.
 async function watcherOf(pid) {
   let target = pid;
-  for (let parent = await parentPid(pid); parent > 1; parent = await parentPid(parent)) {
-    const parentCommand = await command(parent);
-    // The shell running the pipeline names the same flags and path; only node watchers count.
-    if ((await processInfo(parent))?.name !== basename(process.execPath) || !parentCommand.includes('--watch') || !parentCommand.includes(serverPath)) break;
-    target = parent;
-  }
+  for (let parent = await parentPid(pid); parent > 1 && watching(await command(parent)); parent = await parentPid(parent)) target = parent;
   return target;
 }
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
