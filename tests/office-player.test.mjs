@@ -167,7 +167,8 @@ test('a key in a free game: a held one doesn\'t leave or throw again, and the ar
   assert.equal(gameKey(key('KeyE', true), { free: true, holding: false }), null);
   for (const code of ['KeyW', 'KeyS', 'Space']) { assert.equal(gameKey(key(code), free), 'leave', code); assert.equal(gameKey(key(code, true), free), null, code); }
   for (const repeat of [false, true]) assert.equal(gameKey(key('ArrowUp', repeat), free), 'look');
-  assert.equal(gameKey(key('Escape', true), free), 'leave');
+  assert.equal(gameKey(key('Escape'), free), 'leave');
+  assert.equal(gameKey(key('Escape', true), free), null, 'held, the charge it called off is all it does');
   assert.equal(gameKey(key('KeyQ'), free), null);
 });
 

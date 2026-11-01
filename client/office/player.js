@@ -30,7 +30,7 @@ export { menuOpen, officeHasKeys, sceneFocused };
 // What a key does in a game. Seated, the arrows walk you out too and E clicks for as long as it's held. In a free game the arrows
 // still look, and a key held from before does nothing.
 export const gameKey = ({ key, code, repeat }, { free, holding }) => {
-  if (key === 'Escape') return 'leave';
+  if (key === 'Escape') return free && repeat ? null : 'leave'; // a held Esc has already called off a charge or closed something: it takes one press more to go
   if (code === 'KeyE') return !free ? 'click' : repeat ? null : holding ? 'charge' : 'click';
   if (code.startsWith('Arrow')) return free ? 'look' : 'leave';
   return /^(Key[WASD]|Space)$/.test(code) && !(free && repeat) ? 'leave' : null;
