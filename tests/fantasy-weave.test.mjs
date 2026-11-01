@@ -34,6 +34,9 @@ test('every pattern says how big it is and the stack has a layer for each', () =
   assert.equal(weaveTexture(), weaveTexture());
   assert.equal(layerOf('nothing'), -1);
 });
+test('the hides are big enough to read from where a fight is watched', () => {
+  for (const name of ['hide', 'fur', 'chitin', 'cracks', 'panels', 'blotch', 'scales', 'rings']) assert.ok(PATTERNS[name]?.per <= 1.5, `${name} repeats ${PATTERNS[name]?.per} times to a unit of body`);
+});
 test('every class is mostly dressed in patterns, each vertex in a real one', () => {
   for (const cls of Object.keys(CLASS_NAMES)) for (let i = 0; i < 12; i++) {
     const rig = dress(cls, `${cls}${i}`), weave = rig.geometry.getAttribute('weave'), ink = rig.geometry.getAttribute('ink');
@@ -43,12 +46,17 @@ test('every class is mostly dressed in patterns, each vertex in a real one', () 
     for (let v = 0; v < weave.count; v++) {
       const layer = weave.getZ(v);
       assert.ok(Number.isFinite(weave.getX(v)) && Number.isFinite(weave.getY(v)), `${cls}${i} has a broken uv`);
-      assert.ok(layer === -1 || (Number.isInteger(layer) && layer < PATTERN_NAMES.length), `${cls}${i} wears layer ${layer}`);
+      assert.ok(layer === -1 || layer === -2 || (Number.isInteger(layer) && layer < PATTERN_NAMES.length), `${cls}${i} wears layer ${layer}`);
       if (layer >= 0) dressed++;
     }
     assert.ok(dressed / weave.count > .3, `${cls}${i} is only ${(dressed / weave.count).toFixed(2)} patterned`);
     rig.dispose();
   }
+});
+test('an aura gem shines by itself, whatever the fight is lit with', () => {
+  const lit = new Set();
+  for (let i = 0; i < 24; i++) { const weave = dress('knight', `knight${i}`).geometry.getAttribute('weave'); for (let v = 2; v < weave.array.length; v += 3) if (weave.array[v] === -2) lit.add(i); }
+  assert.ok(lit.size > 12, `only ${lit.size} of 24 knights have a shining gem`);
 });
 test('a class has several fabrics, and the same person always wears the same one', () => {
   for (const cls of Object.keys(CLASS_NAMES)) {

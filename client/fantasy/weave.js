@@ -21,6 +21,16 @@ const nearest = (x, c) => { const d = Math.abs(x - c); return Math.min(d, 1 - d)
 const GLYPHS = Array.from({ length: 4 }, (_, g) => Array.from({ length: 3 }, (_, s) => [0, 1, 2, 3].map(i => hash(g + s * 7, i, 9))));
 const segment = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, t = clamp(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)); return Math.hypot(px - ax - dx * t, py - ay - dy * t); };
 
+// The nearest of a grid of jittered points and the next nearest, wrapping across the tile, for cracks and spots. Also an id for the nearest.
+const cells = (x, y, count, seed) => {
+  const fx = fract(x) * count, fy = fract(y) * count, ix = Math.floor(fx), iy = Math.floor(fy); let near = 9, next = 9, id = 0;
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+    const cx = (ix + dx + count) % count, cy = (iy + dy + count) % count, d = Math.hypot(fx - (ix + dx + .2 + hash(cx, cy, seed) * .6), fy - (iy + dy + .2 + hash(cx, cy, seed + 1) * .6));
+    if (d < near) { next = near; near = d; id = hash(cx, cy, seed + 2); } else if (d < next) next = d;
+  }
+  return [near, next, id];
+};
+
 // `per`: repeats to a unit of body, which is about a torso. `band`: stretched to fit the height of a hem or collar and run around it, as wide as `band` heights.
 export const PATTERNS = {
   weave: { per: 3, draw: (x, y) => [fibre(x, y), 0] },
@@ -72,6 +82,40 @@ export const PATTERNS = {
     const g = Math.min(3, Math.floor(x * 4)), px = x * 4 - g, py = y; let d = 1;
     for (const [a, b, c, e] of GLYPHS[g]) d = Math.min(d, segment(px, py, .22 + Math.round(a * 2) * .28, .24 + Math.round(b * 2) * .26, .22 + Math.round(c * 2) * .28, .24 + Math.round(e * 2) * .26));
     return [.5 + (noise(x, y, 16, 2) - .5) * .05, Math.max(rails(y), line(d, .05))];
+  } },
+  // Hides, for monsters. A monster is seen from across the field, so these are few big marks to a tile and few tiles to a body.
+  hide: { per: .9, draw: (x, y) => {
+    const crease = Math.max(line(noise(x, y, 5, 21) - .5, .016), line(noise(x, y, 7, 22) - .5, .012));
+    return [.53 + (noise(x, y, 4, 23) - .5) * .22 - crease * .3, edge(.6, .64, noise(x, y, 5, 24))];
+  } },
+  fur: { per: 1.2, draw: (x, y) => {
+    const at = y * 5 + Math.abs(fract(x * 5) - .5) * 1.8, row = Math.floor(at), v = at - row, col = Math.floor(x * 5), tuft = hash(col, row % 5, 25);
+    return [.5 + (v - .5) * .36 + (tuft - .5) * .14, edge(.56, .78, v) * (hash(col, row % 5, 26) > .45 ? 1 : 0)];
+  } },
+  chitin: { per: .9, draw: (x, y) => {
+    const at = y * 3 + Math.abs(fract(x * 2) - .5) * .5, v = fract(at), seam = Math.min(v, 1 - v);
+    return [.38 + v * .28 + Math.cos(x * TAU * 4) * .03 - line(seam, .03) * .16, line(seam, .05)];
+  } },
+  cracks: { per: 1, draw: (x, y) => {
+    const [near, next, id] = cells(x + (noise(x, y, 6, 31) - .5) * .09, y + (noise(x, y, 6, 32) - .5) * .09, 4, 33), crack = 1 - edge(.035, .1, next - near);
+    return [.52 + (id - .5) * .2 + (noise(x, y, 16, 34) - .5) * .1 - crack * .24, crack];
+  } },
+  panels: { per: .8, draw: (x, y) => {
+    const fx = fract(x * 2), fy = fract(y * 2), seam = Math.min(fx, 1 - fx, fy, 1 - fy), rivet = Math.max(...[.14, .86].flatMap(a => [.14, .86].map(b => 1 - edge(.04, .06, Math.hypot(fx - a, fy - b)))));
+    return [.5 + (hash(Math.floor(x * 2), Math.floor(y * 2), 35) - .5) * .12 + (noise(x, y, 24, 36) - .5) * .05 - line(seam, .03) * .3 + line(seam - .07, .02) * .1 + rivet * .2, rivet];
+  } },
+  blotch: { per: .8, draw: (x, y) => {
+    const [near, , id] = cells(x + (noise(x, y, 5, 41) - .5) * .12, y + (noise(x, y, 5, 42) - .5) * .12, 3, 43), size = .2 + id * .18;
+    return [.5 + (noise(x, y, 5, 44) - .5) * .16, 1 - edge(size - .03, size + .02, near)];
+  } },
+  scales: { per: 1, draw: (x, y) => {
+    const rows = 4, row = Math.floor(y * rows);
+    for (const k of [0, 1]) { const at = row + k, fx = fract(x * rows + (at % 2 ? .5 : 0)) - .5, fy = y * rows - at, d = Math.hypot(fx, fy); if (d < .56) return [.36 + (1 - d / .56) * .32, edge(.44, .5, d)]; }
+    return [.36, 1];
+  } },
+  rings: { per: .9, draw: (x, y) => {
+    const v = fract(y * 3);
+    return [.5 + Math.sin(v * TAU - Math.PI / 2) * .1 + (noise(x, y, 16, 45) - .5) * .05, 1 - edge(.26, .3, Math.abs(v - .5))];
   } },
 };
 export const PATTERN_NAMES = Object.keys(PATTERNS);

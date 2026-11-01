@@ -59,8 +59,8 @@ const WEAR = {
   sage: [
     (g, c) => { g.lathe([[.4, .32], [.37, .34], [.2, .38], [.17, .42], [.09, .68, c.dark], [.0001, .96, c.cloth]].reverse().map(([a, y, k]) => [a, y, k]), c.cloth, { sides: 8, lean: -.18, c2: c.dark, cloth: c.hat }); g.lathe([[.19, .42], [.2, .36]], c.trim, { sides: 8, cloth: c.hem }); },
     (g, c) => { g.ball(.235, .22, .245, c.cloth, { y: .2, z: -.03, low: .3, sides: 9, rings: 4, c2: c.dark, cloth: c.hat }); g.lathe([[.16, -.03], [.28, -.13], [.3, -.2]], c.cloth, { z: -.02, sz: .9, sides: 8, c2: c.trim, cloth: c.hat }); },
-    (g, c) => { g.lathe([[.195, .33], [.2, .29]], c.trim, { sides: 10, y: 0, cloth: c.hem }); g.gem(.05, .13, c.aura, { y: .34, z: .19, rx: Math.PI / 2 }); },
-    (g, c) => { for (let i = 0; i < 3; i++) g.lathe([[.21 - i * .03, .33 + i * .07], [.2 - i * .035, .29 + i * .07]], i % 2 ? c.trim : c.cloth, { sides: 9, rz: i % 2 ? .1 : -.07 }); g.gem(.045, .12, c.aura, { y: .34, z: .2, rx: Math.PI / 2 }); },
+    (g, c) => { g.lathe([[.195, .33], [.2, .29]], c.trim, { sides: 10, y: 0, cloth: c.hem }); g.gem(.05, .13, c.aura, { lit: true, y: .34, z: .19, rx: Math.PI / 2 }); },
+    (g, c) => { for (let i = 0; i < 3; i++) g.lathe([[.21 - i * .03, .33 + i * .07], [.2 - i * .035, .29 + i * .07]], i % 2 ? c.trim : c.cloth, { sides: 9, rz: i % 2 ? .1 : -.07 }); g.gem(.045, .12, c.aura, { lit: true, y: .34, z: .2, rx: Math.PI / 2 }); },
   ],
   knight: [
     (g, c) => { g.ball(.21, .235, .225, c.steel, { y: .21, low: .35, sides: 9, rings: 4, c2: shade(c.steel, .75), cloth: c.hat }); g.box(.32, .035, .03, c.aura, { y: .18, z: .205 }); g.plate([[0, .06], [.12, .22], [.3, .28], [.48, .2], [.5, .06], [.3, -.02]], .025, c.trim, { y: .36, z: -.32, ry: Math.PI / 2 }); },
@@ -100,8 +100,8 @@ const WEAPONS = {
     (g, c) => { g.lathe([[.032, 1.2], [.036, -1]], WOOD, { ...FORWARD, z: .5, sides: 5 }); g.plate([[-.12, 0], [.12, 0], [.05, .68], [0, .76], [-.05, .68]], .025, EDGE, { ...FORWARD, z: 1.68, ridge: .025, c2: EDGE_DARK }); g.lathe([[.1, .05], [.05, -.05]], c.trim, { ...FORWARD, z: 1.66, sides: 6 }); },
   ],
   sage: [
-    (g, c) => { g.tube([[0, 0, -.5], [.02, 0, .4], [-.02, 0, 1.3]], [.04, .032, .03], WOOD, { sides: 5 }); g.lathe([[.12, .04], [.16, -.04]], c.trim, { ...FORWARD, z: 1.32, sides: 6 }); g.gem(.15, .46, c.aura, { ...FORWARD, z: 1.58, sides: 5 }); },
-    (g, c) => { g.tube([[0, 0, -.5], [0, 0, 1.3]], [.038, .03], WOOD, { sides: 5 }); g.plate([[-.1, 0], [.1, 0], [.3, .15], [.33, .4], [.25, .62], [.2, .36], [.1, .2], [-.1, .2], [-.2, .36], [-.25, .62], [-.33, .4], [-.3, .15]], .03, c.trim, { ...FORWARD, z: 1.28, c2: shade(c.trim, .75) }); g.gem(.08, .24, c.aura, { ...FORWARD, z: 1.68, sides: 5 }); },
+    (g, c) => { g.tube([[0, 0, -.5], [.02, 0, .4], [-.02, 0, 1.3]], [.04, .032, .03], WOOD, { sides: 5 }); g.lathe([[.12, .04], [.16, -.04]], c.trim, { ...FORWARD, z: 1.32, sides: 6 }); g.gem(.15, .46, c.aura, { lit: true, ...FORWARD, z: 1.58, sides: 5 }); },
+    (g, c) => { g.tube([[0, 0, -.5], [0, 0, 1.3]], [.038, .03], WOOD, { sides: 5 }); g.plate([[-.1, 0], [.1, 0], [.3, .15], [.33, .4], [.25, .62], [.2, .36], [.1, .2], [-.1, .2], [-.2, .36], [-.25, .62], [-.33, .4], [-.3, .15]], .03, c.trim, { ...FORWARD, z: 1.28, c2: shade(c.trim, .75) }); g.gem(.08, .24, c.aura, { lit: true, ...FORWARD, z: 1.68, sides: 5 }); },
     (g, c) => { g.tube([[0, 0, -.5], [0, 0, 1.2]], [.036, .03], shade(c.steel, .7), { sides: 5 }); g.lathe([[.27, .025], [.27, -.025]], c.trim, { ...FORWARD, z: 1.48, rz: Math.PI / 2, sz: .15, sides: 10 }); g.ball(.12, .12, .12, c.aura, { z: 1.48, rings: 3, sides: 6 }); },
     (g, c) => { g.tube([[.02, 0, -.5], [-.06, .02, .25], [.06, -.02, .9], [-.02, 0, 1.25], [.12, 0, 1.45], [.22, 0, 1.4]], [.05, .04, .04, .035, .025, .012], 0x5a4228, { sides: 5 }); g.ball(.09, .09, .09, c.aura, { x: .03, z: 1.56, rings: 3, sides: 6 }); g.ball(.05, .05, .05, c.aura, { x: .22, z: 1.33, rings: 2, sides: 5 }); },
   ],
@@ -126,7 +126,7 @@ const WEAPONS = {
 };
 
 const SHIELDS = [
-  (g, c) => g.plate([[-.34, .42], [.34, .42], [.36, -.02], [.2, -.42], [0, -.62], [-.2, -.42], [-.36, -.02]], .05, c.trim, { ry: Math.PI / 2, x: .16, y: -.22, ridge: .07, c2: c.steel }).gem(.08, .2, c.aura, { x: .24, y: -.14 }),
+  (g, c) => g.plate([[-.34, .42], [.34, .42], [.36, -.02], [.2, -.42], [0, -.62], [-.2, -.42], [-.36, -.02]], .05, c.trim, { ry: Math.PI / 2, x: .16, y: -.22, ridge: .07, c2: c.steel }).gem(.08, .2, c.aura, { lit: true, x: .24, y: -.14 }),
   (g, c) => { g.lathe([[.0001, .1, c.steel], [.18, .08], [.42, .02, c.trim], [.42, -.02, c.trim], [.0001, -.04]], c.trim, { rz: -Math.PI / 2, x: .15, y: -.22, sides: 10 }); g.spike(.06, .14, EDGE, { x: .24, y: -.22, rz: -Math.PI / 2 }); },
   (g, c) => g.plate([[-.27, .62], [.27, .62], [.27, -.72], [-.27, -.72]], .06, c.steel, { ry: Math.PI / 2, x: .16, y: -.22, ridge: .04, c2: c.trim }).box(.05, 1.1, .08, c.trim, { x: .24, y: -.22 }),
   (g, c) => g.plate([[-.2, .22], [.2, .22], [.13, -.2], [0, -.3], [-.13, -.2]], .04, c.trim, { ry: Math.PI / 2, x: .14, y: -.18, ridge: .03, c2: c.steel }),
@@ -155,7 +155,7 @@ export function makeCharacter(member, scene, shared, taken) {
   const collar = r();
   if (collar < .4) chest.lathe([[.1, .72], [.17, .63], [.2, .6]], c.trim, { sz: .85, sides: 8, z: -.01, cloth: c.hem });
   else if (collar < .7) chest.plate([[-.18 * broad, .6], [.18 * broad, .6], [0, .24]], .012, c.trim, { z: .19 });
-  if (knight) { chest.lathe([[.1 * broad, .62], [.3 * broad, .52], [.3 * broad, .36], [.2 * broad, .18], [.0001, .1]], c.steel, { z: .03, sz: .68, sides: 8, flat: true, c2: shade(c.steel, .68), cloth: worn(c.steel, main) }).gem(.075, .2, c.aura, { y: .44, z: .24 }); }
+  if (knight) { chest.lathe([[.1 * broad, .62], [.3 * broad, .52], [.3 * broad, .36], [.2 * broad, .18], [.0001, .1]], c.steel, { z: .03, sz: .68, sides: 8, flat: true, c2: shade(c.steel, .68), cloth: worn(c.steel, main) }).gem(.075, .2, c.aura, { lit: true, y: .44, z: .24 }); }
   if (cls === 'gunner') { const pack = r(); if (pack < .4) { for (const s of [-1, 1]) chest.lathe([[.0001, .32], [.11, .26], [.11, -.18], [.0001, -.24]], GUNMETAL, { x: s * .13, y: .42, z: -.28, sides: 7 }); chest.box(.1, .28, .05, c.aura, { y: .42, z: -.21 }); } else if (pack < .75) { chest.box(.42, .46, .18, GUNMETAL, { y: .42, z: -.26, w2: .34 }); chest.lathe([[.07, .3], [.07, -.3]], c.aura, { y: .42, z: -.38, rz: Math.PI / 2, sides: 6 }); } else chest.ball(.22, .24, .13, LEATHER, { y: .36, z: -.24, sides: 7, rings: 4 }); chest.tube([[-.28 * broad, .6, .13], [0, .34, .2], [.26 * broad, .08, .15]], [.025, .025, .025], LEATHER, { sides: 4 }); }
   if (cls === 'rogue') chest.tube([[-.27 * broad, .58, .14], [0, .32, .19], [.22, .08, .15]], [.03, .03, .03], LEATHER, { sides: 4 }).tube([[.27 * broad, .58, -.14], [0, .32, -.2], [-.22, .08, -.15]], [.03, .03, .03], LEATHER, { sides: 4 });
 

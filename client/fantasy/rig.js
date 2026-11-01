@@ -10,7 +10,7 @@ const rgb = c => [(c >> 16 & 255) / 255, (c >> 8 & 255) / 255, (c & 255) / 255];
 export const shade = (c, f) => { const [r, g, b] = rgb(c), to = v => Math.round(clamp(v * f) * 255); return to(r) << 16 | to(g) << 8 | to(b); };
 export const blend = (a, b, t) => { const x = rgb(a), y = rgb(b), to = i => Math.round(mix(x[i], y[i], t) * 255); return to(0) << 16 | to(1) << 8 | to(2); };
 
-const TMP = new THREE.Vector3(), M4 = new THREE.Matrix4(), EUL = new THREE.Euler(), QUAT = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1), AT = new THREE.Vector3();
+const SHINES = -2, TMP = new THREE.Vector3(), M4 = new THREE.Matrix4(), EUL = new THREE.Euler(), QUAT = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1), AT = new THREE.Vector3();
 export class Geo {
   p = []; n = []; c = []; worn = [];
   xf(o = {}) { EUL.set(o.rx || 0, o.ry || 0, o.rz || 0); QUAT.setFromEuler(EUL); AT.set(o.x || 0, o.y || 0, o.z || 0); M4.compose(AT, QUAT, ONE); const m = M4.clone(), f = v => new THREE.Vector3(v[0], v[1], v[2]).applyMatrix4(m); f.m = m; return f; }
@@ -38,7 +38,10 @@ export class Geo {
   }
   // A pyramid, from a base at its position to an apex `h` along local +y.
   spike(r, h, c, o = {}) { return this.cyl(.0001, r, h, o.sides || 4, c, { ...o, c2: o.c2 ?? shade(c, .7), turn: Math.PI / 4 }); }
-  gem(r, h, c, o = {}) { const up = { ...o, y: (o.y || 0) + h / 4, c2: c }, down = { ...o, y: (o.y || 0) - h / 4 }; this.cyl(.0001, r, h / 2, o.sides || 4, c, up); return this.cyl(r, .0001, h / 2, o.sides || 4, shade(c, .75), down); }
+  // `lit` makes it shine by itself.
+  gem(r, h, c, o = {}) { const from = this.p.length / 3, up = { ...o, y: (o.y || 0) + h / 4, c2: c }, down = { ...o, y: (o.y || 0) - h / 4 }; this.cyl(.0001, r, h / 2, o.sides || 4, c, up); this.cyl(r, .0001, h / 2, o.sides || 4, shade(c, .75), down); return o.lit ? this.shine(from) : this; }
+  // Everything added since `from` ignores the light of the place. The layer says so: -1 is no pattern, -2 no pattern and no shading, and a triangle between them glows part of the way along.
+  shine(from) { const uv = new Float32Array(this.p.length - from * 3); for (let i = 2; i < uv.length; i += 3) uv[i] = SHINES; this.worn.push({ from, uv, rgb: [0, 0, 0] }); return this; }
 }
 
 // One vertex-colour shader for both looks, no outlines: polygons lit by the light of the place they stand in. uLook: 0 is the PS1 look (snapped vertices, dither, 15-bit colour), 1 the same polygons drawn clean, with a soft highlight on metal.
@@ -49,7 +52,7 @@ void main(){ vWeave = weave; vInk = ink; mat4 b = uBones[int(bone + .5)]; vec4 w
   if (uLook < .5) { p.xyz /= p.w; vec2 grid = uRes * .5; p.xy = floor(p.xy * grid + .5) / grid; p.xyz *= p.w; } gl_Position = p; }`;
 const BAYER = `float b2(float x, float y){ return mod(x * 2. + y * 3., 4.); }
 float bayer(vec2 v){ vec2 f = mod(floor(v), 4.); return (4. * b2(mod(f.x, 2.), mod(f.y, 2.)) + b2(floor(f.x / 2.), floor(f.y / 2.)) + .5) / 16.; }`;
-const FRAG = `uniform float uLook, uGrey, uDim, uFlash, uDissolve; uniform vec3 uTint, uFlashCol, uFog, uSun, uSky, uBounce, uSunDir; uniform sampler2DArray uWeave; varying vec3 vCol, vN, vV, vUp, vWeave, vInk; varying float vDist, vHeight;
+const FRAG = `uniform float uLook, uGrey, uDim, uFlash, uDissolve, uGlow; uniform vec3 uTint, uFlashCol, uFog, uSun, uSky, uBounce, uSunDir; uniform sampler2DArray uWeave; varying vec3 vCol, vN, vV, vUp, vWeave, vInk; varying float vDist, vHeight;
 ${BAYER}
 void main(){ vec3 n = normalize(vN), l = normalize((viewMatrix * vec4(uSunDir, 0.)).xyz);
   // The sun, plus what the sky and the lit ground give back; darker near the feet, where the ground shuts out the sky.
@@ -57,6 +60,7 @@ void main(){ vec3 n = normalize(vN), l = normalize((viewMatrix * vec4(uSunDir, 0
   // Parts without a pattern say so with a negative layer.
   vec3 cloth = vCol; if (vWeave.z > -.5) { vec2 t = texture(uWeave, vWeave).rg; cloth = mix(vCol, vInk, t.g) * t.r * 2.; }
   vec3 c = cloth * (mix(uBounce, uSky, up) + uSun * sun) * mix(.74, 1., smoothstep(0., .9, vHeight));
+  c = mix(c, vCol * uGlow, clamp(-1. - vWeave.z, 0., 1.));
   if (uLook > .5) { float top = max(max(vCol.r, vCol.g), vCol.b), metal = smoothstep(.26, .08, top - min(min(vCol.r, vCol.g), vCol.b)) * smoothstep(.3, .6, top), spec = max(dot(n, normalize(l + normalize(vV))), 0.); c += uSun * (pow(spec, 30.) * metal * .55 + pow(spec, 9.) * .05); }
   c *= uTint; float g2 = dot(c, vec3(.3, .59, .11)); c = mix(c, vec3(g2) * vec3(.9, .88, .82), uGrey); c *= 1. - uDim * .55;
   c = mix(c, uFlashCol, uFlash);
@@ -71,6 +75,8 @@ export const newShared = (look, place) => ({ uLook: look, uRes: { value: new THR
 // One character: a tree of bones, with parts added to them. Call build() once, after the last part.
 export class Rig {
   bones = []; parts = []; J = {};
+  // A colour that shines wherever this rig uses it, and in any shade of it; the rest of its vertices are lit as usual.
+  selfLit = null;
   constructor(scene, shared) { this.scene = scene; this.shared = shared; this.root = new THREE.Group(); scene.add(this.root); this.bones.push(this.root); }
   joint(parent, name, x, y, z, geo) {
     const bone = new THREE.Group(); bone.position.set(x, y, z); parent.add(bone); this.bones.push(bone);
@@ -84,10 +90,11 @@ export class Rig {
     const count = this.parts.reduce((n, { geo }) => n + geo.p.length / 3, 0), p = new Float32Array(count * 3), n = new Float32Array(count * 3), c = new Float32Array(count * 3), b = new Float32Array(count), weave = new Float32Array(count * 3).fill(-1), ink = new Float32Array(count * 3);
     let start = 0;
     for (const { geo, at } of this.parts) { const size = geo.p.length / 3; p.set(geo.p, start * 3); n.set(geo.n, start * 3); c.set(geo.c, start * 3); b.fill(at, start, start + size); for (const { from, uv, rgb: tone } of geo.worn) { weave.set(uv, (start + from) * 3); for (let i = 0; i < uv.length / 3; i++) ink.set(tone, (start + from + i) * 3); } start += size; }
+    if (this.selfLit != null) { const [lr, lg, lb] = rgb(this.selfLit), norm = lr * lr + lg * lg + lb * lb; for (let i = 0; i < count; i++) { if (weave[i * 3 + 2] >= 0) continue; const cr = c[i * 3], cg = c[i * 3 + 1], cb = c[i * 3 + 2], k = (cr * lr + cg * lg + cb * lb) / norm; if (k > .5 && Math.abs(cr - k * lr) + Math.abs(cg - k * lg) + Math.abs(cb - k * lb) < .03) weave[i * 3 + 2] = SHINES; } }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('normal', new THREE.BufferAttribute(n, 3)); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.setAttribute('bone', new THREE.BufferAttribute(b, 1)); g.setAttribute('weave', new THREE.BufferAttribute(weave, 3)); g.setAttribute('ink', new THREE.BufferAttribute(ink, 3));
     const matrices = Array.from({ length: BONES }, (_, i) => (this.bones[i] || this.root).matrixWorld), uBones = { value: matrices }, uDissolve = { value: 0 }, s = this.shared;
-    this.mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, vertexColors: true, uniforms: { uBones, uDissolve, uWeave: { value: weaveTexture() }, uLook: s.uLook, uRes: s.uRes, uFog: s.uFog, uSun: s.uSun, uSky: s.uSky, uBounce: s.uBounce, uSunDir: s.uSunDir, uGrey: { value: 0 }, uDim: { value: 0 }, uFlash: { value: 0 }, uTint: { value: new THREE.Color(1, 1, 1) }, uFlashCol: { value: raw(0xffffff) } } });
+    this.mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, vertexColors: true, uniforms: { uBones, uDissolve, uGlow: { value: 1 }, uWeave: { value: weaveTexture() }, uLook: s.uLook, uRes: s.uRes, uFog: s.uFog, uSun: s.uSun, uSky: s.uSky, uBounce: s.uBounce, uSunDir: s.uSunDir, uGrey: { value: 0 }, uDim: { value: 0 }, uFlash: { value: 0 }, uTint: { value: new THREE.Color(1, 1, 1) }, uFlashCol: { value: raw(0xffffff) } } });
     this.body = new THREE.Mesh(g, this.mat); this.body.frustumCulled = false; this.body.matrixAutoUpdate = false; this.body.matrixWorldAutoUpdate = false; this.scene.add(this.body); this.geometry = g; this.parts = [];
     return this;
   }

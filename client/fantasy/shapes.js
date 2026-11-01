@@ -67,6 +67,19 @@ export class Shape extends Geo {
     }
     this.worn.push({ from, uv, rgb: rgb(ink ?? 0) });
   }
+  // The same for a part built from rows of points, whatever way it runs: the pattern goes round the rows a whole number of times and along them by the distance travelled. Caps take the middle of their edge.
+  wrap(from, rows, o) {
+    const { pat, ink } = o.cloth, { per = 1 } = PATTERNS[pat], layer = layerOf(pat), n = rows[0].length, spots = new Map(), uv = new Float32Array(this.p.length - from * 3), key = (x, y, z) => `${x},${y},${z}`;
+    let along = 0, round = 0;
+    rows.forEach((row, i) => { if (i) along += row[0].distanceTo(rows[i - 1][0]); row.forEach((p, j) => { spots.set(key(p.x, p.y, p.z), [j / n, along * per]); round += p.distanceTo(row[(j + 1) % n]); }); });
+    const turns = Math.max(1, Math.round(round / rows.length * per));
+    for (let t = 0; t < uv.length / 3; t += 3) {
+      const seen = [0, 1, 2].map(i => { const k = (from + t + i) * 3; return spots.get(key(this.p[k], this.p[k + 1], this.p[k + 2])); }), known = seen.filter(Boolean), least = Math.min(...known.map(([u]) => u)), unwrapped = ([u]) => u - least > .5 ? u - 1 : u;
+      const meanU = known.reduce((sum, spot) => sum + unwrapped(spot), 0) / known.length, meanV = known.reduce((sum, spot) => sum + spot[1], 0) / known.length;
+      seen.forEach((spot, i) => uv.set([(spot ? unwrapped(spot) : meanU) * turns, spot ? spot[1] : meanV, layer], (t + i) * 3));
+    }
+    this.worn.push({ from, uv, rgb: rgb(ink ?? 0) });
+  }
   // An ellipsoid; `top` and `low` (0–1) cut it short of its poles, for caps and bowls.
   ball(rx, ry, rz, c, o = {}) {
     const rings = o.rings || 5, top = (o.top ?? 1) * Math.PI / 2, low = -(o.low ?? 1) * Math.PI / 2, profile = [];
@@ -84,7 +97,9 @@ export class Shape extends Geo {
       rows.push(Array.from({ length: sides }, (_, j) => { const a = j / sides * Math.PI * 2, p = path[i].clone().addScaledVector(side, Math.cos(a) * radius).addScaledVector(up, Math.sin(a) * radius); return f([p.x, p.y, p.z]); }));
       colours.push(lerpColour(c1, c2, t));
     }
-    return this.grid(rows, colours, o);
+    const from = this.p.length / 3; this.grid(rows, colours, o);
+    if (o.cloth) this.wrap(from, rows, o);
+    return this;
   }
   // A shape cut from a sheet: an outline in x and y, `thick` deep in z, faces raised to a ridge along its middle. For blades, shields, capes and wings. `c2` colours the rim.
   plate(outline, thick, c, o = {}) {
@@ -107,7 +122,9 @@ export class Shape extends Geo {
       rows.push(Array.from({ length: sides }, (_, j) => { const b = (j + turn) / sides * Math.PI * 2, k = i && i < rings ? 1 + (rand() - .5) * rough * 2 : 1; return f([Math.cos(b) * ring * r * k, Math.sin(a) * r * sy * k, Math.sin(b) * ring * r * sz * k]); }));
       colours.push(lerpColour(c1, c2, i / rings));
     }
-    return this.grid(rows, colours, { flat: true });
+    const from = this.p.length / 3; this.grid(rows, colours, { flat: true });
+    if (o.cloth) this.wrap(from, rows, o);
+    return this;
   }
 }
 // A limb hanging down from its joint: round at both ends, `r1` at the top and `r2` at the bottom.
