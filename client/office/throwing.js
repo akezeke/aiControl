@@ -244,6 +244,8 @@ export function createHand(hands) {
     // Back towards you and tipped, the whole way at a full charge.
     pull(charge) { palm.position.set(HOLD.x - 0.04 * charge, HOLD.y, HOLD.z + 0.16 * charge); palm.rotation.x = 0.35 * charge; },
     free() { letGo(); palm.visible = hands.userData.full = false; hand.pull(0); },
+    // Only what's on `body` when the scene goes is seen by its traversal: the other fits are kept for next time.
+    dispose() { for (const fit of fits.values()) fit.dispose(); fits.clear(); body.geometry.dispose(); },
   };
   return hand;
 }

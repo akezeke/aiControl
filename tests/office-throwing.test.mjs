@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { SLIDE_OFF, FULL_CHARGE, chargeAt, createCharge, createHand, createThrowButton, handModel, handParts, launch, throwSpeed } from '../client/office/throwing.js';
 import { Player } from '../client/office/player.js';
@@ -103,6 +104,12 @@ test('the darts\' arm starts inside its fist too', () => {
 test('a hand fitted once is kept, and what\'s flatter than it\'s wide gets a flatter one', () => {
   const hand = createHand(new THREE.Group()); let body; hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });
   const flat = body.geometry; hand.hold(null, 0.08); assert.ok(body.geometry !== flat); hand.hold(null, 0.08, 0.012); assert.ok(body.geometry === flat);
+});
+test('every fit goes when the office does, not only the one on the hand at the time', () => {
+  const hand = createHand(new THREE.Group()); let body; const fits = new Set(), gone = new Set(); hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });
+  for (const [radius, low] of [[0.08, 0.012], [0.08, 0.08], [0.03, 0.03], [0.16, 0.16]]) { hand.hold(null, radius, low); const fit = body.geometry; fits.add(fit); fit.addEventListener('dispose', () => gone.add(fit)); }
+  assert.equal(fits.size, 4); hand.free(); hand.dispose(); assert.equal(gone.size, 4);
+  assert.match(readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8'), /disposers: \[[^\n]*\(\) => hand\.dispose\(\)/);
 });
 test('the arm runs off to the bottom left of the fist, for the darts as it did', () => {
   const { arm, grip, fist } = handModel(), box = new THREE.Box3().setFromObject(arm);
