@@ -470,7 +470,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .theme-preview.alien { background-image: linear-gradient(#0000 60%, #031203cc), url('/alien-bg.webp'); background-position: 62% center; }
 .theme-preview.command { background-image: url('/command-bg.webp'); }
 .theme-preview.bridge { background: radial-gradient(ellipse at 50% 120%, #ff4fd0 0 18%, transparent 19%), radial-gradient(ellipse at 50% 25%, #6a8cff 0 12%, #181450 40%, #22378e 41%); }
-.theme-preview.fantasy { background-image: linear-gradient(#0000 62%, #123b33 62% 64%, #e9dcc0 64% 66%, #123b33 66%), url('/fantasy/amber-back.webp'); background-position: center; }
+.theme-preview.fantasy { background-image: linear-gradient(#0000 62%, #123b33 62% 64%, #e9dcc0 64% 66%, #123b33 66%), url('/fantasy/title.webp'); background-position: center; }
 .theme-preview.city { background: linear-gradient(#91db69 0 0) 24% 62% / 7% 8% no-repeat, linear-gradient(#ffffff 0 0) 54% 44% / 6% 7% no-repeat, linear-gradient(#9babb2 0 0) 22% 100% / 18% 56% no-repeat, linear-gradient(#c7dcd0 0 0) 52% 100% / 14% 76% no-repeat, linear-gradient(#fb6b1d 0 0) 80% 100% / 18% 42% no-repeat, #4d4a44; }
 .theme-preview.office { background: radial-gradient(circle at 30% 60%, #d62828 0 12%, transparent 13%), radial-gradient(circle at 52% 55%, #f7d23e 0 10%, transparent 11%), radial-gradient(circle at 74% 60%, #f28c28 0 12%, transparent 13%), linear-gradient(#cfe8f5 0 45%, #e9c896 45%); }
 @media (max-width: 640px) { .theme-picker-grid { grid-template-columns: 1fr 1fr; } }
