@@ -1069,7 +1069,7 @@ test('a level starts with its arrow on screen and big enough, on a phone and a d
   for (const shot of EVERY_SHOT) {
     t.game.start(shot); t.game.enter();
     const name = `${shot.item} from ${shot.start} at ${shot.target}`;
-    for (const [width, height, least] of [[390, 780, 35], [1000, 650, 28]]) {
+    for (const [width, height, least] of [[390, 780, 40], [1000, 650, 28]]) {
       const [tip, head] = arrowOnScreen(t, width, height);
       for (const p of [tip, head]) assert.ok(p.front && p.x > width * 0.2 && p.x < width * 0.8 && p.y > 140 && p.y < height * 0.9, `${name} at ${width}: on screen, at ${Math.round(p.x)},${Math.round(p.y)}`);
       assert.ok(tip.y - head.y >= least, `${name} at ${width}: ${Math.round(tip.y - head.y)} px tall`);
