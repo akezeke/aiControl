@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createArc, drawnAt, launch } from './throwing.js';
 import { makeBody, stopShort } from './flight.js';
-import { MOST_TIME, createRun } from './shot.js';
+import { MOST_TIME, createRun, inZone } from './shot.js';
 import { ITEMS, MONDAY, STARTS } from './levels.js';
 import { KITCHEN, ZONES, levelWorld } from './kitchen-plan.js';
 import { challenges, copyLine, dayKey, goalOf } from './daily.js';
@@ -18,8 +18,10 @@ const HAND_BACK = 1, PARTY = 1.2, BITS = 24, GROUND = 0.008; // seconds the came
 const LIT = '#ffd21f', ARROW = 0.09, OVER = 0.2, LEAST = 0.08, HIGHEST = 1, BOB = 0.025, BOBS = 2.2, TAP_ASIDE = -0.13, MARKER_SIGHT = { radius: 0.01, low: 0.01 }; // the marker: its colour; how tall per metre from the mark, so it looks the same size from near and far; how far its tip stays over its target, as a rule and when there's no room; as high as it goes to be seen; how far it bobs either way, and how fast (radians a second); to the side of the sink's middle, where the tap's spout is
 const ZERO = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
 const SHOT_FOV = 52, WIDEST_FOV = 80, LANDSCAPE = 1.6, IN_SIGHT = 0.6; // its fov, and how far that opens on a narrow screen; how far out it lets the item go, of the way to the edge of the screen's narrower side
-// The camera on a shot: where it would like to be, [behind, above, to the side of] the item; how near it may be; how fast it and its look catch up (m/s at most, for it), and how fast "behind" comes round after a bounce (per second); how much room it keeps.
-const VIEWS = [[1.5, 0.6, 0], [1.2, 1, 0], [0.6, 1.4, 0], [0.9, 0.9, 0.9], [0.9, 0.9, -0.9], [-0.9, 0.9, 0], [0, 1.4, 0.5], [0, 1.4, -0.5]], NEAREST = 0.7, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, CLEAR = 1e-3, WEDGED = 1, CLIMB = 3, CLIMBS = 0.4;
+// The camera on a shot: where it would like to be, [behind, above, to the side of] the item; how near it may be; how fast it and its look catch up (m/s at most, for it), and how fast "behind" comes round after a bounce (per second); how much room it keeps,
+// and at least, from what the item's up against; how long (s) it can lose the item before it cuts to where it can see it, and what it sees past.
+const VIEWS = [[1.5, 0.6, 0], [1.2, 1, 0], [0.6, 1.4, 0], [0.9, 0.9, 0.9], [0.9, 0.9, -0.9], [-0.9, 0.9, 0], [0, 1.4, 0.5], [0, 1.4, -0.5]], NEAREST = 0.7, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, SLIM = { radius: 0.02, low: 0.02 }, CLEAR = 1e-3, WEDGED = 1, CLIMB = 3, CLIMBS = 0.4;
+const LOST = 0.3, SIGHT = { radius: 0.005, low: 0.005 };
 // As much across as a landscape screen shows, as far as a fov can go without looking stretched.
 export const shotFov = aspect => Math.max(SHOT_FOV, Math.min(WIDEST_FOV, 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(SHOT_FOV / 2)) * LANDSCAPE / aspect))));
 // Whatever the look is lagging behind, the item is never more than `most` (radians) off it, seen from `at`: `look` is drawn in that far, not snapped.
@@ -86,7 +88,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   const marker = makeMarker(), arc = createArc(), axis = new THREE.Vector3(), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: SHOT_FOV, hands: false };
   const follow = { at: new THREE.Vector3(), look: new THREE.Vector3(), ahead: new THREE.Vector3(), spot: new THREE.Vector3(), step: new THREE.Vector3(), from: new THREE.Vector3() };
   const eye = new THREE.Vector3(), now = new THREE.Vector3(), flying = new THREE.Vector3(), palm = new THREE.Vector3(), fromHand = new THREE.Vector3(); // `flying`: where it really is, the mesh only drawn from the hand
-  let group = null, pending = null, entry = null, kind = null, mesh = null, angle = 0, moved = false, handBack = 0, partyLeft = 0, climb = 0, bob = 0, told = false; // told: this shot's verdict is out
+  let group = null, pending = null, entry = null, kind = null, mesh = null, angle = 0, moved = false, handBack = 0, partyLeft = 0, climb = 0, hidden = 0, bob = 0, told = false; // hidden: how long the camera's not seen the item; told: this shot's verdict is out
 
   const bits = Array.from({ length: BITS }, () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 })), spots = new Float32Array(BITS * 3), colours = new Float32Array(BITS * 3);
   { const paper = ['#ffd166', '#ef476f', '#06d6a0', '#4f7cff'].map(c => new THREE.Color(c)); for (let i = 0; i < BITS; i++) paper[i % 4].toArray(colours, i * 3); }
@@ -127,10 +129,11 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
     for (let over = Math.min(OVER, room - size); over <= HIGHEST; over += 0.1) { marker.position.set(x, top + over, centre.z); if (stopShort(eye, now.copy(marker.position), MARKER_SIGHT, colliders).equals(marker.position)) return; }
   };
   // Everything a shot set going stops: its sound, the pans, the confetti, and the camera comes straight back, so a throw leaves from your eyes.
-  const stop = () => { hush(); kitchen.pans?.rest(); party.visible = false; partyLeft = 0; handBack = 0; moved = false; angle = 0; climb = 0; view?.play(null); if (view) view.gameAmount = 0; };
+  const stop = () => { hush(); kitchen.pans?.rest(); party.visible = false; partyLeft = 0; handBack = 0; moved = false; angle = 0; climb = hidden = 0; view?.play(null); if (view) view.gameAmount = 0; };
 
   // From the eyes on, it goes only through free space: it's walked to where it wants to be, one axis at a time so it slides along what's in the
-  // way. So it can't be in anything, whatever the bounce.
+  // way. So it can't be in anything, whatever the bounce. Sliding, it can be left behind something (a cutout, the banner over the stove): what hides
+  // the item for a moment it waits out, and past that it cuts to the view it wants, as a game's camera would.
   const followNow = dt => {
     const { at, look, ahead, spot, step, from } = follow, { colliders } = flightWorld();
     spot.subVectors(flying, now).setY(0);
@@ -145,16 +148,24 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       if (got > most) { most = got; spot.copy(step); }
       if (got > 0.99 * whole && got > NEAREST * NEAREST) { spot.copy(step); break; }
     }
-    spot.sub(at).multiplyScalar(1 - Math.exp(-dt * CATCH)).clampLength(0, FASTEST * dt).add(at); // coming free of what held it back, it doesn't leap
-    // One axis at a time it can wedge where two things meet (a cupboard's top and the banner): with nowhere to go it climbs a moment, and comes on over.
-    const wanted = at.distanceToSquared(spot); from.copy(at);
-    if (climb > 0) { climb -= dt; spot.y = Math.min(at.y + CLIMB * dt, WALL_H - CAMERA.radius); }
-    for (const axis of ['x', 'z', 'y']) { // never right up to what it hit: stopShort doesn't count a box it starts in
-      step.copy(at); step[axis] = spot[axis]; stopShort(at, step, CAMERA, colliders);
-      const go = step[axis] - at[axis];
-      if (step[axis] === spot[axis]) at[axis] = spot[axis]; else if (Math.abs(go) > CLEAR) at[axis] += go - Math.sign(go) * CLEAR;
+    hidden = !inZone(flying, ZONES[entry.target]) && stopShort(at, step.copy(flying), SIGHT, colliders).distanceToSquared(flying) > 0.01 ? hidden + dt : 0; // down in what it was thrown at, it's meant to be hidden
+    // A cut goes where the item can see, a little short as the walk stops: stopShort doesn't count a box it starts in, and the camera's ball can be in what the
+    // item's up against (an open cupboard door), so a slim one keeps it out of that; and as the slim one can be in it too (a chair's back), one that ends near anything waits.
+    const cut = hidden > LOST && stopShort(from, stopShort(from, step.copy(spot), CAMERA, colliders), SLIM, colliders).sub(from);
+    if (cut) cut.setLength(Math.max(0, cut.length() - CLEAR)).add(from);
+    if (cut && !colliders.some(box => (box.inverse ? cut.distanceTo(box.clampPoint(cut, from)) : box.distanceToPoint(cut)) < SLIM.radius)) { at.copy(cut); hidden = climb = 0; }
+    else {
+      spot.sub(at).multiplyScalar(1 - Math.exp(-dt * CATCH)).clampLength(0, FASTEST * dt).add(at); // coming free of what held it back, it doesn't leap
+      // One axis at a time it can wedge where two things meet (a cupboard's top and the banner): with nowhere to go it climbs a moment, and comes on over.
+      const wanted = at.distanceToSquared(spot); from.copy(at);
+      if (climb > 0) { climb -= dt; spot.y = Math.min(at.y + CLIMB * dt, WALL_H - CAMERA.radius); }
+      for (const axis of ['x', 'z', 'y']) { // never right up to what it hit: stopShort doesn't count a box it starts in, and a cut can leave it nearer than its ball
+        step.copy(at); step[axis] = spot[axis]; stopShort(at, stopShort(at, step, CAMERA, colliders), SLIM, colliders);
+        const go = step[axis] - at[axis];
+        if (step[axis] === spot[axis]) at[axis] = spot[axis]; else if (Math.abs(go) > CLEAR) at[axis] += go - Math.sign(go) * CLEAR;
+      }
+      if (wanted > WEDGED * WEDGED * dt * dt && at.distanceToSquared(from) < CLEAR * CLEAR) climb = CLIMBS;
     }
-    if (wanted > WEDGED * WEDGED * dt * dt && at.distanceToSquared(from) < CLEAR * CLEAR) climb = CLIMBS;
     look.lerp(flying, 1 - Math.exp(-dt * EYES));
     const seen = view?.camera, fov = Math.min(seen?.fov ?? SHOT_FOV, pose.fov = shotFov(seen?.aspect ?? LANDSCAPE));
     keepInSight(look, flying, at, Math.atan(IN_SIGHT * Math.tan(THREE.MathUtils.degToRad(fov / 2)) * Math.min(1, seen?.aspect ?? LANDSCAPE)));
@@ -253,7 +264,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       axis.crossVectors(direction, UP).normalize(); if (!axis.lengthSq()) axis.set(1, 0, 0);
       game.score = null; told = false; label();
       game.run.shoot(makeBody(kind, pos, vel), ZONES[entry.target]);
-      if (!reducedMotion()) { moved = true; follow.at.copy(eye); follow.look.copy(mesh.position); follow.ahead.set(direction.x, 0, direction.z); if (follow.ahead.lengthSq() < 1e-6) follow.ahead.set(Math.sin(STARTS[entry.start].stand), 0, Math.cos(STARTS[entry.start].stand)); follow.ahead.normalize(); view?.play(() => game.pose()); }
+      if (!reducedMotion()) { moved = true; hidden = 0; follow.at.copy(eye); follow.look.copy(mesh.position); follow.ahead.set(direction.x, 0, direction.z); if (follow.ahead.lengthSq() < 1e-6) follow.ahead.set(Math.sin(STARTS[entry.start].stand), 0, Math.cos(STARTS[entry.start].stand)); follow.ahead.normalize(); view?.play(() => game.pose()); }
       tone(280, 640, 0.13, 'sine', 0.08 + 0.1 * charge);
     },
     abort() { hand.pull(0); },
