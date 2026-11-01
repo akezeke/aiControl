@@ -10,6 +10,7 @@ A self-hosted dashboard for local Codex and Claude Code sessions on **macOS and 
 - Answer permissions and questions, send messages, stop turns and start agents. Nothing is auto-approved.
 - Chat history with Markdown, diffs, tool calls, screenshots and the Markdown files a session writes.
 - Account usage limits, notifications and sounds when a session needs you.
+- Sessions lost to a crash, a killed tmux or a shutdown come back with their last prompt and reply, to resume in a click.
 - Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting.
 - A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
 - Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.

@@ -16,7 +16,7 @@ async function body(req) {
   try { return JSON.parse(raw); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -66,6 +66,14 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
       if (path === '/api/spawn' && req.method === 'POST') {
         if (!spawn) throw fail('Starting agents is not available.', 503);
         const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;
+      }
+      // Lost sessions (recovery.mjs): resumed in tmux, or let go.
+      const lostAction = /^\/api\/lost\/(resume|dismiss)$/.exec(path);
+      if (lostAction && req.method === 'POST') {
+        if (!lost) throw fail('Recovery is not available.', 503);
+        const { ids } = await body(req);
+        if (!Array.isArray(ids) || !ids.length || ids.length > 100 || ids.some(id => typeof id !== 'string' || id.length > 200)) throw fail('Choose sessions to resume.', 400);
+        const result = await lost[lostAction[1]]([...new Set(ids)]); auth.touch(session); json(res, 200, result); return;
       }
       // A session's images: the list as JSON, or one image's bytes (its type checked from the bytes).
       const imageRoute = /^\/api\/sessions\/([^/]+)\/images(?:\/([^/]+))?$/.exec(path);

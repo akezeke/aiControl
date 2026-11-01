@@ -124,7 +124,7 @@ const unwrapped = text => text.replace(/^<([\w-]+)[^>]*>/, '<$1>');
 export function claudeMeta(lines, sessionId) {
   const meta = {}; let queue = [];
   for (const line of lines) {
-    if (!/"(assistant|system|cost-state|queue-operation|user)"/.test(line)) continue;
+    if (!/"(assistant|system|cost-state|queue-operation|user|permission-mode)"/.test(line)) continue;
     try {
       const row = JSON.parse(line);
       if ((row.sessionId && row.sessionId !== sessionId) || row.isSidechain) continue;

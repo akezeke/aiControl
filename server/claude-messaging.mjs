@@ -14,8 +14,10 @@ const runTmux = (args, input) => new Promise((resolve, reject) => {
 // A new agent gets a window in the tmux session already working in this project, else in a session
 // named after it. The command is typed into a shell, so an error or exit stays readable there.
 // configDir starts Claude under another account (CLAUDE_CONFIG_DIR); empty means the default ~/.claude.
-export async function spawnAgent(cwd, provider, { configDir = '', tmux = runTmux, update = updateCodex } = {}) {
+// `args` follow the agent's name (recovery.mjs's resume arguments: ids and modes, nothing a shell would read).
+export async function spawnAgent(cwd, provider, { configDir = '', args = [], tmux = runTmux, update = updateCodex } = {}) {
   if (!['claude', 'codex'].includes(provider)) throw fail('Unknown agent.');
+  if (args.some(arg => !/^[\w-]+$/.test(arg))) throw fail('Unexpected agent arguments.');
   const panes = (await tmux(['list-panes', '-a', '-F', '#{session_name}\t#{pane_current_path}']).catch(() => '')).split('\n').map(line => line.split('\t'));
   // npm stop ends the server's own session, so agents never go there.
   let name = panes.find(([session, path]) => path === cwd && session !== 'aiControl')?.[0] || basename(cwd).replace(/[^\w-]/g, '_');
@@ -24,15 +26,16 @@ export async function spawnAgent(cwd, provider, { configDir = '', tmux = runTmux
   try {
     const pane = (await tmux([...target, '-d', '-c', cwd, '-n', provider, '-P', '-F', '#{pane_id}'])).trim();
     // A plain `codex` joins the shared app server the dashboard watches; any -c override runs a private one it never sees.
-    const command = provider === 'codex' ? 'codex' : configDir ? `CLAUDE_CONFIG_DIR='${configDir.replaceAll("'", "'\\''")}' claude` : 'claude';
+    const tail = args.length ? ` ${args.join(' ')}` : '';
+    const command = provider === 'codex' ? `codex${tail}` : `${configDir ? `CLAUDE_CONFIG_DIR='${configDir.replaceAll("'", "'\\''")}' ` : ''}claude${tail}`;
     await tmux(['send-keys', '-t', pane, command, 'Enter']);
-    if (provider === 'codex') update(pane, { tmux }).catch(() => {});
+    if (provider === 'codex') update(pane, { tmux, command }).catch(() => {});
     return { session: name, pane, window: (await tmux(['display-message', '-p', '-t', pane, '#{window_index}']).catch(() => '')).trim() };
   } catch { throw fail('Could not open a tmux window.', 503); }
 }
 // The thread only loads past Codex's startup update prompt, so take its default, Update now; the update ends Codex, so
 // start it again once it reports success. A started Codex or any other question (trusting a folder) is left alone.
-export async function updateCodex(pane, { tmux = runTmux, pollMs = 1000, startMs = 20_000, updateMs = 180_000 } = {}) {
+export async function updateCodex(pane, { tmux = runTmux, command = 'codex', pollMs = 1000, startMs = 20_000, updateMs = 180_000 } = {}) {
   const screen = () => tmux(['capture-pane', '-p', '-J', '-t', pane]).catch(() => '');
   const wait = () => new Promise(resolve => setTimeout(resolve, pollMs));
   for (const end = Date.now() + startMs; Date.now() < end; await wait()) {
@@ -41,7 +44,7 @@ export async function updateCodex(pane, { tmux = runTmux, pollMs = 1000, startMs
     if (!/Update available/.test(text) || !/›\s*1\.\s*Update now/.test(text)) continue;
     await tmux(['send-keys', '-t', pane, 'Enter']);
     for (const until = Date.now() + updateMs; Date.now() < until; await wait()) {
-      if (/Update ran successfully/.test(await screen())) { await tmux(['send-keys', '-t', pane, 'codex', 'Enter']); return true; }
+      if (/Update ran successfully/.test(await screen())) { await tmux(['send-keys', '-t', pane, command, 'Enter']); return true; }
     }
     return false;
   }

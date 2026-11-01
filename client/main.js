@@ -10,6 +10,7 @@ import './city-list.css';
 import './fantasy-list.css';
 import './bridge-list.css';
 import './provider-icons.css';
+import './lost.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
@@ -98,6 +99,8 @@ const icons = {
   back: '<path d="m15 5-7 7 7 7"/>',
   down: '<path d="m5 9 7 7 7-7"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  restore: '<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8m0-5v5h5"/><path d="M12 7v5l3 2"/>',
+  play: '<path d="M7 4.5v15l12-7.5Z"/>',
   file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   activity: '<path d="M2 12h5l3-8 4 16 3-8h5"/>',
@@ -278,6 +281,7 @@ function showWorkspace() {
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
   const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu, newAgentMenu()); main.append(toolbar);
+  const lost = el('section', 'lost'); lost.id = 'lost'; lost.hidden = true; lost.setAttribute('aria-label', 'Lost sessions'); main.append(lost);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
   const screen = el('div', 'main-screen'); screen.append(main); content.append(screen); shell.append(content); app.append(shell);
@@ -387,6 +391,7 @@ function renderData() {
   document.querySelector('#machine').textContent = state.snapshot.machine;
   const usage = document.querySelector('#usage'), usageSignature = JSON.stringify([state.snapshot.usage, !!state.error, Math.floor(Date.now() / 60_000)]);
   if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error }); }
+  renderLost(document.querySelector('#lost'), state.snapshot.lost || []);
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
   const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); scene?.pick(picked(), true); };
@@ -1114,6 +1119,55 @@ function spawnButtons(cwd) {
   for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
   return actions;
 }
+// Sessions that went without a goodbye (server/recovery.mjs): what each was last asked, said and doing, to resume in tmux or let go.
+const lostStates = { working: 'was working', permission: 'needed approval', question: 'asked you', idle: 'idle', error: 'error' };
+let lostOpen = true;
+function renderLost(section, lost) {
+  const signature = JSON.stringify([lost, !!state.error, Math.floor(Date.now() / 60_000)]);
+  if (section.dataset.sig === signature) return;
+  section.dataset.sig = signature; section.hidden = !lost.length;
+  if (!lost.length) { section.replaceChildren(); return; }
+  const ready = lost.filter(entry => !entry.resuming).map(entry => entry.id);
+  const details = el('details'); details.open = lostOpen; details.ontoggle = () => { lostOpen = details.open; };
+  const summary = el('summary', 'lost-summary'); summary.title = 'Ended without exiting: a crash, a killed tmux or a shutdown';
+  const actions = el('span', 'lost-actions');
+  if (ready.length > 1) actions.append(lostButton('Resume all', 'play', ready, 'resume', `Resume ${ready.length} in tmux`));
+  actions.append(lostButton('', 'close', lost.map(entry => entry.id), 'dismiss', 'Dismiss all'));
+  summary.append(icon('restore'), el('strong', '', `${lost.length} lost`), el('span', 'lost-when', age(lost[0].seenAt)), actions);
+  const list = el('ul', 'lost-list');
+  for (const entry of lost) {
+    const row = el('li', `lost-row${entry.resuming ? ' resuming' : ''}`), main = el('div', 'lost-main'), head = el('div', 'lost-head');
+    const mark = el('span', `lost-mark ${entry.provider}`); mark.append(providerIcon(entry.provider)); mark.title = providerName(entry.provider);
+    head.append(el('strong', 'lost-title', entry.title || 'Untitled'), el('span', 'lost-project', entry.project));
+    head.lastChild.title = entry.cwd;
+    if (entry.account) head.append(chip(entry.account, 'account-chip', 'Claude account'));
+    if (lostStates[entry.status]) head.append(chip(lostStates[entry.status], `lost-state ${entry.status}`, `Last seen ${age(entry.seenAt).toLowerCase()}`));
+    if (entry.detail) head.append(el('span', 'lost-detail', entry.detail));
+    main.append(head);
+    for (const [key, text] of [['said', entry.prompt], ['reply', entry.reply]]) if (text) { const line = el('div', `lost-${key}`, text); line.title = text; main.append(line); }
+    const buttons = el('div', 'lost-actions');
+    buttons.append(lostButton(entry.resuming ? 'Starting' : 'Resume', 'play', [entry.id], 'resume', `${entry.provider === 'codex' ? 'codex resume' : 'claude --resume'} in tmux${entry.mode ? ` · ${entry.mode} mode` : ''}`, entry.resuming), lostButton('', 'close', [entry.id], 'dismiss', 'Dismiss'));
+    row.append(mark, main, buttons); list.append(row);
+  }
+  details.append(summary, list); section.replaceChildren(details);
+}
+function lostButton(label, iconName, ids, action, title, busy = false) {
+  const b = button(label, `quiet-button lost-${action}`, async event => {
+    event.preventDefault(); event.stopPropagation(); // In the summary, a press would fold the list too.
+    b.disabled = true;
+    try {
+      const { resumed = [], failed = [] } = await api(`lost/${action}`, { ids });
+      const names = new Map((state.snapshot.lost || []).map(entry => [entry.id, entry.title]));
+      if (failed.length) toast(failed.map(({ id, error }) => `${names.get(id) || 'Session'}: ${error}`).join(' · '));
+      else if (resumed.length) toast(resumed.length > 1 ? `Resuming ${resumed.length} in tmux` : 'Resuming in tmux');
+    } catch (error) { toast(error.message); }
+    refresh();
+  }, iconName);
+  b.title = title; if (!label) b.setAttribute('aria-label', title);
+  b.disabled = busy || !!state.error;
+  return b;
+}
+
 // The toolbar's +: an agent in any folder, a new one included, like a scene's + (scene-ui.js).
 function newAgentMenu() {
   const menu = el('details', 'filter-menu new-agent-menu'); menu.id = 'new-agent-menu';

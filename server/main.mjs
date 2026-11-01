@@ -1,6 +1,7 @@
 import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
 import { appendFile, writeFile, rename, unlink } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostname as machineName } from 'node:os';
 import { createServer as createViteServer } from 'vite';
@@ -16,6 +17,8 @@ import { agentFolder, folderState } from './folders.mjs';
 import { OfficeSeats } from './seats.mjs';
 import { CityTowers } from './towers.mjs';
 import { Battlefields } from './battlefields.mjs';
+import { Recovery, resumeArgs } from './recovery.mjs';
+import { PromptHistory } from './prompt-history.mjs';
 import { root, authFile, dataDir, hookSocket, port, claudeAccounts } from './config.mjs';
 
 export async function startServer({ host, hostname, tls = null }) {
@@ -36,9 +39,16 @@ export async function startServer({ host, hostname, tls = null }) {
   const seats = new OfficeSeats(join(dataDir, 'office-seats.json'));
   const towers = new CityTowers(join(dataDir, 'city-towers.json'));
   const battlefields = new Battlefields(join(dataDir, 'fantasy-battlefields.json'));
+  // Kept up whether or not anyone's looking, so a crash leaves the file as it was seconds before.
+  const recovery = new Recovery(join(dataDir, 'recovery.json'));
+  const prompts = new PromptHistory(accounts.map(({ dir }) => join(dir, 'history.jsonl')));
+  const recover = async () => {
+    await prompts.refresh();
+    recovery.update([...codex.list(), ...claude.list()], { ended: entry => entry.provider === 'claude' ? claude.ending(entry.nativeId) : '', typed: session => session.provider === 'claude' ? prompts.get(session.nativeId) : '' });
+  };
   const snapshot = () => {
     const sessions = mergeSessions([...codex.list(), ...claude.list()], store.list());
-    return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label }))], features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }] };
+    return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label }))], features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }] };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -68,7 +78,25 @@ export async function startServer({ host, hostname, tls = null }) {
     seats.reserve(cwd, slot);
     return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '' }).catch(e => { seats.release(cwd, slot); throw e; });
   };
-  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState });
+  // One at a time, so two in a new folder don't both make its tmux session. Each in its own account and permission mode.
+  const lost = {
+    async resume(ids) {
+      const resumed = [], failed = [];
+      for (const id of ids) {
+        const entry = recovery.get(id);
+        if (!entry) continue;
+        try {
+          if (!existsSync(entry.cwd)) throw fail('Its folder is gone.', 409);
+          const account = entry.provider === 'claude' ? claude.accountFor(entry.cwd, entry.account) : null;
+          await spawnAgent(entry.cwd, entry.provider, { configDir: account?.label ? account.dir : '', args: resumeArgs(entry) });
+          recovery.resumed(id); resumed.push(id);
+        } catch (e) { failed.push({ id, error: e.status ? e.message : 'Could not open a tmux window.' }); }
+      }
+      return { resumed, failed };
+    },
+    dismiss: ids => { recovery.dismiss(ids); return { ok: true }; },
+  };
+  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {
@@ -80,6 +108,7 @@ export async function startServer({ host, hostname, tls = null }) {
   try { await claude.start(); } catch (e) { await closeServers(); await vite.close(); throw e; }
   codex.start();
   for (const { poller } of claudeUsage) poller.start();
+  const recovering = setInterval(() => recover().catch(error => console.error('[Recovery]', error.message)), 4000);
   // npm start polls for this file; write then rename so it never reads a partial file.
   await writeFile(join(dataDir, 'server.json.tmp'), JSON.stringify({ pid: process.pid, url: origin, host, port, startedAt: new Date().toISOString() }), { mode: 0o600 });
   await rename(join(dataDir, 'server.json.tmp'), join(dataDir, 'server.json'));
@@ -88,7 +117,7 @@ export async function startServer({ host, hostname, tls = null }) {
   async function close() {
     if (closing) return; closing = true;
     auth.persist(loginsFile);
-    codex.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
+    clearInterval(recovering); codex.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
     await closeServers();
     await unlink(join(dataDir, 'server.json')).catch(() => {});
   }

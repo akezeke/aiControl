@@ -106,6 +106,7 @@ const snapshot = () => {
     office: seats.update(sessions),
     towers: towers.update(sessions),
     battlefields: battlefields.update(sessions),
+    lost,
     usage, features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: 'demo', claudeAccounts: ['', 'work'],
     providers: [{ name: 'Codex', connected: true, detail: 'Demo data' }, { name: 'Claude Code', connected: true, detail: 'Demo data' }],
   };
@@ -166,6 +167,18 @@ const messages = {
   },
 };
 
+// With --lost, sessions a crash took, as server/recovery.mjs offers them. Resuming brings one back after a moment.
+const lost = !process.argv.includes('--lost') ? [] : [
+  { id: 'claude:9a1b2c3d-0000-4000-8000-000000000001', provider: 'claude', nativeId: '9a1b2c3d-0000-4000-8000-000000000001', account: '', cwd: `${home}/garden-planner`, project: 'garden-planner', title: 'Frost dates per postcode', status: 'working', detail: 'Bash · npm test -- frost', mode: 'auto',
+    prompt: 'Use the Met Office station data to work out the last frost date for each postcode, and show it on the planting calendar.', reply: 'The station lookup works; 41 of 43 tests pass. The two failures are postcodes on islands with no station inside 50 km, so I am adding a fallback to the nearest coastal one.', activeAt: ago(6), seenAt: ago(5), lostAt: ago(4), resuming: false },
+  { id: 'codex:5e6f7a8b-0000-4000-8000-000000000002', provider: 'codex', nativeId: '5e6f7a8b-0000-4000-8000-000000000002', account: '', cwd: `${home}/weather-station`, project: 'weather-station', title: 'Battery voltage on the status page', status: 'idle', detail: '', mode: '',
+    prompt: 'Show the sensor battery voltage on the status page, red under 3.3 V.', reply: 'Done: the status page shows voltage per sensor with a red dot under 3.3 V. Want me to add a low-battery push too?', activeAt: ago(30), seenAt: ago(5), lostAt: ago(4), resuming: false },
+];
+const recovery = {
+  resume: async ids => { for (const entry of lost.filter(entry => ids.includes(entry.id))) { entry.resuming = true; setTimeout(() => { lost.splice(lost.indexOf(entry), 1); sessions.push({ ...sessions[0], id: entry.id, nativeId: entry.nativeId, provider: entry.provider, title: entry.title, cwd: entry.cwd, project: entry.project, status: 'idle', updatedAt: Date.now(), messages: [] }); }, 1500); } return { resumed: ids, failed: [] }; },
+  dismiss: async ids => { for (const id of ids) { const i = lost.findIndex(entry => entry.id === id); if (i >= 0) lost.splice(i, 1); } return { ok: true }; },
+};
+
 // Enough of a spawn to try by hand: the agent turns up a moment later, where it was asked for.
 let spawned = 0;
 const spawn = async ({ cwd: typed, slot } = {}) => {
@@ -188,6 +201,6 @@ const authFile = join(await mkdtemp(join(tmpdir(), 'ai-control-demo-')), 'auth.j
 await savePassword(authFile, pin);
 const origins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
 const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: ['127.0.0.1', 'localhost'] } });
-const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder }));
+const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder, lost: recovery }));
 server.listen(port, '127.0.0.1', () => console.log(`AI Control demo: ${origins[0]}  PIN ${pin}  (Ctrl-C stops)`));
 process.once('SIGINT', () => { server.closeAllConnections(); server.close(); vite.close().finally(() => process.exit(0)); });

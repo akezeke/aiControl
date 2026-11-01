@@ -52,6 +52,7 @@ const sameCall = (pending, done) => Object.entries(pending ?? {}).every(([key, v
 export class ClaudeAdapter {
   sessions = new Map();
   hooks = new Map();
+  endings = new Map();
   sockets = new Set();
   registrations = new Map();
   owners = new Map();
@@ -198,7 +199,7 @@ export class ClaudeAdapter {
         if (e.hook_event_name === 'PreCompact') { state.compacting = e.trigger === 'manual' ? 'manual' : 'auto'; state.detail = 'Compacting context'; }
         if (e.hook_event_name === 'SessionStart') state.status = e.source !== 'compact' || previous?.compacting === 'manual' ? 'idle' : previous?.compacting ? 'working' : previous?.status || 'working';
         if (e.hook_event_name === 'Notification') { state.status = { permission_prompt: 'permission', idle_prompt: 'idle', elicitation_dialog: 'question' }[e.notification_type] || previous?.status || 'unknown'; state.detail = e.message || ''; }
-        if (e.hook_event_name === 'SessionEnd') { this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
+        if (e.hook_event_name === 'SessionEnd') { this.ended(e.session_id, e.reason); this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
         const request = claudeRequest(e);
         if (request) state.status = request.view.kind;
         this.hooks.set(e.session_id, state);
@@ -256,8 +257,17 @@ export class ClaudeAdapter {
     return record;
   }
   async fire(sessionId) {
-    return this.messaging.fire(await this.quiet(sessionId), () => this.quiet(sessionId));
+    const result = await this.messaging.fire(await this.quiet(sessionId), () => this.quiet(sessionId));
+    this.ended(sessionId, 'fired');
+    return result;
   }
+  // How a session said it ended (SessionEnd's reason, or 'fired'), for recovery.mjs to tell a goodbye from a crash. Kept a while.
+  ended(sessionId, reason) {
+    const now = Date.now();
+    for (const [id, { at }] of this.endings) if (now - at > 600_000) this.endings.delete(id);
+    if (sessionId) this.endings.set(sessionId, { reason: String(reason || 'other'), at: now });
+  }
+  ending(sessionId) { return this.endings.get(sessionId)?.reason || ''; }
   // /clear starts a new session in the same process, whose registration takes on the new id a second or so later.
   // The panel moves to that id, so it comes back only once it's listed.
   async clear(sessionId) {
