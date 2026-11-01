@@ -141,7 +141,7 @@ function chooseTheme(id) {
   for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
   // Picking a scene theme opens its scene, even if its list was showing last.
   if (sceneFor(document.documentElement.dataset.theme) && sceneList) setSceneList(false); else syncScene();
-  dressCity();
+  dressTheme();
 }
 function themeMenu() {
   const menu = el('details', 'theme-menu');
@@ -296,7 +296,8 @@ function showWorkspace() {
     const id = through(event); if (!id) closePanel(); else if (id !== state.selected) navigation.open(id, { replace: true });
   };
   backdrop.onwheel = event => { if (scene?.scroll?.(event.clientX, event.clientY, event.deltaY * (event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? innerHeight : 1))) event.preventDefault(); };
-  backdrop.onpointermove = event => { if (event.pointerType === 'mouse' && scene?.at) backdrop.style.cursor = through(event) || command(event) ? 'pointer' : ''; };
+  backdrop.onpointermove = event => { if (event.pointerType !== 'mouse' || !scene?.at) return; backdrop.style.cursor = through(event) || command(event) ? 'pointer' : ''; scene.hover?.(event.clientX, event.clientY); };
+  backdrop.onpointerleave = () => scene?.hover?.(null);
   const panel = el('section', 'detail-panel'); panel.id = 'panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-label', 'Session details');
   app.append(backdrop, panel);
   poll = setInterval(refresh, 3000);
@@ -330,14 +331,22 @@ function setSceneList(list) {
   syncScene(); renderData();
   if (list) document.querySelector('.office-button')?.focus();
 }
-// City's list and panel show each session's own tower, baked by the scene's generator, loaded only for this theme.
-let portraits = null, portraitsLoading = false;
-function dressCity() {
-  if (document.documentElement.dataset.theme !== 'city') return;
+// City's list and panel show each session's own tower, baked by the scene's generator; Fantasy's sidebar map puts each party on its land. Each loaded only for its theme.
+let portraits = null, portraitsLoading = false, worldMap = null, worldMapLoading = false;
+function dressTheme() {
+  const theme = document.documentElement.dataset.theme;
+  if (theme === 'fantasy') {
+    if (worldMap) { worldMap.dressMap(document.querySelector('#theme-console .console-screen'), state.snapshot); return; }
+    if (worldMapLoading) return;
+    worldMapLoading = true;
+    import('./fantasy/worldmap.js').then(module => { worldMap = module; dressTheme(); }).catch(() => { /* The map only lacks its dots. */ }).finally(() => { worldMapLoading = false; });
+    return;
+  }
+  if (theme !== 'city') return;
   if (portraits) { portraits.dressList(document, state.snapshot, { error: !!state.error, reduced: reducedMotion.matches, selected: state.selected }); return; }
   if (portraitsLoading) return;
   portraitsLoading = true;
-  import('./city/portrait.js').then(module => { portraits = module; dressCity(); }).catch(() => { /* The list is complete without them. */ }).finally(() => { portraitsLoading = false; });
+  import('./city/portrait.js').then(module => { portraits = module; dressTheme(); }).catch(() => { /* The list is complete without them. */ }).finally(() => { portraitsLoading = false; });
 }
 // A scene that throws while unmounting has already stopped drawing: its box goes anyway, or its last frame stays up, frozen.
 function closeScene() { try { scene?.unmount(); } catch (error) { console.error(error); } scene = null; sceneLook = null; document.querySelector('.main-content > .scene')?.remove(); }
@@ -463,7 +472,7 @@ function renderData() {
       const row = el('div', 'integration'); const status = el('span', `connection-dot ${provider.connected ? 'online' : ''}`); row.title = provider.detail; row.append(status, el('strong', '', provider.name), el('span', 'muted', provider.detail)); integrations.append(row);
     }
   }
-  dressCity();
+  dressTheme();
 }
 
 // One-line previews: drop code blocks and Markdown markers (keep snake_case underscores).
@@ -595,7 +604,7 @@ function renderPanel() {
   }
   renderRecentMessages(session);
   renderComposer(session);
-  dressCity();
+  dressTheme();
 }
 
 // Triage: the next session waiting for you, in overview order.
@@ -1275,7 +1284,7 @@ function showThemePicker() {
     choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
   }
   dialog.append(el('h2', '', 'Pick a theme'), grid);
-  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncScene(); dressCity(); };
+  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncScene(); dressTheme(); };
   document.body.append(dialog); dialog.showModal();
 }
 if (firstVisit) showThemePicker();

@@ -24,32 +24,32 @@
 .fy-ui [hidden] { display: none !important; }
 .win { background: var(--win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--frame); text-shadow: 1px 1px 0 #000; pointer-events: auto; }
 /* A bar is a slot set into the window, filled with a band of light over its colour and a shadow under it. */
-.fy-bar u, .fy-limit i, .fy-chip u { background: #0c140e; border: 2px solid; border-color: var(--sunk); }
+.fy-bar u, .fy-chip u { background: #0c140e; border: 2px solid; border-color: var(--sunk); }
 
 .fy-top { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 2px 8px; flex-wrap: wrap; }
-.fy-icon { width: 26px; height: 26px; font-size: 19px; line-height: 1; flex: none; }
-.fy-icon:hover, .fy-next:hover { background: #fff2; }
+.fy-icon { width: 32px; height: 30px; font-size: 19px; line-height: 1; flex: none; }
+.fy-icon:is(:hover, [data-under]), .fy-next:is(:hover, [data-under]) { background: #fff2; }
 .fy-ui .fy-nav { min-height: 36px; padding: 0 12px; font: 800 16px var(--display); color: #fff; white-space: nowrap; background: #ffffff1f; background-clip: padding-box; border: 2px solid transparent; border-image: url('/fantasy/frame-key.svg') 1 / 2px; flex: none; }
-.fy-ui .fy-nav:hover, .fy-ui .fy-nav:focus-visible { background-color: #ffffff40; border-image-source: url('/fantasy/frame-key-hi.svg'); }
+.fy-ui .fy-nav:is(:hover, :focus-visible, [data-under]) { background-color: #ffffff40; border-image-source: url('/fantasy/frame-key-hi.svg'); }
 .fy-ui .fy-nav[hidden] { display: none; }
 @media (hover: none) { .fy-ui .fy-nav { min-height: 42px; } }
+/* The marks are two screen pixels a pixel, like the frames, whatever the font. */
+.fy-mark { display: inline-block; margin-top: -3px; vertical-align: middle; background: 0 0 / 100% 100% no-repeat; }
+.fy-m-back { width: 16px; height: 20px; background-image: url('/fantasy/back.svg'); }
+.fy-m-list { width: 20px; height: 18px; background-image: url('/fantasy/list.svg'); }
+.fy-m-plus { width: 18px; height: 18px; background-image: url('/fantasy/plus.svg'); }
+.fy-m-dots { width: 22px; height: 6px; margin-top: 0; background-image: url('/fantasy/dots.svg'); }
+.fy-m-reset { width: 24px; height: 20px; margin-top: 0; background-image: url('/fantasy/reset.svg'); }
 .fy-crumb { flex: 1 1 0; font-size: 18px; font-weight: 700; letter-spacing: .02em; min-width: min(9ch, 40%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fy-crumb[hidden] { display: none; }
 .fy-crumb:not([hidden]) ~ .fy-grow { display: none; }
 .fy-conn { color: var(--bad); font-weight: 700; }
 .fy-grow { flex: 1; }
-/* The limits come last, so a short bar wraps them, not the commands. */
-.fy-limits { order: 1; display: inline-flex; flex: 0 1 auto; min-width: 0; overflow: hidden; gap: 2px 18px; }
-.fy-limit { flex: none; }
-.fy-limit { display: inline-flex; align-items: center; gap: 5px; color: var(--dim); font-size: 13px; }
-.fy-limit em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--ink); }
-.fy-limit i { width: 54px; height: 10px; display: block; }
-@media (max-width: 1280px) { .fy-limit i { width: 30px; } }
-.fy-limit i b { display: block; height: 100%; background: var(--fill-ok); }
-.fy-limit.crit { color: var(--bad); } .fy-limit.crit i b { background: var(--fill-bad); }
+/* The limits come last, so a short bar wraps them onto a line of their own, not the commands. They're the list header's gauges (fantasy-list.css). */
+.fy-limits { order: 1; flex: 1 1 560px; min-width: 0; }
 .fy-next { color: var(--ready); padding: 2px 6px !important; font-weight: 700 !important; font-size: 16px !important; }
 .fy-look { padding: 2px 6px !important; font-size: 14px !important; color: var(--dim) !important; flex: none; }
-.fy-look:hover { background: #fff2 !important; color: #fff !important; }
+.fy-look:is(:hover, [data-under]) { background: #fff2 !important; color: #fff !important; }
 
 .fy-body { position: relative; flex: 1; min-height: 0; }
 .fy-tiles { position: absolute; inset: 0; overflow-y: auto; display: grid; grid-auto-rows: minmax(min-content, auto); gap: 8px; pointer-events: auto; scrollbar-width: thin; touch-action: pan-y; transition: opacity .12s; }
@@ -57,7 +57,7 @@
 .fy-ui .fy-tile { position: relative; display: flex; flex-direction: column; text-align: left; border: 6px solid transparent; border-image: var(--frame); overflow: hidden; min-width: 0; }
 /* The windows take what they need and the fight keeps the rest, never less than this. */
 .fy-tile::before { content: ""; flex: 1 0 var(--fy-fight, 170px); }
-.fy-ui .fy-tile:hover { border-image-source: url('/fantasy/frame-hi.svg'); }
+.fy-ui .fy-tile:is(:hover, [data-under]) { border-image-source: url('/fantasy/frame-hi.svg'); }
 .fy-ui .fy-tile.alarm { border-image-source: url('/fantasy/frame-gold.svg'); }
 /* Fades on its own layer, so the tile's windows aren't repainted every frame. */
 @keyframes fy-alarm { 50% { opacity: 1; } }
@@ -67,7 +67,8 @@
 .fy-t-low { position: relative; padding: 3px 6px 4px; background: url('/fantasy/dither.svg') 0 0 / 8px 8px, linear-gradient(120deg, #18705cef 6.25%, #186858f0 0 12.5%, #146454f0 0 18.75%, #14604cf1 0 25%, #105848f1 0 31.25%, #105444f1 0 37.5%, #104c3cf2 0 43.75%, #0c4838f2 0 50%, #0c4434f3 0 56.25%, #0c4034f3 0 62.5%, #0c3c30f4 0 68.75%, #08382cf4 0 75%, #083428f4 0 81.25%, #083024f5 0 87.5%, #082c20f5 0 93.75%, #08281cf6 0); border-top: 2px solid #dcdcd2; box-shadow: 0 -2px 0 #000000c8; text-shadow: 1px 1px 0 #000b; }
 .fy-chips { display: flex; flex-wrap: wrap; gap: 1px 12px; font-size: 16px; }
 .fy-chip { position: relative; flex: 1 1 min(100%, 250px); display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 36px; padding: 1px 4px 13px 39px; color: var(--ink); }
-.fy-chip:hover { background: #fff2; color: #fff; }
+.fy-chip:is(:hover, [data-under]) { background: #fff2; color: #fff; }
+.fy-chip:is(:hover, [data-under])::after { content: ""; position: absolute; left: -6px; top: 50%; z-index: 1; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
 .fy-chip:is(.c-idle, .c-offline) { color: var(--dim); }
 .fy-chip:is(.c-idle, .c-offline) i { opacity: .55; }
 .fy-chip.ask { flex-basis: 100%; order: -1; color: var(--ready); }
@@ -102,8 +103,10 @@
 .fy-wins { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 7fr); gap: 6px; align-items: stretch; }
 .fy-foes { padding: 4px 8px; font-size: 14px; display: flex; flex-direction: column; gap: 3px; min-width: 0; max-height: 40vh; }
 .fy-foelist { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
-.fy-foe { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; text-align: left; }
-.fy-foe:hover { background: #fff1; }
+.fy-foe { position: relative; display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; text-align: left; }
+.fy-ui .fy-foe { padding-left: 42px; }
+.fy-foe:is(:hover, [data-under]) { background: #fff1; }
+.fy-foe:is(:hover, :focus-visible, [data-under])::before { content: ""; position: absolute; left: 0; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
 .fy-foe b { flex: none; width: 15px; text-align: center; color: var(--bad); font-weight: 700; }
 .fy-foe span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fy-foe small { flex: none; color: var(--teal); font-size: 12px; }
@@ -113,14 +116,14 @@
 .fy-ask { padding: 6px 10px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 0; }
 .fy-ask b { color: var(--ready); font: 700 16px var(--ui); }
 .fy-ask p { font: 500 13px/1.3 var(--read); margin: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.fy-answer { padding: 1px 2px 1px 20px !important; font-size: 18px !important; position: relative; margin-top: auto; }
-.fy-answer::before { content: ""; position: absolute; left: -6px; top: 5px; width: 24px; height: 15px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+.fy-answer { padding: 1px 2px 1px 44px !important; font-size: 18px !important; position: relative; margin-top: auto; }
+.fy-answer::before { content: ""; position: absolute; left: 0; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
 .fy-answer:hover { color: var(--ready); }
-.fy-party { padding: 4px 8px 4px 28px; display: grid; grid-template-columns: minmax(110px, 30%) minmax(0, 1fr) auto auto 118px; gap: 1px 10px; align-items: center; font-size: 16px; max-height: 40vh; overflow-y: auto; scrollbar-width: thin; min-width: 0; }
+.fy-party { padding: 4px 8px 4px 44px; display: grid; grid-template-columns: minmax(110px, 30%) minmax(0, 1fr) auto auto 118px; gap: 1px 10px; align-items: center; font-size: 16px; max-height: 40vh; overflow-y: auto; scrollbar-width: thin; min-width: 0; }
 .fy-row { position: relative; grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; text-align: left; }
-/* The hand points at whoever's under the pointer or asking. */
-.fy-ui button.fy-row:is(:hover, :focus-visible, .ready)::before { content: ""; position: absolute; left: -26px; top: 50%; width: 24px; height: 15px; margin-top: -7px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
-.fy-ui button.fy-row:hover { background: #fff1; }
+/* The hand points at whoever's under the pointer or asking, from the margin every pick list keeps for it, at the marks' two screen pixels a pixel. */
+.fy-ui button.fy-row:is(:hover, :focus-visible, .ready, [data-under])::before { content: ""; position: absolute; left: -44px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
+.fy-ui button.fy-row:is(:hover, [data-under]) { background: #fff1; }
 .fy-head { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
 .fy-row > * { padding: 1px 0; min-width: 0; }
 .fy-nm { display: flex; align-items: center; gap: 6px; font-weight: 800; }
@@ -179,9 +182,10 @@
 /* The new-agent menu is a window like the rest: plain words, the folder in a sunk field. Written over the office's and the city's, which stay loaded once seen. */
 #fantasy .office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; min-width: 200px; padding: 3px; border: 6px solid transparent; border-image: var(--frame); border-radius: 0; background: var(--win); background-clip: padding-box; box-shadow: none; filter: none; image-rendering: auto; color: #fff; text-shadow: 1px 1px 0 #000; animation: none; }
 #fantasy .office-menu[hidden] { display: none; }
-#fantasy .office-menu button { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 0; background: none; box-shadow: none; color: #fff; font: 800 16px var(--ui); text-shadow: 1px 1px 0 #000; cursor: pointer; }
+#fantasy .office-menu button { position: relative; display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 14px 0 44px; border: 0; border-radius: 0; background: none; box-shadow: none; color: #fff; font: 800 16px var(--ui); text-shadow: 1px 1px 0 #000; cursor: pointer; }
 #fantasy .office-menu button:hover, #fantasy .office-menu button:focus-visible { background: #ffffff1c; outline: none; }
 #fantasy .office-menu button:focus-visible { box-shadow: inset 0 0 0 2px #fff; }
+:is(#fantasy .office-menu, .fy-ui .fy-sheet) button:is(:hover, :focus-visible):not(:disabled)::before { content: ""; position: absolute; left: 1px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
 #fantasy .office-menu button:disabled { opacity: .5; cursor: progress; }
 #fantasy .office-menu .provider-icon { width: 20px; height: 20px; image-rendering: auto; }
 #fantasy .office-menu .office-folder { width: 240px; min-height: 36px; margin-bottom: 4px; padding: 0 10px; border: 4px solid transparent; border-image: var(--well); border-radius: 0; background: #04201a; background-clip: padding-box; box-shadow: none; color: #fff; font: 700 15px ui-monospace, monospace; }
@@ -198,7 +202,7 @@
 .fy-ui .fy-dots { min-width: 40px; padding: 0 8px; font-size: 20px; line-height: 1; }
 .fy-ui .fy-dots[aria-expanded=true] { background-color: #ffffff40; border-image-source: url('/fantasy/frame-key-hi.svg'); }
 .fy-sheet { position: absolute; right: -12px; top: calc(100% + 12px); z-index: 1; display: flex; flex-direction: column; gap: 2px; min-width: 190px; padding: 3px; }
-.fy-ui .fy-sheet button { display: flex; align-items: center; gap: 18px; min-height: 36px; padding: 0 10px; font: 800 16px var(--ui); white-space: nowrap; }
+.fy-ui .fy-sheet button { position: relative; display: flex; align-items: center; gap: 18px; min-height: 36px; padding: 0 10px 0 44px; font: 800 16px var(--ui); white-space: nowrap; }
 .fy-ui .fy-sheet button:is(:hover, :focus-visible) { background: #ffffff1c; outline: none; }
 .fy-ui .fy-sheet button:focus-visible { box-shadow: inset 0 0 0 2px #fff; }
 .fy-sheet em { margin-left: auto; font-style: normal; font-weight: 700; color: var(--dim); }
@@ -208,16 +212,13 @@
   .fy-more { display: flex; }
   .fy-look, .fy-reset { display: none; }
   .fy-top { gap: 4px 6px; }
-  .fy-limits { gap: 2px 8px; }
   .fy-ui .fy-nav { min-width: 40px; padding: 0 10px; }
   .fy-word { display: none; }
   .fy-crumb { min-width: 5ch; font-size: 16px; }
-  .fy-limit i { width: 22px; }
   .fy-wins { grid-template-columns: minmax(0, 1fr); }
   .fy-foes { display: none; }
   .fy-party { grid-template-columns: minmax(80px, 33%) minmax(0, 1fr) auto 62px; column-gap: 6px; font-size: 15px; }
   .fy-tm { width: 38px; }
   .fy-st i { display: none; }
   .fy-party .fy-md { display: none; }
-  .fy-limit em { display: none; }
 }

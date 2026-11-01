@@ -9,7 +9,8 @@ const node = (tag, className, text) => {
   return element;
 };
 
-export function renderUsage(container, accounts, { now = Date.now(), disconnected = false } = {}) {
+// Each account's gauges; the list's header and Fantasy's scene bar both show these.
+export function usageAccounts(accounts, { now = Date.now(), disconnected = false } = {}) {
   const rows = node('div', 'usage-accounts');
   // With several Claude accounts every row gets a label column, empty for the default one, so meters stay aligned.
   const labelled = accounts?.some(account => account.label);
@@ -61,6 +62,10 @@ export function renderUsage(container, accounts, { now = Date.now(), disconnecte
     if (stale && account.windows?.length) row.append(node('span', 'usage-state', 'stale'));
     rows.append(row);
   }
-  container.replaceChildren(rows);
+  return rows;
+}
+
+export function renderUsage(container, accounts, options = {}) {
+  container.replaceChildren(usageAccounts(accounts, options));
   renderPower(accounts || []);
 }

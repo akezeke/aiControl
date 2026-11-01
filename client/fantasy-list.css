@@ -10,6 +10,10 @@
   :is(.session-list, .group-title, .usage-accounts, .login-card, .empty, .sidebar, .filter-options, .theme-options, .toast, .integrations, .request-box) { background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; color: var(--text); text-shadow: var(--fy-ink); }
   :is(.topbar, .chat-header, .message-composer) { background: var(--fy-win); -webkit-backdrop-filter: none; backdrop-filter: none; text-shadow: var(--fy-ink); }
   .topbar, .chat-header { border-bottom: 2px solid #dcdcd2; box-shadow: 0 2px 0 #000000c8; }
+  /* The line icons as thick as the fight bar's pixel marks, square-ended, with the text's hard shadow; Back is the bar's own chevron. */
+  .icon svg { stroke-width: 2.6; stroke-linecap: square; stroke-linejoin: miter; filter: drop-shadow(1px 1px 0 #000000c8); }
+  :is(.chat-header .back-button, .panel-heading > .quiet-button:first-child) .icon { width: 16px; height: 20px; background: url('/fantasy/back.svg') 0 0 / 100% 100%; }
+  :is(.chat-header .back-button, .panel-heading > .quiet-button:first-child) .icon svg { display: none; }
   .message-composer { border-top: 2px solid #dcdcd2; box-shadow: 0 -2px 0 #000000c8; }
   .detail-panel { background: url('/fantasy/dither.svg') 0 0 / 8px 8px, linear-gradient(160deg, #08382c 10%, #08382c 0 20%, #083428 0 30%, #083028 0 40%, #083024 0 50%, #082c24 0 60%, #082820 0 70%, #042820 0 80%, #04241c 0 90%, #04201c 0); border-left: 2px solid #dcdcd2; box-shadow: -2px 0 0 #000000c8, var(--shadow-lg); }
   @media (max-width: 640px) { .detail-panel { border-left: 0; } }
@@ -42,22 +46,31 @@
   .page-heading h1 { display: none; }
   .status-text.fantasy { color: var(--accent-2); text-shadow: var(--fy-ink); text-transform: none; letter-spacing: 0; }
 
-  /* The gauges: one window, an account to a stretch of it, thin bars, and a reset time only once it matters. */
-  .usage-accounts { display: flex; flex-wrap: wrap; gap: 2px 26px; padding: 5px 12px; }
-  .usage-account, .usage-account + .usage-account { flex: 1 1 280px; padding: 0; border: 0; gap: 8px; }
+  /* The gauges: one window, an account to a stretch of it, thin bars and when each resets. */
+  .usage-accounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 2px 26px; padding: 5px 12px; }
+  .usage-accounts > .usage-note { grid-column: 1 / -1; padding: 0; }
+  .usage-account, .usage-account + .usage-account { padding: 0; border: 0; gap: 8px; }
   .usage-tag { flex: 0 0 auto; color: var(--text-2); font: 700 13px/1 var(--font); }
   .usage-tag:empty { display: none; }
   .usage-windows { gap: 12px; }
   .usage-window, .usage-window.usage-wide { flex: 1 1 96px; min-width: 96px; font: 700 13px/1.15 var(--font); }
   .usage-label { color: var(--text-2); }
   .usage-note { color: var(--text-2); font-size: 13px; }
-  .usage-reset { display: none; font-size: 13px; color: var(--text-2); }
-  :is(.usage-high, .usage-full, .usage-expired) .usage-reset { display: block; }
+  .usage-reset { font-size: 13px; color: var(--text-2); }
   /* Chunky like the windows' own bars: a slot, lit along the top of its fill. */
   :is(.usage-meter, .plan-meter) { height: 10px; border: 2px solid; border-color: var(--fy-slot); border-radius: 0; background: #0c140e; }
   :is(.usage-meter, .plan-meter)::-webkit-progress-bar { background: #0c140e; border-radius: 0; }
   :is(.usage-meter, .plan-meter)::-webkit-progress-value { background: var(--fy-fill); border-radius: 0; }
   :is(.usage-meter, .plan-meter)::-moz-progress-bar { background: var(--fy-fill); border-radius: 0; }
+  /* The bar fills as usage climbs: green, yellow once it runs high, red when it's spent. */
+  .usage-meter { --fy-used: var(--fy-fill); }
+  .usage-meter::-webkit-progress-value { background: var(--fy-used); }
+  .usage-meter::-moz-progress-bar { background: var(--fy-used); }
+  .usage-high .usage-meter { --fy-used: linear-gradient(#fff0a0 0 2px, #e0b040 0 calc(100% - 2px), #986818 0); }
+  .usage-full .usage-meter { --fy-used: linear-gradient(#ffb8a0 0 2px, #e04030 0 calc(100% - 2px), #902018 0); }
+  .usage-percent { font-weight: 900; }
+  /* The scene's bar shows the same gauges, already in a window of its own. */
+  .fy-limits .usage-accounts { padding: 0; border: 0; background: none; }
 
   .search { min-height: 38px; }
 
@@ -74,11 +87,11 @@
   .session-list:empty { display: none; }
 
   /* A session is a line of the party menu. */
-  .session-card { min-height: 64px; padding: 5px 14px 5px 12px; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; background: none; border: 0; border-radius: 0; box-shadow: none; text-shadow: var(--fy-ink); }
+  .session-card { min-height: 64px; padding: 5px 14px 5px 22px; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; background: none; border: 0; border-radius: 0; box-shadow: none; text-shadow: var(--fy-ink); }
   .session-card:hover { background: #ffffff12; border: 0; box-shadow: none; }
   .session-card:focus-visible { outline: 2px solid var(--warn); outline-offset: -2px; }
   .session-card.needs-input { background: none; box-shadow: none; }
-  .session-card:is(:hover, :focus-visible)::after { content: ''; position: absolute; left: -3px; top: 50%; z-index: 1; width: 27px; height: 17px; margin-top: 2px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .session-card:is(:hover, :focus-visible)::after { content: ''; position: absolute; left: -6px; top: 50%; z-index: 1; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
   .session-card.needs-input .session-title { color: var(--warn); }
   .session-card[data-status=error] .session-title { color: var(--danger); }
   .session-card:is([data-status=idle], [data-status=offline]) { :is(.session-title, .message-preview, .session-description) { color: var(--text-3); } .agent-mark { opacity: .6; } }
@@ -95,7 +108,7 @@
   .session-right { gap: 3px; }
 
   /* A subagent is a smaller line under whoever called it. */
-  .session-card.subagent { min-height: 42px; padding: 2px 14px 2px 40px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; }
+  .session-card.subagent { min-height: 42px; padding: 2px 14px 2px 50px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; }
   .session-card.subagent .agent-mark { width: 32px; height: 32px; }
   .session-card.subagent .session-title { font-size: 15px; font-weight: 700; }
   .session-card.subagent .message-preview, .session-card.subagent .session-description { font-size: 13px; }
@@ -116,15 +129,48 @@
   .sidebar .nav-item { position: relative; min-height: 34px; padding: 4px 8px 4px 34px; background: none; color: var(--text-2); font: 700 16px/1.1 var(--display); }
   .sidebar .nav-item:hover { background: #ffffff14; color: #fff; }
   .sidebar .nav-item.active { background: none; color: #fff; }
-  .sidebar .nav-item.active::before { content: ''; position: absolute; left: 3px; top: 50%; width: 27px; height: 17px; margin-top: -8px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .sidebar .nav-item.active::before { content: ''; position: absolute; left: -8px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
   .sidebar .nav-item .icon { display: none; }
   .nav-count, .nav-item.active .nav-count { padding: 0; background: none; color: var(--text-2); font: 700 15px/1 var(--display); }
   .sidebar > .top-actions { border-top-color: #ffffff26; }
+
+  /* The world map's corner map: grey lands on a see-through sea, each party a block of dots on its land, the camera's red dot and yellow cone while a fight's open (fantasy/worldmap.js). */
+  .theme-console { display: block; position: relative; margin: 0 0 4px; }
+  .console-lamps, .console-heading, .console-power, .console-vector, .console-sweep, .console-signal { display: none; }
+  .console-screen { position: relative; box-sizing: content-box; width: calc(100% - 4px); aspect-ratio: 1; overflow: hidden; isolation: isolate; border: 2px solid #a8b0a4; background: #021610b8 url('/fantasy/world.svg') 0 0 / 100% 100%; image-rendering: pixelated; box-shadow: 2px 2px 0 #000000c8; }
+  .console-contacts { position: absolute; inset: 0; z-index: 1; }
+  .console-contact { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .console-screen[data-world] .console-contact { left: var(--world-x) !important; top: var(--world-y) !important; }
+  .console-screen:not([data-world]) .console-contact, .console-contact[data-off-world] { display: none; }
+  .console-contact::after { content: ''; position: absolute; left: 1px; top: 1px; width: 6px; height: 6px; background: #eef2ea; box-shadow: 2px 2px 0 #000000c8; }
+  .console-contact[data-status=working]::after { background: var(--ok); }
+  .console-contact:is([data-status=question], [data-status=permission])::after { background: var(--warn); }
+  .console-contact[data-status=error]::after { background: var(--danger); }
+  .console-contact[data-status=offline]::after { background: #6f7a6e; }
+  .console-contact:is(:hover, :focus-visible, [data-tracked]) { z-index: 1; outline: 0; }
+  .console-contact:is(:hover, :focus-visible, [data-tracked])::after { box-shadow: 0 0 0 2px #000000c8, 0 0 0 4px #fff; }
+  .world-look { display: block; position: absolute; z-index: 0; pointer-events: none; }
+  .world-look::before { content: ''; position: absolute; left: 0; top: -14px; width: 34px; height: 28px; background: #ece45c; opacity: .55; clip-path: polygon(0 50%, 100% 0, 100% 100%); transform: rotate(var(--turn)); transform-origin: 0 50%; }
+  .world-look::after { content: ''; position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; background: #e8282c; box-shadow: 2px 2px 0 #000000c8; }
+  .console-readout { position: absolute; left: 4px; right: 6px; bottom: 6px; z-index: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 2px 6px; background: #000000b0; pointer-events: none; text-shadow: var(--fy-ink); }
+  .theme-console:has(.console-contact[data-tracked][data-south]) .console-readout { top: 4px; bottom: auto; }
+  .console-readout[data-status=''] { display: none; }
+  .console-track-label { flex: none; color: var(--text-3); font: 700 12px/1.3 var(--display); }
+  .console-readout[data-status=working] .console-track-label { color: var(--ok); }
+  .console-readout:is([data-status=question], [data-status=permission]) .console-track-label { color: var(--warn); }
+  .console-readout:is([data-status=error], [data-status=offline]) .console-track-label { color: var(--danger); }
+  .console-track-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font: 700 12px/1.3 var(--display); }
+  .console-empty:not([hidden]) { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: #021610b0; color: var(--text-2); font: 700 13px var(--display); text-shadow: var(--fy-ink); }
+  .theme-console[data-disconnected=true] .console-contacts { opacity: .35; }
+  @media (prefers-reduced-motion: no-preference) {
+    .console-contact:is([data-status=question], [data-status=permission])::after { animation: fy-world-blink 1s steps(1) infinite; }
+  }
+
   .theme-choice { padding-left: 34px; position: relative; font: 700 16px/1.1 var(--display); color: var(--text-2); }
   .theme-choice:hover { background: #ffffff14; color: #fff; }
   .theme-choice[aria-pressed=true] { background: none; color: #fff; }
   .theme-choice[aria-pressed=true]::after { content: none; }
-  .theme-choice[aria-pressed=true]::before { content: ''; position: absolute; left: 3px; top: 50%; width: 27px; height: 17px; margin-top: -8px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .theme-choice[aria-pressed=true]::before { content: ''; position: absolute; left: -6px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
   .brand-variant.fantasy .brand-mark { width: 30px; height: 30px; padding: 0; background: url('/fantasy/mark.svg') center / contain no-repeat; box-shadow: none; }
   .brand-variant.fantasy .brand-mark i { display: none; }
   .brand-variant.fantasy .brand-name { font: 800 20px/1 var(--display); letter-spacing: 0; text-shadow: var(--fy-ink); }
@@ -144,11 +190,11 @@
   /* A request is a dialogue with choices: the hand picks one. */
   .request-box { border-image-source: url('/fantasy/frame-gold.svg'); }
   .request-box > .eyebrow { display: none; }
-  .answer-option { position: relative; min-height: 36px; margin: 0; padding: 4px 8px 4px 36px; font-weight: 700; }
+  .answer-option { position: relative; min-height: 36px; margin: 0; padding: 4px 8px 4px 46px; font-weight: 700; }
   .answer-option input { position: absolute; opacity: 0; pointer-events: none; }
   .answer-option:has(input:checked) { background: none; border: 0; box-shadow: none; color: var(--warn); }
   .answer-option:has(input:checked) span span { color: var(--text-2); }
-  .answer-option:is(:hover, :has(input:checked, input:focus-visible))::before { content: ''; position: absolute; left: 4px; top: 50%; width: 27px; height: 17px; margin-top: -8px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .answer-option:is(:hover, :has(input:checked, input:focus-visible))::before { content: ''; position: absolute; left: 2px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
   .empty { border-style: solid; }
   .integrations { padding: 5px 10px; }
 }
@@ -162,21 +208,21 @@
 }
 /* The rail and the phone have no room for the hand's gutter. */
 @media (max-width: 900px) {
+  :root[data-theme=fantasy] .theme-console { display: none; }
   :root[data-theme=fantasy] .sidebar .nav-item { padding-left: 8px; justify-content: center; }
   :root[data-theme=fantasy] .sidebar .nav-item .icon { display: block; }
-  :root[data-theme=fantasy] .sidebar .nav-item.active::before { left: -2px; width: 14px; height: 9px; margin-top: -4px; }
+  :root[data-theme=fantasy] .sidebar .nav-item.active::before { left: -3px; width: 21px; height: 12px; margin-top: -6px; }
   :root[data-theme=fantasy] .sidebar { padding-inline: 4px; }
 }
 @media (max-width: 640px) {
-  :root[data-theme=fantasy] .session-card { min-height: 58px; padding-inline: 8px 10px; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 9px; }
+  :root[data-theme=fantasy] .session-card { min-height: 58px; padding-inline: 16px 10px; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 9px; }
   :root[data-theme=fantasy] .agent-mark { width: 44px; height: 44px; }
-  :root[data-theme=fantasy] .session-card.subagent { padding-left: 26px; grid-template-columns: 28px minmax(0, 1fr) auto; }
+  :root[data-theme=fantasy] .session-card.subagent { padding-left: 34px; grid-template-columns: 28px minmax(0, 1fr) auto; }
   :root[data-theme=fantasy] .session-card.subagent .agent-mark { width: 28px; height: 28px; }
-  :root[data-theme=fantasy] .session-card:is(:hover, :focus-visible)::after { left: -6px; width: 23px; height: 15px; }
+  :root[data-theme=fantasy] .session-card:is(:hover, :focus-visible)::after { left: -6px; }
   :root[data-theme=fantasy] .session-title { font-size: 16px; }
   :root[data-theme=fantasy] .branch { display: none; }
-  :root[data-theme=fantasy] .usage-accounts { gap: 4px; }
-  :root[data-theme=fantasy] .usage-account, :root[data-theme=fantasy] .usage-account + .usage-account { flex-basis: 100%; }
+  :root[data-theme=fantasy] .usage-accounts { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }
 
 /* The title screen: the logo over a plate, with the PIN in a window and the hand pointing at it. */
@@ -189,7 +235,7 @@
   .login-card .brand-variant.fantasy .brand-mark { width: clamp(40px, 9vw, 72px); height: clamp(40px, 9vw, 72px); filter: drop-shadow(0 3px 0 #0008); }
   .login-card .brand-variant.fantasy .brand-name { font: 800 clamp(36px, 8vw, 68px)/1 var(--display); color: #fff; white-space: nowrap; text-shadow: 0 3px 0 #000b, 0 0 26px #0009; }
   .login-form { position: relative; width: min(100%, 320px); align-self: center; gap: 8px; padding: 9px 11px 9px 47px; background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; }
-  .login-form::before { content: ''; position: absolute; left: 9px; top: 9px; width: 30px; height: 42px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .login-form::before { content: ''; position: absolute; left: 7px; top: 18px; width: 42px; height: 24px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
   .login-form input { min-height: 42px; }
   .login-form .primary { margin-top: 0; min-height: 38px; }
   .login-form .form-error:empty { display: none; }
@@ -210,6 +256,9 @@
     }
   }
 }
+/* The map's camera mark lives in the console every theme shares; only Fantasy shows it. */
+.world-look { display: none; }
+@keyframes fy-world-blink { 50% { opacity: .15; } }
 @keyframes fy-title-drift { to { transform: scale(1.07); } }
 @keyframes fy-window-open { from { transform: scaleY(.1); opacity: 0; } }
 

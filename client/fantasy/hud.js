@@ -1,5 +1,5 @@
 // The windows over the fights: the bar, one tile per project, and the party and enemy windows of the fight in focus. The DOM is touched only when something changed.
-import { usageWindowView } from '../usage-presentation.js';
+import { usageAccounts } from '../usage.js';
 import { paintPortrait } from './portraits.js';
 import { tileLayout } from './camera.js';
 import { busy, hasTurn, hpBand, needsYou, tokens, turnGauge } from './roster.js';
@@ -7,7 +7,6 @@ import { busy, hasTurn, hpBand, needsYou, tokens, turnGauge } from './roster.js'
 const GLYPH = { working: '⚔', thinking: '✦', compacting: '✚', permission: '!', question: '?', waiting: '…', idle: 'Zzz', done: '✓', error: '✕', offline: '○' };
 const WORD = { working: 'Working', thinking: 'Thinking', compacting: 'Compacting', permission: 'Needs approval', question: 'Has a question', waiting: 'Waiting', idle: 'Idle', done: 'Finished', error: 'Error', offline: 'Offline' };
 const SHOUT = { permission: 'READY!', question: '?' };
-const LIMIT_TONES = { warn: 'low', danger: 'crit', critical: 'crit' };
 
 const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
 const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
@@ -15,6 +14,8 @@ const tip = (node, text) => { if (node.title !== text) node.title = text; };
 const cls = (node, name) => { if (node.className !== name) node.className = name; };
 const fill = (node, percent) => { const width = `${percent.toFixed(1)}%`; if (node.style.width !== width) node.style.width = width; };
 const button = (className, text, label, onClick) => { const node = el('button', className, text); node.type = 'button'; node.title = label; node.setAttribute('aria-label', label); node.onclick = onClick; return node; };
+// A mark in the bar, drawn in pixels (scripts/fantasy-frames.mjs).
+const pixelMark = name => el('i', `fy-mark fy-m-${name}`);
 const bar = () => { const track = el('u'), inner = el('b'); track.append(inner); return { track, inner }; };
 
 const sinceOf = member => { const at = member.askedAt || member.session?.statusSince, ms = typeof at === 'number' ? at : Date.parse(at); return Number.isFinite(ms) ? ms : null; };
@@ -23,9 +24,9 @@ export function elapsed(ms) {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 86400)}d`;
 }
+const gaugeWords = (member, gauge, time) => gauge.tone === 'ready' ? 'Your move' : gauge.tone === 'error' ? 'Stopped on an error' : [`${WORD[member.state]}${time ? ` ${time}` : ''}`, gauge.last && `last turn took ${elapsed(Date.now() - gauge.last)}`].filter(Boolean).join(', ');
 const showsTime = state => needsYou(state) || state === 'waiting' || state === 'error' || state === 'compacting';
 // What this member is up to, in the fewest words that are still true.
-const gaugeWords = (member, gauge, time) => gauge.tone === 'ready' ? 'Your move' : gauge.tone === 'error' ? 'Stopped on an error' : [`${WORD[member.state]}${time ? ` ${time}` : ''}`, gauge.last && `last turn took ${elapsed(Date.now() - gauge.last)}`].filter(Boolean).join(', ');
 export function statusLine(member) {
   const { state, detail, request, job } = member;
   if (needsYou(state)) return request?.title || WORD[state];
@@ -102,22 +103,22 @@ export function createHud(box, actions) {
   const back = button('fy-nav', '', 'Back to all fights', () => actions.back());
   const add = button('fy-nav', '', 'New agent', () => actions.spawn(add));
   // A narrow scene keeps the commands' marks and drops their words.
-  for (const [node, mark, word] of [[list, '☰', 'List'], [back, '‹', 'Back'], [add, '+', 'New']]) node.append(mark, el('span', 'fy-word', ` ${word}`));
+  for (const [node, mark, word] of [[list, 'list', 'List'], [back, 'back', 'Back'], [add, 'plus', 'New']]) node.append(pixelMark(mark), el('span', 'fy-word', ` ${word}`));
   // With nothing to show, starting something is the whole screen's business.
-  const start = button('fy-nav', '+ New', 'New agent', () => actions.spawn(start)); empty.append(el('span', '', 'No sessions'), start);
+  const start = button('fy-nav', '', 'New agent', () => actions.spawn(start)); start.append(pixelMark('plus'), ' New'); empty.append(el('span', '', 'No sessions'), start);
   const crumb = el('strong', 'fy-crumb'), conn = el('span', 'fy-conn', 'Connection lost'), limits = el('span', 'fy-limits');
   const next = button('fy-next', '', 'Next waiting', () => actions.next());
   let low = false; const look = button('fy-look', '', 'Switch between the PS1 and HD look', () => actions.look(!low));
-  const reset = button('fy-icon fy-reset', '⟲', 'Reset the camera', () => actions.reset());
+  const reset = button('fy-icon fy-reset', '', 'Reset the camera', () => actions.reset()); reset.append(pixelMark('reset'));
   // A narrow bar folds the look, the camera and full screen into one menu.
-  const more = el('span', 'fy-more'), sheet = el('div', 'fy-sheet win'), dots = button('fy-nav fy-dots', '⋯', 'More', () => (sheet.hidden ? openMore() : closeMore()));
+  const more = el('span', 'fy-more'), sheet = el('div', 'fy-sheet win'), dots = button('fy-nav fy-dots', '', 'More', () => (sheet.hidden ? openMore() : closeMore())); dots.append(pixelMark('dots'));
   dots.setAttribute('aria-haspopup', 'menu'); dots.setAttribute('aria-expanded', 'false'); sheet.setAttribute('role', 'menu'); sheet.hidden = true; more.append(dots, sheet);
   const item = (word, act) => { const node = el('button', null, word), value = el('em'); node.type = 'button'; node.setAttribute('role', 'menuitem'); node.append(value); node.onclick = act; sheet.append(node); return { node, word, value }; };
   const show = (it, value) => { put(it.value, value); it.node.setAttribute('aria-label', `${it.word}: ${value}`); };
   const lookItem = item('Look', () => actions.look(!low)), resetItem = item('Reset camera', () => { closeMore(true); actions.reset(); });
   const screenItem = item('Full screen', () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {}));
   const showScreen = () => show(screenItem, document.fullscreenElement ? 'On' : 'Off');
-  put(resetItem.value, '⟲'); resetItem.node.setAttribute('aria-label', resetItem.word); screenItem.node.hidden = !document.fullscreenEnabled; showScreen();
+  resetItem.value.append(pixelMark('reset')); resetItem.node.setAttribute('aria-label', resetItem.word); screenItem.node.hidden = !document.fullscreenEnabled; showScreen();
   const shown = () => [...sheet.children].filter(node => !node.hidden);
   function openMore() { sheet.hidden = false; dots.setAttribute('aria-expanded', 'true'); shown()[0]?.focus(); }
   function closeMore(refocus) { if (sheet.hidden) return; sheet.hidden = true; dots.setAttribute('aria-expanded', 'false'); if (refocus) dots.focus(); }
@@ -217,17 +218,11 @@ export function createHud(box, actions) {
     status({ error, waiting, usage }) {
       conn.hidden = !error;
       next.hidden = !waiting; put(next, waiting ? `⚠ ${waiting}` : '');
-      // Each account's fullest window; the tooltip has them all. More than one account: each says whose it is.
-      const accounts = (usage || []).map(account => ({ account, views: (account.windows || []).filter(window => Number.isFinite(window.usedPercent)).map(usageWindowView) })).filter(({ views }) => views.length);
-      const key = accounts.map(({ account, views }) => `${account.name}${views.map(view => `${view.shortLabel}${view.percentText}${view.resetText}${view.tone}`).join()}`).join('|');
+      // The list's own gauges (usage.js), so the scene's bar and the list's header read the same.
+      const key = JSON.stringify([usage, !!error, Math.floor(Date.now() / 60_000)]);
       if (key === limitsKey) return;
       limitsKey = key;
-      limits.replaceChildren(...accounts.map(({ account, views }) => {
-        const fullest = views.reduce((a, b) => b.barPercent > a.barPercent ? b : a), node = el('span', `fy-limit ${LIMIT_TONES[fullest.tone] || ''}`, accounts.length > 1 ? account.label || account.provider : fullest.shortLabel), track = el('i'), inner = el('b');
-        track.append(inner); inner.style.width = `${fullest.barPercent}%`; node.append(track, el('em', '', fullest.percentText));
-        node.title = views.map(view => `${account.name || account.provider} ${view.shortLabel} ${view.percentText} · ${view.resetText}`).join('\n');
-        return node;
-      }));
+      limits.replaceChildren(...usage ? [usageAccounts(usage, { disconnected: !!error })] : []);
     },
     // A summon or big spell keeps the banner until it ends; small attacks don't talk over it.
     banner(name, line, seconds, big, final) {

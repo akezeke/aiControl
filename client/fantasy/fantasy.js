@@ -12,6 +12,7 @@ import { PlatePainter } from './places.js';
 import { createSay } from './say.js';
 import { clamp, mix } from './rig.js';
 import { buildFights } from './roster.js';
+import { lookFrom } from './worldmap.js';
 
 const NIGHT = 0x0e0b08, LOOK_KEY = 'fantasy-look', BUSY_MS = 1000 / 60, RESTING_MS = 1000 / 30, MOST_PIXELS = 2560 * 1600;
 const smooth = t => t * t * (3 - 2 * t);
@@ -193,6 +194,8 @@ export function mountFantasy(container, hooks = {}) {
         shown.render(renderer, toBuf(rect), toBuf(clip), scale, { bottom: mix((shown.lowH || 0) / Math.max(1, height), covers.bottom, k), top: mix(0, covers.top, k), right: mix(0, sideShown, k) }, real);
       }
       saying();
+      // The sidebar map's camera mark stands behind the open fight's party, looking the way its camera does.
+      lookFrom(hooks.mapScreen?.(), zoomed?.project ?? null, zoomed?.view?.yaw ?? 0);
     } catch (error) { console.error(error); broken = true; stop(); }
   }
   function stop() { cancelAnimationFrame(raf); raf = 0; }
@@ -275,7 +278,7 @@ export function mountFantasy(container, hooks = {}) {
       const hits = test ? [...fights.values()].filter(fight => matches(fight.data, test)) : [];
       if (hits.length === 1) zoom(hits[0]); else if (!lone) unzoom();
     },
-    panelClosed() {},
+    panelClosed() { scene.hover(null); },
     // The session under a point of the screen. An open panel's backdrop asks, so the fights beside the panel still open their people.
     at(x, y) {
       const inside = node => within(node, x, y), point = { clientX: x, clientY: y };
@@ -284,6 +287,16 @@ export function mountFantasy(container, hooks = {}) {
       if (zoomed) { if ([hud.top, ...hud.hud.querySelectorAll('.win')].some(inside)) return null; const [lx, ly] = local(point); return zoomed.hit(lx, ly, W, H); }
       const tile = [...hud.tiles.querySelectorAll('.fy-tile:not([hidden])')].find(inside), fight = tile && fights.get(tile.dataset.project);
       return fight ? peopleAt(fight.project, fight, point) : null;
+    },
+    // The backdrop's pointer, as it would be with the panel shut: what's under it lights up and whoever's there speaks. Null when it leaves.
+    hover(x, y) {
+      const point = { clientX: x, clientY: y }, inside = node => x != null && within(node, x, y);
+      const lit = x == null ? [] : [...hud.ui.querySelectorAll(zoomed ? '.fy-top button, .fy-empty button, .fy-hud [data-id]' : '.fy-top button, .fy-empty button, .fy-tile:not([hidden]), .fy-chip')].filter(inside);
+      for (const node of hud.ui.querySelectorAll('[data-under]')) if (!lit.includes(node)) node.removeAttribute('data-under');
+      for (const node of lit) node.setAttribute('data-under', '');
+      if (zoomed) { const id = x == null ? null : scene.at(x, y); zoomed.hoverId = id; sayTo(id ? zoomed : null, id); return; }
+      const tile = lit.find(node => node.matches('.fy-tile'));
+      peek(tile?.dataset.project ?? null, point, lit.find(node => node.matches('.fy-chip'))?.dataset.id ?? null);
     },
     // A command of the bar, or the empty window's, under a point: the backdrop presses it too.
     control: (x, y) => [...hud.ui.querySelectorAll('.fy-top button, .fy-empty button')].find(node => within(node, x, y)) ?? null,
@@ -301,7 +314,7 @@ export function mountFantasy(container, hooks = {}) {
     },
     fire(id) { fired.set(id, Date.now()); apply(); },
     unmount() {
-      stop(); observer.disconnect(); panelWatch.disconnect(); removeEventListener('keydown', key); document.removeEventListener('pointerdown', press, true); menu.dispose();
+      stop(); lookFrom(hooks.mapScreen?.(), null); observer.disconnect(); panelWatch.disconnect(); removeEventListener('keydown', key); document.removeEventListener('pointerdown', press, true); menu.dispose();
       for (const fight of fights.values()) fight.dispose();
       fights.clear(); say.dispose(); hud.dispose(); painter.dispose(); props.dispose(); clearLabels();
       renderer.domElement.removeEventListener('webglcontextlost', lost); renderer.dispose(); wrap.remove();
