@@ -30,6 +30,7 @@ export function summary(sessions) {
     alien: `CREW ${sessions.length} · ACTIVE ${working} · AWAITING INPUT ${waiting}`,
     bridge: waiting ? `${waiting} WAITING · WARP ${working}` : working ? `WARP ${working}` : 'ORBIT',
     city: waiting ? `${waiting} WAITING · ${working} BUILDING` : working ? `${working} BUILDING` : 'ALL QUIET',
+    fantasy: waiting ? `${waiting} ready · ${working} fighting` : working ? `${working} fighting` : 'At rest',
     command: waiting ? `${waiting} awaiting orders · ${working} units active` : working ? `${working} units active` : 'All units standing by',
     simpsons: waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you · ${working} working` : working ? `${working} working · Doughnuts later` : 'All quiet in Springfield',
     diablo: waiting ? `${waiting} need your counsel · ${working} questing` : working ? `${working} questing` : 'A moment of peace',
@@ -37,8 +38,8 @@ export function summary(sessions) {
   };
 }
 const flashes = {
-  ready: title => ({ modern: `Done · ${title}`, bridge: `DONE · ${title}`, city: `DONE · ${title}`, alien: `TASK COMPLETE · ${title}`, command: `Unit ready · ${title}`, simpsons: `Woo-hoo! Done · ${title}`, heroes: `Quest complete · ${title}`, diablo: `Quest complete · ${title}` }),
-  input: title => ({ modern: `Needs you · ${title}`, bridge: `WAITING · ${title}`, city: `WAITING · ${title}`, alien: `INPUT REQUIRED · ${title}`, command: `Orders required · ${title}`, simpsons: `Needs you · ${title}`, heroes: `Orders required · ${title}`, diablo: `Your counsel is needed · ${title}` }),
+  ready: title => ({ modern: `Done · ${title}`, bridge: `DONE · ${title}`, city: `DONE · ${title}`, fantasy: `VICTORY · ${title}`, alien: `TASK COMPLETE · ${title}`, command: `Unit ready · ${title}`, simpsons: `Woo-hoo! Done · ${title}`, heroes: `Quest complete · ${title}`, diablo: `Quest complete · ${title}` }),
+  input: title => ({ modern: `Needs you · ${title}`, bridge: `WAITING · ${title}`, city: `WAITING · ${title}`, fantasy: `READY · ${title}`, alien: `INPUT REQUIRED · ${title}`, command: `Orders required · ${title}`, simpsons: `Needs you · ${title}`, heroes: `Orders required · ${title}`, diablo: `Your counsel is needed · ${title}` }),
 };
 function setLine(line, texts, flash) {
   const key = JSON.stringify(texts);

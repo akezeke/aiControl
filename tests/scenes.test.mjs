@@ -9,6 +9,7 @@ test('both looks resolve', () => {
   assert.equal(sceneFor('modern'), null);
   assert.equal(sceneFor(undefined), null);
 });
+test('fantasy resolves', () => { assert.equal(sceneFor('fantasy').name, 'Fantasy Battle'); });
 test('city resolves and says what it needs', () => { assert.equal(sceneFor('city').name, 'Metropolis'); assert.equal(sceneFor('city').needs, 'Canvas'); assert.equal(sceneFor('bridge').needs, undefined); });
 test('scene actions', () => {
   assert.equal(sceneAction(null, 'bridge', false), 'mount');

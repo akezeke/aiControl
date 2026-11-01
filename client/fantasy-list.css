@@ -1,0 +1,227 @@
+/* Fantasy's list and panel are the party menu of an old RPG: one rounded face, gradient windows, a small title window stacked on each list, a portrait to a person. Nothing is a button: commands are plain words, statuses are coloured words, and the white hand points at what's selected or asking. */
+:root[data-theme=fantasy] {
+  background: #06231d;
+  body, .shell { background: transparent; }
+  body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(#04201ab8, #04201aec), url('/fantasy/reactor-back.webp') center / cover; }
+  .main-content, .history-viewport { background: none; }
+  font-weight: 700;
+
+  /* The window. */
+  :is(.session-list, .group-title, .usage-accounts, .login-card, .empty, .sidebar, .filter-options, .theme-options, .toast, .integrations, .request-box) { background: var(--fy-win); border: 3px solid; border-color: var(--fy-bevel); border-radius: 7px; box-shadow: var(--fy-rim); color: var(--text); text-shadow: var(--fy-ink); }
+  :is(.topbar, .chat-header, .message-composer) { background: var(--fy-win); -webkit-backdrop-filter: none; backdrop-filter: none; text-shadow: var(--fy-ink); }
+  .topbar, .chat-header { border-bottom: 3px solid #d4d4ca; box-shadow: 0 1px 0 #000c; }
+  .message-composer { border-top: 3px solid #d4d4ca; }
+  .detail-panel { background: linear-gradient(160deg, #0a3a2f, #04201a); border-left: 3px solid #d4d4ca; box-shadow: inset 1px 0 0 #000a, var(--shadow-lg); }
+  @media (max-width: 640px) { .detail-panel { border-left: 0; } }
+  .panel-backdrop { background: #02120e99; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+  /* A command is its word. */
+  :is(.secondary, .quiet-button, .spawn-button, .theme-menu > summary, .filter-menu > summary, .answer-option, .stat, .chat-header select) { background: none; border: 0; border-radius: 4px; box-shadow: none; color: var(--text); font-weight: 700; text-shadow: var(--fy-ink); }
+  :is(.secondary, .quiet-button, .spawn-button, .theme-menu > summary, .filter-menu > summary, .answer-option, .stat, .chat-header select):hover:not(:disabled) { background: #ffffff1c; border: 0; color: #fff; }
+  :is(.fire-button, .clear-button).armed, :is(.fire-button, .clear-button).armed:hover:not(:disabled) { background: var(--danger); color: #fff; }
+  .primary { background: var(--fy-win); border: 3px solid; border-color: var(--fy-bevel); border-radius: 7px; box-shadow: var(--fy-rim); color: #fff; font-weight: 800; text-shadow: var(--fy-ink); }
+  .primary:hover:not(:disabled) { background: var(--fy-win); color: var(--warn); }
+  :is(.search, .message-form textarea, .composer-row textarea, .request-code, .request-details pre, .login-card input, .deny-reason, .custom-answer input, .access-form input:not([type=checkbox])) { background: #0316108c; border: 0; border-radius: 4px; box-shadow: inset 0 0 0 1px #ffffff26; color: var(--text); }
+  .search:focus-within, :is(.login-card input, .deny-reason, .custom-answer input, .access-form input):focus { box-shadow: inset 0 0 0 2px var(--warn); }
+  .composer-row textarea { background: #021511; border: 2px solid; border-color: var(--fy-sunk); border-radius: 5px; box-shadow: inset 0 2px 0 #0007; font-weight: 600; }
+  .composer-row textarea:focus { border-color: var(--fy-sunk); box-shadow: inset 0 2px 0 #0007, 0 0 0 2px var(--warn); }
+  .composer-row textarea::placeholder { color: var(--text-3); opacity: .8; }
+  .chip, .subagent-tag, .plan-chip, .mode-chip, .ctx-chip, .compact-chip { padding: 0; background: none; border: 0; color: var(--text-3); font: 700 13px/1.2 var(--font); }
+  .ctx-chip { color: var(--warn); }
+  .branch { font: 700 13px/1.2 var(--font); color: var(--text-3); }
+  .project-tag { background: none; color: var(--accent-2); padding: 0; }
+
+  /* Phones have these commands where the sidebar would be. */
+  .stats { gap: 2px; margin-bottom: 8px; }
+  .stat { min-height: 34px; padding: 4px 8px; gap: 5px; font-size: 15px; color: var(--text-2); }
+  .stat.selected { background: none; color: var(--warn); }
+  .stat.selected .stat-number { color: var(--warn); }
+
+  /* The heading says nothing the sidebar doesn't. */
+  .page-heading { margin-bottom: 2px; justify-content: flex-end; min-height: 0; }
+  .page-heading h1 { display: none; }
+  .status-text.fantasy { color: var(--accent-2); text-shadow: var(--fy-ink); text-transform: none; letter-spacing: 0; }
+
+  /* The gauges: one window, an account to a stretch of it, thin bars, and a reset time only once it matters. */
+  .usage-accounts { display: flex; flex-wrap: wrap; gap: 2px 26px; padding: 5px 12px; }
+  .usage-account, .usage-account + .usage-account { flex: 1 1 280px; padding: 0; border: 0; gap: 8px; }
+  .usage-tag { flex: 0 0 auto; color: var(--text-2); font: 700 13px/1 var(--font); }
+  .usage-tag:empty { display: none; }
+  .usage-windows { gap: 12px; }
+  .usage-window, .usage-window.usage-wide { flex: 1 1 96px; min-width: 96px; font: 700 13px/1.15 var(--font); }
+  .usage-label { color: var(--text-2); }
+  .usage-note { color: var(--text-2); font-size: 13px; }
+  .usage-reset { display: none; font-size: 13px; color: var(--text-2); }
+  :is(.usage-high, .usage-full, .usage-expired) .usage-reset { display: block; }
+  .usage-meter { height: 5px; border: 0; border-radius: 0; background: #000a; color: #8ee89c; }
+  .usage-meter::-webkit-progress-bar { background: #000a; border-radius: 0; }
+  .usage-meter::-webkit-progress-value { border-radius: 0; }
+  .usage-meter::-moz-progress-bar { border-radius: 0; }
+
+  .search { min-height: 38px; }
+
+  /* A list is a window with a small title window on top of it. Where a project lives and what can be started there come up when it's pointed at. */
+  .project-group { margin-bottom: 14px; }
+  .group-heading { position: relative; z-index: 1; margin: 0 0 -3px; min-height: 0; align-items: flex-end; }
+  .group-title { gap: 0; padding: 2px 12px; border-radius: 7px; }
+  .group-title h2 { font: 800 16px/1.2 var(--display); letter-spacing: 0; text-transform: none; color: #fff; }
+  .group-title .icon { display: none; }
+  .group-count { margin-left: 8px; padding: 0; background: none; color: var(--text-2); font: 700 14px/1 var(--display); }
+  .project-path { margin-right: 4px; font: 700 13px/1 var(--font); color: var(--text-2); text-shadow: var(--fy-ink); }
+  .spawn-button { min-height: 24px; padding: 1px 6px; font: 700 13px/1 var(--display); }
+  .session-list { --stack-gap: 0px; --connector: transparent; gap: 0; padding: 7px 0; }
+  .session-list:empty { display: none; }
+
+  /* A session is a line of the party menu. */
+  .session-card { min-height: 64px; padding: 5px 14px 5px 12px; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; background: none; border: 0; border-radius: 0; box-shadow: none; text-shadow: var(--fy-ink); }
+  .session-card:hover { background: #ffffff12; border: 0; box-shadow: none; }
+  .session-card:focus-visible { outline: 2px solid var(--warn); outline-offset: -2px; }
+  .session-card.needs-input { background: none; box-shadow: none; }
+  .session-card:is(:hover, :focus-visible)::after { content: ''; position: absolute; left: -3px; top: 50%; z-index: 1; width: 27px; height: 17px; margin-top: 2px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .session-card.needs-input .session-title { color: var(--warn); }
+  .session-card[data-status=error] .session-title { color: var(--danger); }
+  .session-card:is([data-status=idle], [data-status=offline]) { :is(.session-title, .message-preview, .session-description) { color: var(--text-3); } .agent-mark { opacity: .6; } }
+  .agent-mark, .session-card.subagent .agent-mark { position: relative; width: 52px; height: 52px; background: #0005 center / cover no-repeat; border: 0; border-radius: 3px; text-shadow: var(--fy-ink); }
+  .agent-mark.fy-faced, .session-card.subagent .agent-mark.fy-faced { background-image: var(--fy-face); }
+  .agent-mark.fy-faced > .provider-icon { position: absolute; right: 1px; bottom: 1px; width: 14px; height: 14px; font-size: 14px; filter: drop-shadow(0 0 1px #000); }
+  .session-body { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: baseline; column-gap: 10px; }
+  .session-title { grid-area: 1 / 1; font: 800 18px/1.2 var(--display); letter-spacing: 0; }
+  .session-meta { grid-area: 1 / 2; margin: 0; gap: 9px; flex-wrap: nowrap; overflow: hidden; }
+  .message-preview, .session-description { grid-area: 2 / 1 / 3 / 3; margin-top: 1px; font-size: 14px; font-weight: 500; color: var(--text-2); }
+  .message-preview strong { font-weight: 700; }
+  .needs-input .session-description { color: var(--text); }
+  .session-age { font: 700 13px/1 var(--display); color: var(--text-3); }
+  .session-right { gap: 3px; }
+
+  /* A subagent is a smaller line under whoever called it. */
+  .session-card.subagent { min-height: 42px; padding: 2px 14px 2px 40px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; }
+  .session-card.subagent .agent-mark { width: 32px; height: 32px; }
+  .session-card.subagent .session-title { font-size: 15px; font-weight: 700; }
+  .session-card.subagent .message-preview, .session-card.subagent .session-description { font-size: 13px; }
+  .session-card.subagent::before { content: none; }
+  .subagent-tag:not(.workflow-tag) { display: none; }
+  .session-card.subagent:is(:hover, :focus-visible)::after { left: 16px; margin-top: -8px; }
+
+  /* A status is a coloured word. */
+  .badge { min-width: 0; padding: 0; background: none; border: 0; color: var(--text-3); font: 800 14px/1.2 var(--display); letter-spacing: 0; text-transform: none; text-shadow: var(--fy-ink); }
+  .badge.green { background: none; color: var(--ok); }
+  .badge.amber { background: none; color: var(--warn); }
+  .badge.red { background: none; color: var(--danger); }
+  .badge .dot { display: none; }
+
+  /* The menu's hand points at the selected command. */
+  .sidebar { inset: 6px auto 6px 6px; width: calc(var(--sidebar-w) - 8px); padding: 14px 8px 10px; }
+  .sidebar-label { margin: 14px 8px 2px; font: 700 13px/1 var(--display); letter-spacing: 0; text-transform: none; color: var(--text-3); }
+  .sidebar .nav-item { position: relative; min-height: 34px; padding: 4px 8px 4px 34px; background: none; color: var(--text-2); font: 700 16px/1.1 var(--display); }
+  .sidebar .nav-item:hover { background: #ffffff14; color: #fff; }
+  .sidebar .nav-item.active { background: none; color: #fff; }
+  .sidebar .nav-item.active::before { content: ''; position: absolute; left: 3px; top: 50%; width: 27px; height: 17px; margin-top: -8px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .sidebar .nav-item .icon { display: none; }
+  .nav-count, .nav-item.active .nav-count { padding: 0; background: none; color: var(--text-2); font: 700 15px/1 var(--display); }
+  .sidebar > .top-actions { border-top-color: #ffffff26; }
+  .theme-choice { padding-left: 34px; position: relative; font: 700 16px/1.1 var(--display); color: var(--text-2); }
+  .theme-choice:hover { background: #ffffff14; color: #fff; }
+  .theme-choice[aria-pressed=true] { background: none; color: #fff; }
+  .theme-choice[aria-pressed=true]::after { content: none; }
+  .theme-choice[aria-pressed=true]::before { content: ''; position: absolute; left: 3px; top: 50%; width: 27px; height: 17px; margin-top: -8px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .brand-variant.fantasy .brand-mark { width: 30px; height: 30px; padding: 0; background: url('/fantasy/mark.svg') center / contain no-repeat; box-shadow: none; }
+  .brand-variant.fantasy .brand-mark i { display: none; }
+  .brand-variant.fantasy .brand-name { font: 800 20px/1 var(--display); letter-spacing: 0; text-shadow: var(--fy-ink); }
+
+  /* A message is a dialogue window, the speaker's name on a tab across its top edge. */
+  .history-content { padding-top: 24px; }
+  .recent-message:not(.tool, .notice) { position: relative; padding: 13px 14px 10px; background: var(--fy-win); border: 3px solid; border-color: var(--fy-bevel); border-radius: 7px; box-shadow: var(--fy-rim); color: var(--text); font-weight: 500; text-shadow: var(--fy-ink); }
+  .history-content > .recent-message:not(.tool, .notice, :first-child) { margin-top: 24px; }
+  .recent-message:not(.tool, .notice) > .message-meta { position: absolute; top: -14px; left: 10px; justify-content: flex-start; gap: 9px; max-width: calc(100% - 20px); margin: 0; padding: 2px 9px 1px; background: var(--fy-tab); border: 2px solid; border-color: var(--fy-bevel); border-radius: 5px; box-shadow: 0 0 0 1px #000c, 0 2px 0 #0008; font: 700 13px/1.25 var(--display); color: var(--text-3); white-space: nowrap; }
+  .recent-message:not(.tool, .notice) > .message-meta strong { overflow: hidden; text-overflow: ellipsis; color: var(--warn); font-weight: 800; }
+  /* What you said is the other side of the conversation: the same window at dusk, its tab on the right. */
+  .recent-message.user { --accent: #9ccfff; --accent-2: #9ccfff; --panel-2: #ffffff1c; --sunken: #050d24b0; --line: #ffffff33; background: linear-gradient(120deg, #2f5aa8, #1d3a78 42%, #0b1838); }
+  .recent-message.user > .message-meta { left: auto; right: 10px; background: #13285a; }
+  .recent-message.tool { border-left-color: var(--text-3); }
+  .tool-call { color: var(--text-2); }
+
+  /* A request is a dialogue with choices: the hand picks one. */
+  .request-box { border-color: #fff3b0 #b8901e #8a6c14 #f2d76e; }
+  .request-box > .eyebrow { display: none; }
+  .answer-option { position: relative; min-height: 36px; margin: 0; padding: 4px 8px 4px 36px; font-weight: 700; }
+  .answer-option input { position: absolute; opacity: 0; pointer-events: none; }
+  .answer-option:has(input:checked) { background: none; border: 0; box-shadow: none; color: var(--warn); }
+  .answer-option:has(input:checked) span span { color: var(--text-2); }
+  .answer-option:is(:hover, :has(input:checked, input:focus-visible))::before { content: ''; position: absolute; left: 4px; top: 50%; width: 27px; height: 17px; margin-top: -8px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .empty { border-style: solid; }
+  .integrations { padding: 5px 10px; }
+}
+/* A project's path shows when pointed at, and not at all on touch. Its new-agent buttons always show. */
+@media (hover: none) {
+  :root[data-theme=fantasy] .project-path { display: none; }
+}
+@media (hover: hover) {
+  :root[data-theme=fantasy] .project-path { opacity: 0; transition: opacity .1s; }
+  :root[data-theme=fantasy] .project-group:is(:hover, :focus-within) .project-path { opacity: 1; }
+}
+/* The rail and the phone have no room for the hand's gutter. */
+@media (max-width: 900px) {
+  :root[data-theme=fantasy] .sidebar .nav-item { padding-left: 8px; justify-content: center; }
+  :root[data-theme=fantasy] .sidebar .nav-item .icon { display: block; }
+  :root[data-theme=fantasy] .sidebar .nav-item.active::before { left: -2px; width: 14px; height: 9px; margin-top: -4px; }
+  :root[data-theme=fantasy] .sidebar { padding-inline: 4px; }
+}
+@media (max-width: 640px) {
+  :root[data-theme=fantasy] .session-card { min-height: 58px; padding-inline: 8px 10px; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 9px; }
+  :root[data-theme=fantasy] .agent-mark { width: 44px; height: 44px; }
+  :root[data-theme=fantasy] .session-card.subagent { padding-left: 26px; grid-template-columns: 28px minmax(0, 1fr) auto; }
+  :root[data-theme=fantasy] .session-card.subagent .agent-mark { width: 28px; height: 28px; }
+  :root[data-theme=fantasy] .session-card:is(:hover, :focus-visible)::after { left: -6px; width: 23px; height: 15px; }
+  :root[data-theme=fantasy] .session-title { font-size: 16px; }
+  :root[data-theme=fantasy] .branch { display: none; }
+  :root[data-theme=fantasy] .usage-accounts { gap: 4px; }
+  :root[data-theme=fantasy] .usage-account, :root[data-theme=fantasy] .usage-account + .usage-account { flex-basis: 100%; }
+}
+
+/* The title screen: the logo over a plate, with the PIN in a window and the hand pointing at it. */
+:root[data-theme=fantasy] {
+  .login-screen { isolation: isolate; overflow: hidden; align-content: center; }
+  .login-screen::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(#0000 30%, #04201ae6), url('/fantasy/mesa-back.webp') center / cover; }
+  .login-card { width: min(100%, 420px); padding: 0; gap: clamp(28px, 9vh, 72px); background: none; border: 0; box-shadow: none; }
+  .login-symbol { display: none; }
+  .login-card .brand-variant.fantasy { gap: clamp(8px, 2vw, 16px); }
+  .login-card .brand-variant.fantasy .brand-mark { width: clamp(40px, 9vw, 72px); height: clamp(40px, 9vw, 72px); filter: drop-shadow(0 3px 0 #0008); }
+  .login-card .brand-variant.fantasy .brand-name { font: 800 clamp(36px, 8vw, 68px)/1 var(--display); color: #fff; white-space: nowrap; text-shadow: 0 3px 0 #000b, 0 0 26px #0009; }
+  .login-form { position: relative; width: min(100%, 320px); align-self: center; gap: 8px; padding: 12px 14px 12px 50px; background: var(--fy-win); border: 3px solid; border-color: var(--fy-bevel); border-radius: 7px; box-shadow: var(--fy-rim); }
+  .login-form::before { content: ''; position: absolute; left: 12px; top: 12px; width: 30px; height: 42px; background: url('/fantasy/hand.svg') center / contain no-repeat; }
+  .login-form input { min-height: 42px; }
+  .login-form .primary { margin-top: 0; min-height: 38px; }
+  .login-form .form-error:empty { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .login-screen::before { animation: fy-title-drift 40s ease-in-out infinite alternate; }
+    .login-form { animation: fy-window-open .2s ease-out both; transform-origin: top; }
+  }
+}
+/* Scrollbars are the windows' stone edge on their dark ground. Forced colours keep the system's. */
+@media (forced-colors: none) {
+  :root[data-theme=fantasy] {
+    &, * { scrollbar-color: #b9bab0 #04201a; }
+    @supports not (scrollbar-color: red blue) {
+      ::-webkit-scrollbar { width: 10px; height: 10px; background: #04201a; }
+      ::-webkit-scrollbar-thumb { border: 2px solid #04201a; border-radius: 5px; background: #b9bab0; }
+      ::-webkit-scrollbar-thumb:hover { background: #f4f2ea; }
+      ::-webkit-scrollbar-corner { background: #04201a; }
+    }
+  }
+}
+@keyframes fy-title-drift { to { transform: scale(1.07); } }
+@keyframes fy-window-open { from { transform: scaleY(.1); opacity: 0; } }
+
+/* The boot: black, a gem assembling from four facets, its name, and a fade into whatever is underneath. */
+.fy-boot { position: fixed; inset: 0; z-index: 1000; display: grid; place-content: center; justify-items: center; gap: 22px; background: #000; animation: fy-boot-out .35s ease-in 1.95s forwards; cursor: pointer; }
+.fy-boot p { margin: 0; color: #f6f1e4; font: 700 22px/1 var(--display, sans-serif); letter-spacing: .32em; text-indent: .32em; opacity: 0; animation: fy-boot-name .4s ease-out .95s forwards; }
+.fy-gem { position: relative; width: 112px; height: 112px; filter: drop-shadow(0 0 0 #fff0); animation: fy-gem-glint .5s ease-out .85s; }
+.fy-gem i { position: absolute; inset: 0; opacity: 0; animation: fy-facet .55s cubic-bezier(.2, .8, .2, 1) .15s forwards; }
+.fy-gem i:nth-child(1) { background: #ffc738; clip-path: polygon(50% 0, 100% 50%, 50% 50%); --from: 34px, -34px; }
+.fy-gem i:nth-child(2) { background: #ff7a3d; clip-path: polygon(100% 50%, 50% 100%, 50% 50%); --from: 34px, 34px; animation-delay: .25s; }
+.fy-gem i:nth-child(3) { background: #3fb56a; clip-path: polygon(50% 100%, 0 50%, 50% 50%); --from: -34px, 34px; animation-delay: .35s; }
+.fy-gem i:nth-child(4) { background: #56c2a6; clip-path: polygon(0 50%, 50% 0, 50% 50%); --from: -34px, -34px; animation-delay: .45s; }
+@keyframes fy-facet { from { opacity: 0; transform: translate(var(--from)); } to { opacity: 1; transform: none; } }
+@keyframes fy-gem-glint { 40% { filter: brightness(1.7) drop-shadow(0 0 22px #fff8); } }
+@keyframes fy-boot-name { to { opacity: 1; } }
+@keyframes fy-boot-out { to { opacity: 0; } }

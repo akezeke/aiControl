@@ -1,5 +1,8 @@
 Fonts in this folder, from Google Fonts (latin subset), served locally:
 
+nunito-*.woff2 (Nunito):
+Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)
+
 vt323.woff2 (VT323):
 Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)
 

@@ -7,6 +7,7 @@ import './simpsons.css';
 import './diablo.css';
 import './heroes.css';
 import './city-list.css';
+import './fantasy-list.css';
 import './bridge-list.css';
 import './provider-icons.css';
 import { providerIcon } from './provider-icons.js';
@@ -113,6 +114,7 @@ const icons = {
   eraser: '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21m9 0H7M5 11l9 9"/>',
   bridge: '<path d="M12 2c1.500 1.800 2.300 4.200 2.600 7l.4 2.500 5 4V12m0 3.500.9 5-6.400-1.500-.5 2.500h-4l-.5-2.500-6.400 1.500.9-5V12m0 3.500 5-4 .4-2.500c.3-2.800 1.100-5.200 2.600-7M12 6.500v2.500"/>',
   city: '<path d="M3 21h18M7 21V3M3 6h17M7 3 3 6m4-3 13 3M17 6v3m-2 0h4v3h-4zM12 21v-6h8v6"/>',
+  fantasy: '<path d="M14.500 17.500 3 6V3h3l11.500 11.500M13 19l6-6m-3 3 4 4m-1 1 2-2M9.500 17.500 21 6V3h-3L6.500 14.500M11 19l-6-6m3 3-4 4m1 1-2-2"/>',
   office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
@@ -132,6 +134,7 @@ function uuid() {
 }
 function chooseTheme(id) {
   applyTheme(id);
+  for (const card of document.querySelectorAll('#groups .session-card')) delete card.dataset.sig; // A look may draw its cards differently.
   for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
   // Picking a scene theme opens its scene, even if its list was showing last.
   if (sceneFor(document.documentElement.dataset.theme) && sceneList) setSceneList(false); else syncScene();
@@ -185,7 +188,7 @@ function alertsMenu() {
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
 wearColours(paletteFor(savedColour()));
-const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis' };
+const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {
@@ -238,6 +241,8 @@ function showLogin(message = '') {
   };
   card.append(form); screen.append(card);
   app.append(screen);
+  // Fantasy starts like a console: the boot logo comes before the title screen, not after it.
+  if (document.documentElement.dataset.theme === 'fantasy') { bootSequence(); if (globalThis.matchMedia?.('(hover: hover)').matches) input.focus(); }
   api('auth').then(data => {
     if (!input.isConnected) return;
     const pin = data.kind === 'pin'; input.setAttribute('aria-label', pin ? 'PIN' : 'Password');
@@ -276,7 +281,18 @@ function showWorkspace() {
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
   const screen = el('div', 'main-screen'); screen.append(main); content.append(screen); shell.append(content); app.append(shell);
-  const backdrop = el('div', 'panel-backdrop'); backdrop.id = 'backdrop'; backdrop.hidden = true; backdrop.onclick = closePanel;
+  // A scene showing beside the panel stays in reach: a session clicked through the backdrop takes the panel's place, and the wheel still scrolls it.
+  const backdrop = el('div', 'panel-backdrop'); backdrop.id = 'backdrop'; backdrop.hidden = true;
+  const through = event => scene?.at?.(event.clientX, event.clientY) ?? null;
+  // The scene's own commands too: most take the panel's place, those marked `beside` work with it still open.
+  const command = event => scene?.control?.(event.clientX, event.clientY) ?? null;
+  backdrop.onclick = event => {
+    const control = command(event);
+    if (control) { if (!('beside' in control.dataset)) closePanel(); control.click(); return; }
+    const id = through(event); if (!id) closePanel(); else if (id !== state.selected) navigation.open(id, { replace: true });
+  };
+  backdrop.onwheel = event => { if (scene?.scroll?.(event.clientX, event.clientY, event.deltaY * (event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? innerHeight : 1))) event.preventDefault(); };
+  backdrop.onpointermove = event => { if (event.pointerType === 'mouse' && scene?.at) backdrop.style.cursor = through(event) || command(event) ? 'pointer' : ''; };
   const panel = el('section', 'detail-panel'); panel.id = 'panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-label', 'Session details');
   app.append(backdrop, panel);
   poll = setInterval(refresh, 3000);
@@ -342,7 +358,7 @@ function syncScene() {
   const box = el('div', 'scene'); box.id = look; main.append(box);
   try {
     sceneLook = look;
-    scene = module.mount(box, { mapScreen: () => document.querySelector('#theme-console .console-screen'), openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, describe: sessionFacts, spawn: spawnAgent, showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
+    scene = module.mount(box, { mapScreen: () => document.querySelector('#theme-console .console-screen'), openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, selected: () => state.selected, describe: sessionFacts, spawn: spawnAgent, showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
     if (state.snapshot) scene.update(state.snapshot, { error: state.error });
     scene.pick(picked(), false); scene.outlines?.(outlined);
   } catch (error) { console.error(error); closeScene(); fallBack(`${entry.name} could not start; showing the list`); }
@@ -476,6 +492,7 @@ function renderCard(session, previous) {
   // Long card loops run on a page-wide clock, so a rebuilt card continues them instead of restarting.
   card.style.setProperty('--since-load', `${-Math.round(performance.now())}ms`); card.dataset.sessionId = session.id; card.dataset.status = session.status; card.setAttribute('aria-label', `${session.title}, ${providerName(session.provider)}, ${(statuses[session.status] || statuses.unknown)[0]}`);
   const mark = el('span', `agent-mark ${session.provider}`); mark.append(providerIcon(session.provider)); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
+  if (document.documentElement.dataset.theme === 'fantasy') import('./fantasy/portraits.js').then(({ paintPortrait }) => paintPortrait(mark, session)).catch(() => {});
   if (session.unread) card.classList.add('unread');
   if (session.plan) { card.dataset.plan = ''; card.style.setProperty('--plan', session.plan[0] / session.plan[1]); }
   const body = el('span', 'session-body');
@@ -538,7 +555,10 @@ function flipFrom(root, before) {
 let previousFocus;
 function openPanel(id) { previousFocus = document.activeElement; navigation.open(id); document.querySelector('#panel button')?.focus(); }
 function closePanel() { navigation.close(); }
-function hidePanel() { scene?.panelClosed(); const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData(); const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
+function hidePanel() { scene?.panelClosed(); const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; const open = !panel.hidden; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData();
+  // Closing twice (the call, then the history step it takes) mustn't pull focus back from whatever the first close handed it to.
+  if (!open) return;
+  const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
 function revealPanel() { const panel = document.querySelector('#panel'); panel.hidden = false; document.querySelector('#backdrop').hidden = false; document.querySelector('.shell').setAttribute('inert', ''); document.body.classList.add('panel-open'); return panel; }
 function renderPanel() {
   const session = state.snapshot.sessions.find(s => s.id === state.selected);

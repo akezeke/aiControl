@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta charset="utf-8"><link rel="stylesheet" href="/typography.css"><style>html,body,#fantasy{margin:0;width:100%;height:100%;background:#000}</style></head><body><div id="fantasy"></div>
+<script type="module">
+import { mountFantasy } from '/fantasy/fantasy.js';
+import { makeContactSheet } from '/fantasy/sheet.js';
+
+const [mode = 'tiles'] = location.hash.slice(1).split('-');
+const now = Date.now(), PROJECTS = ['aiControl', 'site', 'pipeline', 'mobile-app', 'infra', 'docs'], TITLES = ['Rewrite the pathfinding so desks never block the corridor', 'Fix login redirect', 'Ship the new usage panel', 'Refactor the auth tokens', 'Write the deployment docs', 'Add tests for the importer', 'Explore the old build scripts', 'Design the invoice page'];
+const DETAILS = ['Edit · client/main.js', 'Read · server/index.js', 'Bash · npm test', 'Write · docs/setup.md', 'Grep · useToken', 'Bash · git push', 'WebSearch · three.js scissor', 'Skill · brainstorming'];
+const session = (i, status, extra = {}) => ({ id: `s${i}`, status, provider: i % 3 ? 'claude' : 'codex', project: PROJECTS[i % 4], title: TITLES[i % TITLES.length], updatedAt: now, statusSince: now - 95_000, model: i % 3 ? 'claude-opus-5-5' : 'gpt-5-codex', detail: status === 'working' ? DETAILS[i % DETAILS.length] : '', context: { used: 18_000 + i * 6_000, window: 200_000 }, plan: i % 2 ? [{ status: 'done', step: 'a' }, { status: 'done', step: 'b' }, { status: 'pending', step: 'c' }, { status: 'pending', step: 'd' }, { status: 'pending', step: 'e' }] : [], messages: [{ id: `m${i}`, role: 'user', text: 'go', timestamp: now - 100_000 }], ...extra });
+const usage = (five, week) => [{ provider: 'claude', name: 'Max', windows: [{ label: '5-hour', usedPercent: five, resetsAt: now + 7e6 }, { label: 'Weekly', usedPercent: week, resetsAt: now + 3e8 }] }];
+const sub = (i, parent, title) => ({ ...session(i, 'working'), id: `sub${i}`, parentId: `s${parent}`, title });
+const ask = { status: 'question', requests: [{ title: 'Should the migration keep the old schema readable for a release?', createdAt: now - 40_000 }] };
+const party = extra => Array.from({ length: 5 }, (_, i) => session(i * 4, ['working', 'working', 'thinking', 'working', 'compacting'][i], extra?.(i) ?? {}));
+const STATES = {
+  tiles: () => [{ sessions: [session(0, 'working'), session(4, 'working'), session(8, 'thinking'), session(1, 'permission', { requests: [{ title: 'Bash: npm publish', createdAt: now - 30_000 }] }), session(5, 'working'), session(2, 'working'), session(6, 'error', { detail: 'API error' }), session(3, 'idle'), session(7, 'offline'), sub(20, 0, 'Search the repo for old tokens'), sub(21, 0, 'Plan the migration')], usage: usage(31, 44) }],
+  one: () => [{ sessions: [...party(), sub(20, 0, 'Search the repo'), sub(21, 0, 'Plan the migration'), sub(22, 4, 'Fix it'), sub(23, 4, 'Explore')], usage: usage(84, 44) }],
+  ask: () => [{ sessions: [session(0, 'working'), { ...session(4, 'question'), ...ask }, session(8, 'permission', { requests: [{ title: 'Bash: rm -rf dist', createdAt: now - 12_000 }] }), session(12, 'waiting', { waitingOn: 'review' }), session(16, 'error', { detail: 'Rate limited' })], usage: usage(100, 88) }],
+  low: () => [{ sessions: [session(0, 'working', { context: { used: 158_000, window: 200_000 } }), session(4, 'working', { context: { used: 130_000, window: 200_000 } }), session(8, 'idle'), session(12, 'offline')], usage: usage(31, 44) }],
+  many: () => [{ sessions: Array.from({ length: 9 }, (_, i) => session(i * 4, 'working')), usage: usage(31, 44) }],
+  empty: () => [{ sessions: [], usage: [] }],
+  lost: () => [{ sessions: [session(0, 'working'), session(4, 'working')], usage: usage(31, 44) }],
+};
+if (mode === 'sheet') makeContactSheet(document.getElementById('fantasy'));
+else {
+  window.opened = []; window.fixtures = STATES;
+  window.scene = mountFantasy(document.getElementById('fantasy'), { openPanel: id => window.opened.push(id), describe: session => ({ title: session.title, project: session.project, state: session.status, detail: session.detail }), nextWaiting: () => null });
+  window.scene.update(...STATES[mode]());
+  if (mode === 'lost') setTimeout(() => window.scene.update(...STATES.lost(), { error: new Error('down') }), 1200);
+}
+</script></body></html>

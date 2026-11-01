@@ -12,6 +12,7 @@ A self-hosted dashboard for local Codex and Claude Code sessions on **macOS and 
 - Account usage limits, notifications and sounds when a session needs you.
 - Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting.
 - A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
+- Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.
 - Trickshot in the Office's kitchen: land a paper ball or mug in its target or hit a fruit with a rubber ball or plate, with six levels, three daily shots and a score board.
 - Local access or access from other devices over Tailscale, protected by a PIN or password.
 
@@ -69,6 +70,12 @@ The Bridge theme is an original design and is not affiliated with any franchise.
 | Metropolis | Metropolis on a phone | Metropolis list |
 | --- | --- | --- |
 | ![Metropolis](docs/screenshots/city-overview.webp) | ![Metropolis on a phone](docs/screenshots/city-phone.webp) | ![Metropolis session list](docs/screenshots/city-list.webp) |
+
+| Fantasy Battle | A fight | On a phone |
+| --- | --- | --- |
+| ![Fantasy Battle](docs/screenshots/fantasy-overview.webp) | ![A fight in Fantasy Battle](docs/screenshots/fantasy-fight.webp) | ![Fantasy Battle on a phone](docs/screenshots/fantasy-phone.webp) |
+
+The Fantasy Battle theme is an original design and is not affiliated with any franchise.
 
 [More screenshots, including mobile](docs/screenshots).
 

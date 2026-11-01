@@ -12,6 +12,7 @@ import { createHandler } from '../server/http.mjs';
 import { folderPath } from '../server/folders.mjs';
 import { OfficeSeats } from '../server/seats.mjs';
 import { CityTowers } from '../server/towers.mjs';
+import { Battlefields } from '../server/battlefields.mjs';
 import { claudeRequest } from '../server/claude.mjs';
 import { codexRequest } from '../server/codex.mjs';
 import { root } from '../server/config.mjs';
@@ -97,13 +98,14 @@ const usage = [
   { provider: 'claude', label: 'work', name: 'Claude Code · work', windows: [usageWindow('five_hour', '5-hour', 22, 188), usageWindow('seven_day', 'Weekly', 31, 5 * 1440)], updatedAt: now, status: 'ready', detail: '' },
 ];
 // Same merge as server/main.mjs: a pending request sets the session status.
-const seats = new OfficeSeats(), towers = new CityTowers();
+const seats = new OfficeSeats(), towers = new CityTowers(), battlefields = new Battlefields();
 const snapshot = () => {
   const requests = store.list();
   return {
     sessions: sessions.map(s => { const own = requests.filter(r => r.sessionId === s.id); return { ...s, ...(own.length ? { status: own[0].kind === 'question' ? 'question' : 'permission' } : {}), requests: own }; }),
     office: seats.update(sessions),
     towers: towers.update(sessions),
+    battlefields: battlefields.update(sessions),
     usage, features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: 'demo', claudeAccounts: ['', 'work'],
     providers: [{ name: 'Codex', connected: true, detail: 'Demo data' }, { name: 'Claude Code', connected: true, detail: 'Demo data' }],
   };
