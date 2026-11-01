@@ -71,6 +71,8 @@ function tone(from, to, length, type = 'sine', gain = 0.3, delay = 0) {
   o.connect(g).connect(bus); o.start(at); o.stop(at + length + 0.02);
 }
 const hush = () => { bus?.disconnect(); bus = null; };
+// The office is going: browsers allow only so many contexts, and the next release makes a new one.
+export const closeAudio = () => { audio?.close().catch(() => {}); audio = master = bus = null; };
 const knock = (surface, speed) => {
   const loud = Math.min(1, speed / 8);
   if (surface.startsWith('pan-')) { tone(1046, 1020, 0.5, 'triangle', 0.3 * loud + 0.08); tone(1570, 1540, 0.3, 'sine', 0.12 * loud); }

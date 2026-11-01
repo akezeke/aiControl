@@ -2,7 +2,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { createTrickshot, keepInSight, shotFov } from '../client/office/trickshot.js';
+import { closeAudio, createTrickshot, keepInSight, shotFov } from '../client/office/trickshot.js';
 import { OfficeCamera } from '../client/office/camera.js';
 import { BLEND, GAUGE_SIZE, arcPoints, blendLeft, createArc, createCharge, createGauge, drawnAt, gaugeAt, gaugeColour, launch } from '../client/office/throwing.js';
 import { TiltedBox, makeBody, simulate, stepBody, stopShort } from '../client/office/flight.js';
@@ -878,11 +878,23 @@ test('slow motion on a made shot, on top of the whole flight\'s gentle rate', ()
 
 // What's been played, for a test to listen to. `audio` stays with the module once it's made, so there's one of these.
 const heard = [];
-const fakeAudio = { currentTime: 0, destination: {}, resume() {},
+const fakeAudio = { currentTime: 0, destination: {}, resume() {}, close: async () => {},
   createGain: () => ({ gain: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect: to => to, disconnect() {} }),
   createOscillator() { const o = { frequency: { setValueAtTime(from) { o.from = from; }, exponentialRampToValueAtTime() {} }, connect: to => to, start() { heard.push(o.from); }, stop() {} }; return o; } };
 const listen = c => { const was = globalThis.AudioContext; globalThis.AudioContext = function () { return fakeAudio; }; c.after(() => { globalThis.AudioContext = was; }); heard.length = 0; };
 const FANFARE = 1047;
+
+test('unmounting closes the sound, once, and the next release makes a new one', c => {
+  listen(c); closeAudio();
+  const made = []; globalThis.AudioContext = function () { const a = { ...fakeAudio, closed: 0, async close() { a.closed++; } }; made.push(a); return a; };
+  const t = setup(); begin(t, 'paper');
+  throwIt(t, IN); assert.equal(made.length, 1);
+  closeAudio(); closeAudio(); assert.equal(made[0].closed, 1);
+  t.game.reset(); throwIt(t, IN); assert.equal(made.length, 2, 'a new one');
+  assert.equal(made[1].closed, 0);
+  closeAudio();
+  assert.match(readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8'), /disposers: \[[^\n]*\bcloseAudio\b/);
+});
 
 test('a made shot gets its fanfare, and with reduced motion it doesn\'t', c => {
   listen(c);
