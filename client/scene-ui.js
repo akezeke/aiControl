@@ -39,14 +39,12 @@ export function createCard(container) {
   };
 }
 
-// A pod sign's menu: Claude (once per account, see hire.js) or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
-export function createMenu(container, onChoose, onClose) {
-  const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
-  let cwd = null, items = [];
-  // Without a folder (the + button) the menu asks for one, suggesting the folders sessions run in. One that isn't there yet
-  // is made as the agent starts, if its parent is (server/folders.mjs); the note under it says which, as you type.
-  const folder = document.createElement('input'); folder.className = 'office-folder'; folder.placeholder = '~/folder'; folder.setAttribute('aria-label', 'Folder'); folder.setAttribute('list', 'office-folders'); folder.autocomplete = 'off'; folder.spellcheck = false;
-  const folders = document.createElement('datalist'); folders.id = 'office-folders';
+// The folder an agent starts in, typed, with the folders sessions run in to pick from. One that isn't there yet is made
+// as the agent starts, if its parent is (server/folders.mjs); the note under it says which, as you type.
+let fields = 0;
+export function createFolderField(onEnter) {
+  const input = document.createElement('input'); input.className = 'office-folder'; input.placeholder = '~/folder'; input.setAttribute('aria-label', 'Folder'); input.autocomplete = 'off'; input.spellcheck = false;
+  const folders = document.createElement('datalist'); folders.id = `agent-folders-${++fields}`; input.setAttribute('list', folders.id);
   const note = span('office-folder-note', ''); note.hidden = true; note.setAttribute('aria-live', 'polite');
   let known = [], checked = { path: '', state: '' }, checking = 0, timer = 0;
   const showState = (path, state) => {
@@ -55,29 +53,43 @@ export function createMenu(container, onChoose, onClose) {
     note.title = state === 'new' ? 'Created when the agent starts' : state === 'none' ? 'A new folder goes inside one that exists' : '';
   };
   const check = () => {
-    clearTimeout(timer); const path = folder.value.trim(), ask = ++checking;
+    clearTimeout(timer); const path = input.value.trim(), ask = ++checking;
     if (!path || known.includes(path)) { showState(path, path && 'folder'); return; }
     if (path !== checked.path) showState(path, ''); // Nothing said about a path till its answer comes.
     timer = setTimeout(() => fetch(`/api/folder?path=${encodeURIComponent(path)}`, { credentials: 'same-origin', cache: 'no-store' })
       .then(response => response.ok ? response.json() : null).catch(() => null)
       .then(data => { if (ask === checking) showState(path, data?.state || ''); }), 200);
   };
-  folder.addEventListener('input', check);
-  folder.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); items[0]?.click(); } });
+  input.addEventListener('input', check);
+  input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); onEnter(); } });
+  return {
+    nodes: [input, note, folders], input,
+    get value() { return input.value.trim(); },
+    // Known not to be there and not makeable: picking an agent goes back to the field instead.
+    get refused() { return checked.path === input.value.trim() && checked.state === 'none'; },
+    reset(suggested = []) { known = suggested; folders.replaceChildren(...known.map(path => Object.assign(document.createElement('option'), { value: path }))); input.value = ''; check(); },
+  };
+}
+
+// A pod sign's menu: Claude (once per account, see hire.js) or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
+export function createMenu(container, onChoose, onClose) {
+  const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
+  let cwd = null, items = [];
+  // Without a folder (the + button) the menu asks for one.
+  const field = createFolderField(() => items[0]?.click());
   const build = choices => {
     items = choices.map(choice => {
       const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`;
       item.append(providerIcon(choice.provider), choice.label);
       if (choice.last) item.append(span('last', 'last'));
       item.onclick = () => {
-        const at = cwd ?? folder.value.trim();
-        if (!at || (cwd === null && checked.path === at && checked.state === 'none')) { folder.focus(); return; }
+        const at = cwd ?? field.value;
+        if (!at || (cwd === null && field.refused)) { field.input.focus(); return; }
         result.close(); onChoose(at, cwd === null ? { ...choice, create: true } : choice, item);
       };
       return item;
     });
-    folders.replaceChildren(...known.map(path => Object.assign(document.createElement('option'), { value: path })));
-    menu.replaceChildren(...(cwd === null ? [folder, note, folders] : []), ...items);
+    menu.replaceChildren(...(cwd === null ? field.nodes : []), ...items);
   };
   // Keys stay in the menu: the arrows and WASD would otherwise walk or pan the camera behind it.
   menu.addEventListener('keydown', event => {
@@ -94,8 +106,8 @@ export function createMenu(container, onChoose, onClose) {
     get asking() { return !menu.hidden && cwd === null; },
     // At a screen point; `focus` for the keyboard. A null folder asks for one; `suggested` are the folders to suggest.
     show(where, at, focus, choices, suggested = []) {
-      cwd = where; known = suggested; build(choices); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
-      if (where === null) { folder.value = ''; check(); folder.focus(); } else if (focus) items[0].focus();
+      cwd = where; build(choices); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
+      if (where === null) { field.reset(suggested); field.input.focus(); } else if (focus) items[0].focus();
     },
     move(at) { if (!menu.hidden) placeNear(container, menu, at); },
     close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; onClose?.(); },

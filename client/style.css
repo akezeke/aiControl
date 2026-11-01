@@ -70,6 +70,12 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .filter-menu.filtered > summary { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .filter-options, .theme-options { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: flex; flex-direction: column; gap: 2px; width: 210px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); }
 .filter-options .sidebar-label { margin: 6px 8px 4px; }
+.new-agent-options { width: 260px; }
+.new-agent-options .office-folder { width: 100%; min-height: 38px; margin-bottom: 2px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); outline: 0; background: var(--sunken); color: var(--text); font: 13px var(--mono); }
+.new-agent-options .office-folder:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.new-agent-options .office-folder-note { padding: 0 10px 2px; color: var(--ok); font-size: 12px; font-weight: 600; }
+.new-agent-options .office-folder-note[data-state="none"] { color: var(--danger); }
+.new-agent-options .provider-icon { width: 18px; height: 18px; }
 .tab, .theme-choice { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-2); font-size: 13px; text-align: left; }
 :is(.tab, .theme-choice):hover { background: var(--panel-2); color: var(--text); }
 .tab.active, .theme-choice[aria-pressed=true] { background: var(--accent-soft); color: var(--accent-2); font-weight: 600; }
@@ -396,7 +402,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
   .stats { flex-wrap: nowrap; gap: 5px; overflow-x: auto; scrollbar-width: none; margin-bottom: 10px; }
   .stat { flex: 1 0 auto; justify-content: center; gap: 6px; padding: 6px 10px; font-size: 12.5px; }
   .toolbar { margin-bottom: 12px; }
-  .search input { font-size: 16px; }
+  .search input, .new-agent-options .office-folder { font-size: 16px; }
   .group-heading { margin-bottom: 6px; }
   .project-path { display: none; }
   .session-card { grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; padding: 10px 12px; }

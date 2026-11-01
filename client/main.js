@@ -26,6 +26,7 @@ import { renderThemeConsole } from './theme-console.js';
 import { paletteFor, savedColour, wearColours } from './bridge/palettes.js';
 import { sceneFor, sceneAction } from './scenes.js';
 import { hireChoices } from './hire.js';
+import { createFolderField } from './scene-ui.js';
 import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
 
 const app = document.querySelector('#app');
@@ -271,7 +272,7 @@ function showWorkspace() {
   for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
-  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu); main.append(toolbar);
+  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu, newAgentMenu()); main.append(toolbar);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
   const screen = el('div', 'main-screen'); screen.append(main); content.append(screen); shell.append(content); app.append(shell);
@@ -1093,7 +1094,28 @@ function spawnButtons(cwd) {
   for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`; actions.append(b); }
   return actions;
 }
-// `choice.create`: a folder typed in a scene's menu, made first if it isn't there yet.
+// The toolbar's +: an agent in any folder, a new one included, like a scene's + (scene-ui.js).
+function newAgentMenu() {
+  const menu = el('details', 'filter-menu new-agent-menu'); menu.id = 'new-agent-menu';
+  const summary = el('summary', 'quiet-button'); summary.append(icon('plus')); summary.setAttribute('aria-label', 'New agent'); summary.title = 'New agent';
+  const options = el('div', 'filter-options new-agent-options'); options.setAttribute('role', 'group'); options.setAttribute('aria-label', 'New agent');
+  const field = createFolderField(() => options.querySelector('.tab')?.click());
+  menu.append(summary, options);
+  menu.ontoggle = () => {
+    if (!menu.open) return;
+    field.reset([...new Set((state.snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort());
+    options.replaceChildren(...field.nodes, ...hireChoices(state.snapshot, '').map(choice => {
+      const b = button(choice.label, 'tab', () => {
+        if (!field.value || field.refused) { field.input.focus(); return; }
+        menu.open = false; spawnAgent(field.value, { ...choice, create: true }, b);
+      });
+      b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name} in tmux`; return b;
+    }));
+    field.input.focus();
+  };
+  return menu;
+}
+// `choice.create`: a typed folder (a scene's + or the toolbar's), made first if it isn't there yet.
 async function spawnAgent(cwd, choice, control, slot) {
   if (state.error) return;
   control.disabled = true;
@@ -1112,8 +1134,8 @@ document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' && event.key !== 'Tab') return;
   const openTheme = document.querySelector('.theme-menu[open]');
   if (event.key === 'Escape' && openTheme) { openTheme.open = false; openTheme.querySelector('summary').focus(); return; }
-  const menu = document.querySelector('#agent-filter-menu');
-  if (event.key === 'Escape' && menu?.open) { menu.open = false; menu.querySelector('summary').focus(); return; }
+  const menu = document.querySelector('#agent-filter-menu[open], #new-agent-menu[open]');
+  if (event.key === 'Escape' && menu) { menu.open = false; menu.querySelector('summary').focus(); return; }
   // Esc in a dialog closes that dialog, not the panel behind it.
   if (event.key === 'Escape' && state.selected && !event.target.closest?.('dialog')) closePanel();
   if (event.key === 'Tab' && state.selected) {
@@ -1125,7 +1147,7 @@ document.addEventListener('keydown', event => {
 });
 // Single-key shortcuts outside text fields: / search, j k move between cards, n next waiting session.
 document.addEventListener('keydown', event => {
-  if (!state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open]')) return;
+  if (!state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open], #new-agent-menu[open]')) return;
   if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); if (scene && !state.selected) scene.talkTo(nextWaiting().id); else openNext(); return; }
   if (state.selected) return;
   if (event.key === '/') { event.preventDefault(); document.querySelector('.search input')?.focus(); return; }
@@ -1135,7 +1157,7 @@ document.addEventListener('keydown', event => {
   event.preventDefault();
 });
 listenForOpen(id => { if (state.csrf) openPanel(id); });
-document.addEventListener('pointerdown', event => { for (const menu of document.querySelectorAll('#agent-filter-menu, .theme-menu')) if (menu.open && !menu.contains(event.target)) menu.open = false; });
+document.addEventListener('pointerdown', event => { for (const menu of document.querySelectorAll('#agent-filter-menu, #new-agent-menu, .theme-menu')) if (menu.open && !menu.contains(event.target)) menu.open = false; });
 function sendActivity() {
   clearTimeout(activityTimer); activityTimer = null;
   if (!state.csrf) return;
