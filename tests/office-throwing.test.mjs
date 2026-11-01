@@ -105,6 +105,16 @@ test('a hand fitted once is kept, and what\'s flatter than it\'s wide gets a fla
   const hand = createHand(new THREE.Group()); let body; hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });
   const flat = body.geometry; hand.hold(null, 0.08); assert.ok(body.geometry !== flat); hand.hold(null, 0.08, 0.012); assert.ok(body.geometry === flat);
 });
+test('what hides the throw button calls a charge off: both ask the one condition', () => {
+  const source = readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8'), clear = source.match(/const clearToThrow = \(\) => ([^,]*),/)?.[1] ?? '';
+  for (const gate of ['officeHasKeys(noEvent)', '!overlays.copying', '!office.talking', '!player.flight']) assert.ok(clear.includes(gate), gate);
+  assert.match(source, /canThrow = \(\) => canCharge\(\) && clearToThrow\(\)/);
+  assert.match(source, /startCharge = \(\) => \{ if \(!canThrow\(\)\) return false;/, 'never starts');
+  assert.match(source, /letGo = at => \{\s*if \(!canThrow\(\)\) \{ callOff\(\); return; \}/, 'never throws');
+  assert.match(source, /if \(charge\.active\) \{\s*if \(!canThrow\(\)\) callOff\(\);/, 'stops once it applies');
+  assert.match(source, /overlays\.showThrow\(touched && \(canCharge\(\) \|\| again\) && clearToThrow\(\), again\)/);
+  assert.equal(source.split('officeHasKeys(noEvent)').length, 2, 'asked in the one place');
+});
 test('every fit goes when the office does, not only the one on the hand at the time', () => {
   const hand = createHand(new THREE.Group()); let body; const fits = new Set(), gone = new Set(); hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });
   for (const [radius, low] of [[0.08, 0.012], [0.08, 0.08], [0.03, 0.03], [0.16, 0.16]]) { hand.hold(null, radius, low); const fit = body.geometry; fits.add(fit); fit.addEventListener('dispose', () => gone.add(fit)); }

@@ -100,10 +100,12 @@ export function mountOffice(container, hooks) {
   const charge = createCharge(() => { overlays.setCharge(null); overlays.dropThrow(); player.aimFine(false); }), clock = () => performance.now() / 1000, noEvent = {};
   const thrower = () => playing?.free ? playing : props;
   const canCharge = () => (!playing || playing.free) && thrower().holding && !view.overview && !menu.open;
-  const startCharge = () => { if (!canCharge()) return false; charge.press(clock()); return true; };
+  // What hides the throw button calls a charge off: a second finger on a speech bubble or Next walks you away, and a charge would run on with its button gone.
+  const clearToThrow = () => officeHasKeys(noEvent) && !overlays.copying && !office.talking && !player.flight, canThrow = () => canCharge() && clearToThrow();
+  const startCharge = () => { if (!canThrow()) return false; charge.press(clock()); return true; };
   const callOff = () => { keyed = false; if (!charge.active) return false; charge.cancel(); thrower().abort(); return true; };
   const letGo = at => {
-    if (!canCharge() || !officeHasKeys(noEvent)) { callOff(); return; }
+    if (!canThrow()) { callOff(); return; }
     const level = charge.release(clock()); keyed = false; if (level === null) return;
     thrower().release(level, rayAt(at, renderer.domElement, camera));
   };
@@ -266,11 +268,11 @@ export function mountOffice(container, hooks) {
   frames.add(dt => {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
     if (charge.active) {
-      if (!canCharge() || !officeHasKeys(noEvent)) callOff();
+      if (!canThrow()) callOff();
       else { const level = charge.level(clock()); overlays.setCharge(level, throwAt()); if (!reducedMotion?.matches) hand.pull(level); }
     }
     const again = !!playing?.retrying && !view.overview && !menu.open;
-    overlays.showThrow(touched && (canCharge() || again) && officeHasKeys(noEvent) && !overlays.copying && !office.talking && !player.flight, again);
+    overlays.showThrow(touched && (canCharge() || again) && clearToThrow(), again);
     // Whatever took the mouse is done with it.
     const now = free(); if (now && !wasFree) player.resume(); wasFree = now;
     // The overview has the keys and drags while it's up: you stay where you were.
