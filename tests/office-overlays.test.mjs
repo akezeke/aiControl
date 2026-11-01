@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createOverlays } from '../client/office/bubbles.js';
+import { officeHasKeys } from '../client/scene-keys.js';
 
 // Just enough DOM for the overlays: elements that know their parent and children.
 function element(tag) {
@@ -42,6 +43,23 @@ test('the throw button goes with the hand empty, whose holding is null', t => {
   overlays.showThrow(null); assert.equal(button.hidden, true);
   overlays.showThrow({}); assert.equal(button.hidden, false);
   overlays.showThrow(undefined); assert.equal(button.hidden, true);
+});
+
+test('while the copy line shows the office has no keys, whichever way focus went', t => {
+  const was = globalThis.document, body = { tagName: 'BODY', classList: { contains: () => false } };
+  let line = null;
+  globalThis.document = { createElement: element, createElementNS: (_, tag) => element(tag), body, activeElement: body, querySelector: selector => selector.split(', ').includes('.office-copyline:not([hidden])') && !line.hidden ? line : null };
+  t.after(() => { globalThis.document = was; });
+  const container = element('div'), noop = () => {}, overlays = createOverlays(container, { onNext: noop, onList: noop, onOverview: noop, onNew: noop, onLeave: noop, onCopy: noop, onThrow: { press: () => true, release: noop, cancel: noop } });
+  line = container.children.find(kid => kid.className === 'office-copyline');
+  const key = { target: body };
+  assert.equal(officeHasKeys(key), true);
+  overlays.showCopy('scores');
+  assert.equal(document.activeElement, body, 'focus on the page, as a click on its padding or a Tab past its close leaves it');
+  assert.equal(officeHasKeys(key), false, 'keys are dead');
+  assert.equal(overlays.closeCopy(line), false, 'clicks inside it leave it up');
+  assert.equal(overlays.closeCopy(), true, 'Esc closes it');
+  assert.equal(officeHasKeys(key), true, 'and they\'re back');
 });
 
 test('with the item away the throw button is another go, and a throw again once it\'s back', t => {

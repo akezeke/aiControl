@@ -105,7 +105,7 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
   const throwing = createThrowButton(thrower, onThrow);
   const score = document.createElement('div'); score.className = 'office-score'; score.hidden = true; container.append(score);
   const copied = document.createElement('div'); copied.className = 'office-copied'; copied.textContent = 'Copied'; copied.hidden = true; container.append(copied);
-  // Where the clipboard can't be written: the line selected, to copy by hand. Esc, its ✕ or a click anywhere else closes it; while it's up the keys are the input's.
+  // Where the clipboard can't be written: the line selected, to copy by hand. Esc, its ✕ or a click anywhere else closes it; while it's up the office has no keys (menuOpen), focus in the input or not, so selecting by hand on a phone leaves it up.
   const line = document.createElement('div'); line.className = 'office-copyline'; line.hidden = true; container.append(line);
   const field = line.appendChild(document.createElement('input')); field.readOnly = true; field.setAttribute('aria-label', 'Today\'s scores');
   const closeLine = () => { if (line.hidden) return false; line.hidden = true; field.blur(); return true; };
