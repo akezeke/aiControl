@@ -2,7 +2,7 @@
 import { usageWindowView } from '../usage-presentation.js';
 import { paintPortrait } from './portraits.js';
 import { tileLayout } from './camera.js';
-import { hasTurn, hpBand, needsYou, tokens } from './roster.js';
+import { busy, hasTurn, hpBand, needsYou, tokens, turnGauge } from './roster.js';
 
 const GLYPH = { working: '⚔', thinking: '✦', compacting: '✚', permission: '!', question: '?', waiting: '…', idle: 'Zzz', done: '✓', error: '✕', offline: '○' };
 const WORD = { working: 'Working', thinking: 'Thinking', compacting: 'Compacting', permission: 'Needs approval', question: 'Has a question', waiting: 'Waiting', idle: 'Idle', done: 'Finished', error: 'Error', offline: 'Offline' };
@@ -25,6 +25,7 @@ export function elapsed(ms) {
 }
 const showsTime = state => needsYou(state) || state === 'waiting' || state === 'error' || state === 'compacting';
 // What this member is up to, in the fewest words that are still true.
+const gaugeWords = (member, gauge, time) => gauge.tone === 'ready' ? 'Your move' : gauge.tone === 'error' ? 'Stopped on an error' : [`${WORD[member.state]}${time ? ` ${time}` : ''}`, gauge.last && `last turn took ${elapsed(Date.now() - gauge.last)}`].filter(Boolean).join(', ');
 export function statusLine(member) {
   const { state, detail, request, job } = member;
   if (needsYou(state)) return request?.title || WORD[state];
@@ -43,9 +44,9 @@ const hovers = (node, actions) => {
 
 function createRow(actions) {
   const row = button('fy-row', null, '', () => actions.open(row.dataset.id));
-  const nm = el('span', 'fy-nm'), face = el('i'), name = el('span'), st = el('span', 'fy-st'), glyph = el('b'), line = el('span'), tag = el('i'), tm = el('span', 'fy-tm'), md = el('span', 'fy-md');
+  const nm = el('span', 'fy-nm'), face = el('i'), name = el('span'), st = el('span', 'fy-st'), glyph = el('b'), line = el('span'), tag = el('i'), tm = el('span', 'fy-tm'), turn = bar(), tmText = el('em'), md = el('span', 'fy-md');
   const hp = el('span', 'fy-bar'), hpBar = bar(), hpText = el('em');
-  nm.append(face, name); st.append(glyph, line, tag); hp.append(hpBar.track, hpText); row.append(nm, st, tm, md, hp);
+  nm.append(face, name); st.append(glyph, line, tag); hp.append(hpBar.track, hpText); tm.append(turn.track, tmText); row.append(nm, st, tm, md, hp);
   hovers(row, actions);
   return {
     row,
@@ -56,7 +57,8 @@ function createRow(actions) {
       row.setAttribute('aria-label', `${member.title}, ${WORD[member.state] || member.state}`); row.removeAttribute('title');
       paintPortrait(face, member.session); put(name, member.title); put(md, member.model); put(glyph, GLYPH[member.state] || '·'); put(line, status);
       put(tag, [member.mode === 'berserk' ? 'Berserk' : member.mode === 'scan' ? 'Scan' : '', member.plan ? `${member.plan.done}/${member.plan.total}` : '', minions ? `+${minions}` : ''].filter(Boolean).join(' '));
-      put(tm, showsTime(member.state) ? elapsed(sinceOf(member)) : '');
+      const gauge = turnGauge(member), time = showsTime(member.state) || busy(member.state) ? elapsed(sinceOf(member)) : '';
+      cls(tm, `fy-tm${gauge ? ` ${gauge.tone}` : ''}${gauge?.urgent ? ' urgent' : ''}${gauge && gauge.ratio == null ? ' unknown' : ''}`); turn.track.hidden = !gauge; fill(turn.inner, (gauge?.ratio ?? 0) * 100); put(tmText, time); tip(tm, gauge ? gaugeWords(member, gauge, time) : '');
       cls(hp, `fy-bar${band ? ` ${band}` : ''}`); fill(hpBar.inner, (member.hp?.ratio ?? 0) * 100); put(hpText, member.hp ? tokens(member.hp.left) : '—'); tip(hp, member.hp ? `${tokens(member.hp.left)} left before it compacts` : 'Context not reported');
       tip(tag, [member.mode === 'berserk' ? 'Berserk: asks for no permissions' : member.mode === 'scan' ? 'Scan: plan mode, changes nothing yet' : '', member.plan ? `${member.plan.done} of ${member.plan.total} plan steps done` : '', minions ? `${minions} subagent${minions > 1 ? 's' : ''}` : ''].filter(Boolean).join(', ')); tip(md, 'Model');
     },
@@ -139,7 +141,8 @@ export function createHud(box, actions) {
   const foes = el('div', 'fy-foes win'), ask = el('div', 'fy-ask win'), askShout = el('b'), askText = el('p'), answer = el('button', 'fy-answer', 'Answer'), party = el('div', 'fy-party win'), head = el('div', 'fy-row fy-head');
   answer.type = 'button'; answer.onclick = () => askId && actions.open(askId);
   const contextHead = el('span', '', 'Context'); contextHead.title = 'Room left before this session has to compact';
-  head.append(el('span', '', ''), el('span', '', ''), el('span', '', ''), el('span', 'fy-md', ''), contextHead);
+  const turnHead = el('span', '', 'Turn'); turnHead.title = 'How long this turn has run, against the last one. Full: your move';
+  head.append(el('span', '', ''), el('span', '', ''), turnHead, el('span', 'fy-md', ''), contextHead);
   const foeList = el('div', 'fy-foelist'), sum = el('div', 'fy-sum'); foes.append(foeList, sum);
   ask.append(askShout, askText, answer); banner.append(bannerName, bannerLine); party.append(head); wins.append(foes, ask, party); hud.append(banner, spacer, wins);
   body.append(tiles, hud, empty); ui.append(top, body); box.append(ui);

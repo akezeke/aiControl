@@ -60,6 +60,15 @@ export function hpOf(context) {
   const size = context.window || (used > 200_000 ? 1_000_000 : 200_000), max = size * .83, left = Math.max(0, max - used);
   return { used, left, max, ratio: Math.min(1, left / max) };
 }
+// The turn gauge. Full is your move. Filling is how long this turn has run against how long the last one took, which is all anyone knows of how long this one will take, so it never quite fills on its own; with no last turn to go by there's no fill, only `ratio: null`.
+export function turnGauge({ state, session }, now = Date.now()) {
+  if (needsYou(state)) return { tone: 'ready', ratio: 1, urgent: true };
+  if (state === 'done') return { tone: 'ready', ratio: 1 };
+  if (state === 'error') return { tone: 'error', ratio: 1 };
+  if (!busy(state) && state !== 'waiting') return null;
+  const last = session?.lastTurnMs, at = session?.statusSince, since = typeof at === 'number' ? at : Date.parse(at), steady = state === 'working' || state === 'thinking';
+  return { tone: 'charge', ratio: steady && last > 0 && Number.isFinite(since) ? Math.min(.97, Math.max(0, (now - since) / last)) : null, last: steady && last > 0 ? last : null };
+}
 export const hpBand = ratio => ratio == null ? '' : ratio < .1 ? 'crit' : ratio < .25 ? 'low' : '';
 export const tokens = n => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k` : String(Math.round(n));
 

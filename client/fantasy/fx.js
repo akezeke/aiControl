@@ -19,7 +19,7 @@ function flare() {
 }
 
 // Words drawn once in the theme's face. Numbers come and go, so these are kept to a limit.
-const LABELS = new Map(), LABEL_LIMIT = 80;
+const LABELS = new Map(), LABEL_LIMIT = 80, LABEL_PAD = .28, NUMBER_SIZE = 1.25;
 export function labelTexture(text, color) {
   const key = `${text}|${color}`;
   let label = LABELS.get(key);
@@ -110,7 +110,7 @@ export class Effects {
     if (this.live.length >= CAP) return null;
     let sprite = this.sprites.pop();
     if (!sprite) { sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, depthWrite: false, toneMapped: false })); sprite.frustumCulled = false; this.scene.add(sprite); }
-    sprite.visible = true; sprite.material.map = map; sprite.material.color.setHex(color, THREE.LinearSRGBColorSpace); sprite.material.opacity = 1; sprite.material.blending = additive ? THREE.AdditiveBlending : THREE.NormalBlending;
+    sprite.visible = true; sprite.center.set(.5, .5); sprite.material.map = map; sprite.material.color.setHex(color, THREE.LinearSRGBColorSpace); sprite.material.opacity = 1; sprite.material.blending = additive ? THREE.AdditiveBlending : THREE.NormalBlending;
     return sprite;
   }
   run(thing, life, step, pool) { this.live.push({ thing, life, step, t: 0, pool }); return thing; }
@@ -218,11 +218,24 @@ export class Effects {
   }
   flare(position, color, size = 2, life = .35) { const sprite = this.sprite(flare(), color, true); if (!sprite) return; sprite.position.copy(position); sprite.renderOrder = 6; this.run(sprite, life, p => { sprite.scale.setScalar(size * (1 + p * .5)); sprite.material.opacity = 1 - p; }, this.sprites); }
   // Words fly with or without motion; a calm screen still needs them.
+  // A number's digits land one after another, each with its own bounce. However far the camera stands, none is smaller on screen than the bubbles beside it, and it bounces as far as it looks.
   number(position, text, color, height = .62) {
-    const label = labelTexture(text, color), sprite = this.sprite(label.texture); if (!sprite) return;
-    sprite.position.copy(position); sprite.position.x += (Math.random() - .5) * .5; sprite.scale.set(height * label.aspect, height, 1); sprite.renderOrder = 22;
-    let v = this.calm ? 0 : 3.6; const floor = position.y;
-    this.run(sprite, 1.15, (p, d) => { if (!this.calm) { v -= 15 * d; sprite.position.y += v * d; if (sprite.position.y < floor) { sprite.position.y = floor; v = Math.abs(v) * .42; } } sprite.material.opacity = p > .75 ? (1 - p) * 4 : 1; }, this.sprites);
+    const digits = !this.calm && /^[-+][\d.]+[kM]?$/.test(text), labels = (digits ? [...text] : [text]).map(part => labelTexture(part, color));
+    const widths = labels.map(label => label.aspect - LABEL_PAD), total = widths.reduce((all, width) => all + width, 0), drift = (Math.random() - .5) * .5, floor = position.y;
+    let left = -total / 2;
+    labels.forEach((label, i) => {
+      const sprite = this.sprite(label.texture); if (!sprite) return;
+      const middle = left + widths[i] / 2, wait = i * .05; left += widths[i];
+      sprite.position.copy(position); sprite.position.x += drift; sprite.center.x = .5 - middle / label.aspect; sprite.renderOrder = 22; sprite.material.opacity = 0;
+      let v = this.calm ? 0 : 3.6, y = 0, t = 0;
+      this.run(sprite, 1.15 + wait, (p, d) => {
+        const size = Math.max(height, this.world * this.camera.position.distanceTo(sprite.position) * NUMBER_SIZE);
+        sprite.scale.set(size * label.aspect, size, 1);
+        t += d; if (t < wait) return;
+        if (!this.calm) { v -= 15 * d; y += v * d; if (y < 0) { y = 0; v = Math.abs(v) * .42; } }
+        sprite.position.y = floor + y * size / .62; sprite.material.opacity = p > .75 ? (1 - p) * 4 : 1;
+      }, this.sprites);
+    });
   }
   circle(position, color, life = .8, radius = 1.2) {
     for (const [geometry, turn, scale] of [[RING, 0, 1], [SQUARE, 0, .8], [SQUARE, Math.PI / 4, .8]]) {

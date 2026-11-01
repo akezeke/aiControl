@@ -2,7 +2,7 @@ import { modelName, taskOf } from '../client/fantasy/roster.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildFights, classOf, familyOf, formation, hpOf, hpBand, nameOf, placeOf, placesFor, PLACE_KEYS, stateOf, TIMES } from '../client/fantasy/roster.js';
+import { buildFights, classOf, familyOf, formation, hpOf, hpBand, nameOf, placeOf, placesFor, PLACE_KEYS, stateOf, TIMES, turnGauge } from '../client/fantasy/roster.js';
 import { abilityOf, actionWords } from '../client/fantasy/abilities.js';
 import { fit, homeView, PARTY_VIEW, spotsFor, tileLayout, FOV } from '../client/fantasy/camera.js';
 import { summary } from '../client/theme-console.js';
@@ -226,4 +226,19 @@ test('the enemy is the last real request, not whatever the harness wrote', () =>
 test('the words that open under the cursor never take the mouse, or a click on a bubble would be lost', () => {
   assert.match(readFileSync('client/fantasy/say.js', 'utf8'), /el\('fy-say-in win'\)/);
   assert.match(readFileSync('client/fantasy/fantasy.css', 'utf8'), /\.fy-say \.win \{ pointer-events: none; \}/);
+});
+
+test('the turn gauge shows only what is known: your move, or this turn against the last', () => {
+  const now = 1_000_000, session = { statusSince: now - 60_000, lastTurnMs: 240_000 };
+  assert.deepEqual(turnGauge({ state: 'permission', session }, now), { tone: 'ready', ratio: 1, urgent: true });
+  assert.deepEqual(turnGauge({ state: 'done', session }, now), { tone: 'ready', ratio: 1 });
+  assert.equal(turnGauge({ state: 'error', session }, now).tone, 'error');
+  assert.equal(turnGauge({ state: 'idle', session }, now), null);
+  assert.equal(turnGauge({ state: 'offline', session }, now), null);
+  assert.equal(turnGauge({ state: 'working', session }, now).ratio, .25);
+  assert.equal(turnGauge({ state: 'thinking', session: { ...session, statusSince: new Date(now - 60_000).toISOString() } }, now).ratio, .25);
+  // Only a session waiting on you ever shows full.
+  assert.equal(turnGauge({ state: 'working', session: { ...session, statusSince: now - 9_000_000 } }, now).ratio, .97);
+  // Nothing to go by: no fill, whatever the time.
+  for (const gauge of [turnGauge({ state: 'working', session: { statusSince: now } }, now), turnGauge({ state: 'compacting', session }, now), turnGauge({ state: 'waiting', session }, now)]) { assert.equal(gauge.tone, 'charge'); assert.equal(gauge.ratio, null); }
 });

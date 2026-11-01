@@ -46,6 +46,7 @@ export class Fight {
     this.plates = stage.plates.dress(this.scene, data.place, stage.low(), data.time);
     this.fx = new Effects(this.scene, stage.calm); this.fx.low = stage.low;
     this.camera = new THREE.PerspectiveCamera(FOV, 1.5, .2, 600);
+    this.fx.camera = this.camera; this.fx.world = 0;
     this.motes = motesOf(data.place); this.scene.add(this.motes);
     this.taken = new Set();
     this.cursor = new THREE.Mesh(stage.props.cone, new THREE.MeshBasicMaterial({ color: raw(0xf3ead2), toneMapped: false })); this.cursor.visible = false; this.scene.add(this.cursor);
@@ -649,7 +650,7 @@ export class Fight {
   // A bubble keeps its size on screen however far the camera stands. The lowest on screen stays put, each one that would cover it climbs above, and any at the edge of the frame slides in. Done in the sprite's own centre, so it's a move on screen whatever the camera's doing.
   placeBubbles(w, h, top, tall, dt) {
     const world = tall * 2 * Math.tan(FOV * Math.PI / 360) / h, list = [], clear = tall * .84, ease = this.stage.calm ? 1 : Math.min(1, dt * 12);
-    this.camera.updateMatrixWorld();
+    this.camera.updateMatrixWorld(); this.fx.world = world;
     for (const member of this.members.values()) {
       // A mark is as big as it's built up close, and from far off never smaller than the bubbles beside it. It grows upward, off whoever's under it.
       const { mark } = member;
