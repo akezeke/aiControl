@@ -205,7 +205,13 @@ test('holding, a finger dragged on the canvas looks round at the speed it always
   pointer('down', 20, { ...touch, timeStamp: 1000 }); pointer('move', 120, { ...touch, timeStamp: 1500 });
   assert.ok(Math.abs(player.yaw - yaw) >= 100 * 0.006 - 1e-9, 'a look, not aiming');
   pointer('move', 140, { ...touch, timeStamp: 1520 }); pointer('up', 140, { ...touch, timeStamp: 1530 });
-  assert.deepEqual(calls, []); assert.ok(player.spin > 0, 'it carries on');
+  assert.deepEqual(calls, []); assert.ok(player.spin < 0, 'it carries on, the way it turned');
+});
+test('a finger turns the view the way a mouse dragged the same way does: up looks up', t => {
+  globalThis.innerWidth = 390; t.after(() => { delete globalThis.innerWidth; });
+  const turn = (pointerType, x, y) => { const { pointer, player } = presses(t, false), yaw = player.yaw, pitch = player.pitch; pointer('down', 50, { pointerType }); pointer('move', x, { pointerType, clientY: y, timeStamp: 10 }); return [Math.sign(player.yaw - yaw), Math.sign(player.pitch - pitch)]; };
+  for (const [x, y] of [[80, 50], [20, 50], [50, 20], [50, 80]]) assert.deepEqual(turn('touch', x, y), turn('mouse', x, y), `to ${x}, ${y}`);
+  assert.deepEqual(turn('touch', 50, 20), [0, 1]);
 });
 test('holding, a second finger on the canvas calls nothing off and makes it no tap', t => {
   const { calls, pointer } = presses(t), touch = { pointerType: 'touch' };
@@ -213,7 +219,7 @@ test('holding, a second finger on the canvas calls nothing off and makes it no t
   assert.deepEqual(calls, []);
 });
 // The canvas's side of the throw button: `aimFine` says it's held, whichever finger came first.
-test('while the button is held a finger turns the view finely, with the scene, and no fling; down first or second', t => {
+test('while the button is held a finger turns the view finely, as a mouse would, and no fling; down first or second', t => {
   for (const first of [true, false]) {
     const { calls, pointer, player } = presses(t), yaw = player.yaw, touch = { pointerType: 'touch' };
     player.spin = 2;
@@ -224,7 +230,7 @@ test('while the button is held a finger turns the view finely, with the scene, a
     const from = player.yaw;
     pointer('move', 120, { ...touch, timeStamp: 1100 });
     const turned = player.yaw - from;
-    assert.ok(turned > 0, 'the scene follows the finger'); assert.ok(Math.abs(turned - 100 * 0.0022) < 1e-9, `at the fine speed, ${turned}`);
+    assert.ok(turned < 0, 'right looks right, as a mouse'); assert.ok(Math.abs(turned + 100 * 0.0022) < 1e-9, `at the fine speed, ${turned}`);
     pointer('move', 200, { ...touch, timeStamp: 1120 }); pointer('up', 200, { ...touch, timeStamp: 1125 });
     assert.equal(player.spin, 0, 'no fling'); assert.deepEqual(calls, [], 'no tap, nothing called off');
     assert.ok(player.yaw !== yaw);

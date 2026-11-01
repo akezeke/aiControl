@@ -4,7 +4,7 @@
 // off first of all (`onCancel`, true if there was one), and so do losing the mouse or the window. Not captured, a drag does too.
 // Captured is what you want until you let go yourself: whatever else takes the mouse (a panel, a menu, the overview, another
 // window) gives it back when it's done (`wanted`, `resume`). Looking with the arrow keys aims with the dot too, until the mouse moves.
-// Touch drags the view along with the finger and taps to walk or pick someone, holding something or not: on touch the throw button (`createThrowButton`) charges, and while it's held (`aimFine`) a finger turns the view finely. While the overview is up it has the keys and drags.
+// Touch turns the view as a mouse does (as games have it, not a photo sphere) and taps to walk or pick someone, holding something or not: on touch the throw button (`createThrowButton`) charges, and while it's held (`aimFine`) a finger turns the view finely. While the overview is up it has the keys and drags.
 // A click on the floor walks there round the furniture: a walking key calls it off, and looking around doesn't.
 // Pinned (`pin`), for a game played from your own eyes, you stay where you are and can still look.
 import * as THREE from 'three';
@@ -92,14 +92,14 @@ export class Player {
       if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < DRAG_SLOP) return;
       drag.moved = true; noThrow();
       const dx = event.clientX - drag.x, dy = event.clientY - drag.y; drag.x = event.clientX; drag.y = event.clientY;
-      // A finger drags the scene along with it (turning the other way to a mouse): a swipe across the screen turns
-      // about 225° whatever its size, and the turn's speed (smoothed) carries on as a fling when the finger lifts.
+      // A finger turns the way a mouse would, so a swipe right looks right and the aim goes where the finger does: a swipe across the screen
+      // turns about 225° whatever its size, and the turn's speed (smoothed) carries on as a fling when the finger lifts.
       if (this.overview) return;
-      if (fine) { look(-dx, -dy, LOCKED_LOOK); return; }
+      if (fine) { look(dx, dy, LOCKED_LOOK); return; }
       if (event.pointerType !== 'touch') { look(dx, dy, LOOK); return; }
       const speed = Math.max(TOUCH_LOOK, 1.25 * Math.PI / innerWidth), ms = Math.max(1, event.timeStamp - drag.t);
-      look(-dx, -dy, speed);
-      drag.v = drag.v * 0.6 + dx * speed / ms * 1000 * 0.4; drag.t = event.timeStamp;
+      look(dx, dy, speed);
+      drag.v = drag.v * 0.6 - dx * speed / ms * 1000 * 0.4; drag.t = event.timeStamp;
     });
     listen(canvas, 'pointerup', event => {
       if (charging) { charging = false; this.onRelease(this.locked || event.pointerType !== 'mouse' ? this.centre : event); }
