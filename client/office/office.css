@@ -76,6 +76,8 @@
 @media (pointer: coarse) { .office-hint { display: none; } }
 /* Quit, Copy, the waiting count and the three buttons don't all fit on a phone in words: Quit is its ✕ there, and its title keeps the words. */
 @media (max-width: 640px) { .office-overlay { gap: 6px; } .office-overlay button { padding: 0 10px; white-space: nowrap; } .office-overlay .office-leave { font-size: 0; } .office-overlay .office-leave::before { content: '✕'; font-size: 16px; } }
+/* A level's Quit, Copy, waiting and usage have to fit a phone: + and the eye wait until you've left it. */
+@media (max-width: 640px) { .office-overlay { max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: flex-end; } .office-overlay.level .office-new, .office-overlay.level .office-eye { display: none; } }
 @media (max-width: 640px) { .office-copied, .office-copyline { top: 136px; } }
 @media (max-width: 640px) { .office-bubble { max-width: 200px; padding: 6px 11px; font-size: 14px; } .office-bubble .icon { width: 19px; height: 19px; } }
 @media (prefers-reduced-motion: reduce) { .office-bubble.highlight { animation: none; } .office-dot { transition: none; } .office-charge.full g { animation: none; } .office-charge.full .ink { stroke-width: 11; } .office-charge.full .track, .office-charge.full .fill { stroke-width: 7; } }

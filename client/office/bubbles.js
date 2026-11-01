@@ -127,7 +127,7 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     setCharge: createGauge(container, meter, meter.querySelector('.fill')),
     // What a shot asks (goalOf's list, a ticked line struck through) and, beside it, how it went; a null goal hides it.
     setScore(goal, verdict, canCopy) {
-      score.hidden = !goal; score.replaceChildren(); copy.hidden = !canCopy;
+      score.hidden = !goal; score.replaceChildren(); copy.hidden = !canCopy; bar.classList.toggle('level', !!goal);
       if (!goal) return;
       const asks = score.appendChild(document.createElement('span'));
       goal.forEach(({ text, done }, i) => { if (i) asks.append(' · '); asks.appendChild(document.createElement(done ? 's' : 'span')).textContent = text; });
