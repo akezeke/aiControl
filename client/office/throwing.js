@@ -6,6 +6,12 @@ import { STEP, makeBody, simulate, stopShort } from './flight.js';
 import { toonMaterial } from './toon.js';
 
 const HOLD = new THREE.Vector3(-0.3, -0.27, -0.8); // the palm, in front of the camera
+const SIDE = Math.tan(THREE.MathUtils.degToRad(70 / 2)), CLEAR = 0.05; // the camera's fov (office.js) and what's round the thing, a thumb and a gap
+// Where the palm is at this much charge: back towards you and out to the left, as far left as the picture's narrow sides still show all of what's `radius` wide and the thumb round it.
+export const palmAt = (out, aspect, radius, charge = 0) => {
+  const z = HOLD.z + 0.16 * charge, room = -z * SIDE * aspect - radius - CLEAR;
+  return out.set(-Math.min(-HOLD.x + 0.04 * charge, Math.max(0, room)), HOLD.y, z);
+};
 const FINGERS = 0.016; // the fist's radius, before it's scaled to what it holds
 
 // Full at FULL_CHARGE seconds, and it holds there. Even a tap throws: a quarter of what the thing can do.
@@ -230,19 +236,22 @@ export function createHand(hands) {
   palm.position.copy(HOLD); palm.visible = false; palm.add(body); hands.add(palm);
   const ignored = () => {}, ignore = node => { if (!Object.hasOwn(node, 'raycast')) node.raycast = ignored; }, notice = node => { if (node.raycast === ignored) delete node.raycast; };
   palm.traverse(ignore);
-  let held = null;
+  let held = null, aspect = Infinity, radius = 0, pulled = 0;
+  const place = () => palmAt(palm.position, aspect, radius, pulled);
   const letGo = () => { if (!held) return; held.traverse(notice); held.removeFromParent(); held = null; };
   const hand = {
     palm,
     // `low`: how far it reaches below its middle, for what's flatter than it's wide.
-    hold(mesh, radius, low = radius) {
-      const key = `${radius}:${low}`; if (!fits.has(key)) fits.set(key, gripping(radius, low));
+    hold(mesh, fitted, low = fitted) {
+      const key = `${fitted}:${low}`; if (!fits.has(key)) fits.set(key, gripping(fitted, low));
       body.geometry = fits.get(key);
       letGo(); held = mesh; if (mesh) { palm.add(mesh); mesh.position.set(0, 0, 0); mesh.traverse(ignore); }
-      palm.visible = hands.userData.full = true;
+      radius = fitted; place(); palm.visible = hands.userData.full = true;
     },
     // Back towards you and tipped, the whole way at a full charge.
-    pull(charge) { palm.position.set(HOLD.x - 0.04 * charge, HOLD.y, HOLD.z + 0.16 * charge); palm.rotation.x = 0.35 * charge; },
+    pull(charge) { pulled = charge; place(); palm.rotation.x = 0.35 * charge; },
+    // The picture's width over its height: the throws leave from the eye, so all this moves is what they're seen to leave from.
+    fit(ratio) { aspect = ratio; place(); },
     free() { letGo(); palm.visible = hands.userData.full = false; hand.pull(0); },
     // Only what's on `body` when the scene goes is seen by its traversal: the other fits are kept for next time.
     dispose() { for (const fit of fits.values()) fit.dispose(); fits.clear(); body.geometry.dispose(); },

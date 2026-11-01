@@ -295,7 +295,7 @@ export function mountOffice(container, hooks) {
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;
-    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); hand.fit(w / h);
   };
   const observer = new ResizeObserver(resize); observer.observe(container); resize();
   // A steady ~60 fps: on a faster screen only every n-th refresh is drawn, n whole so the pace never wobbles (120 Hz → 60,

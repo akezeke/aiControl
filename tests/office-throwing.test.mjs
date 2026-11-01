@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { SLIDE_OFF, FULL_CHARGE, chargeAt, createCharge, createHand, createThrowButton, handModel, handParts, launch, throwSpeed } from '../client/office/throwing.js';
+import { SLIDE_OFF, FULL_CHARGE, chargeAt, createCharge, createHand, createThrowButton, handModel, handParts, launch, palmAt, throwSpeed } from '../client/office/throwing.js';
 import { Player } from '../client/office/player.js';
 
 test('a tap tosses at a quarter of full speed, a long hold gets all of it, and it holds', () => {
@@ -104,6 +104,23 @@ test('the darts\' arm starts inside its fist too', () => {
 test('a hand fitted once is kept, and what\'s flatter than it\'s wide gets a flatter one', () => {
   const hand = createHand(new THREE.Group()); let body; hand.hold(null, 0.08, 0.012); hand.palm.traverse(n => { if (n.isMesh) body = n; });
   const flat = body.geometry; hand.hold(null, 0.08); assert.ok(body.geometry !== flat); hand.hold(null, 0.08, 0.012); assert.ok(body.geometry === flat);
+});
+const SIDE = Math.tan(THREE.MathUtils.degToRad(35)), V3 = () => new THREE.Vector3();
+test('a phone\'s narrow picture shows all of what you hold and the thumb round it, charged or not; a wide one has the palm where it was', () => {
+  for (const radius of [0.03, 0.04, 0.045, 0.06, 0.07, 0.08, 0.11, 0.13, 0.16]) for (const charge of [0, 0.5, 1]) {
+    for (const aspect of [390 / 780, 390 / 724, 360 / 800, 320 / 568]) { const at = palmAt(V3(), aspect, radius, charge), edge = -at.z * SIDE * aspect; assert.ok(at.x - radius - 0.03 > -edge && at.x + radius < edge, `${aspect} ${radius} ${charge} ${at.x}`); assert.ok(at.x <= 0); }
+    for (const aspect of [1.23, 16 / 9, 844 / 390, Infinity]) assert.deepEqual(palmAt(V3(), aspect, radius, charge).toArray(), [-0.3 - 0.04 * charge, -0.27, -0.8 + 0.16 * charge]);
+  }
+  const small = palmAt(V3(), 0.54, 0.03), big = palmAt(V3(), 0.54, 0.16); assert.ok(small.x < -0.2 && big.x > small.x + 0.1, 'as far out as it can be, so the arm still comes in from the side');
+  assert.match(readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8'), /new THREE\.PerspectiveCamera\(70,/, 'the angle it reckons with');
+});
+test('the hand refits on a resize, at the charge it\'s at, and to the thing it\'s given', () => {
+  const hand = createHand(new THREE.Group()), at = V3(); hand.hold(null, 0.08); assert.equal(hand.palm.position.x, -0.3);
+  hand.fit(0.54); assert.ok(hand.palm.position.equals(palmAt(at, 0.54, 0.08)) && at.x > -0.3);
+  hand.hold(null, 0.03); assert.ok(hand.palm.position.equals(palmAt(at, 0.54, 0.03)));
+  hand.pull(1); assert.ok(hand.palm.position.equals(palmAt(at, 0.54, 0.03, 1))); hand.fit(0.6); assert.ok(hand.palm.position.equals(palmAt(at, 0.6, 0.03, 1)), 'mid-charge');
+  hand.free(); assert.ok(hand.palm.position.equals(palmAt(at, 0.6, 0.03))); hand.fit(2); assert.equal(hand.palm.position.x, -0.3);
+  assert.match(readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8'), /const resize = \(\) => \{[\s\S]{0,200}hand\.fit\(w \/ h\);\s*\};\s*const observer = new ResizeObserver\(resize\)/);
 });
 test('what hides the throw button calls a charge off: both ask the one condition', () => {
   const source = readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8'), clear = source.match(/const clearToThrow = \(\) => ([^,]*),/)?.[1] ?? '';
