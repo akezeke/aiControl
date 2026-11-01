@@ -64,14 +64,15 @@ test('the doors open within 2.5 m, close past 3 m, and their box is there only w
   assert.equal(DOOR_NEAR, 2.5); assert.equal(DOOR_FAR, 3);
   run(kitchen, V(2.3, 1.6, door), 0.1);
   assert.equal(fill(kitchen).length, 0, 'gone as soon as they start to open');
-  assert.ok(kitchen.flight.length > 50, 'and the room has joined');
+  assert.ok(kitchen.flight.length > 50, 'and the room has joined'); assert.equal(kitchen.within.length, 0);
   const open = kitchen.flight, moves = events.moves;
   run(kitchen, V(2.8, 1.6, door), 1);
   assert.equal(kitchen.flight, open, 'stays open between the two distances, and the list is left alone');
   assert.equal(events.moves, moves);
   run(kitchen, V(3.1, 1.6, door), 2);
   assert.equal(fill(kitchen).length, 1, 'shut');
-  assert.ok(kitchen.flight.length > 50, 'what it has built stays');
+  assert.equal(kitchen.flight.length, 1, 'the office meets the door and no more');
+  assert.ok(kitchen.within.length > 50, 'what it has built stays, for what\'s in here');
   assert.notEqual(kitchen.flight, open, 'a new list');
   assert.equal(kitchen.group.visible, false, 'skipped once shut');
   assert.equal(kitchen.shown, false, 'and says so');
@@ -346,6 +347,26 @@ for (const depth of [8, 8.6]) test(`in a room ${depth} deep what's thrown at the
     n++;
   }
   assert.ok(n > 500);
+});
+
+test('with the doors shut what\'s thrown from the office stays out, what\'s in stays in and on what it lands on', t => {
+  const { room, kitchen, door, size, bounds } = building(t, 10), reachable = p => reachableIn(room, size, p), kind = { radius: 0.06, low: 0.06, bounce: 0.6, roll: 1, drag: 0.1, upright: false };
+  kitchen.update(1 / 60, V(8, 1.6, door), true, 0); assert.equal(fill(kitchen).length, 1); room.refreshFlight();
+  const out = { colliders: room.flightColliders, columns: [], ceiling: WALL_H, onContact() {} }, inn = { ...out, colliders: [...room.flightColliders, ...kitchen.within] };
+  assert.ok(room.flightColliders.length < inn.colliders.length - 50);
+  for (let a = -6; a <= 6; a++) for (const speed of [5, 12, 20]) for (const up of [-0.1, 0.4, 2]) {
+    const yaw = -Math.PI / 2 + a * Math.PI / 16, home = V(1, 1.5, door), b = { ...makeBody(kind, home, V(Math.sin(yaw) * speed, up * speed / 2, Math.cos(yaw) * speed)), home, turn: new THREE.Quaternion(), hits: new Set() };
+    for (let i = 0; i < 300 && !b.rest; i++) { moveBody(b, 1 / 60, out, bounds, reachable); assert.ok(!kitchen.inside(b.pos), `through the shut door at ${b.pos.toArray()}`); }
+  }
+  // Dropped over each thing that stands in there: it comes to rest above that thing.
+  let on = 0;
+  for (const box of kitchen.within.filter(box => box.max.y > 0.4 && box.max.y < 2 && box.max.x - box.min.x > 0.2 && box.max.z - box.min.z > 0.2)) {
+    const home = V((box.min.x + box.max.x) / 2, box.max.y + 0.3, (box.min.z + box.max.z) / 2); if (kitchen.within.some(o => o !== box && o.containsPoint(home))) continue;
+    const b = { ...makeBody(kind, home.clone(), V(0, 0, 0)), home: home.clone(), turn: new THREE.Quaternion(), hits: new Set() };
+    for (let i = 0; i < 300 && !b.rest; i++) moveBody(b, 1 / 60, inn, bounds, reachable);
+    if (b.pos.y > box.max.y) on++; assert.ok(kitchen.inside(b.pos));
+  }
+  assert.ok(on > 5, `on ${on}`);
 });
 
 test('nothing of the kitchen stands in the office, so its windows wall hides it', t => {

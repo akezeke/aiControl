@@ -219,13 +219,13 @@ export function createKitchen({ onMove } = {}) {
   const leaves = [-1, 1].map(side => { const leaf = swingDoor(); leaf.userData.leaf = true; leaf.position.set(0.03, 0, side * DOOR_W / 2); doors.add(leaf); return leaf; });
   const swing = open => { const e = open * open * (3 - 2 * open) * SWUNG; leaves[0].rotation.y = -e; leaves[1].rotation.y = Math.PI + e; };
   swing(0);
-  // Where things are now, for thrown things and the doors: the room once they've first opened, and the shut door while it is.
-  const refresh = () => { kitchen.flight = [...(opened ? stood : []), ...(t === 0 && fill ? [fill] : [])]; onMove?.(); };
+  // Where things are now, for thrown things and the doors. Open, the room. Shut, the door, which is all the office can meet: the room's boxes are then `within`, for what's in here (props.js).
+  const refresh = () => { kitchen.flight = t > 0 ? stood : fill ? [fill] : []; kitchen.within = t > 0 ? [] : stood; onMove?.(); };
   // What's still to build, in order, games last. A step's gone before it runs, so whoever gets to it first, nothing's built twice.
   const steps = roomSteps(group, pans => { kitchen.pans = pans; });
 
   const kitchen = {
-    group, doors, flight: [],
+    group, doors, flight: [], within: [],
     get origin() { return origin; },
     get shown() { return group.visible; },
     // Inside the kitchen (past the middle of the wall), at `p`.
@@ -266,7 +266,7 @@ export function createKitchen({ onMove } = {}) {
       const inside = kitchen.inside(at), far = Math.hypot(at.x - (origin.x + WALL_T / 2), at.z - origin.z), goal = !held && (inside || far < (t > 0 ? DOOR_FAR : DOOR_NEAR)) ? 1 : 0, was = t;
       if (t !== goal) t = still ? goal : THREE.MathUtils.clamp(t + (goal ? dt : -dt) / MOVE, 0, 1);
       const shown = (t > 0 || inside) && overview < 0.01, opening = !opened && (t > 0 || inside);
-      // The first time it opens, whatever isn't built yet is. Things can be thrown at it from then on, whether the doors are open or not.
+      // The first time it opens, whatever isn't built yet is.
       if (opening) { opened = true; while (steps.length) steps.shift()(); }
       if (opening || (was === 0) !== (t === 0)) refresh();
       group.visible = group.matrixWorldAutoUpdate = shown;

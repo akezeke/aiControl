@@ -245,7 +245,7 @@ const box3 = (x0, y0, z0, x1, y1, z1, extra) => Object.assign(box(x0, y0, z0, x1
 const WEST = -(WALL_T + KITCHEN.width); // how far the building goes that way
 function office({ colliders = [], still = false, people = [] } = {}) {
   const heard = [], scene = new THREE.Scene(), player = { position: V(1, 1.6, 1), forward: V(0, 0, -1), yaw: 0, flight: null }, size = { width: 10, depth: 10 };
-  const room = { flightColliders: colliders, kitchen: { shown: true, inside: p => { const z = p.z - kitchenDoor(size.depth); return p.x < -WALL_T / 2 && p.x > WEST && z > KITCHEN.back && z < KITCHEN.front; } }, secret: { shown: true, bounds: r => ({ left: WEST, width: r.width + 3 - WEST, depth: r.depth }), inside: p => p.x > 10.1 && p.z > size.depth - 7.9 && p.z < size.depth - 0.7, get spot() { return V(9.1, 0, size.depth - 3.8); } } };
+  const room = { flightColliders: colliders, kitchen: { shown: true, within: [], inside: p => { const z = p.z - kitchenDoor(size.depth); return p.x < -WALL_T / 2 && p.x > WEST && z > KITCHEN.back && z < KITCHEN.front; } }, secret: { shown: true, bounds: r => ({ left: WEST, width: r.width + 3 - WEST, depth: r.depth }), inside: p => p.x > 10.1 && p.z > size.depth - 7.9 && p.z < size.depth - 0.7, get spot() { return V(9.1, 0, size.depth - 3.8); } } };
   const characters = new Map(people.map(p => [p.id, { scale: 1, root: { visible: true } }]));
   const cast = { characters, positionOf: id => { const p = people.find(p => p.id === id); return p && V(p.x, p.top + 0.08, p.z); } };
   const camera = new THREE.PerspectiveCamera(); camera.position.set(1, 1.6, 1);
@@ -425,6 +425,16 @@ test('nothing stays lost: what comes to rest where nobody can reach goes home, a
   }
 });
 
+test('with the kitchen\'s doors shut its room\'s boxes are for what\'s in it: a thing on its counter stays up, and nothing in the office looks at them', () => {
+  const a = office(), z = kitchenDoor(a.size.depth), counter = box3(-3.5, 0, z - 0.5, -2.5, 0.9, z + 0.5, { surface: 'counter' }), over = box3(4, 0, 4, 6, 0.9, 6, { surface: 'counter' });
+  a.room.flightColliders = []; a.room.kitchen.within = [counter, over]; a.run(0.1);
+  a.send([-3, 1.4, z], [0, 0, 0]); a.run(2); assert.ok(a.ball.rest); assert.ok(Math.abs(a.ball.pos.y - 0.9 - a.ball.kind.low) < 0.01, `on the counter, at ${a.ball.pos.y}`);
+  a.room.flightColliders = []; a.run(1); assert.ok(a.ball.rest); assert.ok(Math.abs(a.ball.pos.y - 0.9 - a.ball.kind.low) < 0.01, 'woken by a door or a desk, it\'s still there');
+  a.send([5, 1.4, 5], [0, 0, 0]); a.run(2); assert.ok(a.ball.pos.y < 0.5, `in the office it goes by them: ${a.ball.pos.y}`);
+  a.room.kitchen.within = []; a.room.flightColliders = [counter, over]; a.run(0.1);
+  a.send([5, 1.4, 5], [0, 0, 0]); a.run(2); assert.ok(a.ball.pos.y > 0.9, 'open, the same list for all');
+});
+
 test('a room that grows leaves nothing in the void: the ball in the old games room, the mug too', () => {
   const a = office(); a.run(2); a.send([15, 0.11, 3], [0, 0, 0]); a.run(1); assert.deepEqual(a.ball.home.toArray(), [15, 0.11, 3]);
   const mug = new THREE.Object3D(); mug.userData.loose = 'mug'; a.scene.add(mug); a.room.flightColliders = []; a.run(0.05);
@@ -509,6 +519,11 @@ test('coffee poured in the kitchen is a stream, and a puddle where it lands', ()
   assert.ok(stream.visible, 'a stream'); assert.ok(pool.count > 0, 'a puddle');
   const at = puddleAt(pool);
   assert.ok(a.room.kitchen.inside(at), `${at.toArray()}`);
+});
+
+test('coffee in the kitchen with its doors shut still lands on what stands there', () => {
+  const a = office(); a.room.kitchen.within = [box3(-4, 0, 4, -2, 0.5, 6)]; a.room.flightColliders = []; a.run(0.1);
+  const { pool } = pourAt(a, -3, 5); assert.ok(pool.count > 0); assert.ok(Math.abs(puddleAt(pool).y - 0.5) < 0.05, `${puddleAt(pool).y}`);
 });
 
 test('coffee poured in the doorway lands too, and past the building it is gone', () => {

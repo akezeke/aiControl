@@ -99,7 +99,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
   let placed = false, holding = null, aimed = null, boxes = null, building = null;
   // Just thrown it's drawn coming out of your hand (`fromHand`, throwing.js). Everything else goes by where it really is.
   const show = b => {
-    const at = b.fromHand ? drawnAt(drawn, b.pos, b.fromHand, b.flown, b.kind, world.colliders) : b.pos;
+    const at = b.fromHand ? drawnAt(drawn, b.pos, b.fromHand, b.flown, b.kind, worldAt(b.pos).colliders) : b.pos;
     if (b.obj) { b.obj.visible = !b.off; b.obj.quaternion.copy(b.turn); b.obj.position.copy(b.kind.centre).applyQuaternion(b.turn).negate().add(at); return; }
     b.mesh.setMatrixAt(b.i, matrix.compose(at, b.turn, b.off ? none : one)); b.mesh.instanceMatrix.needsUpdate = true;
     b.mesh.boundingSphere = b.hull.boundingSphere = null; // worked out again for culling and picking
@@ -152,7 +152,9 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
   };
   const quiet = {}; // a bounce nobody hears about: you walking into it
   // Reduced motion: straight to where it ends up.
-  const settle = b => { for (let i = 0; i < 600 && !b.rest; i++) moveBody(b, 1 / 60, world, building, reachable); };
+  // With the kitchen's doors shut, its room's boxes are only for what's in it: everything moving out here would look at them each step.
+  const indoors = Object.create(world), worldAt = p => room.kitchen.inside(p) ? indoors : world;
+  const settle = b => { for (let i = 0; i < 600 && !b.rest; i++) moveBody(b, 1 / 60, worldAt(b.pos), building, reachable); };
 
   // Coffee: drops in flight, and puddles that grow where they land and dry up in time.
   const dot = canvasTexture(32, 32, (g, w) => { g.fillStyle = '#fff'; g.beginPath(); g.arc(w / 2, w / 2, w / 2 - 1, 0, 7); g.fill(); });
@@ -179,7 +181,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
   let wet = null;
   const surface = (x, y, z) => {
     wet = null;
-    for (const box of boxes) if (box.containsPoint(near.set(x, y, z))) { wet = box.owner; return box.max.y < 0.9 && y > box.max.y - 0.1 ? box.max.y : null; }
+    for (const box of worldAt(near.set(x, y, z)).colliders) if (box.containsPoint(near)) { wet = box.owner; return box.max.y < 0.9 && y > box.max.y - 0.1 ? box.max.y : null; }
     return y <= 0 ? 0 : undefined; // undefined: still falling
   };
 
@@ -190,7 +192,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     if (level < 0.05) return;
     const ahead = player.forward.multiplyScalar(0.55).add(player.position);
     let y = 0, owner = null;
-    for (const box of boxes) if (box.max.y < 0.9 && ahead.x > box.min.x && ahead.x < box.max.x && ahead.z > box.min.z && ahead.z < box.max.z && box.max.y > y) { y = box.max.y; owner = box.owner; }
+    for (const box of worldAt(ahead).colliders) if (box.max.y < 0.9 && ahead.x > box.min.x && ahead.x < box.max.x && ahead.z > box.min.z && ahead.z < box.max.z && box.max.y > y) { y = box.max.y; owner = box.owner; }
     for (const p of people) if (Math.hypot(p.x - ahead.x, p.z - ahead.z) < p.r + 0.15) hit(p.id, now, 'coffee');
     if (owner) hit(owner, now, 'desk');
     land(ahead.x, y, ahead.z, DROP * RATE * Math.min(level, 0.3) / DRAIN, now); level = Math.max(0, level - 0.3);
@@ -209,7 +211,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     abort() { hand.pull(0); }, // it stays in your hand
     // What `throw` would do with it, and the world it'd fly in without anyone minding: for the arc.
     launch(charge, direction) { return launch(holding.kind, charge, camera, direction, walk); },
-    aimWorld() { return { colliders: world.colliders, columns: world.columns, ceiling: world.ceiling }; },
+    aimWorld() { return { colliders: worldAt(player.position).colliders, columns: world.columns, ceiling: world.ceiling }; },
     // A thing comes to hand if it's within reach; it turns with you from then on.
     grab(b) {
       if (holding || b.held || b.pos.distanceTo(player.position) > REACH) return;
@@ -231,7 +233,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       }
       // Let go, it's this side of any wall in front of you. Dropped and still in the games room (you're going through the secret
       // door with it) it stays in the office, by the door where the shelf isn't, open or shut.
-      stopShort(player.position, b.pos, b.kind, world.colliders);
+      stopShort(player.position, b.pos, b.kind, worldAt(player.position).colliders);
       if (!drop) { b.fromHand = drawn.clone().sub(b.pos); b.flown = 0; show(b); }
       if (drop && room.secret.inside(b.pos)) { const { x, z } = room.secret.spot; b.pos.x = x; b.pos.z = z; }
       if (drop && reducedMotion() && building) { settle(b); show(b); }
@@ -260,7 +262,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       const { width: w, depth: d } = size, still = reducedMotion(), now = performance.now() / 1000;
       if (!placed) { placed = true; for (const b of bodies) { spawn(b, w, d); show(b); } }
       // Desks come and go: whatever rested on one falls, and there may be new things on them.
-      if (boxes !== room.flightColliders) { boxes = world.colliders = room.flightColliders; building = room.secret.bounds(size); for (const b of bodies) { b.rest = false; if (!reachable(b.home)) start(b, w, d); } scan(); }
+      if (boxes !== room.flightColliders) { boxes = world.colliders = room.flightColliders; indoors.colliders = room.kitchen.within.length ? [...boxes, ...room.kitchen.within] : boxes; building = room.secret.bounds(size); for (const b of bodies) { b.rest = false; if (!reachable(b.home)) start(b, w, d); } scan(); }
       gather();
       // How you're moving; flying over to someone doesn't kick.
       walk.subVectors(player.position, was).setY(0).divideScalar(Math.max(dt, 1e-3)); was.copy(player.position);
@@ -280,7 +282,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
         const gap = normal.length();
         if (!b.grace && gap < r && bottom < feet + 1.7 && b.pos.y + b.kind.radius > feet) {
           normal.divideScalar(gap || 1); b.pos.x = player.position.x + normal.x * r; b.pos.z = player.position.z + normal.z * r;
-          stopShort(axis.set(player.position.x, b.pos.y, player.position.z), b.pos, b.kind, world.colliders); // against a wall it stays there, under your feet
+          stopShort(axis.set(player.position.x, b.pos.y, player.position.z), b.pos, b.kind, worldAt(player.position).colliders); // against a wall it stays there, under your feet
           const speed = walk.length();
           if (speed > 0.5 && bottom < feet + 0.4) {
             const push = Math.min(KICK, speed * 1.5 + 1);
@@ -290,7 +292,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
           b.rest = false;
         }
         if (b.fromHand && (b.flown += dt) >= BLEND) { b.fromHand = null; show(b); }
-        if (!b.rest) { moveBody(b, dt, world, building, reachable); show(b); } else if (b.fromHand) show(b); // at rest within the blend it still gets there
+        if (!b.rest) { moveBody(b, dt, worldAt(b.pos), building, reachable); show(b); } else if (b.fromHand) show(b); // at rest within the blend it still gets there
       }
       // Things knock into each other, the heavier pushing the lighter more.
       for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
