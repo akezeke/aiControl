@@ -71,16 +71,33 @@ export function createFolderField(onEnter) {
   };
 }
 
-// A pod sign's menu: Claude (once per account, see hire.js) or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
+export const hireCaret = () => { const caret = span('hire-caret', ''); caret.setAttribute('aria-hidden', 'true'); return caret; };
+// A menu's rows from hire.js's choices: `row` makes each. Several Claude accounts are one row that opens them underneath.
+export function hireRows(choices, row, onToggle) {
+  return choices.flatMap(choice => {
+    if (!choice.accounts) return [row(choice)];
+    const head = row(choice), accounts = choice.accounts.map(account => { const item = row(account); item.classList.add('hire-account'); item.hidden = true; return item; });
+    head.title = 'Claude account'; head.setAttribute('aria-expanded', 'false'); head.append(hireCaret());
+    head.onclick = () => {
+      const open = head.getAttribute('aria-expanded') !== 'true';
+      head.setAttribute('aria-expanded', String(open)); for (const item of accounts) item.hidden = !open;
+      onToggle?.(); if (open) accounts[0].focus();
+    };
+    return [head, ...accounts];
+  });
+}
+
+// A pod sign's menu: Claude or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
 export function createMenu(container, onChoose, onClose) {
   const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
-  let cwd = null, items = [];
+  let cwd = null, items = [], placedAt = null;
   // Without a folder (the + button) the menu asks for one.
   const field = createFolderField(() => items[0]?.click());
   const build = choices => {
-    items = choices.map(choice => {
+    items = hireRows(choices, choice => {
       const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`;
-      item.append(providerIcon(choice.provider), choice.label);
+      if (choice.account === undefined) item.append(providerIcon(choice.provider));
+      item.append(choice.label);
       if (choice.last) item.append(span('last', 'last'));
       item.onclick = () => {
         const at = cwd ?? field.value;
@@ -88,7 +105,7 @@ export function createMenu(container, onChoose, onClose) {
         result.close(); onChoose(at, cwd === null ? { ...choice, create: true } : choice, item);
       };
       return item;
-    });
+    }, () => { if (placedAt) placeNear(container, menu, placedAt); });
     menu.replaceChildren(...(cwd === null ? field.nodes : []), ...items);
   };
   // Keys stay in the menu: the arrows and WASD would otherwise walk or pan the camera behind it.
@@ -97,7 +114,8 @@ export function createMenu(container, onChoose, onClose) {
     if (event.key === 'Escape') result.close();
     else if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
       event.preventDefault();
-      items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+      const shown = items.filter(item => !item.hidden);
+      shown[(shown.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length].focus();
     }
   });
   const result = {
@@ -106,10 +124,10 @@ export function createMenu(container, onChoose, onClose) {
     get asking() { return !menu.hidden && cwd === null; },
     // At a screen point; `focus` for the keyboard. A null folder asks for one; `suggested` are the folders to suggest.
     show(where, at, focus, choices, suggested = []) {
-      cwd = where; build(choices); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
+      cwd = where; build(choices); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; placedAt = at; if (at) placeNear(container, menu, at);
       if (where === null) { field.reset(suggested); field.input.focus(); } else if (focus) items[0].focus();
     },
-    move(at) { if (!menu.hidden) placeNear(container, menu, at); },
+    move(at) { if (!menu.hidden) { placedAt = at; placeNear(container, menu, at); } },
     close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; onClose?.(); },
     dispose() { menu.remove(); },
   };

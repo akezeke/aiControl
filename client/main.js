@@ -29,7 +29,7 @@ import { renderThemeConsole } from './theme-console.js';
 import { paletteFor, savedColour, wearColours } from './bridge/palettes.js';
 import { sceneFor, sceneAction } from './scenes.js';
 import { hireChoices } from './hire.js';
-import { createFolderField } from './scene-ui.js';
+import { createFolderField, hireCaret, hireRows } from './scene-ui.js';
 import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
 
 const app = document.querySelector('#app');
@@ -449,7 +449,7 @@ function renderData() {
   const sessionsById = new Map();
   for (const [cwd, list] of sorted) {
     const group = [...groups.children].find(node => node.dataset.key === cwd), header = group.firstChild;
-    const headerSignature = JSON.stringify([list[0].project, list.length, cwd, hireChoices(state.snapshot, cwd).map(choice => choice.label)]);
+    const headerSignature = JSON.stringify([list[0].project, list.length, cwd, hireSignature(cwd)]);
     header.hidden = flat;
     if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
@@ -595,7 +595,7 @@ function renderPanel() {
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
-    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireChoices(state.snapshot, session.cwd).map(choice => choice.label)]);
+    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireSignature(session.cwd)]);
   if (signature !== panelSignature) {
     panelSignature = signature;
     renderSessionHeader(panel.querySelector('.chat-header'), session);
@@ -1156,10 +1156,50 @@ function newOpenCodeSession() {
   dialog.onclick = event => { if (event.target === dialog && !sending) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); } };
   form.append(title, label, known, connection, error, actions); dialog.append(form); app.append(dialog); dialog.updateConnection(); dialog.showModal(); folder.focus();
 }
+const hireSignature = cwd => hireChoices(state.snapshot, cwd).flatMap(choice => [choice.label, ...(choice.accounts || []).map(account => account.label)]);
 function spawnButtons(cwd) {
   const actions = el('span', 'group-actions');
-  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}${choice.last ? ' · last used here' : ''}`; actions.append(b); }
+  for (const choice of hireChoices(state.snapshot, cwd)) {
+    const b = button(choice.label, 'quiet-button spawn-button', () => choice.accounts ? toggleAccountMenu(b, cwd, choice.accounts) : spawnAgent(cwd, choice, b), 'plus');
+    b.insertBefore(providerIcon(choice.provider), b.lastChild);
+    if (choice.accounts) { b.append(hireCaret()); b.title = 'Claude account'; b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false'); }
+    else b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}`;
+    actions.append(b);
+  }
   return actions;
+}
+// In the top layer and outside the list: no scrolling parent clips it, and a panel or header redraw can't close it mid-pick.
+let closeAccountMenu = null;
+function toggleAccountMenu(control, cwd, accounts) {
+  const reopen = closeAccountMenu?.control !== control;
+  closeAccountMenu?.();
+  if (!reopen) return;
+  const menu = el('div', 'filter-options account-options'); menu.popover = 'manual'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Claude account');
+  const items = accounts.map(account => {
+    const item = button(account.label, 'tab', () => { close(); spawnAgent(cwd, account, control); });
+    item.setAttribute('role', 'menuitem'); item.title = `New ${account.name} in tmux${account.last ? ' · last used here' : ''}`;
+    if (account.last) item.append(el('span', 'last', 'last'));
+    return item;
+  });
+  const listening = new AbortController();
+  function close(returnFocus) {
+    listening.abort(); menu.remove(); closeAccountMenu = null; control.setAttribute('aria-expanded', 'false');
+    if (returnFocus && control.isConnected) control.focus();
+  }
+  close.control = control; closeAccountMenu = close;
+  // Keys stay in the menu: Esc would close the panel behind it, and j, k and n act on the list.
+  menu.onkeydown = event => {
+    event.stopPropagation();
+    if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); close(true); }
+    else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+  };
+  for (const [type, target] of [['scroll', document], ['resize', window]]) target.addEventListener(type, () => close(), { capture: true, signal: listening.signal });
+  document.addEventListener('pointerdown', event => { if (!menu.contains(event.target) && !control.contains(event.target)) close(); }, { capture: true, signal: listening.signal });
+  menu.append(...items); app.append(menu); menu.showPopover(); control.setAttribute('aria-expanded', 'true');
+  const at = control.getBoundingClientRect(), { offsetWidth: w, offsetHeight: h } = menu;
+  menu.style.left = `${Math.max(8, Math.min(at.right, innerWidth - 8) - w)}px`;
+  menu.style.top = `${at.bottom + 4 + h > innerHeight - 8 ? Math.max(8, at.top - 4 - h) : at.bottom + 4}px`;
+  items[0].focus();
 }
 // Sessions that went without a goodbye (server/recovery.mjs): what each was last asked, said and doing, to resume in tmux or let go.
 const lostStates = { working: 'was working', permission: 'needed approval', question: 'asked you', idle: 'idle', error: 'error' };
@@ -1220,12 +1260,13 @@ function newAgentMenu() {
   menu.ontoggle = () => {
     if (!menu.open) return;
     field.reset([...new Set((state.snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort());
-    options.replaceChildren(...field.nodes, ...hireChoices(state.snapshot, '').map(choice => {
+    options.replaceChildren(...field.nodes, ...hireRows(hireChoices(state.snapshot, ''), choice => {
       const b = button(choice.label, 'tab', () => {
         if (!field.value || field.refused) { field.input.focus(); return; }
         menu.open = false; spawnAgent(field.value, { ...choice, create: true }, b);
       });
-      b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}`; return b;
+      if (choice.account === undefined) b.insertBefore(providerIcon(choice.provider), b.lastChild);
+      b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}`; return b;
     }));
     field.input.focus();
   };

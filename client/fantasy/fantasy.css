@@ -193,6 +193,7 @@
 #fantasy .office-menu .office-folder:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 #fantasy .office-menu .office-folder-note { padding: 0 10px 4px; color: var(--ok); font: 700 13px var(--ui); }
 #fantasy .office-menu .office-folder-note[data-state="none"] { color: var(--bad); }
+#fantasy .office-menu .hire-account { padding-left: 72px; }
 #fantasy .office-menu .last { margin-left: auto; padding-left: 12px; color: var(--dim); font-size: 12px; font-weight: 700; }
 @media (pointer: coarse) { #fantasy .office-menu button { min-height: 44px; } }
 @media (prefers-reduced-motion: no-preference) { #fantasy .office-menu:not([hidden]) { animation: fy-menu-open .12s ease-out; } }

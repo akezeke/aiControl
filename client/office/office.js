@@ -401,7 +401,7 @@ export function mountOffice(container, hooks) {
       const spot = standBefore(centre, normal, THREE.MathUtils.clamp(Math.max(fit, Math.abs(rise) * 1.7), node.userData.near ?? 1, 3.5), room.colliders, layout && room.secret.bounds(layout.room));
       if (spot) player.flyTo(spot, centre, null, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z)));
     },
-    // A pod's sign: let go of the mouse and offer Claude (per account) or Codex, started in the pod's folder.
+    // A pod's sign: let go of the mouse and offer Claude or Codex, started in the pod's folder.
     offerHire({ cwd, node, point }, at, focus = false) {
       player.unlock(); card.show(null);
       lit(hovered, false); lit(node, true); hovered = node;

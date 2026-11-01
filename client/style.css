@@ -81,6 +81,13 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .filter-options, .theme-options { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: flex; flex-direction: column; gap: 2px; width: 210px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); }
 .filter-options .sidebar-label { margin: 6px 8px 4px; }
 .new-agent-options { width: 260px; }
+.account-options { position: fixed; inset: auto; margin: 0; width: max-content; min-width: 150px; max-height: calc(100dvh - 16px); overflow: auto; color: var(--text); }
+.account-options .last { margin-left: auto; padding-left: 12px; color: var(--text-3); font-size: 11px; }
+.new-agent-options .hire-account { padding-left: 38px; }
+.office-menu .hire-account { padding-left: 39px; }
+.hire-caret { flex: none; width: 6px; height: 6px; margin: -3px 2px 0 4px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+[aria-expanded=true] > .hire-caret { margin-top: 3px; transform: rotate(225deg); }
+:is(.tab, .office-menu button) > .hire-caret { margin-left: auto; }
 .new-agent-options .office-folder { width: 100%; min-height: 38px; margin-bottom: 2px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); outline: 0; background: var(--sunken); color: var(--text); font: 13px var(--mono); }
 .new-agent-options .office-folder:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .new-agent-options .office-folder-note { padding: 0 10px 2px; color: var(--ok); font-size: 12px; font-weight: 600; }
