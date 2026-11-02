@@ -209,9 +209,9 @@ attribute vec4 iRect, iTint;
 varying vec2 vT; varying vec4 vTint;
 void main() { vT = iRect.xy + uv * iRect.zw; vTint = iTint; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.); }`;
 const DECAL_FRAG = /* glsl */`
-uniform sampler2D uAtlas; varying vec2 vT; varying vec4 vTint;
+uniform sampler2D uAtlas; uniform float uNames; varying vec2 vT; varying vec4 vTint;
 void main() {
-  vec3 t = texture2D(uAtlas, vT).rgb;
+  vec3 t = texture2D(uAtlas, vT).rgb; t.b *= uNames;
   float a = max(max(t.r, t.g), t.b);
   if (a < .02) discard;
   vec3 c = vec3(.5, .6, .62) * t.r * .36 + vec3(.4, .31, .12) * t.g * .55 + vTint.rgb * t.g * vTint.a + vec3(.62, .92, 1.) * t.b * .85;
@@ -386,6 +386,9 @@ body[data-look="synthetic"] .lbl span { font: 400 10.5px/1.3 var(--mono); color:
 body[data-look="synthetic"] .lbl.need { border-color: rgba(255, 171, 26, .65); }
 body[data-look="synthetic"] .lbl.error { border-color: rgba(255, 45, 75, .65); }
 body[data-look="synthetic"] .lbl:is(.project, .you) { padding: 0; background: none; border: 0; box-shadow: none; }
+body[data-look="synthetic"] .lbl.sub { padding: 0 2px; background: none; border: 0; box-shadow: none; text-shadow: 0 0 4px #000, 0 0 2px #000; }
+body[data-look="synthetic"] .lbl.sub b { font: 400 10.5px/1.3 var(--mono); }
+body[data-look="synthetic"] .lbl.sub:not(.need, .error) b { color: #7fb9c6; }
 body[data-look="synthetic"] .lbl.project b { font: 600 12.5px/1.2 var(--display); text-transform: uppercase; letter-spacing: .16em; color: #9ff0ff; }
 body[data-look="synthetic"] .lbl.you b { font: 600 13px/1.2 var(--display); letter-spacing: .12em; text-transform: uppercase; }
 body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spacing: .06em; }`,
@@ -396,7 +399,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     ctx.setPost({ bloom: { strength: .38, radius: .35, threshold: 1 }, exposure: 1.05 });
     ctx.setView({ tilt: .58, fov: 33 });
     ctx.setMotion(kit.RIGID);
-    ctx.setSizes({ you: 2.0, project: .7, session: 1.3, sub: .55 });
+    ctx.setSizes({ you: 2.0, project: .9, session: 1.3, sub: .55 });
     // The engine's layout, opened out: session chips are big and carry displays, so fans and the ring get more room. The
     // screen's shape is taken once here; placements below are worked out for it.
     {
@@ -619,7 +622,8 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const decalGeo = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
     const dRect = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, NC) * 4), 4), dTint = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, NC) * 4), 4).setUsage(THREE.DynamicDrawUsage);
     decalGeo.setAttribute('iRect', dRect); decalGeo.setAttribute('iTint', dTint);
-    const decals = new THREE.InstancedMesh(decalGeo, new THREE.ShaderMaterial({ uniforms: { uAtlas: { value: atlas } }, vertexShader: DECAL_VERT, fragmentShader: DECAL_FRAG, transparent: true, depthWrite: false }), Math.max(1, NC));
+    const decalU = { uAtlas: { value: atlas }, uNames: { value: 1 } };
+    const decals = new THREE.InstancedMesh(decalGeo, new THREE.ShaderMaterial({ uniforms: decalU, vertexShader: DECAL_VERT, fragmentShader: DECAL_FRAG, transparent: true, depthWrite: false }), Math.max(1, NC));
     decals.count = NC; decals.renderOrder = 1;
     for (const v of chips) {
       const { d, i } = v, f = d.face, o = i * 4;
@@ -641,7 +645,9 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     for (const v of chips) {
       const dp = v.d.disp;
       if (!dp) continue;
-      const x = Object.assign(screen(dp.w, dp.view), { v, at: new THREE.Vector3(dp.x, GLASS_Y, dp.z), local: new THREE.Matrix4().compose(pv.set(dp.x, GLASS_Y, dp.z), qI, sv.set(dp.w / 2, 1, dp.h / 2)) });
+      // The display shows the name, so clicking it opens the session like the chip does.
+      const x = Object.assign(screen(dp.w, dp.view), { v, at: new THREE.Vector3(dp.x, GLASS_Y, dp.z), local: new THREE.Matrix4().compose(pv.set(dp.x, GLASS_Y, dp.z), qI, sv.set(dp.w / 2, 1, dp.h / 2)),
+        target: ctx.addTarget({ node: v.n, pos: new THREE.Vector3(), hx: dp.w / 2 + .16, hz: dp.h / 2 + .16, action: 'node' }) });
       x.u.uC1.value.set('#d6f8ff').multiplyScalar(.85); x.mesh.matrixAutoUpdate = false; x.mesh.frustumCulled = false; root.add(x.mesh); displays.push(x);
     }
     const fontsReady = () => { for (const x of displays) x.sig = ''; if (youScreen) youScreen.sig = ''; };
@@ -685,7 +691,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     for (const v of chips) {
       const sh = v.d.shot;
       if (sh) shotMods.push({ v, group: null, shot: null, local: new THREE.Matrix4().makeTranslation(sh.x, 0, sh.z), at: new THREE.Vector3(sh.x, .112, sh.z + LCD_Z),
-        target: ctx.addTarget({ node: v.n, pos: new THREE.Vector3(), radius: SHOT_W * .55, action: 'shots' }) });
+        target: ctx.addTarget({ node: v.n, pos: new THREE.Vector3(), hx: SHOT_W / 2 + .12, hz: SHOT_H / 2 + .12, action: 'shots' }) });
     }
     // The newest screenshot, letterboxed, with how many there are; drawn only when the engine hands over a new one.
     function paintShot(m, shot) {
@@ -695,6 +701,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       if (shot.count > 1) { g.fillStyle = 'rgba(0, 0, 0, .78)'; g.fillRect(412, 268, 92, 44); g.fillStyle = '#9ff2ff'; g.font = `400 32px ${FONT}`; g.textAlign = 'right'; g.textBaseline = 'middle'; g.fillText(`×${shot.count}`, 496, 291); }
       m.tex.needsUpdate = true;
     }
+    const BLANK = [];
     function paintScreen(x, lines) {
       const sig = lines.join('|');
       if (sig === x.sig) return;
@@ -878,11 +885,11 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const shearAt = (p, w, h) => { la.copy(p).project(camera); lb.copy(p); lb.z -= h / 2; lb.project(camera); lc.copy(p); lc.x += w / 2; lc.project(camera); return Math.abs(lc.x - la.x) > 1e-6 ? (lb.x - la.x) / (lc.x - la.x) : 0; };
     // Measured up the board (z), where flat text is foreshortened.
     const pxPerUnit = n => { la.copy(n.pos).project(camera); lb.copy(n.pos); lb.z -= 1; lb.project(camera); return Math.hypot((lb.x - la.x) * ctx.size.w, (lb.y - la.y) * ctx.size.h) / 2; };
-    let ppu = 20;
+    let ppu = 20, far = false;
     // Displays and silkscreen carry every node's text while they're big enough on screen to read; zoomed out further, the
     // HTML labels take over for every node at once. A node that found no room for a display keeps its label.
     ctx.setLabelRule(n => {
-      if (DISPLAYS.session.h * 24 / DISP_PX * ppu < 7) return undefined;
+      if (far) return undefined;
       const v = byNode.get(n);
       return n.kind === 'you' ? false : n.kind === 'project' ? !v?.d.named : !v?.d.disp;
     });
@@ -1003,14 +1010,15 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       m4.compose(pv.set(you.pos.x, .006, you.pos.z), qI, sv.set(8, 1, 8)); glows.setMatrixAt(NC, m4);
       glows.setColorAt(NC, tmpC2.copy(cyan).lerp(amber, needSmooth).multiplyScalar(.12 + needSmooth * .06 + coreFlash * .12));
       // Displays: the name over what it's doing, in its state's colour, dimmer when idle. Zoomed out too far to read them, the
-      // HTML labels come back (one board-wide decision, so it doesn't flicker chip by chip).
-      ppu = pxPerUnit(you);
+      // HTML labels come back (one board-wide decision, so it doesn't flicker chip by chip), and the displays and silkscreen go
+      // blank so no name shows twice.
+      ppu = pxPerUnit(you); far = DISPLAYS.session.h * 24 / DISP_PX * ppu < 7; decalU.uNames.value = far ? 0 : 1;
       for (const x of displays) {
         const { v } = x, n = v.n, s = n.s;
-        paintScreen(x, [n.name, needs(n) ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text]);
+        paintScreen(x, far ? BLANK : [n.name, needs(n) ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text]);
         x.u.uC2.value.copy(v.col).lerp(WHITE, .22);
         x.u.uOn.value = s.alive * (1 - s.off * .5) * (1 - s.idle * .35) * (v.boot > 0 ? 1 : .1);
-        x.u.uShear.value = shearAt(wp.copy(x.at).applyMatrix4(v.T), x.w, DISPLAYS[n.kind].h);
+        x.u.uShear.value = shearAt(wp.copy(x.at).applyMatrix4(v.T), x.w, DISPLAYS[n.kind].h); x.target.pos.copy(wp);
         if (v.moved) { x.mesh.matrix.multiplyMatrices(v.T, x.local); x.mesh.matrixWorldNeedsUpdate = true; }
       }
       paintScreen(youScreen, ['YOU', queue.length ? `${queue.length} WAITING` : 'ALL CLEAR']);
@@ -1241,6 +1249,7 @@ function design(n, r) {
   d.ref = n.kind === 'project' ? `U${1 + n.seed % 9}` : n.kind === 'session' ? `U${10 + n.seed % 90}` : `U${100 + n.seed % 900}`;
   (n.kind === 'project' ? junction : n.kind === 'session' ? chip : small)(d, r, pick);
   if (n.kind === 'session') grow(d, 1.4);
+  else if (n.kind === 'project') { grow(d, 1.3); d.ring *= 1.3; }
   const [fx, fz] = d.foot;
   d.ext = [-fx, -fz, fx, fz];
   const big = n.kind === 'session' ? .19 : .13;

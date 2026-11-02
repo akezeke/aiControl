@@ -21,6 +21,15 @@
 .nodes-scene .lbl.need span { color: var(--need); }
 .nodes-scene .lbl.error span { color: var(--err); }
 .nodes-scene .lbl.hide { opacity: 0; }
+/* Brief: the name alone, cut to BRIEF in nodes.js. On: the name on its node, as wide as the node allows (max-width from nodes.js). */
+.nodes-scene .lbl:is(.brief, .on) span { display: none; }
+.nodes-scene .lbl.brief b { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.nodes-scene .lbl.on b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.nodes-scene .lbl:is(.on, .sub).need b { color: var(--need); }
+.nodes-scene .lbl:is(.on, .sub).error b { color: var(--err); }
+/* A subagent: its name alone, smaller and quieter than a session's, so it can't pass for one or for a session's status. Looks drop
+   their bubble for it and keep this colour only while nothing's wrong (.lbl.sub:not(.need, .error) b). */
+.nodes-scene .lbl.sub b { font-size: 11px; font-weight: 500; color: var(--label-sub); }
 
 .nodes-tip { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; min-width: 180px; max-width: 280px; padding: 9px 11px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line);
   box-shadow: var(--shadow); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); display: grid; gap: 3px; }
@@ -41,6 +50,27 @@
 .nodes-overlay button:hover, .nodes-overlay button:focus-visible { border-color: var(--accent); outline: none; }
 .nodes-overlay .nodes-next { border-color: var(--need); color: var(--need); }
 .nodes-overlay .nodes-next:hover, .nodes-overlay .nodes-next:focus-visible { background: var(--need); color: var(--bg); }
+
+/* A project's new-session menu (scene-ui's createMenu). Other scenes' css may be loaded too and styles .office-menu unscoped. */
+.nodes-scene .office-menu { position: absolute; left: 0; top: 0; z-index: 5; display: flex; flex-direction: column; gap: 2px; min-width: 168px; padding: 4px;
+  border: 1px solid var(--line); border-image: none; border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); filter: none; image-rendering: auto;
+  backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); color: var(--fg); animation: none; }
+.nodes-scene .office-menu[hidden] { display: none; }
+.nodes-scene .office-menu button { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 12px 0 8px; border: 0; border-radius: max(3px, calc(var(--radius) - 3px));
+  background: none; box-shadow: none; color: inherit; font: 500 13px/1.2 var(--font); text-shadow: none; cursor: pointer; }
+.nodes-scene .office-menu button:is(:hover, :focus-visible) { background: color-mix(in srgb, var(--accent) 18%, transparent); outline: none; }
+.nodes-scene .office-menu button:disabled { opacity: .5; cursor: progress; }
+.nodes-scene .office-menu .provider-icon { width: 20px; height: 20px; image-rendering: auto; }
+.nodes-scene .office-menu .hire-account { padding-left: 36px; }
+.nodes-scene .office-menu .last { margin-left: auto; padding-left: 12px; color: var(--muted); font-size: 11px; }
+.nodes-scene .office-menu .office-folder { width: 230px; min-height: 34px; margin-bottom: 2px; padding: 0 10px; border: 1px solid var(--line); border-image: none; border-radius: max(3px, calc(var(--radius) - 3px));
+  background: color-mix(in srgb, var(--bg) 70%, transparent); box-shadow: none; color: var(--fg); font: 13px var(--mono); }
+.nodes-scene .office-menu .office-folder:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.nodes-scene .office-menu .office-folder-note { padding: 0 10px 4px; color: var(--work); font: 600 12px var(--font); }
+.nodes-scene .office-menu .office-folder-note[data-state="none"] { color: var(--err); }
+@media (pointer: coarse) { .nodes-scene .office-menu button { min-height: 44px; } }
+@media (prefers-reduced-motion: no-preference) { .nodes-scene .office-menu:not([hidden]) { animation: nodes-menu-in .12s ease-out; } }
+@keyframes nodes-menu-in { from { opacity: 0; } }
 
 /* Beside the panel the board stays in view, undimmed. */
 @media (min-width: 641px) {

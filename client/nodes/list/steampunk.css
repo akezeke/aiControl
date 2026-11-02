@@ -29,11 +29,14 @@
   --paper: #efe3c6; --paper-ink: #2b1d0e;
   --gas: radial-gradient(ellipse 70% 45% at 22% -5%, #ffb2471c, transparent 70%), radial-gradient(ellipse 50% 40% at 95% 100%, #ff8a3a10, transparent 70%);
 
-  /* The room: a copper main runs down the right wall through a valve with a gauge and a vent, behind the list. */
-  --pipe: url('/nodes-steampunk-pipe.svg'); --valve: url('/nodes-steampunk-valve.svg');
-  body { background: var(--valve) right 0 top 32% / 96px 120px no-repeat fixed, var(--pipe) right 0 top 0 / 36px 240px repeat-y fixed, var(--gas), var(--plate), var(--bg); background-attachment: fixed; }
+  /* The room behind the list and the door is the engine house itself (scripts/steampunk-art.mjs), dimmed most where the list sits so
+     the plates stay the brightest thing; on wide screens a strip of it stays in view down the right. Elsewhere the board covers the page. */
+  --pipe: url('/nodes-steampunk-pipe.svg'); --valve: url('/nodes-steampunk-valve.svg'); --hall: url('/nodes-steampunk-hall.webp');
+  body { background: var(--bg); }
   .main-content, .workspace, .history-viewport { background: none; }
   .main-content { padding-right: 52px; }
+  &:is([data-scene-list], [data-scene-fallback]) .shell::before, .login-screen::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(ellipse 70% 75% at 55% 50%, #0b0805b3, #0b080560 70%, #0b080540), var(--hall) center / cover no-repeat, var(--bg); }
   ::selection { background: #e0aa4c66; color: #fff7e2; }
 
   /* Engraved type: names in Cinzel capitals, numbers on enamel counters, the agents' words in a book face. */
@@ -166,13 +169,10 @@
   .shot-viewer { background: #1b1510; border: 3px solid; border-image: var(--brass-frame); }
   .connection-dot.online { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
 
-  /* Machinery behind everything: meshing gears (20 and 12 teeth, set so a tooth sits in a gap; they turn opposite ways at 12:20), low
-     and dim so text on its plates stays the brightest thing. Each pair is a ::before and ::after of a fixed box, painted under its content. */
+  /* Machinery behind the sidebar and the panel: meshing gears (20 and 12 teeth, set so a tooth sits in a gap; they turn opposite ways
+     at 12:20), low and dim so text on its plates stays the brightest thing. Each pair is the panel's ::before and ::after, under its content. */
   --gear-a: url('/nodes-steampunk-gear-20.svg') center / contain no-repeat; --gear-b: url('/nodes-steampunk-gear-12.svg') center / contain no-repeat;
-  :is(body, .sidebar, .detail-panel)::before, :is(body, .sidebar, .detail-panel)::after { content: ''; position: absolute; z-index: -1; pointer-events: none; opacity: .2; }
-  body::before, body::after { position: fixed; }
-  body::before { right: -120px; bottom: -130px; width: 354px; height: 354px; background: var(--gear-a); rotate: 215deg; }
-  body::after { right: 154px; bottom: 81px; width: 226px; height: 226px; background: var(--gear-b); rotate: 50deg; }
+  :is(.sidebar, .detail-panel)::before, :is(.sidebar, .detail-panel)::after { content: ''; position: absolute; z-index: -1; pointer-events: none; opacity: .2; }
   .sidebar::before { left: -40px; bottom: 70px; width: 149px; height: 149px; background: var(--gear-a); rotate: -40deg; opacity: .3; }
   .sidebar::after { left: 69px; bottom: 166px; width: 95px; height: 95px; background: var(--gear-b); rotate: 155deg; opacity: .3; }
   .detail-panel::before { right: -60px; bottom: 120px; width: 212px; height: 212px; background: var(--gear-a); rotate: 200deg; }
@@ -275,27 +275,29 @@
   .connection-error { border: 1px solid #b07a26; border-radius: 2px; background: repeating-linear-gradient(-45deg, #3a2810 0 10px, #2a1d0c 10px 20px); color: var(--warn); font-family: var(--mono); }
   ::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #6a4818, #c99a4a, #6a4818); border-radius: 0; }
 }
-@media (max-width: 640px) { :root[data-theme-choice=nodes-steampunk] :is(.usage-accounts::before, .page-heading::before, .page-heading::after) { display: none; } }
+@media (max-width: 640px) {
+  :root[data-theme-choice=nodes-steampunk] :is(.usage-accounts::before, .page-heading::before, .page-heading::after) { display: none; }
+  :root[data-theme-choice=nodes-steampunk] .main-content { padding-right: max(12px, env(safe-area-inset-right)); }
+}
+@media (orientation: portrait) and (max-width: 900px) { :root[data-theme-choice=nodes-steampunk] { --hall: url('/nodes-steampunk-hall-portrait.webp'); } }
 @media (prefers-reduced-motion: no-preference) {
   :root[data-theme-choice=nodes-steampunk] {
     /* Gaslight breathes on a working machine's lamp strip and round what needs you. */
     .session-card[data-status=working] { animation: sp-lamp 2.6s ease-in-out infinite; }
     .session-card.needs-input { animation: sp-need 2s ease-in-out infinite; animation-delay: var(--since-load, 0s); }
     .request-box { animation: sp-warn 2s ease-in-out infinite; }
-    /* The gears turn, the needles tremble, the tubes flicker, the vent puffs. Transforms and opacity on small layers only. */
-    :is(body, .sidebar, .detail-panel)::before { animation: sp-turn 90s linear infinite; }
-    :is(body, .sidebar, .detail-panel)::after { animation: sp-turn 54s linear infinite reverse; }
+    /* The gears turn, the needles tremble, the tubes flicker. Transforms and opacity on small layers only. */
+    :is(.sidebar, .detail-panel)::before { animation: sp-turn 90s linear infinite; }
+    :is(.sidebar, .detail-panel)::after { animation: sp-turn 54s linear infinite reverse; }
     :is(.sidebar .brand, .page-heading, .chat-header)::after { animation: sp-tremble 1.9s ease-in-out infinite alternate; }
     .usage-accounts::before { animation: sp-flicker 3.7s steps(12) infinite; }
     .usage-orb::after { animation: sp-tremble 1.6s ease-in-out infinite alternate; }
     .login-symbol { animation: sp-turn 40s linear infinite; }
-    .workspace::after { content: ''; position: fixed; z-index: -1; right: -14px; top: calc((100vh - 120px) * .32 + 88px); width: 64px; height: 64px; background: url('/nodes-steampunk-steam.svg') center / contain no-repeat; pointer-events: none; opacity: 0; animation: sp-puff 6s ease-out infinite; }
   }
 }
 @keyframes sp-turn { to { transform: rotate(360deg); } }
 @keyframes sp-tremble { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
 @keyframes sp-flicker { 0%, 100% { opacity: 1; } 30% { opacity: .82; } 55% { opacity: .95; } 80% { opacity: .78; } }
-@keyframes sp-puff { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 15% { opacity: .9; } 70%, 100% { opacity: 0; transform: translate(-10px, 46px) scale(1.4); } }
 @property --sp-lamp { syntax: '<color>'; inherits: true; initial-value: #6b5a44; }
 @keyframes sp-lamp { 50% { --sp-lamp: #d8f7d0; } }
 @keyframes sp-need { 50% { box-shadow: inset 0 0 0 1px var(--warn-line), inset 5px 0 0 #ffd27a, var(--shadow), 0 0 24px #ffb54744; } }

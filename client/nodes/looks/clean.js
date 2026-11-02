@@ -17,8 +17,8 @@ const SCHEME = {
     text: '#eceef2', muted: '#9aa0ab', need: '#f5a524', err: '#ff6b6f', you: '#4a62ff', youTop: '#3a52ee', accent: '#7f91ff',
     hemi: ['#d2d9ff', '#07080a', .5], sun: 1.7, fill: .25, env: .35, shade: ['#000000', .45], ao: ['#000000', .5], glow: .3, tint: .58, wire: .6 },
 };
-// Outlines in S units, as a radius along each angle: a squircle key for You, a round junction for a project, and
-// rounded-rectangle tiles for sessions and subagents.
+// Outlines in S units, as a radius along each angle: a squircle key for You, a round junction for a project,
+// rounded-rectangle tiles for sessions and subagents, and a screen-shaped one for a session's screenshots.
 const pnorm = (sides, p, rot) => a => { let s = 0; for (let k = 0; k < sides / 2; k++) s += Math.abs(Math.cos(a - rot - k * 2 * Math.PI / sides)) ** p; return s ** (-1 / p); };
 function roundRect(A, B, rc) {
   const a0 = A - rc, b0 = B - rc;
@@ -34,12 +34,17 @@ const OUTLINE = {
   project: { r: () => 1, sides: 0 },
   session: { r: roundRect(4.4, 1, .5), A: 4.4, B: 1 },
   sub: { r: roundRect(3.8, 1, .5), A: 3.8, B: 1 },
+  shot: { r: roundRect(1.6, 1, .5), A: 1.6, B: 1 },
 };
-// World size per kind (S), and cap height. Sessions are the bodies to look at; projects are small, low junctions.
-const SCALE = { you: 1.56, project: .57, session: 1.25, sub: .88 }, TALL = { you: 1.3, project: .6, session: .8, sub: .8 };
+// World size per kind (S), and cap height. Sessions are the bodies to look at; projects are low junctions, big enough to press.
+const SCALE = { you: 1.56, project: .78, session: 1.25, sub: .88 }, TALL = { you: 1.3, project: .6, session: .8, sub: .8 };
 const H = .42, FACE_R = .78, DISH = .016, LAMP = .62; // cap height and display inset at scale 1; a tile's status lamp radius
 const BASE_H = .07, TRAVEL = .15, POP = .5;           // housing height; how far a cap stands proud at rest, and when it needs you
 const PEARL = 1.1, PX = 100;                           // world units between beads on a needs-you cord; canvas pixels per world unit
+// The usage console: a column per account, the sloped face's length and slope, the lip under it, and the depth it takes on the desk.
+const COL = 2.6, LEN = 3.4, SLOPE = .35, LIP = .14, DD = LEN * Math.cos(SLOPE);
+// A screenshot key's half length and the lead to it; how far up the screen a raised key reaches, in desk units.
+const SHOT_HALF = (OUTLINE.shot.A + .1) * SCALE.session, SHOT_GAP = .55, LIFT = .7;
 const needs = n => n.status === 'permission' || n.status === 'question', busy = n => n.status === 'working' || n.status === 'thinking' || n.status === 'compacting';
 // Per node, across rebuilds (the look is built again whenever sessions come or go): press, pop, height, gauge.
 const keep = new WeakMap();
@@ -89,8 +94,10 @@ void main() {
     float g = glyph(p / .62, uProv, aa / .62) * (1. - uError) + bang * uError;
     c = mix(c, vec3(1.), clamp(g, 0., 1.) * face * (1. - uOff * .75));
     if (uMode > .5) { vec2 m = p - vec2(.62, .62); vec3 mc = uMode > 1.5 ? uRed : uBlue; c = mix(c, vec3(1.), disc(m, .17, aa)); c = mix(c, mc, disc(m, .12, aa)); }
-  } else if (uKind < 2.5) {                              // project: a junction, a socket in its colour
-    c = mix(mix(uProj, uTop, band(d, .42, .64, aa)), uProj * .45, disc(p, .24, aa));
+  } else if (uKind < 2.5) {                              // project: a junction in its colour, with a plus: it starts a session there
+    float plus = min(max(abs(p.x) - .07, abs(p.y) - .32), max(abs(p.y) - .07, abs(p.x) - .32));
+    c = mix(uProj, vec3(.98), .35 * band(d, .8, .86, aa));
+    c = mix(c, vec3(.98), 1. - smoothstep(-aa, aa, plus));
   } else {                                               // you: an amber dash per waiting session
     float n = max(uCount, 1.), l = fract(u * n);
     float dash = smoothstep(.03, .06, min(l, 1. - l) * TAU * r / n) * band(d, .64, .88, aa);
@@ -152,6 +159,20 @@ function onSlope(THREE, mesh, LEN, slope, lip) {
   mesh.rotation.x = slope - Math.PI / 2;
   mesh.position.set(0, .06 + lip + LEN * Math.sin(slope) / 2, 0).addScaledVector(new THREE.Vector3(0, Math.cos(slope), Math.sin(slope)), .075);
 }
+// Whether segment a→b crosses the box [x0, z0, x1, z1] (Liang–Barsky).
+function crosses(ax, az, bx, bz, x0, z0, x1, z1) {
+  let t0 = 0, t1 = 1; const dx = bx - ax, dz = bz - az;
+  for (const [p, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dz, az - z0], [dz, z1 - az]]) {
+    if (!p) { if (q < 0) return false; continue; }
+    const r = q / p; if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
+  }
+  return true;
+}
+// A project's name as printed on the desk: its canvas width in pixels (TPX to a world unit) at 84 high.
+const TPX = 95, TITLE_FONT = '600 60px "Geist Mono", ui-monospace, monospace';
+const measure = document.createElement('canvas').getContext('2d');
+const titleW = name => { measure.font = TITLE_FONT; return Math.ceil(measure.measureText(name.toUpperCase()).width) + 24; };
+
 // Longest prefix of text that fits in w, with an ellipsis.
 function fit(g, text, w) {
   if (g.measureText(text).width <= w) return text;
@@ -175,6 +196,9 @@ body[data-look="clean"] .lbl { padding: 1px 6px; border-radius: 5px; background:
 body[data-look="clean"] .lbl.project b { font: 500 11px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 body[data-look="clean"] .lbl.you b { font: 500 12px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 body[data-look="clean"] .lbl span { font-size: 10.5px; }
+body[data-look="clean"] .lbl.on { padding: 0; background: none; box-shadow: none; }
+body[data-look="clean"] .lbl.sub:not(.on) { padding: 0 2px; background: none; box-shadow: none; text-shadow: 0 0 4px var(--label-halo), 0 0 2px var(--label-halo); }
+body[data-look="clean"] .lbl.sub b { font-size: 10.5px; }
 body[data-look="clean"] .nodes-overlay button { background: var(--key); box-shadow: var(--shadow); transition: transform .06s, box-shadow .06s; }
 body[data-look="clean"] .nodes-overlay button:hover { border-color: var(--accent); }
 body[data-look="clean"] .nodes-overlay button:active { transform: translateY(1px); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .18); }
@@ -195,29 +219,86 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     // Firm: nodes slide home without overshoot, never wander, and events don't hop them; the look does its own clicks.
     ctx.setMotion({ zeta: 1, k: 110, drift: 0, kick: 0 });
     // Pick radii: a tile is picked over most of its length; the column's pitch keeps neighbours apart.
-    ctx.setSizes({ you: 1.7, project: .62, session: 4.6, sub: 3 });
-    let anyShot = false;
+    ctx.setSizes({ you: 1.7, project: .9, session: 4.6, sub: 3 });
+    let shotCount = 0;
 
     // Layout: projects where the world puts them, a little closer in; each project's sessions banked in a column off its
     // junction, each session's subagents just below it, indented. Wide screens bank to the side away from You, centred on
-    // the junction; tall ones bank downwards (upwards above You) from the junction, so the board stays narrow.
-    const bank = new Map();
+    // the junction; tall ones bank downwards (upwards above You) from the junction, so the board stays narrow. Then, nearest
+    // You first, each project with its bank, screenshot keys and name moves straight out from You until it's clear of You, the
+    // usage console and the projects already placed, so no two keys ever overlap.
+    const bank = new Map(), planned = new Map(), deckAt = new THREE.Vector3(), frameBoxes = [];
+    let planCols = 0;
     const tileW = k => 2 * (OUTLINE[k].A + .1) * SCALE[k], tileH = k => 2 * (OUTLINE[k].B + .1) * SCALE[k];
+    const usageCols = () => Math.min(5, world.usage.filter(a => a.windows.length || a.spend).length) + 1;
+    const overlaps = (a, b, m) => a[0] < b[2] + m && a[2] > b[0] - m && a[1] < b[3] + m && a[3] > b[1] - m;
+    function plan() {
+      const tall = ctx.size.w / ctx.size.h < .8, you = world.you.rest, MARGIN = .6, R = SCALE.project * 1.15 + .3;
+      planned.clear(); bank.clear(); frameBoxes.length = 0;
+      const clusters = world.projects.map(p => {
+        const x = p.rest.x * (tall ? .3 : .9), z = p.rest.z * (tall ? 1 : .9);
+        const sx = tall || x >= you.x ? 1 : -1, inner = sx * (tall ? 1.1 : 1.8), rows = [];
+        for (const s of p.sessions) { rows.push([s, tileH('session') + .5]); for (const k of s.subs) rows.push([k, tileH('sub') + .4]); }
+        const total = rows.reduce((t, [, h]) => t + h, 0), at = new Map(), box = [-R, -R - LIFT, R, R];
+        let rz = !tall ? -total / 2 : z >= you.z ? 1.3 : -1.3 - total;
+        for (const [m, h] of rows) {
+          const w = tileW(m.kind), cx = inner + sx * ((m.kind === 'sub' ? 1.3 : 0) + w / 2), cz = rz + h / 2, th = tileH(m.kind) / 2;
+          at.set(m, [cx, cz]);
+          const far = cx + sx * (w / 2 + (m.kind === 'session' && ctx.shot(m) ? SHOT_GAP + 2 * SHOT_HALF : 0));
+          box[0] = Math.min(box[0], cx - sx * w / 2, far); box[2] = Math.max(box[2], cx - sx * w / 2, far);
+          box[1] = Math.min(box[1], cz - th - LIFT); box[3] = Math.max(box[3], cz + th);
+          rz += h;
+        }
+        return { p, x, z, sx, at, box };
+      });
+      // The console goes in the widest gap round You, so no cable runs under it.
+      const angs = [];
+      for (const c of clusters) { angs.push(Math.atan2(c.z - you.z, c.x - you.x)); for (const [cx, cz] of c.at.values()) angs.push(Math.atan2(c.z + cz - you.z, c.x + cx - you.x)); }
+      angs.sort((a, b) => a - b);
+      let best = Math.PI / 2, span = 0;
+      angs.forEach((a, i) => { const gap = (angs[i + 1] ?? angs[0] + Math.PI * 2) - a; if (gap > span) { span = gap; best = a + gap / 2; } });
+      planCols = usageCols();
+      const dw = planCols * COL + .3, dx = Math.cos(best), dz = Math.sin(best), r = SCALE.you * 1.4 + .6 + Math.abs(dx) * dw / 2 + Math.abs(dz) * DD / 2;
+      deckAt.set(you.x + dx * r, 0, you.z + dz * r);
+      const yr = SCALE.you * 1.2 + .3, taken = [[you.x - yr, you.z - yr - LIFT, you.x + yr, you.z + yr], [deckAt.x - dw / 2, deckAt.z - DD / 2 - 1, deckAt.x + dw / 2, deckAt.z + DD / 2]];
+      frameBoxes.push(taken[1]);
+      clusters.sort((a, b) => Math.hypot(a.x - you.x, a.z - you.z) - Math.hypot(b.x - you.x, b.z - you.z));
+      for (const c of clusters) {
+        const d = Math.hypot(c.x - you.x, c.z - you.z), ux = d > 1e-3 ? (c.x - you.x) / d : 1, uz = d > 1e-3 ? (c.z - you.z) / d : 0;
+        let x = c.x, z = c.z, title = null, tbox = null, cbox = null;
+        for (let step = 0; step < 300; step++) {
+          x = c.x + ux * step * .35; z = c.z + uz * step * .35;
+          title = titleSpot(c.p.name, x, z, -c.sx);
+          const tx = x + title.x, tx1 = tx + title.dir * title.w;
+          tbox = [Math.min(tx, tx1), z + title.z - title.h / 2, Math.max(tx, tx1), z + title.z + title.h / 2];
+          cbox = [x + c.box[0], z + c.box[1], x + c.box[2], z + c.box[3]];
+          if (!taken.some(t => overlaps(cbox, t, MARGIN) || overlaps(tbox, t, MARGIN))) break;
+        }
+        taken.push(cbox, tbox); frameBoxes.push(cbox, tbox);
+        planned.set(c.p, [x, z]);
+        const at = new Map(); for (const [m, [cx, cz]] of c.at) at.set(m, new THREE.Vector3(x + cx, 0, z + cz));
+        bank.set(c.p, { sx: c.sx, at, title });
+      }
+    }
     function layout(n) {
-      const tall = ctx.size.w / ctx.size.h < .8;
-      if (n.kind === 'project') {
-        n.rest.x *= tall ? .5 : .9; n.rest.z *= tall ? 1.3 : .9;
-        const sx = tall || n.rest.x >= world.you.rest.x ? 1 : -1, inner = n.rest.x + sx * (tall ? .9 : 1.6), rows = [];
-        for (const s of n.sessions) { rows.push([s, tileH('session') + .5]); for (const k of s.subs) rows.push([k, tileH('sub') + .4]); }
-        const total = rows.reduce((t, [, h]) => t + h, 0), at = new Map();
-        let z = !tall ? n.rest.z - total / 2 : n.rest.z >= world.you.rest.z ? n.rest.z + 1 : n.rest.z - 1 - total;
-        const top = z;
-        for (const [m, h] of rows) { at.set(m, new THREE.Vector3(inner + sx * ((m.kind === 'sub' ? 1.3 : 0) + tileW(m.kind) / 2), 0, z + h / 2)); z += h; }
-        bank.set(n, { sx, at, title: new THREE.Vector3(inner - n.rest.x, 0, (rows.length ? top : n.rest.z - 1) - 1.1 - n.rest.z) });
-      } else if (n.kind === 'session' || n.kind === 'sub') {
+      if (n.kind === 'you') plan();
+      else if (n.kind === 'project') { const q = planned.get(n); if (q) n.rest.set(q[0], 0, q[1]); }
+      else if (n.kind === 'session' || n.kind === 'sub') {
         const b = bank.get(n.project), p = b?.at.get(n), from = n.kind === 'sub' ? b?.at.get(n.parent) : n.project.rest;
         if (p && from) n.offset.subVectors(p, from).setY(0);
       }
+    }
+    // A project's name runs away from its bank, from beside the junction at (jx, jz): level with it, else just above or below it,
+    // wherever the cable to You and You's key leave room. Offsets from the junction to the end of the name nearest it.
+    function titleSpot(name, jx, jz, dir) {
+      const w = titleW(name) / TPX, h = 84 / TPX, R = SCALE.project * 1.15 + .3, y = world.you.rest, yr = SCALE.you * 1.5;
+      const spots = [[dir * R, 0], [dir * R * .3, -R - .2], [dir * R * .3, R + .2]];
+      const hits = ([x, z]) => {
+        const xa = jx + x, x0 = Math.min(xa, xa + dir * w) - .25, x1 = Math.max(xa, xa + dir * w) + .25, z0 = jz + z - h / 2 - .25, z1 = jz + z + h / 2 + .25;
+        return crosses(jx, jz, y.x, y.z, x0, z0, x1, z1) || (y.x > x0 - yr && y.x < x1 + yr && y.z > z0 - yr && y.z < z1 + yr);
+      };
+      const [x, z] = spots.find(spot => !hits(spot)) || spots[1];
+      return { x, z, dir, w, h };
     }
     ctx.setLayout(layout);
     ctx.onResize(() => ctx.setLayout(layout));
@@ -258,6 +339,7 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     const glowTex = kit.glowTexture([[0, 'rgba(255,255,255,1)'], [.4, 'rgba(255,255,255,.45)'], [1, 'rgba(255,255,255,0)']]);
     const shared = { uTop: C(K.top), uTrack: C(K.track), uInk: C(K.ink), uAccent: C(K.accent), uAmber: C(PAL.need), uRed: C(PAL.error), uGreen: C(PAL.work), uBlue: C(PAL.wait) };
     const baseMat = new THREE.MeshStandardMaterial({ color: K.housing, roughness: .7 });
+    const blankMat = new THREE.MeshBasicMaterial({ color: K.top, polygonOffset: true, polygonOffsetFactor: -1 });
     const SHAFT = C(K.shaft), OFFCAP = C(K.off), amber = C(PAL.need), red = C(PAL.error), aniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     const hue = n => C(PROJ[n.project.index % PROJ.length]);
     const canvasTex = (w, h) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; return t; };
@@ -291,7 +373,7 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       if (tile) {
         v.tex = canvasTex(Math.round(2 * sk.hx * S * PX), Math.round(2 * sk.hz * S * PX));
         const display = new THREE.Mesh(sk.face, new THREE.MeshBasicMaterial({ map: v.tex, polygonOffset: true, polygonOffsetFactor: -1 }));
-        display.position.y = H - DISH + .002; body.add(display);
+        display.position.y = H - DISH + .002; body.add(display); v.display = display; v.textMat = display.material;
         faceMat.polygonOffsetFactor = -2; faceMat.polygonOffsetUnits = -2; v.lamp = new THREE.Mesh(lampGeo, faceMat); v.lamp.position.y = H - DISH + .006; body.add(v.lamp);
       } else { const face = new THREE.Mesh(sk.face, faceMat); face.position.y = H - DISH + .002; body.add(face); }
       v.ao = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({ map: sk.ao, color: K.ao[0], transparent: true, opacity: K.ao[1], depthWrite: false }));
@@ -302,28 +384,39 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     });
     const byNode = new Map(vis.map(v => [v.n, v]));
 
-    // Labels: the keys carry their own text, so the board's labels only come back for sessions when it's too small to read.
+    // Labels: the keys and the desk carry their own text. When that's too small to read, it goes blank and the board's labels take
+    // over: a key's name on the key while it's deep enough to hold one, else beside it; a project's name where it was on the desk.
     let legible = true;
-    ctx.setLabelRule(n => legible || n.kind === 'project' || n.kind === 'you' ? false : undefined);
-    ctx.setLabelAnchor((n, out) => {
-      const v = byNode.get(n);
-      if (v?.tile) out.z -= .55 * v.S; else out.z += { you: 2.3, project: 1.2 }[n.kind] || 1;
+    const onFit = { session: false, sub: false };
+    ctx.setLabelRule(n => legible || n.kind === 'you' ? false : onFit[n.kind] ? 'on' : undefined);
+    ctx.setLabelAnchor((n, out, on) => {
+      const v = byNode.get(n), k = v?.group.scale.x ?? 1, b = n.kind === 'project' && bank.get(n);
       out.y = 0;
+      if (v?.tile) { if (on) { out.x += v.side * .69 * v.S * k; out.y = v.top; } else out.z += ((v.o.B + .1) * v.S + .15) * k; }
+      else if (b) { out.x += (b.title.x + b.title.dir * b.title.w / 2) * k; out.z += b.title.z * k - b.title.h / 2; }
+      else out.z += { you: 2.3, project: 1.35 }[n.kind] || 1;
+    });
+    // Footprints, for picking and for keeping labels off keys: a tile's whole face, a round key's square.
+    ctx.setShape(n => {
+      const v = byNode.get(n); if (!v) return null;
+      const f = v.foot || (v.foot = { hx: 0, hz: 0, y: 0, tw: 0 }), k = v.group.scale.x;
+      if (v.tile) { f.hx = (v.o.A + .1) * v.S * k; f.hz = (v.o.B + .1) * v.S * k; f.tw = (2 * v.sk.hx - 1.7) * v.S * k; }
+      else { f.hx = f.hz = 1.05 * v.S * k; f.tw = 2 * f.hx; }
+      f.y = v.top; return f;
     });
 
-    // A project's name, printed on the desk over its bank, after a square of its colour.
+    // A project's name, printed on the desk beside its junction (see titleSpot).
     const titles = world.projects.map(p => {
-      const g = document.createElement('canvas').getContext('2d'), font = '600 60px "Geist Mono", ui-monospace, monospace', text = p.name.toUpperCase();
-      g.font = font; const w = Math.ceil(g.measureText(text).width) + 80, tex = canvasTex(w, 84);
+      const w = titleW(p.name), tex = canvasTex(w, 84);
       const m = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
-      m.scale.set(w / 110, 1, 84 / 110); m.renderOrder = -1; root.add(m);
-      return { p, m, tex, text, font, w, drawn: null };
+      m.scale.set(w / TPX, 1, 84 / TPX); m.renderOrder = -1; root.add(m);
+      return { p, m, tex, text: p.name.toUpperCase(), w, drawn: null };
     });
-    function drawTitle(t) {
+    function drawTitle(t, dir) {
       const g = t.tex.image.getContext('2d'), h = t.tex.image.height;
-      g.clearRect(0, 0, t.w, h); g.fillStyle = PROJ[t.p.index % PROJ.length]; g.fillRect(4, h / 2 - 20, 40, 40);
-      g.font = t.font; g.fillStyle = K.text; g.globalAlpha = .82; g.textBaseline = 'middle'; g.fillText(t.text, 62, h / 2 + 3); g.globalAlpha = 1;
-      t.tex.needsUpdate = true; t.drawn = fontsReady;
+      g.clearRect(0, 0, t.w, h); g.font = TITLE_FONT; g.fillStyle = K.text; g.globalAlpha = .85; g.textBaseline = 'middle';
+      g.textAlign = dir > 0 ? 'left' : 'right'; g.fillText(t.text, dir > 0 ? 6 : t.w - 6, h / 2 + 3); g.globalAlpha = 1;
+      t.tex.needsUpdate = true; t.drawn = `${fontsReady}${dir}`;
     }
     // A tile's text: the name in bold, what it's doing in mono below (amber when it needs you), plan steps as pips.
     const lineOf = n => needs(n) ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text;
@@ -408,19 +501,11 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     // Usage: a low console beside You. Its sloped display reads YOU and how many are waiting, then a ring gauge per account
     // (outer ring its longest window, inner its shortest, the fuller one's percent in the middle) and one for spend. It
     // stands in the widest gap round You, so no cable runs under it, and redraws only when a number changes.
-    const COL = 2.6, LEN = 3.4, SLOPE = .35, LIP = .14, DD = LEN * Math.cos(SLOPE), standMat = new THREE.MeshPhysicalMaterial({ color: K.key, roughness: .55, clearcoat: .2, clearcoatRoughness: .45 });
+    const standMat = new THREE.MeshPhysicalMaterial({ color: K.key, roughness: .55, clearcoat: .2, clearcoatRoughness: .45 });
     const deck = new THREE.Group(), deckBody = new THREE.Mesh(new THREE.BufferGeometry(), standMat), deckFace = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial());
     deckBody.castShadow = true; onSlope(THREE, deckFace, LEN, SLOPE, LIP);
     deck.add(deckBody, deckFace); root.add(deck);
     let deckCols = 0, deckSig = '', deckW = 0;
-    function placeDeck() {
-      const c = world.you.rest, angs = world.nodes.filter(n => n.kind === 'project' || n.kind === 'session').map(n => Math.atan2(n.rest.z - c.z, n.rest.x - c.x)).sort((a, b) => a - b);
-      let best = Math.PI / 2, span = 0;
-      angs.forEach((a, i) => { const gap = (angs[i + 1] ?? angs[0] + Math.PI * 2) - a; if (gap > span) { span = gap; best = a + gap / 2; } });
-      const dx = Math.cos(best), dz = Math.sin(best), r = SCALE.you * 1.4 + .6 + Math.abs(dx) * deckW / 2 + Math.abs(dz) * DD / 2;
-      deck.position.set(c.x + dx * r, 0, c.z + dz * r);
-    }
-    ctx.onResize(placeDeck);
     const pct = v => `${Math.round(v * 100)}%`, fillCol = v => v > .9 ? PAL.error : v > .7 ? K.accent : K.ink, mono = (px, w = 500) => `${w} ${px}px "Geist Mono", ui-monospace, monospace`;
     function drawDeck() {
       const list = world.usage.filter(a => a.windows.length || a.spend).slice(0, 5), q = world.queue().length;
@@ -432,7 +517,7 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
         deckBody.geometry.dispose(); deckBody.geometry = wedge(THREE, deckW, LEN, SLOPE, LIP);
         deckFace.scale.set(deckW - .3, LEN - .3, 1);
         deckFace.material.map?.dispose(); deckFace.material.map = canvasTex(Math.round((deckW - .3) * PX), Math.round((LEN - .3) * PX)); deckFace.material.needsUpdate = true;
-        placeDeck();
+        if (deckCols !== planCols) ctx.setLayout(layout);
       }
       const tex = deckFace.material.map, cv = tex.image, g = cv.getContext('2d'), mid = COL * PX / 2;
       g.fillStyle = K.top; g.fillRect(0, 0, cv.width, cv.height); g.textAlign = 'center'; g.lineCap = 'butt';
@@ -462,42 +547,53 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       tex.needsUpdate = true;
     }
 
-    // Screenshots: a photo card propped on a stand at the outer end of a session's key, held to it by a magnet, the session's
-    // latest screenshot behind a soft glass sheen and a count in the corner. A click opens the viewer. Made when the first
-    // screenshot comes, redrawn when it changes.
-    const CARD_W = 3.2, CARD_L = 2.2, CARD_SLOPE = .5, cardGeo = wedge(THREE, CARD_W, CARD_L, CARD_SLOPE, .1), cardFaceGeo = new THREE.PlaneGeometry(CARD_W - .16, CARD_L - .16);
-    const magnetGeo = new THREE.CylinderGeometry(.2, .2, .14, 24), magnetMat = new THREE.MeshStandardMaterial({ color: K.shaft, roughness: .3, metalness: .5 });
-    const cards = new Map(world.sessions.map(n => [n, { pos: ctx.addTarget({ node: n, pos: new THREE.Vector3(), radius: 1.7, action: 'shots' }).pos, group: null, shot: null }]));
-    ctx.setFrame(add => { for (const [n, c] of cards) if (ctx.shot(n)) add(c.pos.x, c.pos.z, 2.4); });
+    // Screenshots: a key of their own off the outer end of a session's key, on a short lead in the project's colour, the session's
+    // latest screenshot on its display and a count in the corner. It rises under the pointer; a click opens the viewer. Made
+    // when the first screenshot comes, redrawn when it changes.
+    const SK = kits.shot, SS = SCALE.session;
+    const shotMat = new THREE.MeshPhysicalMaterial({ color: K.key, roughness: .52, clearcoat: .2, clearcoatRoughness: .45, sheen: .15, sheenRoughness: .8, sheenColor: '#ffffff', envMapIntensity: .9 });
+    const shotShaft = new THREE.MeshStandardMaterial({ color: SHAFT, roughness: .45 }), leadGeo = new THREE.CylinderGeometry(.06, .06, 1, 10).rotateZ(Math.PI / 2);
+    const cards = new Map(world.sessions.map(n => { const t = ctx.addTarget({ node: n, pos: new THREE.Vector3(), radius: 2, hx: SHOT_HALF, hz: (OUTLINE.shot.B + .1) * SS, action: 'shots' }); return [n, { t, pos: t.pos, group: null, shot: null, lift: 0 }]; }));
+    ctx.setFrame(add => { for (const b of frameBoxes) { add(b[0], b[1], 0); add(b[2], b[3], 0); } });
     function drawCard(c, shot) {
-      const cv = c.tex.image, g = cv.getContext('2d'), W = cv.width, h = cv.height, m = 16, r = 18, b = shot.bitmap;
+      const cv = c.tex.image, g = cv.getContext('2d'), W = cv.width, h = cv.height, m = 12, r = 16, b = shot.bitmap;
+      // A dark screen fills the face, so a tall phone shot still reads as a display rather than a sliver on a blank key.
       g.fillStyle = K.top; g.fillRect(0, 0, W, h);
-      const k = Math.min((W - 2 * m) / b.width, (h - 2 * m) / b.height), iw = b.width * k, ih = b.height * k, ix = (W - iw) / 2, iy = (h - ih) / 2;
-      g.save(); g.beginPath(); g.roundRect(ix, iy, iw, ih, r); g.clip(); g.drawImage(b, ix, iy, iw, ih);
-      const sheen = g.createLinearGradient(ix, iy, ix + iw * .6, iy + ih); sheen.addColorStop(0, 'rgba(255,255,255,.16)'); sheen.addColorStop(.45, 'rgba(255,255,255,.03)'); sheen.addColorStop(.46, 'rgba(255,255,255,0)');
-      g.fillStyle = sheen; g.fillRect(ix, iy, iw, ih); g.restore();
-      g.strokeStyle = K.track; g.lineWidth = 3; g.beginPath(); g.roundRect(ix, iy, iw, ih, r); g.stroke();
-      const bx = ix + iw - 34, by = iy + 34;
-      g.fillStyle = K.accent; g.beginPath(); g.arc(bx, by, 26, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#fff'; g.font = mono(30, 600); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(shot.count), bx, by + 1);
+      g.save(); g.beginPath(); g.roundRect(m, m, W - 2 * m, h - 2 * m, r); g.clip(); g.fillStyle = '#16191f'; g.fillRect(m, m, W - 2 * m, h - 2 * m);
+      const k = Math.min((W - 2 * m) / b.width, (h - 2 * m) / b.height), iw = b.width * k, ih = b.height * k;
+      g.drawImage(b, (W - iw) / 2, (h - ih) / 2, iw, ih); g.restore();
+      g.strokeStyle = K.track; g.lineWidth = 3; g.beginPath(); g.roundRect(m, m, W - 2 * m, h - 2 * m, r); g.stroke();
+      const bx = W - m - 32, by = m + 32;
+      g.fillStyle = K.top; g.beginPath(); g.arc(bx, by, 28, 0, Math.PI * 2); g.fill();
+      g.fillStyle = K.accent; g.beginPath(); g.arc(bx, by, 23, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#fff'; g.font = mono(28, 600); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(shot.count), bx, by + 1);
       c.tex.needsUpdate = true;
     }
-    function updateCard(v, c) {
+    function updateCard(v, c, dt) {
       const shot = v.n.s.alive > .02 ? ctx.shot(v.n) : null;
-      if (!shot) { if (c.group) c.group.visible = c.magnet.visible = false; return; }
+      if (!shot) { if (c.group) c.group.visible = c.ao.visible = c.lead.visible = false; return; }
       if (!c.group) {
         c.group = new THREE.Group(); root.add(c.group);
-        const body = new THREE.Mesh(cardGeo, standMat); body.castShadow = true;
-        c.tex = canvasTex(560, Math.round(560 * (CARD_L - .16) / (CARD_W - .16)));
-        const face = new THREE.Mesh(cardFaceGeo, new THREE.MeshBasicMaterial({ map: c.tex })); onSlope(THREE, face, CARD_L, CARD_SLOPE, .1);
-        c.magnet = new THREE.Mesh(magnetGeo, magnetMat); c.magnet.rotation.z = Math.PI / 2; c.magnet.castShadow = true;
-        c.group.add(body, face); root.add(c.magnet);
+        const base = new THREE.Mesh(SK.base, baseMat); base.scale.setScalar(SS); base.receiveShadow = true;
+        c.shaft = new THREE.Mesh(SK.shaft, shotShaft); c.shaft.position.y = BASE_H * SS;
+        c.cap = new THREE.Group();
+        const body = new THREE.Mesh(SK.cap, shotMat); body.castShadow = true; body.scale.set(SS, SS * TALL.session, SS); c.cap.add(body);
+        c.tex = canvasTex(Math.round(2 * SK.hx * SS * PX * 1.6), Math.round(2 * SK.hz * SS * PX * 1.6));
+        const display = new THREE.Mesh(SK.face, new THREE.MeshBasicMaterial({ map: c.tex, polygonOffset: true, polygonOffsetFactor: -1 })); display.position.y = H - DISH + .002; body.add(display);
+        c.group.add(base, c.shaft, c.cap);
+        c.ao = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({ map: SK.ao, color: K.ao[0], transparent: true, opacity: K.ao[1], depthWrite: false })); c.ao.renderOrder = -2; root.add(c.ao);
+        c.lead = new THREE.Mesh(leadGeo, wireMat(v.n.project)); c.lead.castShadow = true; root.add(c.lead);
       }
       if (shot !== c.shot) { c.shot = shot; drawCard(c, shot); }
-      const end = (v.o.A + .1) * v.S * v.group.scale.x, x = v.group.position.x + v.side * (end + .45 + CARD_W / 2);
-      c.group.visible = c.magnet.visible = true; c.group.position.set(x, 0, v.n.pos.z); c.group.scale.setScalar(v.group.scale.x);
-      c.magnet.position.set(v.group.position.x + v.side * (end + .2), .12, v.n.pos.z);
-      c.pos.set(x, .6, v.n.pos.z);
+      const k = v.group.scale.x, end = (v.o.A + .1) * v.S * k, x = v.group.position.x + v.side * (end + SHOT_GAP * k + SHOT_HALF * k), z = v.n.pos.z;
+      c.lift = ctx.reduced ? +!!c.t.hovered : kit.damp(c.lift, c.t.hovered ? 1 : 0, 14, dt);
+      const travel = (TRAVEL + c.lift * .08) * SS;
+      c.group.visible = c.ao.visible = c.lead.visible = true;
+      c.group.position.set(x, 0, z); c.group.scale.setScalar(k);
+      c.cap.position.y = BASE_H * SS + travel; c.shaft.scale.set(SS, travel, SS);
+      c.ao.position.set(x, .004, z); c.ao.scale.set(2 * SK.ex * SS * k, 1, 2 * SK.ez * SS * k);
+      c.lead.position.set(v.group.position.x + v.side * (end + SHOT_GAP * k / 2), .06, z); c.lead.scale.set(SHOT_GAP * k + .2, 1, 1);
+      c.pos.set(x, .6, z);
     }
 
     const toolCol = Object.fromEntries(Object.entries(TOOL).map(([k, v]) => [k, C(v)]));
@@ -524,16 +620,21 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
 
     function update(dt, time) {
       const reduced = ctx.reduced, queue = world.queue(), youV = byNode.get(world.you);
-      // Screenshot cards stick out past the keys: frame the board wider while there are any.
-      const shotNow = world.sessions.some(n => ctx.shot(n));
-      if (shotNow !== anyShot) { anyShot = shotNow; ctx.setLayout(layout); }
-      // How big a tile's name prints on screen right now.
+      // A screenshot key sticks out past its session's key: plan the board again when one comes.
+      let shotNow = 0; for (const n of world.sessions) if (ctx.shot(n)) shotNow++;
+      if (shotNow !== shotCount) { shotCount = shotNow; ctx.setLayout(layout); }
+      deck.position.set(deckAt.x, 0, deckAt.z);
+      // How big a tile's name prints on screen right now, and whether a label's line of text (about 14px) fits on a key's display.
       p0.copy(world.you.pos).project(camera); p1.copy(world.you.pos).setX(world.you.pos.x + 1).project(camera);
       legible = Math.abs(p1.x - p0.x) * ctx.size.w / 2 * .36 * 2 * kits.session.hz * SCALE.session >= 8.5;
+      p1.copy(world.you.pos).setZ(world.you.pos.z + 1).project(camera);
+      const deep = Math.abs(p1.y - p0.y) * ctx.size.h / 2 * 2;
+      // A subagent's key takes its smaller name (10.5px, css) from a shallower depth.
+      for (const k in onFit) onFit[k] = deep * kits[k].hz * SCALE[k] >= (k === 'sub' ? 10 : 14);
       for (const v of vis) {
         const { n, S, hy, st, group, cap, uniforms: u } = v, s = n.s;
         group.visible = s.alive > .002;
-        if (!group.visible) { v.ao.visible = v.glow.visible = false; if (n.kind === 'session') updateCard(v, cards.get(n)); continue; }
+        if (!group.visible) { v.ao.visible = v.glow.visible = false; if (n.kind === 'session') updateCard(v, cards.get(n), dt); continue; }
         // Press: held under the pointer it bottoms out, and comes back with one crisp tick. Compacting holds it half down.
         spring(st, 'press', 'pv', Math.max(n.pressed ? 1 : 0, s.compact * .5), 1400, reduced ? 1 : .5, dt);
         spring(st, 'pop', 'popv', (n.kind === 'you' ? queue.length > 0 : v.tile && needs(n)) ? 1 : 0, 500, reduced ? 1 : .6, dt);
@@ -566,8 +667,10 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
           kit.statusColor(n, PAL, u.uCol.value);
           v.side = bank.get(n.project)?.sx ?? 1;
           v.lamp.position.x = -v.side * (v.sk.hx - .15 - LAMP);
-          drawTile(v);
-          if (n.kind === 'session') updateCard(v, cards.get(n));
+          const mat = legible ? v.textMat : blankMat;
+          if (v.display.material !== mat) v.display.material = mat;
+          if (legible) drawTile(v);
+          if (n.kind === 'session') updateCard(v, cards.get(n), dt);
         }
         if (n.kind === 'you') { u.uCount.value = queue.length; u.uUrg.value = queue.reduce((m, x) => Math.max(m, x.s.urgency), 0); }
 
@@ -585,11 +688,12 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       markOut(marks[0], sel, sel ? sel.n.s.select * .9 : 0); markOut(marks[1], hov, hov ? hov.n.s.hover * .35 : 0);
 
       for (const t of titles) {
-        const b = bank.get(t.p);
-        t.m.visible = !!b && t.p.s.alive > .02;
+        const b = bank.get(t.p), d = b?.title.dir;
+        t.m.visible = !!b && legible && t.p.s.alive > .02;
         if (!t.m.visible) continue;
-        if (t.drawn !== fontsReady) drawTitle(t);
-        t.m.position.set(t.p.pos.x + b.title.x + b.sx * t.m.scale.x / 2, .01, t.p.pos.z + b.title.z);
+        if (t.drawn !== `${fontsReady}${d}`) drawTitle(t, d);
+        const k = byNode.get(t.p)?.group.scale.x ?? 1;
+        t.m.position.set(t.p.pos.x + b.title.x * k + d * t.m.scale.x / 2, .01, t.p.pos.z + b.title.z * k);
         t.m.material.opacity = t.p.s.alive;
       }
 

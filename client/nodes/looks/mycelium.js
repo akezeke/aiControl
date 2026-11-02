@@ -29,6 +29,9 @@ body[data-look="mycelium"] .lbl.need { background: radial-gradient(130% 160% at 
   box-shadow: inset 0 0 0 1px rgba(255, 178, 74, .6), 0 0 14px -3px rgba(255, 168, 60, .55), 0 3px 8px -3px #000; }
 body[data-look="mycelium"] .lbl.error { background: radial-gradient(130% 160% at 0% 0%, rgba(120, 30, 14, .5), transparent 60%), rgba(12, 6, 4, .9);
   box-shadow: inset 0 0 0 1px rgba(255, 106, 74, .55), 0 3px 8px -3px #000; }
+body[data-look="mycelium"] .lbl.sub { padding: 0 3px; background: none; box-shadow: none; text-shadow: 0 0 6px var(--label-halo), 0 0 2px var(--label-halo); }
+body[data-look="mycelium"] .lbl.sub b { font-size: 11px; font-weight: 500; }
+body[data-look="mycelium"] .lbl.sub:not(.need, .error) b { color: var(--label-sub); }
 body[data-look="mycelium"] .nodes-tip { border-color: rgba(164, 240, 160, .16); box-shadow: 0 0 0 1px rgba(0, 0, 0, .4), 0 14px 40px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(220, 255, 200, .05); }
 body[data-look="mycelium"] .nodes-tip b { font-style: italic; font-weight: 500; }
 body[data-look="mycelium"] .nodes-overlay button { border-radius: 999px; }
@@ -47,6 +50,7 @@ const AMBER = C(PAL.need), EMBER = C('#ff5a24'), FOX = C('#7dffcf'), REPLY = C('
 const PUFF = { work: C(PAL.work), compact: C(PAL.compact), soil: C('#8a6a48'), ash: C('#b8b0a0'), rot: C('#7a2a14') };
 
 const TETH = 6, BR = 7, FEED = 5; // samples in a cluster tether, an anastomosis bridge and a pinhead's feeding thread
+const PK = 1.3; // how much larger a project's cluster grows than its species' base size
 // Per kind of cord: centre-line samples, glow width, strands in the bundle, bundle half-width, strand half-width, side branches,
 // meander, branch scale, samples carried on past the join, and how far the strands carry on into the parent before fading.
 const CFG = {
@@ -85,9 +89,9 @@ function create(ctx) {
   ctx.addPass(vignettePass({ darkness: .62, offset: 1, grain: .022, tint: '#f6f1e6' }));
   scene.background = C('#050604');
   // Sessions are the bodies to look at; a project is only the knot where their cords meet.
-  ctx.setSizes({ project: .7, session: 1.5, sub: .55 });
+  ctx.setSizes({ project: .7 * PK, session: 1.5, sub: .55 });
   // Below the foot, or when that's taken, above the crown of the cap.
-  ctx.setLabelAnchor((n, out) => { out.y = 0; out.z += n.kind === 'you' ? 4.1 : n.kind === 'project' ? .95 : n.kind === 'session' ? 1.6 : .75; },
+  ctx.setLabelAnchor((n, out) => { out.y = 0; out.z += n.kind === 'you' ? 4.1 : n.kind === 'project' ? .95 * PK : n.kind === 'session' ? 1.6 : .75; },
     (n, out) => { const m = n.kind === 'you' ? null : n.kind === 'project' ? clusters.get(n)?.[0] : mushOf.get(n); if (m) out.set(m.top.x, m.crown + .12, m.top.z); else out.y = 1.5; });
 
   const T0 = { value: 0 };
@@ -249,15 +253,16 @@ function create(ctx) {
     shotBodies.push(m.body);
   }
   // Projects are knots where the cords meet: a fat-footed primordium of the project's own species on a felted mound, and a
-  // tuft, crescent or ring of pinheads round it, all lit in the project's colour.
+  // tuft, crescent or ring of pinheads round it, all lit in the project's colour and grown PK times larger: it is
+  // the button for a new session.
   const clusters = new Map();
   world.projects.forEach((p, pi) => {
     const r = rng(p.seed ^ 0x9e37), sp = speciesOf(r, [0, 1, 4]), list = [], hue = C(HUES[pi % HUES.length]);
-    list.push(addMushroom({ node: p, role: 'cluster', ...sp, ox: 0, oz: 0, h: .62 * Math.sqrt(sp.tall), R: .34 * sp.wide, seed: r() * 10, lx: 0, lz: 0, hue, thick: 1.5 }));
+    list.push(addMushroom({ node: p, role: 'cluster', ...sp, ox: 0, oz: 0, h: .62 * PK * Math.sqrt(sp.tall), R: .34 * PK * sp.wide, seed: r() * 10, lx: 0, lz: 0, hue, thick: 1.5 }));
     const form = Math.floor(r() * 3), n = 3 + Math.floor(r() * 3), a0 = r() * 6.28;
     for (let i = 0; i < n; i++) {
-      const a = form === 0 ? a0 + (r() - .5) * 1.4 : form === 1 ? a0 + (i / Math.max(1, n - 1) - .5) * 2.4 : a0 + i / n * Math.PI * 2 + (r() - .5) * .6, d = .3 + r() * .22, big = r();
-      list.push(addMushroom({ node: p, role: 'cluster', ...sp, alb: sp.alb.clone().offsetHSL(0, 0, (r() - .5) * .08), ox: Math.cos(a) * d, oz: Math.sin(a) * d, h: (.14 + big * .24) * sp.tall, R: (.06 + big * .08) * sp.wide, seed: r() * 10, lx: Math.cos(a) * .45, lz: Math.sin(a) * .45, hue, phase: r() * 6.28, dist: d }));
+      const a = form === 0 ? a0 + (r() - .5) * 1.4 : form === 1 ? a0 + (i / Math.max(1, n - 1) - .5) * 2.4 : a0 + i / n * Math.PI * 2 + (r() - .5) * .6, d = (.3 + r() * .22) * PK, big = r();
+      list.push(addMushroom({ node: p, role: 'cluster', ...sp, alb: sp.alb.clone().offsetHSL(0, 0, (r() - .5) * .08), ox: Math.cos(a) * d, oz: Math.sin(a) * d, h: (.14 + big * .24) * PK * sp.tall, R: (.06 + big * .08) * PK * sp.wide, seed: r() * 10, lx: Math.cos(a) * .45 * PK, lz: Math.sin(a) * .45 * PK, hue, phase: r() * 6.28, dist: d }));
     }
     clusters.set(p, list);
   });
@@ -376,7 +381,7 @@ function create(ctx) {
   for (const m of mush) {
     if (m.role === 'fairy' || m.role === 'plan' || m.role === 'shot') continue;
     const ring = m.role === 'cluster' && m.ox !== 0, r = rng((m.node.seed ^ 0x77) + Math.floor(m.seed * 997));
-    const n = ring ? 4 : m.role === 'cluster' ? 22 : m.role === 'session' ? 24 : 10, len = ring ? .3 : m.role === 'cluster' ? .9 : m.role === 'session' ? .95 : .42, thr = [];
+    const n = ring ? 4 : m.role === 'cluster' ? 22 : m.role === 'session' ? 24 : 10, len = ring ? .3 * PK : m.role === 'cluster' ? .9 * PK : m.role === 'session' ? .95 : .42, thr = [];
     // Two kinds: short curling felt scattered over a disc round the foot, and a few longer rhizoids reaching out from it.
     for (let i = 0; i < n; i++) {
       const felt = i % 5 < 3; let a = r() * 6.28, x, z;
@@ -1095,7 +1100,7 @@ function create(ctx) {
       const ring = i ? selRing : hoverRing, n = i ? sel : h, k = i ? .7 : .35;
       const target = n ? k : 0;
       ring.material.opacity += (target - ring.material.opacity) * (1 - Math.exp(-dt * 10));
-      if (n) { const r = n.kind === 'you' ? 3.2 : n.kind === 'project' ? .8 : n.kind === 'session' ? 1.35 : .55; ring.position.x = n.pos.x; ring.position.z = n.pos.z; ring.scale.setScalar(r * (1 + (reduced() ? 0 : .04 * Math.sin(T * 3)))); }
+      if (n) { const r = n.kind === 'you' ? 3.2 : n.kind === 'project' ? .8 * PK : n.kind === 'session' ? 1.35 : .55; ring.position.x = n.pos.x; ring.position.z = n.pos.z; ring.scale.setScalar(r * (1 + (reduced() ? 0 : .04 * Math.sin(T * 3)))); }
     }
   }
 

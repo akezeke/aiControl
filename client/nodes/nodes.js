@@ -11,7 +11,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './nodes.css';
 import { createWorld } from './world.js';
 import * as kit from './kit.js';
-import { frameTime } from '../scene-ui.js';
+import { createMenu, frameTime } from '../scene-ui.js';
+import { hireChoices } from '../hire.js';
 import { createScreenshots } from '../office/screenshots.js';
 
 const LOOKS = {
@@ -56,7 +57,7 @@ export function mountNodes(container, hooks = {}) {
   let extraPasses = [];
 
   // Looks may rewrite n.rest / n.offset (their own layout) and the pick sizes; both go back to the world's layout on every build.
-  let sizes = { ...kit.SIZE }, frameExtra = null, labelAnchor = null, labelAbove = null, labelRule = null, customLayout = null;
+  let sizes = { ...kit.SIZE }, frameExtra = null, labelAnchor = null, labelAbove = null, labelRule = null, customLayout = null, shapeOf = null;
   const size = { w: 1, h: 1 }, resizeHooks = new Set();
   // The world's ring, spread to the screen's shape so wide and tall screens both get used. Clusters keep their own shape.
   function baseLayout() {
@@ -87,7 +88,12 @@ export function mountNodes(container, hooks = {}) {
   const home = new THREE.Vector3(0, 0, 1.5);
   const view = { target: new THREE.Vector3(0, 0, 1.5), goal: new THREE.Vector3(0, 0, 1.5), dist: 70, goalDist: 70, tilt: .6, yaw: 0, par: new THREE.Vector2(), parGoal: new THREE.Vector2(), vel: new THREE.Vector3() };
   let fitDist = 70, homed = true, focused = false; // focused: the view moved to show a node, and goes home when its panel closes
-  function refit() { fitDist = fit(); if (homed) { view.goal.copy(home); view.goalDist = fitDist; } }
+  // The far plane reaches past the farthest zoom-out (1.5 fits) and the board behind the target: a long lens on a big board stands
+  // the camera hundreds of units off.
+  function refit() {
+    fitDist = fit(); if (homed) { view.goal.copy(home); view.goalDist = fitDist; }
+    const far = Math.max(600, fitDist * 2.2); if (camera.far !== far) { camera.far = far; camera.updateProjectionMatrix(); }
+  }
   function fit() {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
     const add = (x, z, r) => { x0 = Math.min(x0, x - r); x1 = Math.max(x1, x + r); z0 = Math.min(z0, z - r); z1 = Math.max(z1, z + r + .8); };
@@ -117,9 +123,34 @@ export function mountNodes(container, hooks = {}) {
     ndc.set(x / size.w * 2 - 1, -(y / size.h) * 2 + 1); ray.setFromCamera(ndc, camera);
     return ray.ray.intersectPlane(plane, out) || out.copy(view.target);
   }
-  const proj = new THREE.Vector3(), camRight = new THREE.Vector3();
+  const proj = new THREE.Vector3(), camRight = new THREE.Vector3(), pa = { x: 0, y: 0, z: 0 }, pb = { x: 0, y: 0, z: 0 };
   function toScreen(v, out = { x: 0, y: 0, z: 0 }) { proj.copy(v).project(camera); out.x = (proj.x + 1) / 2 * size.w; out.y = (1 - proj.y) / 2 * size.h; out.z = proj.z; return out; }
-  function pxRadius(n) { camRight.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(sizes[n.kind]).add(n.pos); const a = toScreen(n.pos), b = toScreen(camRight); return Math.hypot(b.x - a.x, b.y - a.y); }
+  // Screen pixels to a world unit across the view at p.
+  function pxPer(p) { camRight.setFromMatrixColumn(camera.matrixWorld, 0).add(p); toScreen(p, pa); toScreen(camRight, pb); return Math.hypot(pb.x - pa.x, pb.y - pa.y); }
+  const pxRadius = n => pxPer(n.pos) * sizes[n.kind];
+  // A footprint, from ctx.setShape: { hx, hz, y } half extents round its centre on the plane at height y. Rect tests on that plane:
+  // how far (x, y) on screen is into it (under 1 is inside, `pad` world units of slack round it), and its box on screen.
+  const lift = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3(), corner = new THREE.Vector3();
+  // A raised footprint is its top face and its base both, and the sides between: the nearer of the two planes counts.
+  function intoRect(x, y, c, f) {
+    ndc.set(x / size.w * 2 - 1, -(y / size.h) * 2 + 1); ray.setFromCamera(ndc, camera);
+    const pad = Math.max(.12, 6 / Math.max(1e-3, pxPer(c)));
+    let best = Infinity;
+    for (let j = f.y > .05 ? 2 : 1; j--;) {
+      lift.constant = j ? -(f.y || 0) : 0;
+      if (ray.ray.intersectPlane(lift, hit)) best = Math.min(best, Math.max(Math.abs(hit.x - c.x) / (f.hx + pad), Math.abs(hit.z - c.z) / (f.hz + pad)));
+    }
+    return best;
+  }
+  function rectBox(c, f, out) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const top = f.y || 0, n = top > .05 ? 8 : 4;
+    for (let i = 0; i < n; i++) {
+      toScreen(corner.set(c.x + (i & 1 ? f.hx : -f.hx), i & 4 ? 0 : top, c.z + (i & 2 ? f.hz : -f.hz)), pa);
+      x0 = Math.min(x0, pa.x); x1 = Math.max(x1, pa.x); y0 = Math.min(y0, pa.y); y1 = Math.max(y1, pa.y);
+    }
+    out[0] = x0; out[1] = y0; out[2] = x1; out[3] = y1; return out;
+  }
   // The part of the board the panel leaves free, in board pixels: left of it on wide screens, above it on phones.
   function freeArea() {
     const panel = document.querySelector('#panel'), box = container.getBoundingClientRect();
@@ -136,25 +167,41 @@ export function mountNodes(container, hooks = {}) {
   }
   function resetView() { homed = true; focused = false; view.goal.copy(home); view.goalDist = fitDist; view.vel.set(0, 0, 0); }
 
-  // ── Picking ──
+  // ── Picking: a look's footprint (setShape) when it gives one, else a circle the node's size ──
+  const pp = { x: 0, y: 0, z: 0 }, flat = { hx: 0, hz: 0, y: 0 };
+  // A shown label is its node too, and it's drawn over everything, so it comes first.
+  function labelAt(x, y) {
+    for (const [n, el] of labels) if (el._mode && n.s.alive >= .5 && x > el._x0 - 2 && x < el._x1 + 2 && y > el._y0 - 2 && y < el._y1 + 2) return n;
+    return null;
+  }
   function pick(x, y) {
+    const l = labelAt(x, y); if (l) return l;
     let best = null, score = Infinity;
     for (const n of world.nodes) {
       if (n.s.alive < .5) continue;
-      const p = toScreen(n.pos), r = Math.max(10, pxRadius(n) * 1.15), d = Math.hypot(p.x - x, p.y - y);
-      if (d < r && d / r < score) { score = d / r; best = n; }
+      const f = shapeOf?.(n);
+      let d;
+      if (f) d = intoRect(x, y, n.pos, f);
+      else { const r = Math.max(10, pxRadius(n) * 1.15); toScreen(n.pos, pp); d = Math.hypot(pp.x - x, pp.y - y) / r; }
+      if (d < 1 && d < score) { score = d; best = n; }
     }
+    for (const t of targets) if (t.action === 'node' && t.node.s.alive >= .5) { const d = intoTarget(x, y, t); if (d < 1 && d < score) { score = d; best = t.node; } }
     return best;
   }
-  // Things a look attached to a node that do something else when clicked, like a screen of its screenshots: ctx.addTarget.
+  // Things a look attached to a node (ctx.addTarget): ones that do something else when clicked, like a screen of its screenshots,
+  // and ones that are more of the node itself (action 'node'), like a display of its name set off to one side.
   let targets = [];
+  function intoTarget(x, y, t) {
+    if (t.hx) { flat.hx = t.hx; flat.hz = t.hz; flat.y = t.pos.y; return intoRect(x, y, t.pos, flat); }
+    const r = Math.max(10, pxPer(t.pos) * t.radius); toScreen(t.pos, pp); return Math.hypot(pp.x - x, pp.y - y) / r;
+  }
   function target(x, y) {
+    if (labelAt(x, y)) return null;
     let best = null, score = Infinity;
     for (const t of targets) {
-      if (t.node.s.alive < .5 || (t.action === 'shots' && !shots.count(t.node.id))) continue;
-      camRight.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(t.radius).add(t.pos);
-      const p = toScreen(t.pos), e = toScreen(camRight, { x: 0, y: 0, z: 0 }), r = Math.max(10, Math.hypot(e.x - p.x, e.y - p.y)), d = Math.hypot(p.x - x, p.y - y);
-      if (d < r && d / r < score) { score = d / r; best = t; }
+      if (t.action === 'node' || t.node.s.alive < .5 || (t.action === 'shots' && !shots.count(t.node.id))) continue;
+      const d = intoTarget(x, y, t);
+      if (d < 1 && d < score) { score = d; best = t; }
     }
     return best;
   }
@@ -170,7 +217,7 @@ export function mountNodes(container, hooks = {}) {
     canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, at);
     if (pointers.size === 2) { startPinch(); down = null; return; }
     const t = target(at.x, at.y), n = t ? null : pick(at.x, at.y);
-    down = { ...at, node: n, target: t }; dragging = false; view.vel.set(0, 0, 0);
+    down = { ...at, node: n, target: t, dismissed }; dismissed = false; dragging = false; view.vel.set(0, 0, 0);
     if (n) n.pressed = true;
     ground(at.x, at.y, panFrom);
   };
@@ -194,18 +241,21 @@ export function mountNodes(container, hooks = {}) {
     if (!down) return;
     const n = down.node;
     if (n) n.pressed = false;
-    if (!dragging) { view.vel.set(0, 0, 0); if (down.target) act(down.target); else if (n) click(n); }
+    if (!dragging) { view.vel.set(0, 0, 0); if (down.dismissed) { /* that press only closed the menu */ } else if (down.target) act(down.target); else if (n) click(n); }
     else if (performance.now() - lastMove.t > 80) view.vel.set(0, 0, 0);
     down = null; dragging = false; canvas.style.cursor = '';
     const at = local(e); hover(at.x, at.y);
   };
   const onLeave = () => { if (!down) setHover(null); };
-  const onDouble = e => { const at = local(e); if (!pick(at.x, at.y)) resetView(); };
+  // Double-click the board: a step closer at the pointer; from as close as it goes, back home.
+  const onDouble = e => { const at = local(e); if (pick(at.x, at.y) || target(at.x, at.y)) return; if (view.goalDist <= fitDist * .3) resetView(); else zoomBy(at.x, at.y, .55); };
   const onWheel = e => { e.preventDefault(); const at = local(e); zoomAt(at.x, at.y, e.deltaY, e.ctrlKey); };
-  function zoomAt(x, y, deltaY, fine) {
+  const zoomAt = (x, y, deltaY, fine) => zoomBy(x, y, Math.exp(deltaY * (fine ? .01 : .0012)));
+  // Scale the distance by k, keeping the board point under (x, y) where it is.
+  function zoomBy(x, y, k) {
     homed = focused = false;
     const before = ground(x, y, new THREE.Vector3()), old = view.goalDist;
-    view.goalDist = kit.clamp(view.goalDist * Math.exp(deltaY * (fine ? .01 : .0012)), fitDist * .28, fitDist * 1.5);
+    view.goalDist = kit.clamp(view.goalDist * k, fitDist * .28, fitDist * 1.5);
     view.goal.lerp(before.setY(0), 1 - view.goalDist / old);
   }
   function startPinch() {
@@ -232,11 +282,11 @@ export function mountNodes(container, hooks = {}) {
       if (tipEl._html !== html) tipEl.innerHTML = tipEl._html = html;
       placeTip(x, y); return;
     }
-    const n = x == null ? null : pick(x, y);
+    const n = x == null || menu.open ? null : pick(x, y);
     setHover(n);
     if (n) n.magnet = ground(x, y, new THREE.Vector3());
     canvas.style.cursor = n ? 'pointer' : '';
-    if (n && (n.kind === 'session' || n.kind === 'sub')) { tipEl.hidden = false; tip(n); placeTip(x, y); } else tipEl.hidden = true;
+    if (n && n.kind !== 'you') { tipEl.hidden = false; tip(n); placeTip(x, y); } else tipEl.hidden = true;
   }
   function setHover(n) {
     if (hovered === n) return;
@@ -249,6 +299,11 @@ export function mountNodes(container, hooks = {}) {
     tipEl.style.transform = `translate(${Math.max(8, Math.min(size.w - w - 8, x + 16))}px, ${Math.max(8, Math.min(size.h - h - 8, y + 16))}px)`;
   }
   function tip(n) {
+    if (n.kind === 'project') {
+      const html = `<b>${esc(n.name)}</b><div class="meta">+ New session</div>`;
+      if (tipEl._html !== html) tipEl.innerHTML = tipEl._html = html;
+      return;
+    }
     const meta = [n.project.name, PROVIDER[n.provider], n.ctx ? `ctx ${Math.round(n.ctx * 100)}%` : '', n.plan && `plan ${n.plan.done}/${n.plan.total}`, n.mode].filter(Boolean).join(' · ');
     const html = `<b>${esc(n.name)}</b><div class="row"><i class="dot" style="--c:${STATUS_VAR[n.status]}"></i><span>${esc(statusLine(n))}</span></div><div class="meta">${esc(meta)}</div>`;
     if (tipEl._html !== html) tipEl.innerHTML = tipEl._html = html;
@@ -256,9 +311,38 @@ export function mountNodes(container, hooks = {}) {
   function click(n) {
     n.vel.y -= 5 * world.motion.kick;
     if (n.kind === 'you') { const next = hooks.nextWaiting?.(); if (next) nodes.talkTo(next.id); return; }
-    if (n.kind === 'project') { view.goalDist = Math.min(view.goalDist, fitDist * .5); focus(n); return; }
+    if (n.kind === 'project') { offerNew(n); return; }
     show(n, false);
   }
+
+  // ── A project is the way to start a session in its folder: click it for the new-agent menu, which stays by it as the view moves ──
+  const menu = createMenu(container, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item), () => { menuNode = null; });
+  let menuNode = null, dismissed = false, snapshot = null;
+  const menuAt = { clientX: 0, clientY: 0 };
+  // Beside the node, up and to the right; the menu flips to fit.
+  function menuPoint(n) {
+    const box = canvas.getBoundingClientRect(), p = toScreen(n.pos), r = pxRadius(n) * .7;
+    menuAt.clientX = box.left + p.x + r; menuAt.clientY = box.top + p.y - r - 18; return menuAt;
+  }
+  function offerNew(n) {
+    const cwd = n.sessions.map(s => s.session?.cwd).find(Boolean) ?? null;
+    const known = [...new Set((snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort();
+    setHover(null);
+    menu.show(cwd, menuPoint(n), false, hireChoices(snapshot, cwd ?? ''), cwd === null ? known : []);
+    menuNode = n;
+  }
+  let menuX = 0, menuY = 0;
+  function followMenu() {
+    if (!menuNode || !menu.open) return;
+    if (!menuNode.present || menuNode.s.alive < .5) { menu.close(); return; }
+    const p = toScreen(menuNode.pos, sp);
+    if (p.z > 1 || p.x < 0 || p.y < 0 || p.x > size.w || p.y > size.h) { menu.close(); return; }
+    if (Math.abs(p.x - menuX) < .5 && Math.abs(p.y - menuY) < .5) return;
+    menuX = p.x; menuY = p.y; menu.move(menuPoint(menuNode));
+  }
+  // A press anywhere else closes it, before what's under it acts.
+  const press = e => { dismissed = menu.open && !menu.contains(e.target); if (dismissed) menu.close(); };
+  document.addEventListener('pointerdown', press, true);
   // The panel opens first, so the node can be moved clear of it.
   function show(n, zoom) { hooks.openPanel?.(n.id); requestAnimationFrame(() => { if (!broken && n.present) focus(n, zoom); }); }
 
@@ -274,66 +358,118 @@ export function mountNodes(container, hooks = {}) {
   document.fonts?.addEventListener?.('loadingdone', remeasure);
   function labelFor(n) {
     let el = labels.get(n);
-    if (!el) { el = document.createElement('div'); el.className = `lbl ${n.kind}`; labelsEl.append(el); labels.set(n, el); }
+    // Hidden until the placer finds it a spot: one it never finds room for mustn't show at the board's corner.
+    if (!el) { el = document.createElement('div'); el.className = `lbl ${n.kind} hide`; labelsEl.append(el); labels.set(n, el); el._mode = 0; }
     return el;
   }
   function dropLabels() { for (const [n, el] of labels) if (!world.nodes.includes(n)) { el.remove(); labels.delete(n); } }
-  const sp = { x: 0, y: 0, z: 0 }, at = { x: 0, y: 0, z: 0 }, below = new THREE.Vector3(), cand = [], placed = [], bodies = [], tall = [];
+  // A label's size in full, and brief: the name alone, cut to BRIEF px (as .lbl.brief b in nodes.css).
+  const BRIEF = 150;
+  function measure(el) {
+    const cls = el.classList, brief = cls.contains('brief'), on = cls.contains('on'), mw = el.style.maxWidth;
+    if (brief) cls.remove('brief'); if (on) cls.remove('on'); if (mw) el.style.maxWidth = '';
+    const b = el.firstElementChild, s = b?.nextElementSibling;
+    el._w = el.offsetWidth; el._h = el.offsetHeight;
+    if (b) { const bw = b.offsetWidth; el._bw = el._w - Math.max(bw, s?.offsetWidth || 0) + Math.min(bw, BRIEF); el._bh = s ? Math.max(b.offsetHeight, el._h - s.offsetHeight) : el._h; }
+    else { el._bw = el._w; el._bh = el._h; }
+    if (brief) cls.add('brief'); if (on) cls.add('on'); if (mw) el.style.maxWidth = mw;
+  }
+  const sp = { x: 0, y: 0, z: 0 }, at = { x: 0, y: 0, z: 0 }, below = new THREE.Vector3(), cand = [], pool = [], placed = [], bodies = [], tall = [], rects = [], foot = [0, 0, 0, 0];
+  let rectN = 0;
+  function rect(x0, y0, x1, y1) { const r = rects[rectN] || (rects[rectN] = [0, 0, 0, 0]); rectN++; r[0] = x0; r[1] = y0; r[2] = x1; r[3] = y1; return r; }
+  function clear(list, x0, y0, x1, y1) { for (const r of list) if (x0 < r[2] && x1 > r[0] && y0 < r[3] && y1 > r[1]) return false; return true; }
   const labelRank = (n, need) => n.selected ? 9 : n.hovered ? 8 : need ? 7 : n.kind === 'you' ? 6 : n.status === 'error' ? 5 : n.kind === 'session' ? 4 : n.kind === 'project' ? 3 : 1;
   const busy = n => n.status === 'working' || n.status === 'thinking' || n.status === 'compacting';
+  // Where a label of w × h may go round its node, as top-centre points: 8 beside it, then 6 a step further out.
+  const spot = new Float64Array(28);
+  function spotsFor(c, w, h) {
+    const up = (c.ay ?? 2 * c.ny - c.y) - h, slide = w / 2 + c.gap * .4, mid = c.ny - h / 2, rx = c.rx + w / 2, lx = c.lx - w / 2;
+    spot.set([c.x, c.y, c.x, up, rx, mid, lx, mid, c.x + slide, c.y, c.x - slide, c.y, c.x + slide, up, c.x - slide, up,
+      c.x, c.y + h + 3, c.x, up - h - 3, rx, mid + h + 3, lx, mid + h + 3, rx, mid - h - 3, lx, mid - h - 3]);
+  }
   let measureTick = 0;
   function renderLabels() {
-    const near = view.dist < fitDist * .72, q = world.queue().length; // near: for looks' label rules
-    cand.length = 0;
-    if (++measureTick % 30 === 0) for (const el of labels.values()) if (el._shown) { el._w = el.offsetWidth; el._h = el.offsetHeight; }
+    const near = view.dist < fitDist * .72, zoom = fitDist / view.dist, q = world.queue().length; // near, zoom: for looks' label rules
+    let cn = 0; cand.length = 0; rectN = 0; placed.length = bodies.length = tall.length = 0;
+    if (++measureTick % 30 === 0) for (const el of labels.values()) if (el._mode === 1) measure(el);
     for (const n of world.nodes) {
-      const el = labelFor(n), need = needs(n);
-      let show = n.s.alive > .5;
+      const el = labelFor(n), need = needs(n), alive = n.s.alive > .5, f = alive ? shapeOf?.(n) : null;
+      // Nodes are in the way of other labels: a footprint whole, else the middle of a body; for projects and subagents also the rest of
+      // a tall body (up to the look's above anchor). Session labels matter more than that.
+      let top = null;
+      if (alive) {
+        if (labelAbove) { labelAbove(n, below.copy(n.pos)); top = toScreen(below, at).y; }
+        if (f) rectBox(n.pos, f, foot);
+        else { toScreen(n.pos, at); const r = pxRadius(n) * .5; foot[0] = at.x - r; foot[1] = at.y - r; foot[2] = at.x + r; foot[3] = at.y + r; }
+        bodies.push(rect(foot[0], foot[1], foot[2], foot[3])); tall.push(rect(foot[0], Math.min(foot[1], top ?? Infinity), foot[2], foot[3]));
+      }
+
+      let show = alive, on = false;
       if (n.kind === 'sub') show &&= n.hovered || n.selected || need || busy(n) || view.dist < fitDist * .45;
-      if (labelRule) { const r = labelRule(n, { near, zoom: fitDist / view.dist }); if (typeof r === 'boolean') show = r && n.s.alive > .5; }
-      if (labelAnchor) labelAnchor(n, below.copy(n.pos)); else { below.copy(n.pos); below.z += sizes[n.kind] * 1.25 + (n.kind === 'project' ? .4 : .15); below.y = 0; }
+      if (labelRule) { const r = labelRule(n, { near, zoom }); if (r === 'on') on = show = alive; else if (typeof r === 'boolean') show = r && alive; }
+      if (labelAnchor) labelAnchor(n, below.copy(n.pos), on); else { below.copy(n.pos); below.z += sizes[n.kind] * 1.25 + (n.kind === 'project' ? .4 : .15); below.y = 0; }
       toScreen(below, sp);
       if (sp.z > 1 || sp.x < -200 || sp.x > size.w + 200 || sp.y < -100 || sp.y > size.h + 100) show = false;
-      if (!show) { el.classList.add('hide'); el._shown = false; continue; }
+      if (!show) { if (el._mode) { el.classList.add('hide'); el._mode = 0; } continue; }
       let html;
       if (n.kind === 'you') html = `<b>You</b><span>${q ? `${q} waiting` : 'all clear'}</span>`;
-      else if (n.kind === 'project') html = `<b>${esc(n.name)}</b>`;
+      // A subagent's name alone, quieter (nodes.css), so it doesn't read as its session's status; what it's doing is in the tooltip.
+      else if (n.kind === 'project' || n.kind === 'sub') html = `<b>${esc(n.name)}</b>`;
       else html = `<b>${esc(n.name)}</b><span>${esc(statusLine(n))}</span>`;
-      if (el._html !== html) { el.innerHTML = el._html = html; el._w = el.offsetWidth; el._h = el.offsetHeight; }
+      if (el._html !== html) { el.innerHTML = el._html = html; measure(el); }
       el.classList.toggle('need', need); el.classList.toggle('error', n.status === 'error');
-      // Above: the look's top-of-body point, or the spot below mirrored round the node's foot.
-      let ay = null; if (labelAbove) { labelAbove(n, below.copy(n.pos)); ay = toScreen(below, at).y; }
-      toScreen(n.pos, at);
-      cand.push({ el, x: sp.x, y: sp.y, z: sp.z, nx: at.x, ny: at.y, ay, r: pxRadius(n), rank: labelRank(n, need) });
+      const c = pool[cn] || (pool[cn] = {}); cn++;
+      c.el = el; c.on = on; c.x = sp.x; c.y = sp.y; c.z = sp.z; c.rank = labelRank(n, need); c.sub = n.kind === 'sub';
+      // 'on': the name on the node itself, as wide as the look allows. Else beside the node: the box round a footprint, or the circle.
+      if (on) { c.tw = (f?.tw ?? sizes[n.kind] * 1.6) * pxPer(below); cand.push(c); continue; }
+      if (f) { c.nx = (foot[0] + foot[2]) / 2; c.ny = (foot[1] + foot[3]) / 2; c.gap = 6; c.rx = foot[2] + 6; c.lx = foot[0] - 6; c.ay = Math.min(foot[1], top ?? Infinity) - 3; }
+      else { toScreen(n.pos, at); const r = pxRadius(n); c.nx = at.x; c.ny = at.y; c.gap = r * .9 + 6; c.rx = at.x + c.gap; c.lx = at.x - c.gap; c.ay = top; }
+      cand.push(c);
     }
-    // Greedy: the most important label claims its box first: below its node, else above, right or left of it. A hidden label needs
-    // a little extra room to come back, and a label keeps its side while it fits, so neither flickers.
-    cand.sort((a, b) => b.rank - a.rank || a.z - b.z);
-    // Nodes are in the way too: a label keeps off the middle of a body, unless it's waiting on you, selected or hovered. Project and
-    // subagent labels also keep off the rest of a tall body (up to the look's above anchor); session labels matter more than that.
-    placed.length = bodies.length = tall.length = 0;
-    for (const n of world.nodes) if (n.s.alive > .5) {
-      let top = Infinity; if (labelAbove) { labelAbove(n, below.copy(n.pos)); top = toScreen(below, at).y; }
-      toScreen(n.pos, at); const r = pxRadius(n) * .5; bodies.push([at.x - r, at.y - r, at.x + r, at.y + r]); tall.push([at.x - r, Math.min(at.y - r, top), at.x + r, at.y + r]);
-    }
-    const clear = (list, x0, y0, x1, y1) => !list.some(r => x0 < r[2] && x1 > r[0] && y0 < r[3] && y1 > r[1]);
+    // Greedy: names on their nodes first, then the most important label claims its spot: in full beside its node; else brief (the name
+    // alone), beside it or a step further out; else, for sessions and up, brief over other nodes, minding only other labels. A label
+    // keeps its spot while it fits, and needs a little extra room to come back or grow, so none of them flicker.
+    cand.sort((a, b) => b.on - a.on || b.rank - a.rank || a.z - b.z);
     for (const c of cand) {
-      const { el } = c, w = el._w || 60, h = el._h || 16, pad = el._shown ? 1 : 6, gap = c.r * .9 + 6;
-      const up = c.ay != null ? c.ay - h : 2 * c.ny - c.y - h, slide = w / 2 + gap * .4;
-      const spots = [[c.x, c.y], [c.x, up], [c.nx + gap + w / 2, c.ny - h / 2], [c.nx - gap - w / 2, c.ny - h / 2], [c.x + slide, c.y], [c.x - slide, c.y], [c.x + slide, up], [c.x - slide, up]];
-      const order = [el._side || 0, 0, 1, 2, 3, 4, 5, 6, 7];
-      let side = -1, x = 0, y = 0;
-      for (const i of order) {
-        x = Math.min(Math.max(spots[i][0], w / 2 + 8), size.w - w / 2 - 8); y = spots[i][1];
-        const box = [x - w / 2 - pad, y - pad, x + w / 2 + pad, y + h + pad];
-        if (clear(placed, ...box) && (c.rank >= 7 || clear(c.rank >= 4 ? bodies : tall, ...box))) { side = i; break; }
+      const { el } = c;
+      if (c.on) {
+        const w = Math.min(el._bw, c.tw), h = el._bh, mw = `${Math.max(0, c.tw).toFixed(0)}px`;
+        if (el.style.maxWidth !== mw) el.style.maxWidth = mw;
+        showLabel(el, 3, 0);
+        placed.push(rect(el._x0 = c.x - w / 2, el._y0 = c.y - h / 2, el._x1 = c.x + w / 2, el._y1 = c.y + h / 2));
+        el.style.transform = `translate3d(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px, 0) translate(-50%, -50%)`;
+        continue;
       }
-      el._shown = side >= 0; el.classList.toggle('hide', side < 0);
-      if (side < 0) continue;
-      el._side = side;
-      placed.push([x - w / 2, y, x + w / 2, y + h]);
+      let mode = 0, side = 0, x = 0, y = 0;
+      for (let stage = 1; stage <= 3 && !mode; stage++) {
+        if (stage === 3 && c.rank < 4) break;
+        // A subagent's label stays beside it: further out it would pass for its session's.
+        const brief = stage > 1, w = brief ? el._bw : el._w, h = brief ? el._bh : el._h, count = stage === 1 || c.sub ? 8 : 14;
+        const was = el._mode === stage + (stage === 3 ? 1 : 0), pad = was ? 1 : 6, first = was ? el._side : 0;
+        spotsFor(c, w, h);
+        for (let k = -1; k < count; k++) {
+          const i = k < 0 ? first : k; if (k >= 0 && i === first) continue;
+          x = Math.min(Math.max(spot[i * 2], w / 2 + 8), size.w - w / 2 - 8); y = spot[i * 2 + 1];
+          const x0 = x - w / 2 - pad, y0 = y - pad, x1 = x + w / 2 + pad, y1 = y + h + pad;
+          if (!clear(placed, x0, y0, x1, y1)) continue;
+          if (stage < 3 && c.rank < 7 && !clear(c.rank >= 4 ? bodies : tall, x0, y0, x1, y1)) continue;
+          mode = stage === 3 ? 4 : stage; side = i; placed.push(rect(el._x0 = x - w / 2, el._y0 = y, el._x1 = x + w / 2, el._y1 = y + h)); break;
+        }
+      }
+      if (!mode) { if (el._mode) { el.classList.add('hide'); el._mode = 0; } continue; }
+      showLabel(el, mode, side);
       el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translateX(-50%)`;
     }
+  }
+  // Modes: 1 in full, 2 brief, 3 on its node, 4 brief over other nodes.
+  function showLabel(el, mode, side) {
+    if (el._mode !== mode) {
+      const cls = el.classList;
+      cls.remove('hide'); cls.toggle('brief', mode > 1); cls.toggle('on', mode === 3);
+      if (mode !== 3 && el.style.maxWidth) el.style.maxWidth = '';
+      el._mode = mode;
+    }
+    el._side = side;
   }
 
   // ── Shared juice: hops and nudges from events, before the look sees them ──
@@ -368,7 +504,7 @@ export function mountNodes(container, hooks = {}) {
     for (const p of extraPasses) { composer.removePass(p); p.dispose?.(); }
     extraPasses = []; resizeHooks.clear();
     view.tilt = .6; camera.fov = 34; camera.near = .5; camera.updateProjectionMatrix();
-    customLayout = null; sizes = { ...kit.SIZE }; labelAnchor = labelAbove = labelRule = frameExtra = null; targets = [];
+    customLayout = shapeOf = null; sizes = { ...kit.SIZE }; labelAnchor = labelAbove = labelRule = frameExtra = null; targets = [];
     world.motion = { zeta: .42, k: 46, drift: 1, kick: 1 };
   }
   function teardown() {
@@ -405,7 +541,11 @@ export function mountNodes(container, hooks = {}) {
       // The newest screenshot a session looked at, { bitmap: ImageBitmap (fitted to 512×320), count }, or null. The same object
       // until it changes, so a look can compare it each frame and redraw only then.
       shot: n => shotOf.get(n.id) || null,
-      // Make something on a node clickable: { node, pos (a Vector3 the look keeps up to date), radius (world units), action: 'shots' }.
+      // A node's footprint, for picking and for keeping labels off it: fn(n) returns { hx, hz, y, tw? }, half extents round n.pos on
+      // the plane at height y (tw: the width a name on it may take, for 'on' labels), or null for the circle of its size.
+      setShape(fn) { shapeOf = fn; },
+      // Make something on a node clickable: { node, pos (a Vector3 the look keeps up to date), radius (world units), action: 'shots' };
+      // hx and hz instead of radius make it a rectangle round pos, at pos.y.
       // The board sets its `hovered` while the pointer is on it.
       // 'shots' opens the image viewer on that session's screenshots, and is only clickable while it has some.
       addTarget(t) { targets.push(t); return t; },
@@ -460,6 +600,7 @@ export function mountNodes(container, hooks = {}) {
       }
       cameraStep(dt);
       renderLabels();
+      followMenu();
       if (hovered && !tipEl.hidden) tip(hovered);
       for (const p of extraPasses) if (p.uniforms?.time) p.uniforms.time.value = world.time;
       composer.render(dt);
@@ -471,16 +612,17 @@ export function mountNodes(container, hooks = {}) {
   container.board = { world, setLook };
   const nodes = {
     // syncScene turns this throw into the fallback to the list.
-    update(snapshot, { error } = {}) {
+    update(next, { error } = {}) {
       if (broken) throw new Error('Nodes lost its graphics context');
-      world.sync(snapshot, { error: !!error });
-      if (!error) shots.sync((snapshot.sessions || []).filter(session => !session.parentId));
+      snapshot = next; world.sync(next, { error: !!error });
+      if (!error) shots.sync((next.sessions || []).filter(session => !session.parentId));
       container.classList.toggle('offline', !!error);
       const waiting = world.queue().length; next.hidden = !waiting; next.textContent = `⚠ ${waiting}`;
       setLook(lookFor(document.documentElement.dataset.themeChoice));
     },
     unmount() {
       stop(); clearTimeout(settle); shots.dispose(); observer.disconnect(); osReduced.removeEventListener?.('change', onReduced);
+      document.removeEventListener('pointerdown', press, true); menu.dispose();
       document.fonts?.removeEventListener?.('loadingdone', remeasure);
       teardown(); styleEl?.remove();
       for (const p of extraPasses) p.dispose?.();

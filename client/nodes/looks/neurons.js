@@ -23,7 +23,7 @@ const Y = new THREE.Vector3(0, 1, 0);
 // the bodies that matter; a project is only the ganglion where the trunk from You splits towards them.
 const SHAPE = {
   you: { R: 1.25, count: 10, len: 5.8, depth: 2, filaments: 18 },
-  project: { R: .5, count: 3, len: 1.7, depth: 1, filaments: 7 },
+  project: { R: .64, count: 3, len: 2, depth: 1, filaments: 8 },
   session: { R: .72, count: 6, len: 2.8, depth: 2, filaments: 12 },
   sub: { R: .36, count: 4, len: 1.2, depth: 1, filaments: 5 },
 };
@@ -412,7 +412,7 @@ function create(ctx) {
   ctx.setPost({ bloom: { strength: .85, radius: .55, threshold: .34 }, exposure: 1 });
   ctx.addPass(kit.vignettePass({ darkness: 1.05, offset: 1.05, grain: .028, tint: '#e2eaff' }));
   ctx.setView({ tilt: .56 });
-  ctx.setSizes({ project: .85, session: 1.05 });
+  ctx.setSizes({ project: 1.05, session: 1.05 });
   // A label hangs just clear of its soma's front: the body leans out towards the camera by about 1.3 radii on screen.
   ctx.setLabelAnchor((n, out) => { const e = neurons.get(n); out.z += (e ? e.R * e.sc : .7) * 1.55 + (n.kind === 'you' ? .5 : .28); out.y = 0; });
   scene.background = new THREE.Color('#02050f');
@@ -1045,6 +1045,9 @@ body[data-look="neurons"] .lbl.you { background: radial-gradient(120% 120% at 50
 body[data-look="neurons"] .lbl.you b { color: #ffe6b0; }
 body[data-look="neurons"] .lbl.need { background: radial-gradient(120% 120% at 30% 0%, rgba(255, 201, 60, .2), transparent 65%), rgba(12, 9, 20, .8); box-shadow: inset 0 0 0 1px rgba(255, 201, 60, .45), inset 0 0 12px -4px rgba(255, 201, 60, .45), 0 0 16px -6px rgba(255, 201, 60, .6); }
 body[data-look="neurons"] .lbl.error { box-shadow: inset 0 0 0 1px rgba(255, 77, 109, .5), inset 0 0 12px -4px rgba(255, 77, 109, .45), 0 0 14px -6px rgba(255, 77, 109, .6); }
+body[data-look="neurons"] .lbl.sub { padding: 0 3px; background: none; box-shadow: none; text-shadow: 0 0 6px var(--label-halo), 0 0 2px var(--label-halo); }
+body[data-look="neurons"] .lbl.sub b { font-size: 11px; }
+body[data-look="neurons"] .lbl.sub:not(.need, .error) b { color: var(--label-sub); }
 body[data-look="neurons"] .nodes-overlay .nodes-next { box-shadow: 0 0 16px rgba(255, 201, 60, .3), var(--shadow); animation: neurons-beat 1.3s ease-in-out infinite; }
 @keyframes neurons-beat { 0%, 40%, 100% { box-shadow: 0 0 10px rgba(255, 201, 60, .2), var(--shadow); } 12% { box-shadow: 0 0 22px rgba(255, 201, 60, .55), var(--shadow); } }
 @media (prefers-reduced-motion: reduce) { body[data-look="neurons"] .nodes-overlay .nodes-next { animation: none; } }`,

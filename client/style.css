@@ -183,6 +183,8 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* A scene takes the page; here rather than with the scene so the list doesn't show while its code loads. */
 :root[data-scene]:not([data-scene-fallback], [data-scene-list]) .main-content { max-width: none; padding: 0; height: 100dvh; }
 :root[data-scene]:not([data-scene-fallback], [data-scene-list]) .main-content > :not(.scene) { display: none; }
+/* A board zooms itself; a pinch on the bar above it would zoom the page out from under the board and its menus. Lists and the panel keep page zoom for reading. */
+:root[data-scene]:not([data-scene-fallback], [data-scene-list]) .topbar { touch-action: pan-x pan-y; }
 .connection-error { padding: 10px 12px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: var(--radius-sm); }
 
 /* Overview */

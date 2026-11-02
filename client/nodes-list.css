@@ -10,5 +10,5 @@
 :root[data-theme=nodes] .brand-variant.nodes { display: flex; }
 .brand-variant.nodes .brand-mark { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: var(--accent); -webkit-mask: url('/nodes-mark.svg') center / contain no-repeat; mask: url('/nodes-mark.svg') center / contain no-repeat; }
 .brand-variant.nodes .brand-mark i { display: none; }
-.theme-swatch.nodes { background: radial-gradient(circle at 50% 50%, #1b2130 0 22%, transparent 25%), radial-gradient(circle at 18% 22%, #12a372 0 13%, transparent 16%), radial-gradient(circle at 80% 26%, #e8930c 0 13%, transparent 16%), radial-gradient(circle at 70% 82%, #3b82f6 0 13%, transparent 16%), #eceef2; }
+.theme-swatch.nodes { border: 0; background: url('/nodes-swatch.svg') center / contain no-repeat; }
 .theme-preview.nodes { background: radial-gradient(circle at 50% 52%, #1b2130 0 6%, transparent 6.5%), radial-gradient(circle at 24% 30%, #ffffff 0 7%, transparent 7.5%), radial-gradient(circle at 76% 30%, #ffffff 0 7%, transparent 7.5%), radial-gradient(circle at 50% 84%, #ffffff 0 7%, transparent 7.5%), linear-gradient(32deg, transparent 49.4%, #c2c7d1 49.5% 50.5%, transparent 50.6%), linear-gradient(-32deg, transparent 49.4%, #c2c7d1 49.5% 50.5%, transparent 50.6%), #eceef2; }

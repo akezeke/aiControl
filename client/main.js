@@ -131,7 +131,7 @@ const icons = {
   fantasy: '<path d="M14.500 17.500 3 6V3h3l11.500 11.500M13 19l6-6m-3 3 4 4m-1 1 2-2M9.500 17.500 21 6V3h-3L6.500 14.500M11 19l-6-6m3 3-4 4m1 1-2-2"/>',
   agents: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 7v10m0-5h10"/>',
   live: '<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7m7 0a5 5 0 0 0 0-7M5.6 5.6a9 9 0 0 0 0 12.8m12.8 0a9 9 0 0 0 0-12.8"/>',
-  nodes: '<circle cx="12" cy="12" r="3"/><circle cx="4.500" cy="5" r="2"/><circle cx="19.500" cy="5.500" r="2"/><circle cx="18" cy="19.500" r="2"/><path d="m6 6.500 3.800 3.300m4.400-.6 3.700-2.600m-3.700 7.600 2.500 2.900"/>',
+  nodes: '<path d="M15.600 4.860A8 8 0 0 1 19.990 12.450m-3.600 6.240a8 8 0 0 1-8.780 0M4.010 12.450A8 8 0 0 1 8.400 4.860" stroke-width="1.500"/><g fill="currentColor" stroke="none"><circle cx="12" cy="12" r="3.300"/><circle cx="12" cy="4" r="2.400"/><circle cx="18.930" cy="16" r="2.400"/><circle cx="5.070" cy="16" r="2.400"/></g>',
   office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
@@ -186,13 +186,17 @@ function themeMenu() {
   }
   menu.append(summary, choices); placeMenu(menu, summary, choices); return menu;
 }
-// The sidebar scrolls and would clip the list, so open it against the viewport there.
+// The sidebar scrolls and would clip the list, so open it against the viewport there. A list longer than the room it has
+// scrolls inside itself (the page behind a scene doesn't scroll), opened at the current choice.
 function placeMenu(menu, summary, choices) {
   menu.ontoggle = () => {
     choices.removeAttribute('style');
-    if (!menu.open || !menu.closest('.sidebar')) return;
-    const r = summary.getBoundingClientRect();
-    Object.assign(choices.style, { position: 'fixed', top: 'auto', right: 'auto', left: `${Math.max(8, Math.min(r.left, innerWidth - choices.offsetWidth - 8))}px`, bottom: `${innerHeight - r.top + 6}px` });
+    if (!menu.open) return;
+    const r = summary.getBoundingClientRect(), up = !!menu.closest('.sidebar');
+    if (up) Object.assign(choices.style, { position: 'fixed', top: 'auto', right: 'auto', left: `${Math.max(8, Math.min(r.left, innerWidth - choices.offsetWidth - 8))}px`, bottom: `${innerHeight - r.top + 6}px` });
+    Object.assign(choices.style, { maxHeight: `${Math.max(160, (up ? r.top : innerHeight - r.bottom) - 14)}px`, overflowY: 'auto', overscrollBehavior: 'contain' });
+    const current = choices.querySelector('[aria-pressed=true]');
+    if (current && choices.scrollHeight > choices.clientHeight) choices.scrollTop = current.offsetTop - 6;
   };
 }
 // Opt-in notifications and the theme's sound; turning sound on plays it once.
