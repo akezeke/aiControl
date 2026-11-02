@@ -69,8 +69,8 @@ export async function startServer({ host, hostname, tls = null }) {
     model: (id, body) => setAgentSetting(id, 'model', body?.model),
     effort: (id, body) => setAgentSetting(id, 'effort', body?.effort),
     history: (id, limit) => openCodeId(id) ? opencode.history(openCodeId(id), limit) : claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
-    images: id => openCodeId(id) ? { images: [] } : claudeId(id) ? claude.imageList(id) : codex.imageList(messageTarget(id)),
-    image: (id, imageId) => openCodeId(id) ? unsupportedOpenCode() : claudeId(id) ? claude.image(id, imageId) : codex.image(messageTarget(id), imageId),
+    images: id => openCodeId(id) ? opencode.imageList(openCodeId(id)) : claudeId(id) ? claude.imageList(id) : codex.imageList(messageTarget(id)),
+    image: (id, imageId) => openCodeId(id) ? opencode.image(openCodeId(id), imageId) : claudeId(id) ? claude.image(id, imageId) : codex.image(messageTarget(id), imageId),
   };
   // Any existing directory (~ expands). Claude starts under the account asked for, or the one the project last used.
   const spawn = async ({ cwd, provider, account: label } = {}) => {

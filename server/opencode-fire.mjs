@@ -38,7 +38,7 @@ export async function fireOpenCode(adapter, id) {
       // Children first; the parent's archive event does not archive its descendants.
       for (const member of [...ids].reverse()) {
         await adapter.api.archive(member); archived++;
-        adapter.archived.add(member); adapter.sessions.delete(member); adapter.chosenSettings.delete(member); adapter.store.removeSession(`opencode:${member}`);
+        adapter.archived.add(member); adapter.sessions.delete(member); adapter.chosenSettings.delete(member); adapter.images.delete(member); adapter.store.removeSession(`opencode:${member}`);
       }
     } catch (error) {
       if (archived) throw fail('Some subagents were archived, but the session could not finish archiving. Refresh and try again.', 502);

@@ -10,7 +10,7 @@ export function messagesV2(rows) {
     const info = { ...message, role: message.type, providerID: message.model?.providerID, modelID: message.model?.id,
       ...(message.error ? { error: { name: message.error.type, data: { message: message.error.message } } } : {}) };
     let parts = [];
-    if (message.type === 'user') parts = [{ type: 'text', text: message.text }, ...(message.files || []).map(file => ({ type: 'file', mime: file.mime, filename: file.name }))];
+    if (message.type === 'user') parts = [{ type: 'text', text: message.text }, ...(message.files || []).map(file => ({ ...file, type: 'file', filename: file.name || file.filename }))];
     if (message.type === 'assistant') parts = (message.content || []).map(part => ({ ...part, ...(part.type === 'tool' ? { tool: part.name } : {}) }));
     if (message.type === 'compaction') { info.role = 'assistant'; parts = [{ type: 'compaction' }]; }
     if (message.type === 'shell') { info.role = 'assistant'; parts = [{ type: 'tool', tool: 'shell', state: { input: { command: message.command }, status: message.exit ? 'error' : message.status } }]; }

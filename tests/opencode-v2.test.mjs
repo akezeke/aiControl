@@ -59,6 +59,18 @@ test('V2 discovers sessions, active status, projected messages, model and costs'
   assert.equal(calls.find(call => call.path === '/api/session').query.has('archived'), false);
 });
 
+test('V2 exposes images seen in history by opaque session-scoped IDs', async t => {
+  const { adapter, state } = fixture(t), bytes = Buffer.from('89504e470d0a1a0a00000000', 'hex');
+  const uri = `data:image/png;base64,${bytes.toString('base64')}`;
+  state.messages = [{ id: 'reply', type: 'assistant', time: { created: now }, content: [{ id: 'read', type: 'tool', name: 'read', state: { status: 'completed', input: { path: '/tmp/screen.png' }, content: [{ type: 'file', mime: 'image/png', uri }] } }] }];
+  await adapter.refresh(); const { images } = await adapter.imageList('ses_first');
+  assert.equal(images.length, 1); assert.equal(images[0].tool, true); assert.equal(images[0].at, now);
+  assert.deepEqual(await adapter.image('ses_first', images[0].id), { type: 'image/png', data: bytes });
+  await assert.rejects(adapter.image('ses_first', '/tmp/screen.png'), { status: 404 });
+  assert.equal(JSON.stringify(adapter.list()).includes(uri), false);
+  state.sessions = []; await adapter.refresh(); await assert.rejects(adapter.imageList('ses_first'), { status: 409 });
+});
+
 test('V2 Fire archives the idle session tree, preserves history, and refuses running or queued work', async t => {
   const { adapter, state, calls } = fixture(t); state.now += 10000; state.sessions.push({ ...info('ses_child'), parentID: 'ses_first' });
   await adapter.refresh(); assert.equal(adapter.list().find(session => session.nativeId === 'ses_first').messaging.fire, true);

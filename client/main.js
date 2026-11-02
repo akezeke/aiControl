@@ -43,7 +43,7 @@ const shotUrl = (id, imageId) => `/api/sessions/${encodeURIComponent(id)}/images
 function sessionShots(session) {
   let entry = shots.get(session.id);
   if (!entry) shots.set(session.id, entry = { images: [], changed: null, fetched: 0 });
-  if (entry.changed !== session.updatedAt && Date.now() - entry.fetched > 10_000) {
+  if ((entry.changed !== session.updatedAt || !entry.images.length) && Date.now() - entry.fetched > 10_000) {
     entry.changed = session.updatedAt; entry.fetched = Date.now();
     api(`sessions/${encodeURIComponent(session.id)}/images`).then(({ images = [] }) => {
       if (JSON.stringify(images) === JSON.stringify(entry.images)) return;

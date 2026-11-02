@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { OpenCodeAPI } from './opencode-api.mjs';
 import { fireOpenCode } from './opencode-fire.mjs';
+import { OpenCodeImages } from './opencode-images.mjs';
 
 export function openCodeConfig(value) {
   if (value?.service === true) return { service: true };
@@ -71,6 +72,7 @@ export class OpenCodeAdapter {
     this.store = store; this.config = openCodeConfig(config); this.now = now; this.intervalMs = intervalMs;
     this.sessions = new Map(); this.usage = new Map(); this.requestKeys = new Set(); this.submissions = new Map();
     this.modelCatalogs = new Map(); this.chosenSettings = new Map();
+    this.images = new OpenCodeImages();
     this.firing = new Set(); this.sending = new Set(); this.archived = new Set();
     this.controller = new AbortController(); this.fetch = fetcher; this.serviceFile = serviceFile;
     if (this.config && !this.config.service) this.connect(this.config);
@@ -85,7 +87,7 @@ export class OpenCodeAdapter {
     if (!this.config || this.timer) return;
     this.refresh(); this.timer = setInterval(() => this.refresh(), this.intervalMs); this.timer.unref?.();
   }
-  stop() { clearInterval(this.timer); this.timer = null; this.controller.abort(); this.disconnect('OpenCode disconnected.'); }
+  stop() { clearInterval(this.timer); this.timer = null; this.controller.abort(); this.images.clear(); this.disconnect('OpenCode disconnected.'); }
   disconnect(detail) {
     this.connected = false; this.detail = detail;
     for (const key of this.requestKeys) this.store.removeSource(key);
@@ -130,7 +132,7 @@ export class OpenCodeAdapter {
     }
     this.controller.signal.throwIfAborted();
     const live = new Set(infos.filter(info => !info.time?.archived).map(info => info.id));
-    for (const [id, session] of this.sessions) if (!live.has(id)) { this.sessions.delete(id); this.store.removeSession(session.id); }
+    for (const [id, session] of this.sessions) if (!live.has(id)) { this.sessions.delete(id); this.images.delete(id); this.store.removeSession(session.id); }
     const all = new Set(infos.map(info => info.id));
     for (const id of this.usage.keys()) if (!all.has(id)) this.usage.delete(id);
     const month = Math.min(usagePeriods([], this.now())[1].from, weeklyUsage([], this.now()).from);
@@ -147,6 +149,7 @@ export class OpenCodeAdapter {
           const history = readUsage ? { rows: await this.api.messages(nativeId(info.id), info.directory) } : await this.api.history(nativeId(info.id), info.directory, messageLimit);
           const messages = history.rows;
           this.controller.signal.throwIfAborted();
+          if (!info.time?.archived) this.images.rememberRows(info.id, messages, info.directory);
           session = openCodeSession(info, messages, prior, history.more);
           if (readUsage) {
             const records = usageRecords(messages); this.usage.set(info.id, { records, updated: info.time?.updated, at: this.now() });
@@ -216,7 +219,15 @@ export class OpenCodeAdapter {
   }
   async history(id, limit = 40) {
     const session = this.require(id), history = await this.api.history(id, session.cwd, limit);
+    this.images.rememberRows(id, history.rows, session.cwd);
     return { messages: history.messages, more: history.more };
+  }
+  async imageList(id) { this.require(id); return { images: await this.images.list(id) }; }
+  async image(id, imageId) {
+    this.require(id);
+    const image = await this.images.get(id, imageId);
+    if (!image) throw fail('Image not found.', 404);
+    return image;
   }
   async modelsFor(cwd) {
     const cached = this.modelCatalogs.get(cwd);
