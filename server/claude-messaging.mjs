@@ -9,7 +9,7 @@ import { parentPid, listProcesses } from './processes.mjs';
 import { dataDir } from './config.mjs';
 import { extensions, uploadedImages, uploadDigest } from './uploads.mjs';
 
-const runTmux = (args, input) => new Promise((resolve, reject) => {
+export const runTmux = (args, input) => new Promise((resolve, reject) => {
   const child = execFile('tmux', args, { timeout: 3000 }, (error, stdout) => error ? reject(error) : resolve(stdout));
   child.stdin.on('error', () => {}); // tmux exits without reading stdin for most commands
   child.stdin.end(input);
@@ -21,6 +21,7 @@ const runTmux = (args, input) => new Promise((resolve, reject) => {
 export async function spawnAgent(cwd, provider, { configDir = '', sessionId, model, effort, args = [], tmux = runTmux, update = updateCodex } = {}) {
   if (!['claude', 'codex', 'opencode'].includes(provider)) throw fail('Unknown agent.');
   if (provider === 'opencode' && !/^ses[\w-]+$/.test(sessionId || '')) throw fail('Invalid OpenCode session ID.');
+  if (provider === 'claude' && sessionId !== undefined && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sessionId)) throw fail('Invalid Claude session ID.');
   if (args.some(arg => !/^[\w-]+$/.test(arg))) throw fail('Unexpected agent arguments.');
   const panes = (await tmux(['list-panes', '-a', '-F', '#{session_name}\t#{pane_current_path}']).catch(() => '')).split('\n').map(line => line.split('\t'));
   // npm stop ends the server's own session, so agents never go there.
@@ -34,6 +35,8 @@ export async function spawnAgent(cwd, provider, { configDir = '', sessionId, mod
     let command = provider === 'opencode' ? [process.execPath, fileURLToPath(new URL('../scripts/opencode-terminal.mjs', import.meta.url)), sessionId].map(quote).join(' ')
       : provider === 'codex' ? 'codex' : configDir ? `CLAUDE_CONFIG_DIR=${quote(configDir)} claude` : 'claude';
     if (provider === 'claude') {
+      // An id chosen here lets the dashboard show the session before Claude registers it (launches.mjs).
+      if (sessionId) command += ` --session-id ${sessionId}`;
       if (model) command += ` --model ${quote(model)}`;
       if (effort && claudeEfforts.includes(effort)) command += ` --effort ${quote(effort)}`;
     }
@@ -50,7 +53,7 @@ export async function updateCodex(pane, { tmux = runTmux, command = 'codex', pol
   const wait = () => new Promise(resolve => setTimeout(resolve, pollMs));
   for (const end = Date.now() + startMs; Date.now() < end; await wait()) {
     const text = await screen();
-    if (/Ask Codex|Trust and continue/.test(text)) return false;
+    if (/Ask Codex|Trust and continue/.test(text) || trustMenu(text)) return false;
     if (!/Update available/.test(text) || !/›\s*1\.\s*Update now/.test(text)) continue;
     await tmux(['send-keys', '-t', pane, 'Enter']);
     for (const until = Date.now() + updateMs; Date.now() < until; await wait()) {
@@ -59,6 +62,17 @@ export async function updateCodex(pane, { tmux = runTmux, command = 'codex', pol
     return false;
   }
   return false;
+}
+// The question an agent asks before its first start in a folder its account hasn't trusted (Claude takes a trusted parent
+// folder's word; Codex asks per git repository), as { yes, no, selected } menu rows, or null. Ink breaks the question
+// across rows by the pane's width, so any whitespace may separate its words. ❯ (Claude) or › (Codex) marks the choice.
+const trustQuestions = ['Is this a project you created or one you trust?', 'Do you trust the files in this folder?', 'Do you trust the contents of this directory?']
+  .map(question => new RegExp(question.split(' ').map(word => word.replace(/[?]/g, '\\?')).join('\\s+')));
+export function trustMenu(screen = '') {
+  if (!trustQuestions.some(question => question.test(screen))) return null;
+  const options = screen.split('\n').map(row => /^\s*([❯›])?\s*(?:\d+\.\s+)?((?:Yes|No)\b.*?)\s*$/.exec(row)).filter(Boolean);
+  const menu = { yes: options.findIndex(([, , label]) => label.startsWith('Yes')), no: options.findIndex(([, , label]) => label.startsWith('No')), selected: options.findIndex(([, mark]) => mark) };
+  return Object.values(menu).every(row => row >= 0) ? menu : null;
 }
 // A captured screen's rows without what's drawn dim (SGR 2), which is how Claude draws its placeholder ('Try "…"').
 // Attributes run on from row to row; the colour codes' arguments (38;5;n, 38;2;r;g;b) are skipped, not read as codes.
