@@ -17,7 +17,7 @@
   body { background: var(--bg); }
   .shell, .login-screen { position: relative; isolation: isolate; background: transparent; }
   :is(.shell, .login-screen)::before, :is(.shell, .login-screen)::after { content: ''; position: fixed; z-index: -1; pointer-events: none; }
-  :is(.shell, .login-screen)::before { inset: -12px -36px; background: url('/springfield-clouds.svg') center top / 1000px 420px repeat; }
+  :is(.shell, .login-screen)::before { inset: 0 0 0 -1000px; background: url('/springfield-clouds.svg') 0 0 / 1000px 420px repeat; }
   :is(.shell, .login-screen)::after { inset: auto 0 0; height: clamp(140px, 25vh, 280px); background: url('/springfield-town.svg') center bottom / auto 100% repeat-x; }
   .workspace { position: relative; }
   .page-heading h1 { font-size: 30px; letter-spacing: -.03em; }
@@ -118,10 +118,11 @@
 .theme-swatch.simpsons { background: url('/springfield-donut.svg') center / contain no-repeat, #86cbed; border-color: #293044; }
 .theme-preview.simpsons { background: url('/springfield-donut.svg') 50% 36% / 40% auto no-repeat, url('/springfield-town.svg') 20% bottom / auto 60% no-repeat, url('/springfield-clouds.svg') center / 220% auto, #86cbed; border: 2px solid #293044; }
 
-@keyframes springfield-cloud-drift { from { transform: translateX(-18px); } to { transform: translateX(18px); } }
+/* The cloud layer is one tile wider than the screen and slides exactly one tile, so the loop is seamless. */
+@keyframes springfield-cloud-drift { to { transform: translateX(1000px); } }
 @keyframes springfield-donut-nod { 0%, 80%, 100% { rotate: 0deg; } 86% { rotate: -12deg; } 93% { rotate: 10deg; } }
 @media (prefers-reduced-motion: no-preference) {
-  :root[data-theme=simpsons] :is(.shell, .login-screen)::before { animation: springfield-cloud-drift 32s ease-in-out infinite alternate; }
+  :root[data-theme=simpsons] :is(.shell, .login-screen)::before { animation: springfield-cloud-drift 240s linear infinite; }
   :root[data-theme=simpsons][data-working]:not([data-working="0"]) .brand-mark { animation: springfield-donut-nod 9s ease-in-out infinite; }
 }
 @media (max-width: 1100px) and (min-width: 641px) {
