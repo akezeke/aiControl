@@ -1,0 +1,266 @@
+/* Nodes · Mycelium: the list and panel as the forest floor at dusk. Loam and litter underfoot with fine hyphae through it, bark and
+   moss down the side, pebbles and caps for buttons, bark cards and pressed leaves for messages, tool calls as spores along a thread,
+   and whatever needs you glowing amber like a bioluminescent cap. */
+@font-face { font-family: 'Fraunces'; font-style: italic; src: url('/fonts/fraunces-italic-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Figtree'; src: url('/fonts/figtree.woff2') format('woff2'); font-weight: 400 600; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/jetbrains-mono-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+:root[data-theme-choice=nodes-mycelium] {
+  color-scheme: dark;
+  --font: Figtree, system-ui, sans-serif; --display: Fraunces, Georgia, serif; --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --bg: #090b07; --panel: #12150e; --panel-2: #1a1f14; --sunken: #060805;
+  --text: #ecf2e2; --text-2: #c3ccb7; --text-3: #8f9b85;
+  --line: #232a1b; --line-2: #354129;
+  --accent: #8ef0a0; --accent-2: #c0ffca; --accent-ink: #051009; --accent-soft: #16301d;
+  --ok: #6dffa8; --ok-soft: #0f2a1a; --warn: #ffb24a; --warn-soft: #2c1d08; --warn-line: #9a6418; --danger: #ff6a4a; --danger-soft: #2e100a;
+  --codex: #ecf2e2; --claude: #ec8a5f; --claude-soft: #2c1a12;
+  --radius: 14px; --radius-sm: 9px; --shadow: inset 0 1px 0 #ffffff06, 0 8px 18px -12px #000; --shadow-lg: 0 24px 60px -12px #000d; --focus: #c0ffca;
+  /* Surfaces: litter, loam threaded with hyphae, bark, moss; a hypha for dividers; a tendril for what needs you. */
+  --floor: url('/nodes-mycelium-floor.svg') 0 0 / 220px 220px;
+  --hyphae: url('/nodes-mycelium-hyphae.svg') 0 0 / 180px 180px;
+  --bark: url('/nodes-mycelium-bark.svg') 0 0 / 96px 192px;
+  --loam: linear-gradient(180deg, #12160e, #0c0f09);
+  --moss: linear-gradient(180deg, #2f5a2a, #1d3a1e 40%, #355f2c 70%, #1b331b);
+  --hypha: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), color-mix(in srgb, var(--accent) 12%, transparent) 60%, transparent);
+  --thread: color-mix(in srgb, var(--accent) 30%, transparent);
+  --tendril: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='8'%3E%3Cpath d='M0 4c5-4 15-4 20 0s15 4 20 0' fill='none' stroke='%23ffb24a' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  --pebble: 13px 17px 14px 11px / 12px 13px 16px 14px;
+  --cap: 22px 22px 9px 9px / 18px 18px 9px 9px;
+  scrollbar-color: var(--line-2) var(--sunken);
+
+  /* The floor: litter and threads, a little dusk light from above. */
+  body { background: radial-gradient(120% 70% at 60% -10%, #1a2a1455, transparent 60%), var(--floor), var(--bg); }
+  .history-viewport { background: linear-gradient(#090b07c4, #090b07c4), var(--hyphae), var(--floor), var(--bg); background-attachment: local; }
+  /* Bark down the side, moss along its edge. */
+  .sidebar { background: var(--moss) 100% 0 / 3px 100% no-repeat, linear-gradient(90deg, #00000040, transparent 30%, transparent 80%, #0000004d), var(--bark), linear-gradient(180deg, #1a150e, #120f0a); border-right: 1px solid #000; }
+  .topbar { background: var(--moss) 0 100% / 100% 2px no-repeat, var(--bark), #17130d; border-bottom: 1px solid #000; }
+  .brand-variant.nodes .brand-mark { -webkit-mask-image: url('/nodes-mycelium-mark.svg'); mask-image: url('/nodes-mycelium-mark.svg'); }
+  .brand-variant.nodes .brand-name { font: italic 500 19px/1 var(--display); letter-spacing: .01em; }
+
+  /* Section names in italic, a hypha run off them to a spore. */
+  .sidebar-label { font: italic 500 13px/1.2 var(--display); letter-spacing: .02em; text-transform: none; color: var(--text-3); }
+  @media (min-width: 901px) {
+    .sidebar .sidebar-label { display: flex; align-items: center; gap: 8px; }
+    .sidebar .sidebar-label::after { content: ''; flex: 1; height: 6px; background: radial-gradient(circle at calc(100% - 3px) 50%, color-mix(in srgb, var(--accent) 60%, transparent) 0 1.6px, transparent 2.6px), linear-gradient(90deg, transparent, var(--thread)) 0 50% / calc(100% - 5px) 1px no-repeat; }
+  }
+  /* Nav items are pebbles; the one you're on is a cushion of lit moss. */
+  .nav-item { border-radius: var(--pebble); }
+  .nav-item:hover { background: #ffffff08; }
+  .nav-item.active { background: radial-gradient(90% 160% at 10% 0%, #3a7a4455, transparent 60%), radial-gradient(3px 3px at 22% 70%, #8ef0a033, transparent), radial-gradient(3px 3px at 64% 30%, #8ef0a026, transparent), var(--accent-soft); color: var(--accent-2); box-shadow: inset 0 0 0 1px #2c5434, inset 0 -4px 8px -4px #00000080, 0 0 16px -8px var(--accent); }
+  /* Counts are spores; a project's waiting count glows amber. */
+  :is(.nav-count, .group-count) { border-radius: 99px; background: #0b0e08; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-2); font: 11px/16px var(--mono); }
+  .nav-item.active .nav-count { background: #0b160e; color: var(--accent); }
+  .project-dot { min-width: 16px; padding: 0 4px; border-radius: 99px; background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn-line), 0 0 10px -2px var(--warn); font: 11px/16px var(--mono); text-align: center; }
+
+  /* The page's name in a soft italic, a hypha running off under it from a spore. */
+  .page-heading { padding-bottom: 10px; background: radial-gradient(circle at 3px calc(100% - 3px), var(--accent) 0 2px, transparent 3px), var(--hypha) 6px calc(100% - 3px) / 70% 1px no-repeat; }
+  .page-heading h1 { font: italic 500 26px/1.15 var(--display); letter-spacing: 0; color: var(--text); }
+  .machine-label { padding: 0 7px; border: 1px solid var(--line-2); border-radius: 99px; }
+
+  /* Usage reads like the board's fairy ring: a row of little caps, lit as far as the window is used (amber, then ember, as it fills). */
+  .usage-accounts { border-color: var(--line-2); background: var(--hyphae), var(--loam); }
+  .usage-account + .usage-account { border-top: 0; background: linear-gradient(90deg, transparent, var(--thread) 20%, transparent 85%) 0 0 / 100% 1px no-repeat; }
+  .usage-percent { font: 400 11px/22px var(--mono); }
+  :is(.usage-tag, .usage-reset) { font-family: var(--mono); }
+  .usage-tag { border-radius: 99px; }
+  .usage-meter { height: 8px; border-radius: 0; background: radial-gradient(circle at 3.5px 50%, #2b3423 0 2.2px, transparent 2.8px) 0 50% / 8px 100% repeat-x; box-shadow: none; }
+  .usage-meter::-webkit-progress-bar { background: radial-gradient(circle at 3.5px 50%, #2b3423 0 2.2px, transparent 2.8px) 0 50% / 8px 100% repeat-x; border-radius: 0; }
+  .usage-meter::-webkit-progress-value { border-radius: 0; background: radial-gradient(circle at 3.5px 50%, color-mix(in srgb, currentColor 30%, #fff) 0 1px, currentColor 1.6px 2.6px, transparent 3.2px) 0 50% / 8px 100% repeat-x; filter: drop-shadow(0 0 2px currentColor); }
+  .usage-meter::-moz-progress-bar { border-radius: 0; background: radial-gradient(circle at 3.5px 50%, color-mix(in srgb, currentColor 30%, #fff) 0 1px, currentColor 1.6px 2.6px, transparent 3.2px) 0 50% / 8px 100% repeat-x; }
+  /* A plan is a hypha growing along a furrow, lit at its tip. */
+  .plan-meter { height: 5px; border-radius: 99px; background: #050704; box-shadow: inset 0 1px 1px #000; }
+  .plan-meter::-webkit-progress-bar { background: #050704; border-radius: 99px; }
+  .plan-meter::-webkit-progress-value { border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, currentColor 30%, transparent), currentColor); box-shadow: 0 0 8px -1px currentColor; }
+  .plan-meter::-moz-progress-bar { border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, currentColor 30%, transparent), currentColor); box-shadow: 0 0 8px -1px currentColor; }
+  .spend-panel { --spend-color: #9c8cff; --spend-cache: var(--ok); border-color: var(--line-2); background: var(--loam); }
+  .spend-heading { border-bottom: 0; background: linear-gradient(90deg, var(--thread), transparent) 0 100% / 100% 1px no-repeat; font: italic 500 13px var(--display); letter-spacing: .02em; text-transform: none; }
+  :is(.spend-total, .spend-balance) strong { font: italic 500 1.15em var(--display); color: var(--accent-2); text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .spend-emblem { background: var(--accent); -webkit-mask: url('/nodes-mycelium-mark.svg') center / 56% no-repeat; mask: url('/nodes-mycelium-mark.svg') center / 56% no-repeat; filter: none; opacity: .7; }
+  .spend-bar { border-radius: 99px 99px 2px 2px; box-shadow: 0 0 10px -3px var(--spend-color); }
+  .spend-reserve { height: 8px; border-radius: 0; background: radial-gradient(circle at 3.5px 50%, #2b3423 0 2.2px, transparent 2.8px) 0 50% / 8px 100% repeat-x; box-shadow: none; }
+  .spend-reserve-fill { border-radius: 0; background: radial-gradient(circle at 3.5px 50%, #e6deff 0 1px, var(--spend-color) 1.6px 2.6px, transparent 3.2px) 0 50% / 8px 100% repeat-x; filter: drop-shadow(0 0 2px var(--spend-color)); }
+  :is(.spend-caption, .spend-token-label, .spend-limit) { font-family: var(--mono); }
+
+  /* Buttons are river pebbles; the one that does the thing is a glowing cap with its gills underneath. */
+  :is(.secondary, .quiet-button, .stat, .effort-select, .history-latest, .doc-chip, .history-shot, .filter-menu > summary, .theme-menu > summary) { border-color: #2f3925; border-radius: var(--pebble); }
+  :is(.secondary, .quiet-button, .stat, .filter-menu > summary, .theme-menu > summary) { background: radial-gradient(120% 90% at 35% 15%, #ffffff0d, transparent 55%), linear-gradient(180deg, #1b2016, #10130c); box-shadow: inset 0 1px 0 #ffffff0a, inset 0 -2px 3px #0006, 0 2px 4px -2px #000; }
+  :is(.secondary, .quiet-button, .stat, .filter-menu > summary, .theme-menu > summary):hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 45%, #2f3925); box-shadow: inset 0 1px 0 #ffffff0a, inset 0 -2px 3px #0006, 0 0 14px -6px var(--accent); }
+  .primary { border: 0; border-radius: var(--cap); background: radial-gradient(120% 120% at 50% -20%, #e4ffe8, var(--accent) 55%, #5cc874); color: var(--accent-ink); box-shadow: inset 0 -3px 0 #1e5a2e66, inset 0 -6px 6px -4px #0b3a1a55, 0 0 18px -6px var(--accent); font-weight: 600; }
+  .primary:hover:not(:disabled) { background: radial-gradient(120% 120% at 50% -20%, #f2fff4, var(--accent-2) 55%, #7ad890); }
+  .stat-number { font-family: var(--display); font-style: italic; font-weight: 500; }
+  .stat.selected { background: var(--accent-soft); border-color: #2c5434; color: var(--accent-2); }
+  /* Fields are hollows in the loam. */
+  .search { border-color: #2a3221; border-radius: 16px; background: #070906; box-shadow: inset 0 2px 5px #000a; }
+  :is(.custom-answer input, .message-form textarea, .new-session-form :is(input, select), .deny-reason, .setting-field, .login-form input, .access-form input:not([type=checkbox])) { border-color: #2a3221; background: #070906; box-shadow: inset 0 2px 5px #000a; }
+  :is(.search:focus-within, .setting-field:focus-within, :is(.custom-answer input, .message-form textarea, .new-session-form :is(input, select), .deny-reason, .login-form input):focus) { border-color: color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: inset 0 2px 5px #000a, 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 18px -6px var(--accent); }
+  /* Menus and dialogs are slabs of bark, mossy at the top. */
+  :is(.theme-options, .filter-options, .new-session-dialog, .account-options) { border-color: #2a2418; background: var(--moss) 0 0 / 100% 2px no-repeat, linear-gradient(#0f0c08d9, #0f0c08e6), var(--bark), #15110b; box-shadow: 0 0 0 1px #000, 0 20px 50px -14px #000, 0 0 24px -14px var(--accent); }
+  :is(.tab, .theme-choice, .theme-sub) { border-radius: var(--pebble); }
+  :is(.tab.active, .theme-choice[aria-pressed=true]) { background: var(--accent-soft); color: var(--accent-2); box-shadow: inset 0 0 0 1px #2c5434; }
+  /* A toast pops up like a cap through the litter. */
+  .toast { border: 1px solid #2c5434; border-radius: var(--cap); background: radial-gradient(100% 120% at 50% 0%, #1f4426, #10140c 70%); color: var(--text); box-shadow: inset 0 -3px 0 #00000055, 0 0 24px -8px var(--accent), 0 14px 30px -12px #000; }
+  .live-label:not(.disconnected)::before, .connection-dot.online { box-shadow: 0 0 8px var(--ok); }
+  .empty { border-color: var(--line-2); background: var(--hyphae); }
+  :is(.integrations h2, .eyebrow, .setting-label) { font-family: var(--display); font-style: italic; font-weight: 500; letter-spacing: .02em; text-transform: none; }
+
+  /* A project: a mushroom by its name, its hypha running on under the sessions. */
+  .group-heading { padding-bottom: 6px; background: var(--hypha) 0 100% / 100% 1px no-repeat; }
+  .group-title::before { content: ''; flex: none; width: 14px; height: 14px; background: var(--accent); -webkit-mask: url('/nodes-mycelium-mark.svg') center / contain no-repeat; mask: url('/nodes-mycelium-mark.svg') center / contain no-repeat; opacity: .85; }
+  .group-title h2 { font: italic 500 16px/1.25 var(--display); letter-spacing: .01em; color: var(--text); }
+  .project-path { font-family: var(--mono); color: var(--text-3); }
+
+  /* A session is a cap in the litter: the mark its cap, its gills lit underneath by what it's doing. */
+  .session-list { --stack-gap: 7px; }
+  .session-card { border-color: #20281a; border-radius: 16px 16px 16px 6px; background: radial-gradient(110% 150% at 0% 0%, #1c2417, transparent 55%), var(--hyphae), linear-gradient(180deg, #12160f, #0d100a); box-shadow: inset 0 1px 0 #ffffff07, 0 10px 20px -14px #000; }
+  .session-card:hover { border-color: color-mix(in srgb, var(--accent) 32%, #20281a); box-shadow: inset 0 1px 0 #ffffff07, 0 0 22px -12px var(--accent); }
+  .session-title { font-weight: 600; }
+  .session-age { font: 10.5px var(--mono); }
+  .chip { border-radius: 99px; border-color: var(--line-2); font: 10px/16px var(--mono); }
+  :is(.subagent-tag, .project-tag) { border-radius: 99px; font-family: var(--mono); font-weight: 400; }
+  .agent-mark, .agent-mark.claude, .session-card.subagent .agent-mark { --gill: #3a4630; border: 0; border-radius: 50% 50% 42% 42% / 62% 62% 38% 38%; background: radial-gradient(90% 70% at 50% 18%, #2a3321, #12170e 75%); box-shadow: inset 0 0 0 1px #33402a, inset 0 -5px 7px -4px var(--gill), 0 3px 9px -5px var(--gill); }
+  .agent-mark > .provider-icon { position: relative; z-index: 1; }
+  .unread-dot { z-index: 2; background: var(--accent); box-shadow: 0 0 0 2px var(--bg), 0 0 8px var(--accent); }
+  .session-card[data-status=working] .agent-mark { --gill: var(--ok); }
+  .session-card.needs-input .agent-mark { --gill: var(--warn); }
+  .session-card[data-status=error] .agent-mark { --gill: var(--danger); }
+  .session-card[data-status=offline] .agent-mark { --gill: #2a2620; filter: grayscale(.7) brightness(.75); }
+  .session-card:is([data-status=idle], [data-status=offline]) .session-title { color: var(--text-2); }
+  /* Subagents hang off their session on a thread. */
+  .session-card.subagent { --connector: var(--thread); }
+
+  /* Status: a glowing spore and its word; what needs you or rotted gets a lit husk. */
+  .badge { gap: 6px; border-radius: 99px; background: #0b0e08; box-shadow: inset 0 0 0 1px var(--line); }
+  .badge .dot { box-shadow: 0 0 8px currentColor; }
+  .badge.amber { background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn-line), 0 0 14px -5px var(--warn); }
+  .badge.red { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 50%, transparent), 0 0 14px -5px var(--danger); }
+  .session-card[data-status=working] { border-color: color-mix(in srgb, var(--ok) 22%, #20281a); }
+  .session-card[data-status=working]::after { content: ''; position: absolute; left: 16px; bottom: -1px; width: 55%; height: 1px; background: linear-gradient(90deg, var(--ok), transparent); opacity: .55; pointer-events: none; }
+  /* Whatever needs you: lit amber from its side, a tendril along its foot reaching for you. */
+  .session-card.needs-input { padding-bottom: 14px; border-color: var(--warn-line); background: radial-gradient(70% 160% at 0% 50%, color-mix(in srgb, var(--warn) 14%, transparent), transparent 70%), linear-gradient(180deg, #16140d, #0f0d08); box-shadow: inset 3px 0 var(--warn), 0 0 22px -10px var(--warn); }
+  .session-card.needs-input::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: 3px; height: 8px; background: var(--tendril) 0 50% / 40px 8px repeat-x; -webkit-mask: linear-gradient(90deg, #000 40%, transparent); mask: linear-gradient(90deg, #000 40%, transparent); filter: drop-shadow(0 0 3px var(--warn)); opacity: .8; pointer-events: none; }
+  .session-card[data-status=error] { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); background: radial-gradient(4px 4px at 22% 30%, #ff6a4a33, transparent), radial-gradient(6px 5px at 64% 70%, #ff6a4a26, transparent), radial-gradient(70% 160% at 0% 50%, color-mix(in srgb, var(--danger) 12%, transparent), transparent 70%), linear-gradient(180deg, #160f0b, #0f0a08); box-shadow: inset 3px 0 var(--danger); }
+
+  /* The panel: loam threaded with hyphae, under a header of bark with moss along its foot. */
+  .detail-panel { background: linear-gradient(#090b07d9, #090b07d9), var(--hyphae), var(--floor), var(--bg); border-left: 1px solid #000; box-shadow: inset 2px 0 0 #24402455; }
+  .panel-backdrop { background: #000a; }
+  .chat-header { background: var(--moss) 0 100% / 100% 2px no-repeat, linear-gradient(#120f0ab3, #120f0ab3), var(--bark), #17130d; border-bottom: 1px solid #000; }
+  .panel-title { font: italic 500 19px/1.2 var(--display); letter-spacing: .005em; }
+  :is(.chat-info > summary, .agent-byline) { font-family: var(--mono); font-size: 11px; }
+  :is(.session-info, .plan-steps) { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--hyphae), #070906; }
+  .session-info { font-family: var(--mono); font-size: 11.5px; }
+  /* What the agent says is a card of bark; what you say a pressed leaf, its midrib running through. */
+  .recent-message { border-color: var(--line); }
+  .recent-message:not(.user, .tool, .notice) { border-color: #2c2618; border-radius: 4px 16px 16px 16px; background: linear-gradient(#15120cf0, #110f0af0), var(--bark), #15120c; box-shadow: inset 0 1px 0 #ffffff08, inset 2px 0 color-mix(in srgb, var(--accent) 26%, transparent), 0 6px 14px -10px #000; }
+  .recent-message .message-meta strong { font: italic 500 13px/1.3 var(--display); letter-spacing: .01em; text-transform: none; color: var(--accent); }
+  .recent-message.user { border-color: #2c5434; border-radius: 18px 4px 18px 18px; background: linear-gradient(166deg, transparent 49.6%, #c8ffd21a 50%, transparent 50.5%), radial-gradient(90% 140% at 100% 0%, #24502caa, transparent 70%), #17321e; box-shadow: inset 0 1px 0 #ffffff0c, 0 6px 14px -10px #000; }
+  .recent-message.user .message-meta strong { color: var(--accent-2); }
+  /* Tool calls are spores strung along one thread. */
+  .recent-message.tool { position: relative; border-left: 0; padding-left: 16px; background: linear-gradient(var(--thread), var(--thread)) 4px 0 / 1px 100% no-repeat; }
+  .recent-message.tool .tool-call::before { content: ''; position: absolute; left: 1px; top: calc(.82em - 3px); width: 7px; height: 7px; margin: 0; border-radius: 50%; background: radial-gradient(circle at 38% 32%, #e2ffe6, var(--accent) 50%, #2a6a3a); box-shadow: 0 0 6px -1px var(--accent); }
+  .recent-message.tool.failed .tool-call::before { background: radial-gradient(circle at 38% 32%, #ffe0d6, var(--danger) 50%, #6a2414); box-shadow: 0 0 6px -1px var(--danger); }
+  .tool-run { border-left: 0; padding-left: 16px; background: linear-gradient(var(--thread), var(--thread)) 4px 0 / 1px 100% no-repeat; }
+  .tool-run > summary::before { content: ''; flex: none; width: 13px; height: 9px; margin-left: -13px; background: radial-gradient(circle at 2.5px 6px, var(--accent) 0 2px, transparent 2.6px), radial-gradient(circle at 7px 3px, color-mix(in srgb, var(--accent) 70%, transparent) 0 1.8px, transparent 2.4px), radial-gradient(circle at 10.5px 6.5px, color-mix(in srgb, var(--accent) 50%, transparent) 0 1.5px, transparent 2.1px); filter: drop-shadow(0 0 3px var(--accent)); transform: none; }
+  .tool-run > summary > strong { font: italic 500 13px var(--display); color: var(--text-2); }
+  .tool-run > .recent-message.tool { background: none; }
+  .message-text code { border-radius: 5px; background: #070906; color: var(--accent-2); box-shadow: inset 0 0 0 1px var(--line); }
+  .message-text pre { border-color: var(--line-2); border-radius: 10px; background: #070906; }
+  .message-text pre code { box-shadow: none; color: var(--text); }
+  .message-text :is(th, td) { border-color: var(--line-2); }
+  .message-text hr { border-color: var(--thread); }
+  .chat-requests, .message-composer { border-top: 0; background: linear-gradient(90deg, transparent, var(--thread) 30%, transparent) 0 0 / 100% 1px no-repeat, var(--hyphae), var(--loam); }
+  /* A request is a bioluminescent cap: domed, its gills lit amber along the top. */
+  .request-box { padding-top: 22px; border-color: var(--warn-line); border-radius: 26px 26px 12px 12px / 22px 22px 12px 12px;
+    background: repeating-linear-gradient(90deg, #ffb24a2e 0 1px, transparent 1px 7px) 18px 6px / calc(100% - 36px) 10px no-repeat, radial-gradient(110% 80% at 50% 0%, color-mix(in srgb, var(--warn) 22%, transparent), transparent 70%), #13100a;
+    box-shadow: inset 0 1px 0 #ffd28a22, 0 0 28px -10px var(--warn); }
+  .request-box .eyebrow { color: var(--warn); }
+  :is(.request-code, .request-details pre, .request-plan) { border-color: var(--line-2); border-radius: 10px; background: #070906; }
+  .decision-actions button[data-decision]:not(.primary):hover:not(:disabled) { border-color: color-mix(in srgb, var(--danger) 55%, #2f3925); box-shadow: 0 0 14px -6px var(--danger); }
+  .answer-option { border-color: #2f3925; border-radius: var(--pebble); background: linear-gradient(180deg, #171c12, #10130c); }
+  .answer-option:hover { border-color: color-mix(in srgb, var(--accent) 50%, #2f3925); }
+  .answer-option:has(input:checked) { background: var(--accent-soft); border-color: #3b7a48; box-shadow: 0 0 14px -6px var(--accent); }
+  /* Things waiting to be sent, and pictures about to be: a short thread of them, each picture a pebble. */
+  .queued-message { border-top: 0; background: linear-gradient(90deg, var(--thread), transparent 80%) 0 0 / 100% 1px no-repeat; }
+  .composer-image { border-color: #2f3925; border-radius: var(--pebble); box-shadow: 0 2px 6px -3px #000; }
+  .composer-image-remove { border-color: #2f3925; background: #10130c; }
+  :is(.doc-chip, .history-latest) { background: linear-gradient(180deg, #171c12, #10130c); }
+  .doc-chip .icon { color: var(--accent); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 60%, transparent)); }
+  .doc-link { color: var(--accent-2); text-decoration-color: var(--thread); }
+  /* A screenshot in the history is a little lens cap: pale flesh round a dark pool, glowing at its rim when you point at it. */
+  .history-shot { border: 0; border-radius: 22px / 18px; background: #0a0d08; box-shadow: 0 0 0 4px #8f846c, 0 0 0 5px #2a2418, 0 4px 10px -4px #000; }
+  .history-shot:is(:hover, :focus-visible) { box-shadow: 0 0 0 4px #a99d84, 0 0 0 5px #2a2418, 0 0 0 7px #c8ffd273, 0 0 18px -2px var(--accent); }
+  .connection-error { border-color: var(--warn-line); border-radius: var(--pebble); background: radial-gradient(80% 140% at 0% 0%, color-mix(in srgb, var(--warn) 14%, transparent), transparent 60%), #13100a; }
+  :is(.new-agent-options, .account-options, .filter-options, .theme-options) :is(button, a):not(.primary):hover { background: #ffffff0a; }
+  .new-session-actions { border-top: 0; background: linear-gradient(90deg, transparent, var(--thread), transparent) 0 0 / 100% 1px no-repeat; }
+  .new-agent-options .office-folder { border-color: #2a3221; border-radius: var(--pebble); background: #070906; box-shadow: inset 0 2px 5px #000a; }
+
+  /* The image viewer: the picture laid in a lens cap on the forest floor at night, pale flesh round it and a glowing rim; the other
+     screenshots are little caps below, the one you're on lit. */
+  .shot-viewer { background: radial-gradient(80% 70% at 50% 42%, #18241380, transparent 70%), linear-gradient(#050704d9, #050704eb), var(--floor), var(--bg); color: var(--text); font-family: var(--font); }
+  .shot-viewer::backdrop { background: #020301e6; }
+  .shot-full { padding: 18px; }
+  .shot-full img { border-radius: 26px / 22px; box-shadow: 0 0 0 9px #8f846c, 0 0 0 10px #4a4030, 0 0 0 12px #c8ffd270, 0 0 34px 8px #82ffa02e, 0 20px 50px -10px #000; }
+  .shot-strip { gap: 10px; padding: 8px 6px; }
+  .shot-thumb { width: 64px; height: 48px; border: 0; border-radius: 50% 50% 38% 38% / 62% 62% 38% 38%; background: #0a0d08; opacity: .6; box-shadow: 0 0 0 3px #8f846c, 0 3px 8px -3px #000; }
+  .shot-thumb:is(:hover, :focus-visible) { opacity: .9; }
+  .shot-thumb.current { opacity: 1; box-shadow: 0 0 0 3px #b9b09a, 0 0 0 5px #c8ffd280, 0 0 14px -1px var(--accent); }
+  .shot-meta { color: var(--text-2); font: italic 500 14px var(--display); }
+  .shot-button { border-color: #2f3925; border-radius: var(--pebble); background: radial-gradient(120% 90% at 35% 15%, #ffffff0d, transparent 55%), linear-gradient(180deg, #1b2016, #10130c); color: var(--text); box-shadow: inset 0 1px 0 #ffffff0a, inset 0 -2px 3px #0006, 0 2px 4px -2px #000; }
+  .shot-button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 45%, #2f3925); box-shadow: inset 0 1px 0 #ffffff0a, 0 0 14px -6px var(--accent); }
+  /* A document is a page of bark-paper laid on the loam, hyphae at its edge. */
+  .doc-viewer { border: 1px solid #2a2418; border-radius: 20px; background: var(--moss) 0 0 / 100% 2px no-repeat, linear-gradient(#0f0c08e6, #0f0c08f0), var(--bark), #15110b; box-shadow: 0 0 0 1px #000, 0 30px 80px -20px #000, 0 0 30px -16px var(--accent); }
+  .doc-body { border: 1px solid #2c2618; border-radius: 6px 18px 18px 18px; background: linear-gradient(#15120cf2, #110f0af2), var(--bark), #15120c; box-shadow: inset 0 1px 0 #ffffff08, inset 3px 0 color-mix(in srgb, var(--accent) 22%, transparent), 0 20px 50px -14px #000; line-height: 1.6; }
+  .doc-viewer .shot-meta { font: italic 500 16px var(--display); color: var(--text); }
+  .doc-body :is(h1, h2, h3) { font-family: var(--display); font-style: italic; font-weight: 500; color: var(--text); }
+  .doc-body :is(h1, h2) { padding-bottom: 4px; background: var(--hypha) 0 100% / 100% 1px no-repeat; }
+  .doc-body a { color: var(--accent-2); text-decoration-color: var(--thread); }
+  .doc-body code { border-radius: 5px; background: #070906; color: var(--accent-2); box-shadow: inset 0 0 0 1px var(--line); }
+  .doc-body pre { border: 1px solid var(--line-2); border-radius: 10px; background: #070906; }
+  .doc-body pre code { box-shadow: none; color: var(--text); }
+  .doc-body :is(th, td) { border-color: #3a3222; }
+  .doc-body th { background: #1c180f; font-weight: 600; }
+  .doc-body blockquote { border-left: 2px solid var(--thread); color: var(--text-2); }
+  .doc-body hr { border: 0; height: 1px; background: var(--hypha); }
+
+  /* Locked: the forest floor, a slab of bark holding a glowing cap, the key a cap to press. */
+  .login-screen { background: radial-gradient(60% 50% at 50% 38%, #1e3418aa, transparent 70%), var(--floor), var(--bg); }
+  .login-card { border: 1px solid #2a2418; border-radius: 22px 22px 16px 16px; background: var(--moss) 0 0 / 100% 3px no-repeat, linear-gradient(#120f0ae0, #0f0c08eb), var(--bark), #15110b; box-shadow: 0 0 0 1px #000, 0 30px 70px -20px #000, 0 0 40px -18px var(--accent); }
+  .login-card .brand { font: italic 500 22px var(--display); }
+  .login-symbol { width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle at 50% 30%, #2a4a2c, #10180e 70%); color: transparent; box-shadow: inset 0 0 0 1px #2c5434, 0 0 22px -4px var(--accent); }
+  .login-symbol::before { content: ''; width: 30px; height: 30px; background: var(--accent); -webkit-mask: url('/nodes-mycelium-mark.svg') center / contain no-repeat; mask: url('/nodes-mycelium-mark.svg') center / contain no-repeat; filter: drop-shadow(0 0 6px var(--accent)); }
+  .login-symbol .icon { display: none; }
+  :is(.login-form, .access-form) label { font: italic 500 13px var(--display); color: var(--text-2); }
+  .access-copy { color: var(--text-2); }
+
+  /* Lost sessions: a slab of bark with an amber edge, each one a row along a thread. */
+  .lost details { border-color: var(--warn-line); border-radius: var(--pebble); background: radial-gradient(70% 140% at 0% 0%, color-mix(in srgb, var(--warn) 10%, transparent), transparent 60%), linear-gradient(#120f0ae6, #0f0c08eb), var(--bark), #15110b; box-shadow: inset 3px 0 var(--warn), 0 10px 24px -14px #000; }
+  .lost-summary strong { font: italic 500 14px var(--display); }
+  :is(.lost-list, .lost-row + .lost-row) { border-top: 0; background: linear-gradient(90deg, transparent, var(--thread) 15%, transparent 85%) 0 0 / 100% 1px no-repeat; }
+  .lost-said::before { content: ''; display: inline-block; width: 6px; height: 6px; margin: 0 7px 1px 0; border-radius: 50%; background: var(--accent); box-shadow: 0 0 5px var(--accent); }
+
+  /* The session's header: its mark a cap, its settings hollows in the loam. */
+  .setting-field { border-color: #2a3221; border-radius: var(--pebble); background: #070906; box-shadow: inset 0 2px 5px #000a; }
+  .setting-field::after { border-color: var(--accent); }
+  .agent-byline { color: var(--text-3); }
+  .theme-picker { border-color: #2a2418; background: var(--moss) 0 0 / 100% 2px no-repeat, linear-gradient(#0f0c08e6, #0f0c08f0), var(--bark), #15110b; color: var(--text); }
+  .theme-picker h2 { font: italic 500 19px var(--display); }
+  .theme-picker-choice { border-color: #2f3925; border-radius: 14px; background: #ffffff06; }
+  .theme-picker-choice:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var(--accent) 50%, #2f3925); background: var(--accent-soft); }
+
+  /* Everywhere: selection is lit moss, focus a glowing ring, scrollbars a thin stalk. */
+  ::selection { background: #2f6a3acc; color: #f2fff2; }
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 2px; }
+  * { scrollbar-width: thin; scrollbar-color: #3a4a2e transparent; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-choice=nodes-mycelium] {
+    /* Working gills breathe, a tool pulse runs the hypha under the card, the tendril creeps on toward you, and the request's cap glows and fades. */
+    .session-card[data-status=working] .agent-mark { animation: myc-breathe 2.8s ease-in-out infinite; animation-delay: var(--since-load, 0s); }
+    .session-card[data-status=working]::after { width: 18%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--ok)); opacity: .9; animation: myc-pulse 3.2s ease-in infinite; animation-delay: var(--since-load, 0s); }
+    .session-card.needs-input::after { animation: myc-creep 4s linear infinite; }
+    .request-box { animation: myc-cap 3.4s ease-in-out infinite; }
+  }
+}
+@keyframes myc-breathe { 50% { box-shadow: inset 0 0 0 1px #33402a, inset 0 -7px 9px -4px var(--gill), 0 3px 14px -3px var(--gill); } }
+@keyframes myc-pulse { from { transform: translateX(-20%); opacity: 0; } 15% { opacity: .9; } to { transform: translateX(420%); opacity: 0; } }
+@keyframes myc-creep { to { background-position: 40px 50%; } }
+@keyframes myc-cap { 50% { box-shadow: inset 0 1px 0 #ffd28a33, 0 0 40px -8px var(--warn); border-color: color-mix(in srgb, var(--warn) 75%, var(--warn-line)); } }

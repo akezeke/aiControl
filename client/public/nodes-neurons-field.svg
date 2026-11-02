@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480">
+  <!-- Neurons far out of focus, and drifting motes: the deep behind the list. Tiles seamlessly; everything stays clear of the edges. -->
+  <g fill="none" stroke-linecap="round" stroke="#6f8dff" stroke-opacity=".07">
+    <g stroke-width="5">
+      <path d="M118 132C96 112 80 104 56 98M118 132C110 102 112 78 120 52M118 132C142 116 164 112 192 116M118 132C124 160 120 182 104 206M118 132C96 146 76 162 62 186"/>
+    </g>
+    <g stroke-width="2.2">
+      <path d="M56 98C44 94 34 86 28 74M120 52C124 40 132 32 144 26M192 116C206 118 218 126 226 138M104 206C96 220 92 236 94 252M62 186C54 196 44 202 32 204M84 106C80 92 82 80 90 68M160 114C168 102 180 94 196 90"/>
+    </g>
+    <g stroke-width="4" stroke-opacity=".05">
+      <path d="M352 330C334 312 330 290 336 266M352 330C374 318 398 316 422 324M352 330C356 356 350 380 338 402M352 330C330 338 306 336 286 326"/>
+    </g>
+    <g stroke-width="1.8" stroke-opacity=".05">
+      <path d="M336 266C340 252 350 242 362 236M422 324C436 328 446 338 452 350M338 402C330 414 318 422 304 426M286 326C272 320 262 308 258 294M398 318C404 304 414 296 428 292"/>
+    </g>
+    <path d="M226 138C262 168 286 210 300 252S318 300 336 266" stroke-width="1.4" stroke-opacity=".045"/>
+  </g>
+  <g fill="#7fb2ff">
+    <circle cx="118" cy="132" r="9" fill-opacity=".06"/>
+    <circle cx="352" cy="330" r="7" fill-opacity=".045"/>
+    <circle cx="300" cy="70" r="16" fill-opacity=".025"/>
+    <circle cx="420" cy="150" r="3" fill-opacity=".09"/>
+    <circle cx="60" cy="400" r="22" fill-opacity=".02"/>
+    <circle cx="210" cy="420" r="2.4" fill-opacity=".1"/>
+    <circle cx="250" cy="200" r="1.8" fill-opacity=".12"/>
+    <circle cx="440" cy="440" r="11" fill-opacity=".03"/>
+  </g>
+  <g fill="#ff8a6a">
+    <circle cx="380" cy="96" r="6" fill-opacity=".04"/>
+    <circle cx="160" cy="300" r="2.2" fill-opacity=".09"/>
+  </g>
+</svg>

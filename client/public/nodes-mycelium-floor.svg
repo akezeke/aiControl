@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 220 220">
+  <defs><path id="l" d="M0 0C7-7 21-7 28 0 21 7 7 7 0 0Z"/></defs>
+  <g fill-opacity=".6">
+    <use href="#l" fill="#2a2015" transform="translate(24 30) rotate(28)"/>
+    <use href="#l" fill="#262414" transform="translate(150 22) rotate(-40) scale(1.2)"/>
+    <use href="#l" fill="#2d1d12" transform="translate(70 92) rotate(80) scale(.9)"/>
+    <use href="#l" fill="#23200f" transform="translate(176 104) rotate(150)"/>
+    <use href="#l" fill="#2a2015" transform="translate(30 168) rotate(-12) scale(1.1)"/>
+    <use href="#l" fill="#2d1d12" transform="translate(132 176) rotate(56) scale(.85)"/>
+    <use href="#l" fill="#262414" transform="translate(96 40) rotate(200) scale(.7)"/>
+  </g>
+  <g fill="none" stroke="#3a2c1c" stroke-opacity=".5" stroke-width=".6">
+    <path d="M24 30l24 13M150 22l26-22M70 92l4 23M176 104l-26 14M30 168l27-6M132 176l14 19"/>
+  </g>
+  <g fill="none" stroke="#d8f0c8" stroke-opacity=".075" stroke-width=".8" stroke-linecap="round">
+    <path d="M0 132C10 138 36 142 58 134S90 112 110 118 140 140 160 132 190 126 200 132 210 138 220 132"/>
+    <path d="M118 0C124 12 128 36 120 54S100 86 108 106 128 136 120 158 112 188 118 200 124 212 118 220"/>
+    <path d="M58 134c-4 12 2 24-6 34M110 118c8-10 6-24 16-30M120 54c-14-2-22-12-36-10M120 158c12 2 20 12 34 10M160 132c2-14 14-20 12-34"/>
+    <path d="M52 168c-6 4-14 2-18 8M126 88c6-6 4-14 10-18M84 44c-4-6-12-6-14-12"/>
+  </g>
+  <g fill="#a8f4b8" fill-opacity=".3">
+    <circle cx="58" cy="134" r=".9"/><circle cx="120" cy="54" r=".8"/><circle cx="160" cy="132" r=".9"/><circle cx="34" cy="176" r=".7"/><circle cx="136" cy="70" r=".7"/><circle cx="154" cy="168" r=".8"/>
+  </g>
+</svg>

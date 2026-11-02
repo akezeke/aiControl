@@ -9,6 +9,9 @@ const polling = /microsoft/i.test(release()) && client.startsWith('/mnt/');
 export default defineConfig({
   root: client,
   build: { outDir: '../dist', emptyOutDir: true },
+  // The server runs Vite as middleware. Add-ons found only when a scene loads would re-bundle three mid-session: a second copy of three
+  // and a failed import of that scene. Listed here, they're bundled at start-up with three. Add any new add-on a scene imports.
+  optimizeDeps: { include: ['three', ...['postprocessing/EffectComposer', 'postprocessing/RenderPass', 'postprocessing/UnrealBloomPass', 'postprocessing/OutputPass', 'postprocessing/ShaderPass', 'environments/RoomEnvironment', 'geometries/RoundedBoxGeometry', 'utils/BufferGeometryUtils'].map(path => `three/addons/${path}.js`)] },
   server: {
     middlewareMode: true,
     hmr: false,

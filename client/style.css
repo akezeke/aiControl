@@ -564,7 +564,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .doc-chip .icon { flex: none; width: 17px; height: 17px; color: var(--accent); }
 .doc-chip:hover, .doc-chip:focus-visible { border-color: var(--accent); }
 .doc-link { display: inline; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--accent); font: inherit; letter-spacing: inherit; text-align: start; text-transform: none; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; cursor: pointer; }
-.doc-viewer { width: min(860px, calc(100vw - 24px)); height: calc(100svh - 24px); touch-action: auto; }
+.doc-viewer { width: min(860px, calc(100vw - 24px)); height: calc(100svh - 24px); margin: auto; touch-action: auto; }
 .doc-viewer[open] { display: flex; flex-direction: column; }
 .doc-viewer .shot-bar { flex: none; margin: 0 0 8px; }
 .doc-viewer .shot-meta { text-align: start; font-weight: 600; }

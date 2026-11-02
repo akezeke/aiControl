@@ -1,0 +1,50 @@
+/* The board's own HTML: labels, the hover card, the fade between looks and two buttons. Each look sets these tokens in its css. */
+.nodes-scene {
+  --bg: #0d1014; --fg: #e9edf3; --muted: #8d97a6; --panel: rgba(18, 22, 28, .82); --line: rgba(255, 255, 255, .1); --accent: #6aa8ff;
+  --need: #ffb020; --work: #3ddc97; --err: #ff4d5e; --wait: #5aa9ff;
+  --font: system-ui, -apple-system, 'Segoe UI', sans-serif; --mono: ui-monospace, 'SF Mono', Menlo, monospace; --display: var(--font);
+  --radius: 10px; --shadow: 0 8px 30px rgba(0, 0, 0, .35); --blur: 14px; --label: var(--fg); --label-sub: var(--muted); --label-halo: rgba(0, 0, 0, .55);
+  position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font: 13px/1.35 var(--font); touch-action: none;
+}
+.nodes-scene > canvas { display: block; width: 100%; height: 100%; outline: none; }
+.nodes-scene.offline > canvas { filter: grayscale(1) brightness(.75); }
+@media (max-width: 640px) { :root[data-theme=nodes]:not([data-scene-fallback], [data-scene-list]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
+
+.nodes-labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.nodes-scene .lbl { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; white-space: nowrap; color: var(--label);
+  text-shadow: 0 0 6px var(--label-halo), 0 0 2px var(--label-halo); will-change: transform; transition: opacity .25s; }
+.nodes-scene .lbl b { font-weight: 600; font-size: 12px; font-family: var(--display); }
+.nodes-scene .lbl span { font-size: 11px; color: var(--label-sub); font-family: var(--mono); max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+.nodes-scene .lbl.project b { font-size: 11px; font-weight: 500; letter-spacing: .06em; color: var(--label-sub); }
+.nodes-scene .lbl.session b { font-size: 12.5px; }
+.nodes-scene .lbl.you b { font-size: 13px; }
+.nodes-scene .lbl.need span { color: var(--need); }
+.nodes-scene .lbl.error span { color: var(--err); }
+.nodes-scene .lbl.hide { opacity: 0; }
+
+.nodes-tip { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; min-width: 180px; max-width: 280px; padding: 9px 11px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line);
+  box-shadow: var(--shadow); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); display: grid; gap: 3px; }
+.nodes-tip[hidden] { display: none; }
+.nodes-tip b { font-family: var(--display); font-size: 13px; }
+.nodes-tip .row { display: flex; gap: 7px; align-items: center; min-width: 0; }
+.nodes-tip .row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; }
+.nodes-tip .meta { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.nodes-tip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--need)); flex: none; }
+
+.nodes-fade { position: absolute; inset: 0; z-index: 4; background: var(--bg); pointer-events: none; transition: opacity .3s ease; }
+.nodes-fade.out { opacity: 0; }
+
+.nodes-overlay { position: absolute; z-index: 2; top: 10px; right: 10px; display: flex; gap: 6px; }
+.nodes-overlay button { min-width: 36px; height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--fg);
+  backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); font: 500 14px/1 var(--display); cursor: pointer; font-variant-numeric: tabular-nums; }
+.nodes-overlay button[hidden] { display: none; }
+.nodes-overlay button:hover, .nodes-overlay button:focus-visible { border-color: var(--accent); outline: none; }
+.nodes-overlay .nodes-next { border-color: var(--need); color: var(--need); }
+.nodes-overlay .nodes-next:hover, .nodes-overlay .nodes-next:focus-visible { background: var(--need); color: var(--bg); }
+
+/* Beside the panel the board stays in view, undimmed. */
+@media (min-width: 641px) {
+  :root[data-theme=nodes]:not([data-scene-fallback], [data-scene-list]) .detail-panel { width: min(100%, max(520px, 44vw)); }
+  :root[data-theme=nodes]:not([data-scene-fallback], [data-scene-list]) .panel-backdrop { background: transparent; backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) { .nodes-fade, .nodes-scene .lbl { transition: none; } }

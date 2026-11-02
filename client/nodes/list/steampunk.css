@@ -1,0 +1,302 @@
+/* Nodes · Steampunk: the list and panel as the plant's control room. Riveted iron plates under gaslight, brass frames and nameplates,
+   brass push buttons that sink when pressed, enamel counters, the agents' replies on riveted plates and yours on telegraph slips, tool
+   calls on ticker tape, a request as a warning plate, the composer an inset slate. Text sits on plain plate, paper or slate, never on rivets. */
+@font-face { font-family: 'Cinzel'; src: url('/fonts/cinzel-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Spectral'; src: url('/fonts/spectral-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Courier Prime'; src: url('/fonts/courier-prime-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+:root[data-theme-choice=nodes-steampunk] {
+  color-scheme: dark;
+  --font: Spectral, Georgia, serif; --display: Cinzel, Georgia, serif; --mono: 'Courier Prime', ui-monospace, Menlo, monospace;
+  --bg: #15100b; --panel: #2a221a; --panel-2: #3a2e21; --sunken: #14110e;
+  --text: #f2e6cb; --text-2: #d2bd97; --text-3: #a68f6b;
+  --line: #6e512a80; --line-2: #a7793ab0;
+  --accent: #e0aa4c; --accent-2: #f3cc80; --accent-ink: #22150a; --accent-soft: #46331a;
+  --ok: #96d99a; --ok-soft: #1c2a1b; --warn: #ffb547; --warn-soft: #3a2810; --warn-line: #b07a26; --danger: #ff7056; --danger-soft: #3a1710;
+  --codex: #f2e6cb; --claude: #ec8a5f; --claude-soft: #3a2014;
+  --radius: 3px; --radius-sm: 2px; --shadow: 0 2px 0 #0009, 0 6px 16px -8px #000c; --shadow-lg: 0 24px 60px -12px #000e; --focus: #f3cc80;
+  --scroll-track: #14110e; --scroll-thumb: #7a5a2c; scrollbar-color: #7a5a2c #14110e;
+  /* Materials */
+  --iron: linear-gradient(180deg, #2f261d, #211a14);
+  --brass: linear-gradient(180deg, #f1d18c, #c79a4e 42%, #9c6f2e 100%);
+  --brass-lit: linear-gradient(180deg, #ffe3a6, #d9ac5c 45%, #a8783a);
+  --brass-frame: linear-gradient(180deg, #e8c27a, #8a6128) 1;
+  --bevel: inset 0 1px 0 #fff1c860, inset 0 -1px 0 #3a261080;
+  --rivet: #fff1c8 0 .7px, #c8963f 1.5px, #4a3214 2.4px, transparent 2.9px;
+  --rivets: radial-gradient(circle at 6px 6px, var(--rivet)), radial-gradient(circle at calc(100% - 6px) 6px, var(--rivet)), radial-gradient(circle at 6px calc(100% - 6px), var(--rivet)), radial-gradient(circle at calc(100% - 6px) calc(100% - 6px), var(--rivet));
+  --plate: url('/nodes-steampunk-plate.svg') 0 0 / 320px 240px;
+  --slate: linear-gradient(180deg, #1c1f1d, #252a27);
+  --paper: #efe3c6; --paper-ink: #2b1d0e;
+  --gas: radial-gradient(ellipse 70% 45% at 22% -5%, #ffb2471c, transparent 70%), radial-gradient(ellipse 50% 40% at 95% 100%, #ff8a3a10, transparent 70%);
+
+  /* The room: a copper main runs down the right wall through a valve with a gauge and a vent, behind the list. */
+  --pipe: url('/nodes-steampunk-pipe.svg'); --valve: url('/nodes-steampunk-valve.svg');
+  body { background: var(--valve) right 0 top 32% / 96px 120px no-repeat fixed, var(--pipe) right 0 top 0 / 36px 240px repeat-y fixed, var(--gas), var(--plate), var(--bg); background-attachment: fixed; }
+  .main-content, .workspace, .history-viewport { background: none; }
+  .main-content { padding-right: 52px; }
+  ::selection { background: #e0aa4c66; color: #fff7e2; }
+
+  /* Engraved type: names in Cinzel capitals, numbers on enamel counters, the agents' words in a book face. */
+  :is(.brand-name, .page-heading h1, .group-title h2, .panel-title, .sidebar-label, .empty h2) { font-family: var(--display); font-weight: 700; letter-spacing: .04em; }
+  .page-heading h1 { font-size: 24px; color: #f3d695; text-shadow: 0 1px 0 #000, 0 0 14px #ffb54733; }
+  .machine-label { padding: 1px 7px; background: var(--sunken); border: 1px solid var(--line); color: var(--text-3); font-family: var(--mono); }
+  .status-line { color: var(--text-2); font-family: var(--mono); }
+
+  /* Brass push buttons; pressed, they sink into the plate. */
+  :is(.quiet-button, .secondary, .spawn-button, .stop-button, .clear-button, .shot-button, .next-button, .fire-button, .stat) {
+    border: 1px solid #1c120a; border-radius: var(--radius-sm); background: linear-gradient(180deg, #4a3a29, #2d231a); color: var(--text); box-shadow: var(--bevel), 0 2px 0 #0008; }
+  :is(.quiet-button, .secondary, .spawn-button, .stop-button, .clear-button, .shot-button, .next-button, .fire-button, .stat):hover:not(:disabled) { background: linear-gradient(180deg, #5c4732, #372a1e); color: #fff3d6; box-shadow: var(--bevel), 0 2px 0 #0008, 0 0 12px #ffb54722; }
+  :is(.quiet-button, .secondary, .spawn-button, .stop-button, .clear-button, .shot-button, .next-button, .fire-button, .stat, .primary, .nav-item):active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 2px 4px #000a; }
+  .primary { border: 1px solid #5a3a12; border-radius: var(--radius-sm); background: var(--brass); color: var(--accent-ink); font-weight: 700; text-shadow: 0 1px 0 #fff1c870; box-shadow: var(--bevel), 0 2px 0 #000a, 0 0 14px #ffb54726; }
+  .primary:hover:not(:disabled) { background: var(--brass-lit); }
+  .stat.selected { background: var(--brass); color: var(--accent-ink); border-color: #5a3a12; }
+  :is(button, input, textarea, select, a):focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+  /* Fields are slate let into the plate, rimmed in brass. */
+  :is(input:not([type=checkbox], [type=radio], .search input), textarea, select, .search, .setting-field) { border: 1px solid #8a6128; border-radius: var(--radius-sm); background: var(--slate); color: #efe7d6; box-shadow: inset 0 2px 5px #000c, 0 1px 0 #fff1c81a; }
+  .search:focus-within, .setting-field:focus-within, :is(input, textarea):focus { border-color: var(--accent); box-shadow: inset 0 2px 5px #000c, 0 0 0 2px #e0aa4c33; }
+  .search input { color: #efe7d6; }
+  :is(input, textarea)::placeholder { color: #8f8a7c; font-style: italic; }
+  .setting-label { color: var(--accent); font: 700 9px/1.4 var(--display); letter-spacing: .12em; }
+  .setting-field .setting-select { background: transparent; border: 0; box-shadow: none; }
+
+  /* The sidebar: an iron bulkhead with a brass rail where it meets the floor. */
+  .sidebar { padding-right: 34px; background: var(--valve) right -4px bottom 96px / 96px 120px no-repeat, var(--pipe) right 0 top 0 / 36px 240px repeat-y, var(--gas), var(--plate), var(--iron); border-right: 3px solid; border-image: var(--brass-frame); box-shadow: 4px 0 14px #0009; }
+  .brand-variant.nodes .brand-mark { background: var(--brass); }
+  .brand-name { color: #f3d695; text-shadow: 0 1px 0 #000; }
+  .sidebar-label { display: flex; align-items: center; gap: 8px; color: #c9a25c; font-size: 10.5px; letter-spacing: .16em; text-shadow: 0 1px 0 #000; }
+  .sidebar-label::after { content: ''; flex: 1; height: 3px; border-top: 1px solid #8a6128; border-bottom: 1px solid #3a2810; }
+  .nav-item { border: 1px solid transparent; color: var(--text-2); }
+  .nav-item + .nav-item { margin-top: 2px; }
+  .nav-item:hover { background: #3a2e2180; border-color: #6e512a80; color: var(--text); }
+  .nav-item.active { background: var(--brass); border-color: #5a3a12; color: var(--accent-ink); font-weight: 700; text-shadow: 0 1px 0 #fff1c860; box-shadow: var(--bevel), 0 2px 0 #0009; }
+  .nav-count, .group-count { min-width: 24px; padding: 0 6px; border-radius: 1px; background: #120d09; border: 1px solid #6e512a; color: #f1e4c5; font: 700 11px/18px var(--mono); box-shadow: inset 0 1px 3px #000; }
+  .nav-item.active .nav-count { background: #1a120a; border-color: #3a2610; color: #ffd98e; }
+  .project-dot { color: var(--warn); text-shadow: 0 0 6px #ffb54788; }
+  .sidebar > .top-actions { border-top: 1px solid #6e512a80; }
+  .topbar { background: url('/nodes-steampunk-pipe-h.svg') 0 calc(100% - 2px) / 240px 22px repeat-x, var(--plate), var(--iron); border-bottom: 3px solid; border-image: var(--brass-frame); }
+
+  /* Usage: the board's gauges as glass tubes in brass, filled with lamp oil; amber high, red full. */
+  .usage-accounts, .empty, .login-card { border: 1px solid #1c120a; border-radius: var(--radius); background: var(--rivets), var(--iron); box-shadow: inset 0 0 0 1px #8a612880, var(--shadow); }
+  .usage-account + .usage-account { border-top: 1px solid #6e512a55; }
+  .usage-meter { height: 8px; border-radius: 4px; background: #0e0b08; color: #e0aa4c; box-shadow: inset 0 1px 2px #000, 0 0 0 1px #8a6128; }
+  .usage-meter::-webkit-progress-bar { background: #0e0b08; border-radius: 4px; }
+  .usage-meter::-webkit-progress-value { background: linear-gradient(180deg, #ffe0a0, currentColor 55%, #8a5a18); border-radius: 4px; }
+  .usage-meter::-moz-progress-bar { background: linear-gradient(180deg, #ffe0a0, currentColor 55%, #8a5a18); border-radius: 4px; }
+  .usage-percent { font-family: var(--mono); font-weight: 700; }
+
+  /* A project is a brass nameplate over its line of machines. */
+  .group-heading { position: relative; }
+  .group-title { padding: 2px 12px 3px; border: 1px solid #5a3a12; border-radius: 2px; background: var(--brass); color: var(--accent-ink); box-shadow: var(--bevel), 0 2px 0 #0009; }
+  .group-title .icon { color: #5a3a12; }
+  .group-title h2 { font-size: 14px; color: var(--accent-ink); text-shadow: 0 1px 0 #fff1c870; }
+  .group-title .group-count { color: #f1e4c5; }
+  .project-path { font-family: var(--mono); color: var(--text-3); }
+  .spawn-button { font-family: var(--font); }
+
+  /* A session is a riveted plate; its mark sits in a brass porthole, its state is the gas lamp strip at its left edge. */
+  .session-card { --sp-lamp: #6b5a44; border: 1px solid #120c07; border-radius: var(--radius); background: var(--rivets), var(--iron); box-shadow: inset 0 0 0 1px #8a612866, inset 4px 0 0 var(--sp-lamp), var(--shadow); }
+  .session-card:hover { box-shadow: inset 0 0 0 1px #c8963fa0, inset 4px 0 0 var(--sp-lamp), var(--shadow), 0 0 18px #ffb54718; }
+  .session-card[data-status=working] { --sp-lamp: #8fd39a; }
+  .session-card.needs-input { --sp-lamp: var(--warn); background: var(--rivets), linear-gradient(90deg, #4a3210, #2a2117 45%); box-shadow: inset 0 0 0 1px var(--warn-line), inset 5px 0 0 var(--sp-lamp), var(--shadow), 0 0 16px #ffb5472a; }
+  .session-card[data-status=error] { --sp-lamp: var(--danger); box-shadow: inset 0 0 0 1px #9a3a2a, inset 5px 0 0 var(--sp-lamp), var(--shadow); }
+  .session-card:is([data-status=idle], [data-status=offline]) .session-title { color: var(--text-2); }
+  .session-title { font-weight: 500; font-size: 15px; letter-spacing: .01em; }
+  .agent-mark, .agent-mark.claude { border: 2px solid #b88a42; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #3a2e22, #15100b); box-shadow: inset 0 1px 3px #000, 0 0 0 1px #3a2610, 0 1px 0 #fff1c830; }
+  .session-card.subagent { background: var(--iron); }
+  .session-card.subagent::before { border-color: #8a6128; }
+  .badge { border-radius: 2px; border: 1px solid #6e512a; background: #120d09; color: var(--text-2); font: 700 11px/1.3 var(--mono); letter-spacing: .02em; }
+  .badge.green { border-color: #4f7a52; background: #142015; color: var(--ok); }
+  .badge.amber { border-color: #b07a26; background: #e0a03a; color: #24160a; }
+  .badge.red { border-color: #9a3a2a; background: #6a1c10; color: #ffd9cc; }
+  :is(.chip, .subagent-tag, .project-tag) { border-radius: 2px; font-family: var(--mono); }
+  .branch { font-family: var(--mono); }
+
+  /* The panel: an iron cabinet behind brass; the header is its maker's plate. */
+  .detail-panel { background: var(--pipe) left 4px top 0 / 36px 240px repeat-y, var(--gas), var(--plate), #1b1510; border-left: 3px solid; border-image: var(--brass-frame); box-shadow: -10px 0 30px #000a; }
+  .panel-backdrop { background: #0a0705a0; }
+  /* Content keeps clear of the pipe down the panel's edge. */
+  .detail-panel:not(.chat-panel) { padding-left: 54px; }
+  .history-viewport { padding-left: max(46px, env(safe-area-inset-left)); }
+  .chat-header { background: var(--rivets), var(--iron); border-bottom: 3px solid; border-image: var(--brass-frame); box-shadow: 0 4px 12px #0008; }
+  .panel-title { font-size: 17px; color: #f3d695; text-shadow: 0 1px 0 #000; }
+  .chat-header .agent-identity .agent-mark { border-width: 3px; }
+
+  /* The agent's replies are riveted plates; yours are telegraph slips; tool calls run past on ticker tape. */
+  .recent-message:not(.tool, .notice) { border: 1px solid #120c07; border-radius: var(--radius); background: var(--rivets), linear-gradient(180deg, #33291f, #261f18); box-shadow: inset 0 0 0 1px #8a612870, var(--shadow); padding: 10px 16px 12px; }
+  .recent-message:not(.tool, .notice) .message-meta { margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #6e512a66; }
+  .message-meta strong { color: #e8c27a; font: 700 10.5px/1.4 var(--display); letter-spacing: .1em; text-transform: uppercase; }
+  .message-text { font-size: 14.5px; }
+  .message-text code { border-radius: 2px; background: #14110e; color: #f3d695; border: 1px solid #3a2e21; }
+  .message-text pre { background: var(--slate); border-color: #3a2e21; box-shadow: inset 0 2px 5px #000a; }
+  .recent-message.user:not(.tool, .notice) { --text: var(--paper-ink); --text-2: #4a3820; --text-3: #6a5636; --panel-2: #e2d3b0; --sunken: #e6d8b8; --line: #b9a57c; border-color: #b9a57c;
+    background: radial-gradient(circle at 50% 3px, #1b150f 0 2px, transparent 2.5px) 0 0 / 12px 8px repeat-x, linear-gradient(180deg, #f5ead0, var(--paper)); color: var(--paper-ink); box-shadow: 0 2px 0 #0007, 0 8px 18px -10px #000; padding-top: 12px; }
+  .recent-message.user:not(.tool, .notice) :is(.message-text, .message-text p) { color: var(--paper-ink); font-family: var(--mono); font-size: 14px; }
+  .recent-message.user:not(.tool, .notice) .message-meta { border-bottom-color: #b9a57c; }
+  .recent-message.user:not(.tool, .notice) .message-meta strong { color: #6a4a1c; }
+  .recent-message.user .message-text code { background: #e2d3b0; color: #3a2610; border-color: #b9a57c; }
+  .recent-message.tool { border-left: 0; padding-left: 0; }
+  .tool-call { width: fit-content; max-width: 100%; margin: 1px 0; padding: 3px 10px 3px 8px; background: radial-gradient(circle at 4px 50%, #1b150f 0 1.5px, transparent 2px) 0 0 / 9px 100% repeat-y, linear-gradient(180deg, #ece0c2, #ddcda6);
+    color: #2b1d0e; font: 12px/1.5 var(--mono); box-shadow: 0 1px 0 #0008; clip-path: polygon(0 0, 100% 0, calc(100% - 4px) 50%, 100% 100%, 0 100%); }
+  .tool-call::before { content: '▸'; color: #8a3a10; }
+  .tool-run { font-family: var(--mono); }
+
+  /* A request is a warning plate: amber enamel header, a riveted brass frame, the decisions as brass levers. */
+  .chat-requests { background: var(--plate), #1b1510; border-top: 3px solid; border-image: var(--brass-frame); }
+  .request-box { position: relative; border: 3px solid; border-image: linear-gradient(180deg, #ffd27a, #b07a26) 1; background: var(--rivets), linear-gradient(180deg, #3a2a14, #241a10); box-shadow: 0 0 22px #ffb54726, var(--shadow); padding-top: 34px; }
+  .request-box::before { content: ''; position: absolute; inset: 0 0 auto; height: 24px; background: repeating-linear-gradient(-45deg, #e0a03a 0 10px, #24160a 10px 20px); opacity: .9; box-shadow: inset 0 -2px 0 #24160a; }
+  .request-box .eyebrow { position: relative; color: var(--warn); font: 700 11px/1.4 var(--display); letter-spacing: .16em; }
+  .request-box h3 { font-family: var(--font); font-size: 16px; color: #ffe6b0; }
+  .request-code, .request-details pre { background: var(--slate); border-color: #3a2e21; box-shadow: inset 0 2px 5px #000a; }
+  .answer-option { border-color: #6e512a; background: var(--iron); }
+  .answer-option:hover { border-color: var(--accent); }
+  .answer-option:has(input:checked) { background: #46331a; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 0 0 12px #ffb54722; }
+  .decision-actions button { font-family: var(--display); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+  .decision-actions button:not(.primary) { border-color: #3a1710; background: linear-gradient(180deg, #5a2a1c, #321610); color: #ffd9cc; }
+  .decision-actions button:not(.primary):hover:not(:disabled) { background: linear-gradient(180deg, #6e3322, #3a1a12); color: #fff; }
+
+  /* The composer: a slate let into the plate, written on in chalk-white type. */
+  .message-composer { background: var(--plate), #1b1510; border-top: 3px solid; border-image: var(--brass-frame); }
+  .composer-row textarea { background: var(--slate); color: #f2ece0; font-family: var(--mono); border-color: #8a6128; box-shadow: inset 0 3px 8px #000d; }
+
+  /* Menus and toasts are brass-edged plates. */
+  :is(.theme-options, .filter-options, .new-agent-options) { border: 1px solid #120c07; border-radius: var(--radius); background: var(--rivets), var(--iron); box-shadow: inset 0 0 0 1px #c8963f88, var(--shadow-lg); }
+  .theme-choice[aria-pressed=true] { color: var(--accent-2); }
+  .toast { border-radius: 2px; background: var(--brass); color: var(--accent-ink); font-family: var(--display); letter-spacing: .04em; box-shadow: var(--bevel), 0 10px 30px #000c; }
+  .shot-viewer { background: #1b1510; border: 3px solid; border-image: var(--brass-frame); }
+  .connection-dot.online { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+
+  /* Machinery behind everything: meshing gears (20 and 12 teeth, set so a tooth sits in a gap; they turn opposite ways at 12:20), low
+     and dim so text on its plates stays the brightest thing. Each pair is a ::before and ::after of a fixed box, painted under its content. */
+  --gear-a: url('/nodes-steampunk-gear-20.svg') center / contain no-repeat; --gear-b: url('/nodes-steampunk-gear-12.svg') center / contain no-repeat;
+  :is(body, .sidebar, .detail-panel)::before, :is(body, .sidebar, .detail-panel)::after { content: ''; position: absolute; z-index: -1; pointer-events: none; opacity: .2; }
+  body::before, body::after { position: fixed; }
+  body::before { right: -120px; bottom: -130px; width: 354px; height: 354px; background: var(--gear-a); rotate: 215deg; }
+  body::after { right: 154px; bottom: 81px; width: 226px; height: 226px; background: var(--gear-b); rotate: 50deg; }
+  .sidebar::before { left: -40px; bottom: 70px; width: 149px; height: 149px; background: var(--gear-a); rotate: -40deg; opacity: .3; }
+  .sidebar::after { left: 69px; bottom: 166px; width: 95px; height: 95px; background: var(--gear-b); rotate: 155deg; opacity: .3; }
+  .detail-panel::before { right: -60px; bottom: 120px; width: 212px; height: 212px; background: var(--gear-a); rotate: 200deg; }
+  .detail-panel::after { right: 122px; bottom: 211px; width: 136px; height: 136px; background: var(--gear-b); rotate: 35deg; }
+
+  /* Pressure gauges set into the chrome; the needle is its own layer. In the red when someone is waiting on you (a project with a
+     waiting count, a waiting card, a request in the open chat), low otherwise. */
+  --gauge-face: url('/nodes-steampunk-gauge.svg'); --gauge: var(--gauge-face) center / contain no-repeat; --needle: url('/nodes-steampunk-needle.svg') center / contain no-repeat;
+  :is(.sidebar .brand, .page-heading, .chat-header) { position: relative; }
+  :is(.sidebar .brand, .page-heading, .chat-header)::before, :is(.sidebar .brand, .page-heading, .chat-header)::after { content: ''; position: absolute; pointer-events: none; }
+  .sidebar .brand::before, .sidebar .brand::after { right: -4px; top: 50%; width: 36px; height: 36px; margin-top: -18px; }
+  .page-heading::before, .page-heading::after { right: 72px; top: 50%; width: 46px; height: 46px; margin-top: -23px; }
+  .chat-header::before, .chat-header::after { right: 12px; bottom: 7px; width: 30px; height: 30px; }
+  .chat-header::before { width: 82px; background: var(--gauge-face) right center / 30px no-repeat, radial-gradient(circle, #ffd27a 0 2.2px, #8a4a12 3px, transparent 3.8px) 0 50% / 12px 12px no-repeat, radial-gradient(circle, #ffd27a 0 2.2px, #8a4a12 3px, transparent 3.8px) 12px 50% / 12px 12px no-repeat, radial-gradient(circle, #ffd27a 0 2.2px, #8a4a12 3px, transparent 3.8px) 24px 50% / 12px 12px no-repeat, radial-gradient(circle, #5a3a14 0 2.2px, #2a1a08 3px, transparent 3.8px) 36px 50% / 12px 12px no-repeat; }
+  :is(.sidebar .brand, .page-heading)::before { background: var(--gauge); }
+  :is(.sidebar .brand, .page-heading, .chat-header)::after { background: var(--needle); rotate: -105deg; transition: rotate 1.4s cubic-bezier(.3, 1.4, .5, 1); }
+  &:has(.project-dot:not(:empty)) .sidebar .brand::after, &:has(.session-card.needs-input) .page-heading::after, .detail-panel:has(.request-box) .chat-header::after { rotate: 102deg; }
+  &:has(.session-card[data-status=working]) .page-heading::after { rotate: -10deg; }
+  &:has(.session-card.needs-input) .page-heading::after { rotate: 102deg; }
+  .page-heading h1 { padding-right: 60px; }
+  /* Two filament tubes glow on top of the usage board. */
+  .usage-accounts { position: relative; }
+  .usage-accounts::before { content: ''; position: absolute; right: 132px; top: -46px; width: 36px; height: 48px; background: url('/nodes-steampunk-tubes.svg') center / contain no-repeat; pointer-events: none; }
+
+  /* Usage: each window is a pressure gauge whose needle reads what is used (from the cell's own --remaining); the bar stays for
+     screen readers. Amber past 75%, red when full. */
+  .usage-meter { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .usage-window { grid-template-columns: max-content 30px max-content max-content; gap: 6px; line-height: 30px; }
+  .usage-orb { display: block; position: relative; grid-column: 2; grid-row: 1; width: 30px; height: 30px; border-radius: 50%; background: var(--gauge); filter: drop-shadow(0 1px 1px #000); }
+  .usage-orb > * { display: none; }
+  .usage-orb::after { content: ''; position: absolute; inset: 0; background: var(--needle); rotate: calc((1 - var(--remaining, 1)) * 270deg - 135deg); }
+  .usage-high .usage-percent { color: var(--warn); } .usage-full .usage-percent { color: var(--danger); }
+  :is(.usage-stale, .usage-expired) .usage-orb { opacity: .55; }
+  .usage-label { color: #c9a25c; font: 700 10px/30px var(--display); letter-spacing: .08em; text-transform: uppercase; }
+  .usage-reset, .usage-tag { font-family: var(--mono); color: var(--text-3); }
+  /* The OpenCode spend: an oil gauge row, its totals on enamel counters. */
+  .spend-panel { border: 1px solid #120c07; background: var(--rivets), linear-gradient(180deg, #2c2219, #1f1913); box-shadow: inset 0 0 0 1px #8a612866; }
+  .spend-panel :is(.spend-total, .spend-balance) { font-family: var(--mono); color: #f3d695; }
+  .spend-row .usage-meter, .spend-panel .usage-meter { position: static; width: 100%; height: 8px; clip-path: none; }
+  .spend-token-rail, .spend-reserve { border-radius: 4px; background: #0e0b08; box-shadow: inset 0 1px 2px #000, 0 0 0 1px #8a6128; }
+
+  /* The image viewer is a televisor: the picture on a rounded, bevelled CRT under scanlines and warm glass, in walnut and brass; its
+     buttons are brass knobs and the strip below holds brass-framed slides. */
+  .shot-viewer { background: radial-gradient(ellipse at 50% 40%, #3a2416, #1a0f08 75%), #1a0f08; border: 6px solid; border-image: var(--brass-frame); color: var(--text); }
+  .shot-viewer::backdrop { background: #070403e0; }
+  .shot-viewer:not(.doc-viewer) .shot-full { border-radius: 34px; background: #0b0905; box-shadow: inset 0 0 0 3px #1a1008, inset 0 0 0 6px #b88a42, inset 0 0 50px #000, 0 0 0 10px #2a1a0e, 0 0 0 12px #8a6128, 0 10px 30px #000; }
+  .shot-viewer:not(.doc-viewer) .shot-full::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: repeating-linear-gradient(180deg, #0000 0 2px, #0000002e 2px 3px), radial-gradient(ellipse at 50% 50%, #0000 55%, #000a 100%), radial-gradient(ellipse 45% 30% at 28% 18%, #fff6e012, #0000), linear-gradient(#ffd9a014, #ffd9a014); }
+  .shot-viewer .shot-full img { border-radius: 26px; filter: sepia(.15) saturate(1.05); }
+  .shot-button { border-radius: 50%; border: 1px solid #2a1a08; background: radial-gradient(circle at 38% 32%, #fff1c8, #c99a4a 45%, #6a4818); color: #24160a; font-weight: 700; box-shadow: 0 2px 0 #000a, inset 0 -2px 3px #0006; }
+  .shot-button:hover:not(:disabled) { background: radial-gradient(circle at 38% 32%, #fff6dc, #ddb062 45%, #7a5420); }
+  .shot-button:active:not(:disabled) { transform: translateY(1px) rotate(20deg); box-shadow: inset 0 2px 4px #000a; }
+  .shot-meta { color: #e8c27a; font-family: var(--mono); }
+  .shot-thumb { border: 3px solid #b88a42; border-radius: 3px; box-shadow: 0 0 0 1px #2a1a08, 0 2px 4px #000a; opacity: .75; }
+  .shot-thumb.current { border-color: #ffd27a; box-shadow: 0 0 0 1px #2a1a08, 0 0 12px #ffb54766; opacity: 1; }
+  .shot-strip { background: linear-gradient(#2a1a0e, #1a0f08); border-top: 2px solid #8a6128; }
+  /* The document viewer: a riveted plate in the same cabinet. */
+  .doc-body { border: 1px solid #120c07; border-radius: var(--radius); background: var(--rivets), linear-gradient(180deg, #2f261d, #241d16); box-shadow: inset 0 0 0 1px #8a612880; }
+  .doc-body :is(h1, h2, h3) { font-family: var(--display); color: #f3d695; letter-spacing: .03em; }
+  .doc-body :is(th, td) { border-color: #6e512a; }
+  .doc-body th { background: #3a2e21; }
+  .doc-viewer .shot-meta { color: #f3d695; font-family: var(--display); }
+  .doc-chip, .history-docs .doc-chip { border: 1px solid #5a3a12; border-radius: 2px; background: var(--brass); color: var(--accent-ink); box-shadow: var(--bevel), 0 2px 0 #0008; }
+  .doc-chip .icon { color: #5a3a12; }
+  .history-shot { border: 3px solid #b88a42; border-radius: 3px; box-shadow: 0 0 0 1px #2a1a08, 0 3px 8px #000a; }
+
+  /* The lock: a vault door. Iron, rivets, brass hinges, and a turning wheel for a symbol. */
+  .login-screen { background: none; }
+  .login-card { position: relative; border: 2px solid #120c07; border-radius: 10px; background: var(--rivets), radial-gradient(circle at 50% 28%, #3a2f24, #211a14 70%); box-shadow: inset 0 0 0 3px #8a6128, inset 0 0 0 7px #1a130d, inset 0 0 0 8px #6e512a, 0 20px 50px #000c; }
+  .login-card::before, .login-card::after { content: ''; position: absolute; left: -10px; width: 14px; height: 54px; border-radius: 3px; background: var(--brass); box-shadow: var(--bevel), 0 2px 3px #000a; }
+  .login-card::before { top: 18%; } .login-card::after { bottom: 18%; }
+  .login-symbol { width: 72px; height: 72px; border-radius: 50%; background: var(--gear-b); box-shadow: 0 0 0 4px #8a6128, 0 0 0 7px #1a130d; }
+  .login-symbol .icon { display: none; }
+  .login-form input { text-align: center; letter-spacing: .3em; font-family: var(--mono); }
+  .login-form label { color: #e8c27a; font-family: var(--display); letter-spacing: .1em; }
+  .login-card:has(.form-error:not(:empty)) { box-shadow: inset 0 0 0 3px #9a2a1c, inset 0 0 0 7px #1a130d, 0 0 30px #ff563633, 0 20px 50px #000c; }
+  .access-console { border: 1px solid #120c07; border-radius: var(--radius); background: var(--rivets), var(--iron); box-shadow: inset 0 0 0 1px #c8963f88, var(--shadow); padding: 22px; }
+  .access-form label { color: var(--text-2); }
+
+  /* Dialogs and menus: riveted plates in brass; the picked choice is lit brass. */
+  :is(.new-session-dialog, .theme-picker, .account-options) { border: 1px solid #120c07; border-radius: var(--radius); background: var(--rivets), var(--plate), var(--iron); color: var(--text); box-shadow: inset 0 0 0 1px #c8963f99, var(--shadow-lg); }
+  :is(.new-session-dialog, .theme-picker)::backdrop { background: #070403c0; }
+  .theme-picker h2, .new-session-dialog h2 { font-family: var(--display); color: #f3d695; letter-spacing: .05em; }
+  .theme-picker-choice { border: 1px solid #6e512a; border-radius: 2px; background: #241c15; }
+  .theme-picker-choice:is(:hover, :focus-visible) { border-color: var(--accent); background: #3a2e21; }
+  :is(.theme-choice, .theme-sub, .account-options button):hover { background: #3a2e21; color: var(--text); }
+  .theme-choice[aria-pressed=true], .theme-sub[aria-checked=true] { background: var(--brass); color: var(--accent-ink); }
+  .theme-sub::before { border-radius: 50%; }
+  .theme-console { display: none; }
+  /* Lost sessions: a plate with an amber enamel edge. */
+  .lost { border: 1px solid #120c07; border-radius: var(--radius); background: var(--rivets), var(--iron); box-shadow: inset 0 0 0 1px #b07a2699, inset 4px 0 0 var(--warn), var(--shadow); }
+  .lost-title { font-family: var(--display); color: #f3d695; letter-spacing: .04em; }
+  :is(.lost-when, .lost-state) { font-family: var(--mono); }
+  /* The session header's byline is engraved small; queued messages wait as slips; attached images are slides; plans on paper. */
+  .agent-byline { font-style: italic; color: var(--text-3); }
+  .queued-message { border-top: 1px dashed #6e512a; }
+  .queued-message p { font-family: var(--mono); }
+  .composer-image { border: 3px solid #b88a42; border-radius: 3px; }
+  .request-plan { background: var(--paper); color: var(--paper-ink); font-family: var(--mono); border: 1px solid #b9a57c; }
+  .connection-error { border: 1px solid #b07a26; border-radius: 2px; background: repeating-linear-gradient(-45deg, #3a2810 0 10px, #2a1d0c 10px 20px); color: var(--warn); font-family: var(--mono); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #6a4818, #c99a4a, #6a4818); border-radius: 0; }
+}
+@media (max-width: 640px) { :root[data-theme-choice=nodes-steampunk] :is(.usage-accounts::before, .page-heading::before, .page-heading::after) { display: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-choice=nodes-steampunk] {
+    /* Gaslight breathes on a working machine's lamp strip and round what needs you. */
+    .session-card[data-status=working] { animation: sp-lamp 2.6s ease-in-out infinite; }
+    .session-card.needs-input { animation: sp-need 2s ease-in-out infinite; animation-delay: var(--since-load, 0s); }
+    .request-box { animation: sp-warn 2s ease-in-out infinite; }
+    /* The gears turn, the needles tremble, the tubes flicker, the vent puffs. Transforms and opacity on small layers only. */
+    :is(body, .sidebar, .detail-panel)::before { animation: sp-turn 90s linear infinite; }
+    :is(body, .sidebar, .detail-panel)::after { animation: sp-turn 54s linear infinite reverse; }
+    :is(.sidebar .brand, .page-heading, .chat-header)::after { animation: sp-tremble 1.9s ease-in-out infinite alternate; }
+    .usage-accounts::before { animation: sp-flicker 3.7s steps(12) infinite; }
+    .usage-orb::after { animation: sp-tremble 1.6s ease-in-out infinite alternate; }
+    .login-symbol { animation: sp-turn 40s linear infinite; }
+    .workspace::after { content: ''; position: fixed; z-index: -1; right: -14px; top: calc((100vh - 120px) * .32 + 88px); width: 64px; height: 64px; background: url('/nodes-steampunk-steam.svg') center / contain no-repeat; pointer-events: none; opacity: 0; animation: sp-puff 6s ease-out infinite; }
+  }
+}
+@keyframes sp-turn { to { transform: rotate(360deg); } }
+@keyframes sp-tremble { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+@keyframes sp-flicker { 0%, 100% { opacity: 1; } 30% { opacity: .82; } 55% { opacity: .95; } 80% { opacity: .78; } }
+@keyframes sp-puff { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 15% { opacity: .9; } 70%, 100% { opacity: 0; transform: translate(-10px, 46px) scale(1.4); } }
+@property --sp-lamp { syntax: '<color>'; inherits: true; initial-value: #6b5a44; }
+@keyframes sp-lamp { 50% { --sp-lamp: #d8f7d0; } }
+@keyframes sp-need { 50% { box-shadow: inset 0 0 0 1px var(--warn-line), inset 5px 0 0 #ffd27a, var(--shadow), 0 0 24px #ffb54744; } }
+@keyframes sp-warn { 50% { box-shadow: 0 0 30px #ffb54740, var(--shadow); } }
