@@ -10,7 +10,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Answer permissions and questions, send messages with pasted or picked images (Claude needs tmux), stop turns and start agents. Nothing is auto-approved.
 - Switch models and supported effort levels from session headers; remember choices for new sessions.
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
-- Live feed (**f**): every session's messages, tool calls and screenshots on one timeline, with who's working or waiting along the top. It opens beside the list or scene.
+- [Live feed](#live-feed) (**f**): all sessions' replies, tool calls and screenshots on one timeline, so you can follow every agent without switching.
 - Chat history with Markdown, diffs, tool calls, screenshots, older messages on demand and the Markdown files a session writes.
 - Account usage limits, notifications and sounds when a session needs you.
 - OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets, in every theme: a Bridge console row, a Metropolis plant, a Fantasy treasury and a line on the Office whiteboard.
@@ -21,6 +21,14 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.
 - Trickshot in the Office's kitchen: land a paper ball or mug in its target or hit a fruit with a rubber ball or plate, with six levels, three daily shots and a score board.
 - Local access or access from other devices over Tailscale, protected by a PIN or password.
+
+### Live feed
+
+Follow every agent at once instead of switching between them. Press **f** or pick **Live feed** in the sidebar: one timeline mixes every session's replies, tool calls and screenshots as they happen, while a strip along the top shows who's working, who's waiting and whose finished work you haven't seen. Click a session to answer it; **Back** returns to the feed. You can hide subagents and tool calls, and the feed opens beside a 3D scene.
+
+| Orbit | Beside the Office | Heroes on a phone |
+| --- | --- | --- |
+| ![Live feed in Orbit](docs/screenshots/orbit-light-feed.webp) | ![Live feed beside the Office](docs/screenshots/office-feed.webp) | ![Live feed in Heroes on a phone](docs/screenshots/heroes-feed-phone.webp) |
 
 ## Setup
 

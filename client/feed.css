@@ -2,7 +2,7 @@
 .feed-nav { margin-top: 2px; }
 .feed-nav .nav-count:empty { display: none; }
 .sidebar .feed-button { display: none; }
-.feed-header .panel-title { display: flex; align-items: center; gap: 8px; }
+:root .chat-header.feed-header .panel-title { grid-area: identity; display: flex; align-items: center; gap: 8px; }
 .feed-header .panel-title .icon { color: var(--ok); }
 .feed-toggle.quiet-button { flex: none; width: auto; }
 .feed-toggle[aria-pressed=false] { opacity: .55; }
@@ -51,7 +51,6 @@
 }
 @media (max-width: 640px) {
   .feed-project { display: none; }
-  :root .chat-header.feed-header .panel-title { grid-area: identity; }
   :root .chat-header .panel-heading-actions > .feed-toggle.quiet-button { width: 36px; padding: 0; }
   .feed-toggle > span:not(.icon) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
