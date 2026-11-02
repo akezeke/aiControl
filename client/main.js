@@ -294,8 +294,8 @@ function showWorkspace() {
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
   const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting · f live feed'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search);
-  // Folded to an icon until used; the label still focuses the input, so a click or / opens it.
-  const fold = () => searchBox.classList.toggle('folded', !search.value && document.activeElement !== search); search.onfocus = search.onblur = fold; fold(); searchBox.title = 'Find a session (/)'; menu.append(tabs); // The scene themes' way back, where the eye is while looking for a session; the small one in the sidebar footer is easy to miss.
+  // Folded to an icon button until used, styled as one by every theme; the label still focuses the input, so a click or / opens it.
+  const fold = () => { const folded = !search.value && document.activeElement !== search; searchBox.classList.toggle('folded', folded); searchBox.classList.toggle('search', !folded); searchBox.classList.toggle('quiet-button', folded); }; search.onfocus = search.onblur = fold; fold(); searchBox.title = 'Find a session (/)'; menu.append(tabs); // The scene themes' way back, where the eye is while looking for a session; the small one in the sidebar footer is easy to miss.
   const sceneSwitch = button('Scene', 'quiet-button scene-switch', () => setSceneList(false), 'office'); sceneSwitch.title = 'Back to the scene';
   toolbar.append(sceneSwitch, searchBox, menu, newAgentMenu()); main.append(toolbar);
   const create = button('New OpenCode session', 'tab new-session-button', () => { menu.open = false; newOpenCodeSession(); }, 'plus');
@@ -1465,7 +1465,7 @@ document.addEventListener('keydown', event => {
   if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); if (scene && !state.selected) scene.talkTo(nextWaiting().id); else openNext(); return; }
   if (event.key === 'f') { event.preventDefault(); openFeed(); return; }
   if (state.selected) return;
-  if (event.key === '/') { event.preventDefault(); document.querySelector('.search input')?.focus(); return; }
+  if (event.key === '/') { event.preventDefault(); document.querySelector('.toolbar input[type=search]')?.focus(); return; }
   if (event.key !== 'j' && event.key !== 'k') return;
   const cards = [...document.querySelectorAll('#groups .session-card')], index = cards.indexOf(document.activeElement);
   cards[index < 0 ? 0 : Math.max(0, Math.min(cards.length - 1, index + (event.key === 'j' ? 1 : -1)))]?.focus();
