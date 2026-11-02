@@ -6,8 +6,11 @@
 :root[data-theme=heroes] {
   --gold: #b39758;
   --stone: linear-gradient(110deg, #14234420, #080f2366), url('/heroes-stone.svg');
-  --ornate: url('/heroes-ornate-frame.webp');
-  --parchment: url('/heroes-parchment.webp');
+  /* Frames and scrolls are pre-sized so the corner flourish is shown at its own pixel size (slice = display width). */
+  --f24: url('/heroes-frame-24.webp') 24 / 24px / 0 round; --f32: url('/heroes-frame-32.webp') 32 / 32px / 0 round; --f36: url('/heroes-frame-36.webp') 36 / 36px / 0 round;
+  --f40: url('/heroes-frame-40.webp') 40 / 40px / 0 round; --f48: url('/heroes-frame-48.webp') 48 / 48px / 0 round; --f64: url('/heroes-frame-64.webp') 64 / 64px / 0 round;
+  --scroll24: url('/heroes-scroll-24.webp') 24 fill / 24px round; --scroll40: url('/heroes-scroll-40.webp') 40 fill / 40px round;
+  --rim: url('/heroes-bevel.webp') 3 / 6px / 0 round; --sink: url('/heroes-socket.webp') 3 / 6px / 0 round;
   --paper: #f1dfb6;
   --bevel: inset 1px 1px #f8df9b, inset -1px -1px #584026, 0 0 0 1px #0b1020, 2px 3px 0 #0007;
   --scroll-track: #0d192e; --scroll-thumb: #a88b4c;
@@ -20,14 +23,14 @@
   .shell::after { content: ''; position: fixed; inset: 0; z-index: 6; pointer-events: none; border: 3px solid; border-color: #e3bf72 #615032 #372b20 #a88b4c; box-shadow: inset 0 0 0 1px #101321; }
   .main-content { max-width: 1060px; margin-inline: 0; padding: 22px 28px 32px; }
   .page-heading { align-items: center; min-height: 62px; margin-bottom: 12px; }
-  .page-heading h1 { padding: 8px 40px 12px; font-size: 30px; font-weight: 700; letter-spacing: .04em; color: #fff0c4; text-shadow: 2px 2px #101728, -1px -1px #463b24; background: var(--stone); border: 3px solid transparent; border-image: var(--ornate) 34% / 30px round; }
+  .page-heading h1 { padding: 8px 40px 12px; font-size: 30px; font-weight: 700; letter-spacing: .04em; color: #fff0c4; text-shadow: 2px 2px #101728, -1px -1px #463b24; background: var(--stone); border: 3px solid transparent; border-image: var(--f32); }
   .machine-label { padding: 3px 8px; color: #efe0b9; border: 1px solid #a08a56; background: #101b32e8; }
   .status-line { width: fit-content; max-width: 100%; padding: 3px 0; margin: 0; font-size: 11px; color: #ffedbc; text-shadow: 1px 1px #080f20, -1px -1px #080f20, 0 0 5px #080f20; }
   .status-line::before { content: ''; flex: none; width: 12px; height: 12px; background: linear-gradient(135deg, #f0f8bf 25%, #a9ca6f 25% 60%, #4c783b 60%); border: 2px solid #e6d48c; clip-path: polygon(25% 0, 75% 0, 75% 25%, 100% 25%, 100% 75%, 75% 75%, 75% 100%, 25% 100%, 25% 75%, 0 75%, 0 25%, 25% 25%); }
   .status-line.flash::before { background: var(--warn); border-color: #ffe8a1; }
 
   /* A narrow castle panel. Never transform the sidebar: its menu uses fixed positioning. */
-  .sidebar { padding: 7px 2px 8px; background: var(--stone); border: 14px solid transparent; border-image: var(--ornate) 34% / 45px round; box-shadow: 4px 0 0 #0a1020, 8px 0 16px #0007; }
+  .sidebar { padding: 7px 2px 8px; background: var(--stone); border: 14px solid transparent; border-image: var(--f48); box-shadow: 4px 0 0 #0a1020, 8px 0 16px #0007; }
   .sidebar .brand { justify-content: center; gap: 9px; margin: 0 0 9px; padding-bottom: 18px; background: url('/heroes-flourish.svg') center bottom / 160px 24px no-repeat; }
   .sidebar .brand-variant.heroes { flex-direction: column; gap: 2px; }
   .sidebar .brand-mark { width: 38px; height: 48px; }
@@ -42,7 +45,7 @@
   .sidebar > .top-actions { border-color: #8a764b; }
 
   /* The map is decorative terrain; every flag is an actual session, with native tooltips. */
-  .theme-console { display: block; min-width: 0; margin-bottom: 4px; padding: 7px 5px 6px; border: 6px solid transparent; border-image: var(--ornate) 34% / 27px round; background: #101d33; box-shadow: 3px 4px #0006; }
+  .theme-console { display: block; min-width: 0; margin-bottom: 4px; padding: 14px 14px 12px; border: 6px solid transparent; border-image: var(--f36); background: #101d33; box-shadow: 3px 4px #0006; }
   .console-lamps, .console-vector, .console-sweep, .console-signal { display: none; }
   .console-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 5px 6px; color: #f5d88e; font: 700 12px/1.2 var(--display); }
   .console-count { font: 17px/1 'VT323', var(--mono); color: #ffe2a1; }
@@ -63,7 +66,7 @@
   .theme-console[data-disconnected=true] .console-contacts { opacity: .3; }
 
   /* Gold buttons depress one pixel; blue controls keep their familiar labels. */
-  :is(.primary, .secondary, .quiet-button, .stat, .effort-select, .shot-button) { border: 2px solid transparent; border-image: var(--ornate) 34% / 10px round; border-radius: 0; box-shadow: inset 1px 1px #afc4e14d, inset -1px -1px #040b1bb3, 1px 2px #0006; background: linear-gradient(#2f4a74, #1a2d50); color: #f3dfae; }
+  :is(.primary, .secondary, .quiet-button, .stat, .effort-select, .shot-button) { border: 4px solid transparent; border-image: var(--rim); border-radius: 0; box-shadow: inset 1px 1px #afc4e14d, inset -1px -1px #040b1bb3, 1px 2px #0006; background: linear-gradient(#2f4a74, #1a2d50); color: #f3dfae; }
   :is(.secondary, .quiet-button, .stat, .shot-button):hover:not(:disabled) { border-color: #ffe4a0; background: linear-gradient(#3f608e, #253f68); color: #fff1c5; }
   .primary, .stat.selected { border-color: #d9b66b; background: linear-gradient(#ebd18d 0 10%, #c5a15a 10% 90%, #997339 90%); box-shadow: var(--bevel); color: #241b11; text-shadow: 0 1px #f8dfa280; }
   .primary:hover:not(:disabled), .stat.selected:hover { background: #eed18b; color: #241b11; }
@@ -73,13 +76,13 @@
   :is(.theme-options, .filter-options) { background: var(--stone); border: 3px ridge #c0a267; border-radius: 0; }
   .theme-choice[aria-pressed=true], .tab.active { background: #314a6f; color: #ffe2a1; box-shadow: inset 0 0 0 1px #9e8554; }
   .theme-choice:hover, .tab:hover { background: #293f62; }
-  :is(.search, .login-form input, .access-form input:not([type=checkbox]), .message-form textarea, .custom-answer input, .deny-reason) { padding: 12px 20px; background: #0b1930; border: 4px solid transparent; border-image: var(--ornate) 34% / 19px round; border-radius: 0; box-shadow: inset 0 0 0 3px #0b1427; }
+  :is(.search, .login-form input, .access-form input:not([type=checkbox]), .message-form textarea, .custom-answer input, .deny-reason) { padding: 12px 20px; background: #0b1930; border: 4px solid transparent; border-image: var(--sink); border-radius: 0; box-shadow: inset 0 0 0 3px #0b1427; }
   :is(.search:focus-within, .login-form input:focus, .access-form input:focus, .message-form textarea:focus, .custom-answer input:focus, .deny-reason:focus) { outline: 2px solid var(--focus); outline-offset: 1px; box-shadow: none; }
   .search { padding: 0 18px; background: #13223def; }
 
   /* Native progress retains the exact used value and accessible name. The glass reservoir
      and carved end caps are decoration; labels and reset times remain visible at every width. */
-  .usage-accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 6px 18px; padding: 13px 17px; border: 5px solid transparent; border-image: var(--ornate) 34% / 33px round; background: var(--stone); box-shadow: 2px 3px #0008; }
+  .usage-accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 6px 18px; padding: 20px 28px; border: 5px solid transparent; border-image: var(--f40); background: var(--stone); box-shadow: 2px 3px #0008; }
   .usage-account { padding: 2px 0; gap: 10px; }
   .usage-account + .usage-account { border: 0; }
   .usage-logo { position: relative; flex-basis: 31px; height: 40px; padding-top: 17px; color: #fff2c9; font-size: 13px; text-shadow: 1px 1px #000, -1px -1px #000; background: url('/heroes-theme.webp') center / 31px 39px no-repeat; }
@@ -112,17 +115,17 @@
   .project-path { color: #514329; font-size: 10px; }
   .spawn-button { min-height: 24px; padding: 3px 6px; }
   .session-list { --stack-gap: 7px; }
-  .session-card { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 15px; min-height: 86px; padding: 11px 24px; border: 3px solid transparent; border-image: var(--ornate) 34% / 29px round; background: var(--stone); box-shadow: inset 0 0 0 4px #0b1427, 2px 3px #0008; }
+  .session-card { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 15px; min-height: 86px; padding: 14px 30px; border: 3px solid transparent; border-image: var(--f36); background: var(--stone); box-shadow: inset 0 0 0 4px #0b1427, 2px 3px #0008; }
   .session-card::after { content: none; }
   .session-card:hover { background: linear-gradient(#3b56812b, #3b56812b), var(--stone); box-shadow: inset 0 0 0 4px #172b45, 2px 3px #0008; }
   .session-card.needs-input { border-color: transparent; box-shadow: inset 0 0 0 4px #534c31, 2px 3px #0008; }
   .agent-mark { isolation: isolate; align-items: end; justify-items: end; width: 50px; height: 50px; padding: 0 2px; border: 0; border-radius: 0; background: url('/heroes-portraits.webp') left center / 200% 100% no-repeat; image-rendering: pixelated; color: #e1edff; font-size: 12px; text-shadow: 1px 1px #000, -1px -1px #000, 1px -1px #000, -1px 1px #000; }
-  .agent-mark::before { content: ''; position: absolute; inset: -4px; z-index: -1; border: 3px solid transparent; border-image: var(--ornate) 34% / 13px round; background: none; pointer-events: none; }
+  .agent-mark::before { content: ''; position: absolute; inset: -4px; z-index: -1; border: 4px solid transparent; border-image: var(--rim); background: none; pointer-events: none; }
   .agent-mark.claude { color: #ffe3a0; font-size: 17px; background: url('/heroes-portraits.webp') right center / 200% 100% no-repeat; }
   .agent-mark.opencode { background: url('/heroes-opencode-portrait.webp') center / cover no-repeat; }
   .unread-dot { border-radius: 0; background: #ffe29a; box-shadow: 1px 1px #10182b; border: 1px solid #fff1c2; }
   .session-card.subagent .agent-mark { width: 32px; height: 32px; border-radius: 0; font-size: 12px; }
-  .session-card.subagent { grid-template-columns: 34px minmax(0, 1fr) auto; min-height: 64px; padding-inline: 24px; border-image-width: 22px; }
+  .session-card.subagent { grid-template-columns: 34px minmax(0, 1fr) auto; min-height: 64px; padding-inline: 28px; border-image: var(--f32); }
   .badge { border: 1px solid #8a97ab66; border-radius: 0; box-shadow: inset 0 1px #ffffff0a; }
   .badge.amber { border-color: #c5a15d; }
   .badge.green { border-color: #739365; }
@@ -137,7 +140,7 @@
   /* A bound correspondence book: illuminated folios on blue cloth. Keep the frame in
      the scroll container's gutters, and leave native text selection and textarea resizing intact. */
   .detail-panel { border-left: 0; background: var(--stone); box-shadow: -4px 0 #101321, -14px 0 32px #0008; }
-  .chat-header { padding-bottom: 12px; background: var(--stone); border: 4px solid transparent; border-image: var(--ornate) 34% / 25px round; }
+  .chat-header { padding-bottom: 12px; background: var(--stone); border: 4px solid transparent; border-image: var(--f32); }
   .panel-title { color: #ffe4a1; }
   .recent-messages::before, .recent-messages::after { content: ''; position: absolute; top: 0; bottom: 0; z-index: 1; width: 12px; background: url('/heroes-binding.svg') left top / 12px 32px repeat-y; pointer-events: none; image-rendering: pixelated; }
   .recent-messages::before { left: 0; }
@@ -154,12 +157,12 @@
   }
   .history-content { padding-block: 12px 20px; }
   /* The solid paper keeps dark ink readable while the border artwork loads, or if it fails. */
-  .recent-message:not(.tool):not(.notice) { position: relative; padding: 14px 26px 16px; border: 5px solid transparent; border-image: var(--parchment) 24% fill / 30px round; border-radius: 0; background: var(--paper); background-clip: padding-box; box-shadow: none; }
+  .recent-message:not(.tool):not(.notice) { position: relative; padding: 14px 26px 16px; border: 5px solid transparent; border-image: var(--scroll40); border-radius: 0; background: var(--paper); background-clip: padding-box; box-shadow: none; }
   .recent-message.user .message-meta strong { color: #345378; }
   .recent-message.user .message-meta::before { content: ''; flex: none; width: 20px; height: 20px; background: url('/heroes-seal.svg') center / contain no-repeat; image-rendering: pixelated; }
   .recent-message.user .message-meta { justify-content: start; gap: 6px; }
   .recent-message.user .message-meta time { margin-left: auto; }
-  .message-text pre, .request-code, .request-details pre { padding: 10px 16px; border: 3px solid transparent; border-image: var(--ornate) 34% / 14px round; border-radius: 0; }
+  .message-text pre, .request-code, .request-details pre { padding: 10px 16px; border: 4px solid transparent; border-image: var(--sink); border-radius: 0; }
   .message-text pre { background: #ddc79c; }
   .message-text blockquote { padding-left: 20px; border: 0; background: url('/heroes-binding.svg') left top / 8px 22px repeat-y; }
   .message-text hr { height: 18px; border: 0; background: url('/heroes-flourish.svg') center / 144px 22px no-repeat; }
@@ -170,32 +173,32 @@
   .recent-message.tool.failed .tool-call { color: #ffaaa0; }
   .recent-message.tool.failed .tool-call::before { color: #ffaaa0; }
   .tool-run { padding-left: 0; border: 0; }
-  .tool-run > summary { padding: 6px 16px; border: 3px solid transparent; border-image: var(--parchment) 24% fill / 18px round; background: var(--paper); background-clip: padding-box; --danger: #9b322e; color: #4e4634; }
+  .tool-run > summary { padding: 6px 16px; border: 3px solid transparent; border-image: var(--scroll24); background: var(--paper); background-clip: padding-box; --danger: #9b322e; color: #4e4634; }
   .tool-run > summary .tool-call { color: #625840; }
   .tool-run > .recent-message.tool { margin: 0 8px; padding-left: 15px; }
-  .history-shot { padding: 5px; border: 3px solid transparent; border-image: var(--ornate) 34% / 20px round; border-radius: 0; background: #101b32; box-shadow: none; }
+  .history-shot { padding: 5px; border: 4px solid transparent; border-image: var(--rim); border-radius: 0; background: #101b32; box-shadow: none; }
   .history-latest.quiet-button { border-radius: 0; color: #ffe6a2; }
   .chat-requests, .message-composer { padding-top: 15px; border: 0; background: url('/heroes-flourish.svg') center top / 160px 20px no-repeat, var(--stone); }
-  .message-form .composer-row textarea { min-height: 90px; padding: 16px 28px; color-scheme: light; color: #30291e; caret-color: #345378; background: var(--paper); background-clip: padding-box; border: 5px solid transparent; border-image: var(--parchment) 24% fill / 30px round; box-shadow: none; }
+  .message-form .composer-row textarea { min-height: 90px; padding: 16px 28px; color-scheme: light; color: #30291e; caret-color: #345378; background: var(--paper); background-clip: padding-box; border: 5px solid transparent; border-image: var(--scroll40); box-shadow: none; }
   .message-form textarea::placeholder { color: #6c5d42; }
   .composer-row { gap: 9px; align-items: center; }
   .composer-row .primary { align-self: center; width: 72px; min-height: 72px; padding: 12px 8px; border: 0; background: url('/heroes-seal.svg') center / contain no-repeat; color: #fff0bf; box-shadow: none; text-shadow: 1px 1px #3b1922; font: 700 15px var(--display); }
   .composer-row .primary:hover:not(:disabled) { background: url('/heroes-seal.svg') center / contain no-repeat; color: #fff8dc; filter: brightness(1.15); }
   .composer-row .primary:disabled { padding-inline: 0; font-size: 12px; opacity: .65; }
   .composer-row .primary:active:not(:disabled) { filter: brightness(.9); }
-  .queued-message { padding: 7px 16px; background: #12223d; border: 3px solid transparent; border-image: var(--ornate) 34% / 16px round; }
-  .answer-option { padding: 10px 16px; border: 3px solid transparent; border-image: var(--ornate) 34% / 16px round; background: #14243e; }
+  .queued-message { padding: 7px 16px; background: #12223d; border: 4px solid transparent; border-image: var(--rim); }
+  .answer-option { padding: 10px 16px; border: 4px solid transparent; border-image: var(--rim); background: #14243e; }
   .answer-option:has(input:checked) { background: #354b68; border-color: transparent; box-shadow: none; }
   .answer-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
-  .request-box { padding: 18px 22px; border: 4px solid transparent; border-image: var(--ornate) 34% / 29px round; background: var(--stone); box-shadow: inset 0 0 0 3px #0e182b; }
+  .request-box { padding: 22px 28px; border: 4px solid transparent; border-image: var(--f36); background: var(--stone); box-shadow: inset 0 0 0 3px #0e182b; }
   .request-title { color: #ffe2a1; }
-  .shot-viewer { border: 8px solid transparent; border-image: var(--ornate) 34% / 35px round; background: var(--stone); color: var(--text); }
+  .shot-viewer { border: 8px solid transparent; border-image: var(--f48); background: var(--stone); color: var(--text); }
   .shot-full img { border-radius: 0; }
   .shot-meta { color: var(--text-2); }
   .toast { border: 3px ridge #c7a969; border-radius: 0; background: #192c4c; color: #ffe6a2; box-shadow: 3px 4px #0008; }
 
   .login-screen { isolation: isolate; background: transparent; }
-  .login-card { width: min(100%, 400px); gap: 22px; padding: 36px; border: 8px solid transparent; border-image: var(--ornate) 34% / 60px round; border-radius: 0; background: var(--stone); box-shadow: 5px 7px #0008, 0 16px 50px #0008; }
+  .login-card { width: min(100%, 400px); gap: 22px; padding: 36px; border: 8px solid transparent; border-image: var(--f64); border-radius: 0; background: var(--stone); box-shadow: 5px 7px #0008, 0 16px 50px #0008; }
   .login-display { display: flex; flex-direction: column; align-items: center; gap: 14px; align-self: stretch; padding: 8px 0 24px; background: url('/heroes-flourish.svg') center bottom / 200px 30px no-repeat; }
   .login-card .brand-mark { display: none; }
   .login-card .brand-name { font-size: 32px; }
@@ -204,7 +207,7 @@
   .login-form input { text-align: center; letter-spacing: .12em; }
   .login-form label { color: #f3d99b; }
   .login-card:has(.form-error:not(:empty)) { border-image: none; border-color: #bb7661; }
-  .access-console { display: block; padding: 24px; border: 6px solid transparent; border-image: var(--ornate) 34% / 36px round; background: var(--stone); }
+  .access-console { display: block; padding: 24px; border: 6px solid transparent; border-image: var(--f40); background: var(--stone); }
   .access-console .panel-title { margin-top: 0; }
 }
 
@@ -265,7 +268,7 @@
 @media (min-width: 641px) and (max-width: 900px) {
   :root[data-theme=heroes] {
     .theme-console { display: none; }
-    .sidebar { padding: 12px 3px; border-width: 4px; border-image-width: 17px; }
+    .sidebar { padding: 12px 3px; border-width: 4px; border-image: var(--f24); }
     .sidebar .brand { padding-bottom: 12px; background-size: 46px 7px; }
     .nav-item { width: 44px; padding: 0; }
     .main-content { padding-inline: 20px; }
@@ -280,7 +283,7 @@
     .main-content { padding: 12px max(10px, env(safe-area-inset-right)) 24px max(10px, env(safe-area-inset-left)); }
     .status-line { font-size: 10px; margin-bottom: 10px; }
     .stat { padding: 5px 8px; }
-    .session-card { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 9px; padding: 11px 16px; border-image-width: 22px; }
+    .session-card { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 9px; padding: 11px 16px; border-image: var(--f24); }
     .agent-mark { width: 32px; height: 38px; }
     .group-heading { padding-inline: 2px; border-inline-width: 13px; border-image-width: 0 13px; gap: 6px; }
     .group-title { gap: 5px; }
@@ -288,8 +291,8 @@
     .session-card.subagent { grid-template-columns: 26px minmax(0, 1fr) auto; padding-inline: 16px; }
     .session-card.subagent .agent-mark { width: 24px; height: 28px; }
     .detail-panel { border-left: 0; }
-    .login-card { padding: 30px 22px; border-image-width: 48px; }
-    .usage-accounts { padding: 10px 9px; gap: 8px; border-image-width: 26px; }
+    .login-card { padding: 30px 22px; border-image: var(--f48); }
+    .usage-accounts { padding: 10px 9px; gap: 8px; border-image: var(--f24); }
     .usage-account { gap: 6px; padding-inline: 0; }
     .usage-windows { gap: 8px; }
     .usage-logo { flex-basis: 22px; background-size: 22px 30px; }
@@ -297,14 +300,14 @@
     .usage-window::before, .usage-window::after { width: 16px; background-size: 16px 27px; }
     .usage-meter { margin-inline: 8px; width: calc(100% - 16px); }
     .usage-tag { flex-basis: 4ch; font-size: 10px; }
-    .request-box { padding: 16px; border-image-width: 24px; }
+    .request-box { padding: 16px; border-image: var(--f24); }
     .history-viewport { padding-inline: max(15px, env(safe-area-inset-left)) max(15px, env(safe-area-inset-right)); }
     .recent-messages::before, .recent-messages::after { width: 8px; background-size: 8px 22px; }
-    .recent-message:not(.tool):not(.notice) { padding: 12px 18px 14px; border-image-width: 24px; margin-right: 6px; }
+    .recent-message:not(.tool):not(.notice) { padding: 12px 18px 14px; border-image: var(--scroll24); margin-right: 6px; }
     .recent-message.user:not(.notice) { margin-left: 6px; margin-right: 0; }
     .tool-run { margin-inline: 0; }
     .tool-run > summary { gap: 5px; padding-inline: 10px; }
-    .message-form .composer-row textarea { padding: 14px 20px; border-image-width: 24px; }
+    .message-form .composer-row textarea { padding: 14px 20px; border-image: var(--scroll24); }
     .composer-row { gap: 5px; }
     .composer-row .primary { width: 60px; min-height: 60px; font-size: 14px; }
   }

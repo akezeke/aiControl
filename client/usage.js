@@ -66,8 +66,13 @@ export function usageAccounts(accounts, { now = Date.now(), disconnected = false
       windows.append(status);
     }
     row.append(windows);
-    if (stale && (account.windows?.length || account.periods?.length)) row.append(node('span', 'usage-state', 'stale'));
-    if (['partial', 'updating'].includes(account.status) && !stale) { const status = node('span', 'usage-state', account.status); status.title = detail; status.setAttribute('aria-label', detail); row.append(status); }
+    // The spend panel already has a heading row, so its status lives there instead of adding a line that shifts the layout.
+    const state = stale ? (account.windows?.length || account.periods?.length ? 'stale' : '') : ['partial', 'updating'].includes(account.status) ? account.status : '';
+    if (state) {
+      const status = node('span', `usage-state state-${state}`, state);
+      if (!stale) { status.title = detail; status.setAttribute('aria-label', detail); }
+      (windows.querySelector('.spend-heading') || row).append(status);
+    }
     rows.append(row);
   }
   return rows;

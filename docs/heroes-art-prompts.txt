@@ -1,7 +1,7 @@
 Heroes background — built-in imagegen, original artwork.
 Final asset: client/public/heroes-bg.webp (WebP, quality 90).
-Additional assets: client/public/heroes-ornate-frame.webp (WebP, quality 90, alpha preserved), client/public/heroes-portraits.webp (WebP, quality 90).
-Chat artwork: client/public/heroes-parchment.webp (WebP, quality 90, alpha preserved).
+Additional assets: docs/art/src/heroes-ornate-frame.webp (resized for display by scripts/heroes-art.py) (WebP, quality 90, alpha preserved), client/public/heroes-portraits.webp (WebP, quality 90).
+Chat artwork: docs/art/src/heroes-parchment.webp (resized by scripts/heroes-art.py) (WebP, quality 90, alpha preserved).
 
 Initial generation prompt:
 Use case: stylized-concept

@@ -2,7 +2,9 @@ Assets: client/public/diablo-frame.webp, client/public/diablo-ornament.webp, cli
 Generated using the built-in imagegen tool with transparent backgrounds.
 Frame normalized to 1024x1024 with nearest-neighbor scaling; both saved as WebP at quality 94. CSS slices the frame at 256px.
 Portrait is the central skull cropped from the ornament, reduced to 192px for compact controls.
-diablo-trim.webp is the central upper molding cropped from the normalized frame; diablo-trim-vertical.webp rotates that strip for vertical dividers.
+The frame is shown for large windows at 256px slice -> 64px, i.e. one CSS pixel per drawn pixel (flush variant for panels touching the viewport).
+Smaller borders and the stone texture were generated with Codex (sources in docs/art/src: diablo-panel, diablo-button, diablo-stone) and are resampled by python3 scripts/diablo-art.py
+to diablo-panel-{8,12,16}, diablo-button-{8,10} (band width in CSS px) and diablo-stone (seamless, 512px). diablo-socket and diablo-rule(-vertical) are drawn in that script.
 
 Final frame prompt:
 Use case: stylized-concept
@@ -19,3 +21,13 @@ Primary request: lavish gothic pixel-art pediment for a Diablo 1/2 inspired inte
 Subject: a large snarling demonic skull at the horizontal center, with swept curled horns, tiny blood-red gemstone in the brow, two weathered skeletal stone gargoyles and elaborate curled wrought-iron scrollwork extending out symmetrically on both sides. Low wide triangular composition, hangs above a window. No creatures below, all pieces visibly connected as one carved ornament. Blood streaks under the center skull, chains hanging only short distances. Dense carved medieval gothic relief with visible depth and battered highlights. Mostly aged bone and desaturated dark gray stone, small warm tarnished bronze accents, restrained crimson gore.
 Composition: ornament fits across the middle horizontal band, width about1400 height450 pixels. Transparent margins on all sides. No decorative box or rectangular frame, no lettering, no symbols resembling text.
 Style: authentic late-1990s Diablo UI pixel art with chunky square 4x4 pixels, limited palette, hand-dithered shading, high-contrast sculpted edge highlights. Not vector, not smooth painting, not shiny modern render. Truly transparent background, no fake checkerboard.
+
+
+Small panel border prompt (diablo-panel):
+Asset type: production UI nine-slice border asset, square 1024x1024 PNG, truly transparent background and center. A compact, rich, dark gothic pixel-art panel border for cards and small windows inspired by Diablo 2 inventory panels: 64px band of blackened cast iron with thin tarnished-bronze inlay, small gothic arch relief and evenly spaced bronze rivets (plain repeatable middle), sturdy iron corner brackets with a bronze boss and small spikes, tiny blood specks only. 256x256 logical pixels at 4x nearest, limited palette, no text.
+
+Button/card border prompt (diablo-button):
+Slim crisp nine-slice border for small buttons and list rows: raised chiselled stone-and-iron bevel with a thin bronze inner lip and one bronze rivet in each chamfered corner; 48px band, plain repeatable edges; same pixel-art style, transparent center.
+
+Stone prompt (diablo-stone):
+Seamless tileable 1024x1024 opaque texture: dark rough-hewn cathedral-catacomb stone blocks of varied sizes with narrow dark mortar gaps, chips, hairline cracks, a few tiny rust and dried-blood stains; flat even lighting, no vignette or clouds, very low contrast warm charcoal-brown; 4x4 pixel art.
