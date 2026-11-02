@@ -10,6 +10,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Answer permissions and questions, send messages with pasted or picked images (Claude needs tmux), stop turns and start agents. Nothing is auto-approved.
 - Switch models and supported effort levels from session headers; remember choices for new sessions.
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
+- Live feed (**f**): every session's messages, tool calls and screenshots on one timeline, with who's working or waiting along the top. It opens beside the list or scene.
 - Chat history with Markdown, diffs, tool calls, screenshots, older messages on demand and the Markdown files a session writes.
 - Account usage limits, notifications and sounds when a session needs you.
 - OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets, in every theme: a Bridge console row, a Metropolis plant, a Fantasy treasury and a line on the Office whiteboard.
