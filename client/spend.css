@@ -47,7 +47,7 @@ button.spend-row:not(:disabled):hover .usage-percent { text-decoration: underlin
 .spend-row.spend-bare { grid-template-columns: max-content max-content; }
 
 /* Royal treasury: an inset inventory panel, gold stacks, and a segmented gold reserve. */
-:root[data-theme=heroes] .spend-panel { --spend-color: #e6bc59; --spend-cache: #74c398; padding: 12px 18px; border: 4px solid transparent; border-image: var(--ornate) 34% / 17px stretch; border-radius: 0; background: linear-gradient(105deg, #21385ee8, #08142bf2), url('/heroes-stone.svg'); box-shadow: inset 0 0 20px #02071599, 1px 2px #0008; }
+:root[data-theme=heroes] .spend-panel { --spend-color: #e6bc59; --spend-cache: #74c398; padding: 12px 18px; border: 4px solid transparent; border-image: var(--ornate) 34% / 17px round; border-radius: 0; background: linear-gradient(105deg, #21385ee8, #08142bf2), url('/heroes-stone.svg'); box-shadow: inset 0 0 20px #02071599, 1px 2px #0008; }
 :root[data-theme=heroes] .spend-heading { border-color: #8d784b66; color: #d0ba88; font-family: var(--display); }
 :root[data-theme=heroes] .spend-theme-name::before { content: 'Royal treasury'; }
 :root[data-theme=heroes] .spend-total strong, :root[data-theme=heroes] .spend-balance strong { color: #ffe3a0; text-shadow: 1px 2px #02091c; font-family: var(--display); }
