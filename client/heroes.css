@@ -260,6 +260,7 @@
 @media (prefers-reduced-motion: reduce) { .heroes-boot { display: none; } }
 @media (forced-colors: none) {
   :root[data-theme=heroes], :root[data-theme=heroes] * { scrollbar-color: var(--scroll-thumb) var(--scroll-track); scrollbar-width: thin; }
+  :root[data-theme=heroes] .usage-windows { scrollbar-width: none; }
 }
 @media (forced-colors: active) {
   :root[data-theme=heroes] :is(input, textarea):focus-visible { outline: 2px solid Highlight; }
