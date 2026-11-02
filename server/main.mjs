@@ -32,13 +32,14 @@ export async function startServer({ host, hostname, tls = null }) {
   const opencode = new OpenCodeAdapter(store, readSettings().opencode);
   const defaults = new AgentDefaults();
   const spendBudget = await new SpendBudget().load();
+  opencode.budget = spendBudget.value;
   // One usage row per Claude account, each with its own credentials.
   const claudeUsage = accounts.map(({ dir, label }) => ({ label, poller: new UsagePoller('claude', label ? `Claude Code · ${label}` : 'Claude Code', claudeUsageReader({ credentialsFile: join(dir, '.credentials.json') })) }));
   // Loading the .mjs directly avoids temporary bundled configs triggering Node 22's imported-module watcher.
   const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), configLoader: 'native', server: { middlewareMode: true, hmr: false, allowedHosts: origins.map(o => new URL(o).hostname) } });
   const snapshot = () => {
     const sessions = mergeSessions([...codex.list(), ...claude.list(), ...opencode.list()], store.list());
-    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [{ ...opencode.usageSnapshot(), budget: { weeklyUSD: spendBudget.weeklyUSD } }] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
+    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -84,7 +85,7 @@ export async function startServer({ host, hostname, tls = null }) {
     const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
     return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '', ...await defaults.read(provider, account?.label) });
   };
-  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, budget: value => spendBudget.save(value) });
+  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, budget: async value => opencode.budget = await spendBudget.save(value) });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {

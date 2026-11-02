@@ -60,7 +60,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
       if (path === '/api/snapshot' && req.method === 'GET') { json(res, 200, snapshot(), req); return; }
       if (path === '/api/usage/opencode/budget' && req.method === 'POST') {
         if (!budget) throw fail('Spend budgets are unavailable.', 503);
-        const result = await budget((await body(req)).weeklyUSD); auth.touch(session); json(res, 200, result); return;
+        const result = await budget(await body(req)); auth.touch(session); json(res, 200, result); return;
       }
       if (path === '/api/spawn' && req.method === 'POST') {
         if (!spawn) throw fail('Starting agents is not available.', 503);

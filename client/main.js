@@ -325,7 +325,7 @@ function renderData() {
   const error = document.querySelector('#error'); error.hidden = !state.error; error.textContent = state.error ? `${state.error} Showing the last received status. Actions are disabled until reconnected.` : '';
   document.querySelector('#machine').textContent = state.snapshot.machine;
   const usage = document.querySelector('#usage'), usageSignature = JSON.stringify([state.snapshot.usage, !!state.error, Math.floor(Date.now() / 60_000)]);
-  if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error, editBudget: account => budgetDialog(account, async weeklyUSD => { await api('usage/opencode/budget', { weeklyUSD }); toast('Weekly budget saved'); await refresh(); }) }); }
+  if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error, editBudget: account => budgetDialog(account, async budget => { await api('usage/opencode/budget', budget); toast('Budget saved'); await refresh(); }) }); }
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
   const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); };

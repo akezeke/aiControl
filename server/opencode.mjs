@@ -1,5 +1,5 @@
 import { fail, slashCommand } from './requests.mjs';
-import { openCodeSession, usageRecords, usagePeriods, weeklyUsage, tokenUsage } from './opencode-data.mjs';
+import { openCodeSession, usageRecords, usagePeriods, weeklyUsage, budgetCycle, budgetUsage, tokenUsage } from './opencode-data.mjs';
 import { messageLimit } from './messages.mjs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -70,6 +70,7 @@ async function eachLimit(items, action) {
 export class OpenCodeAdapter {
   constructor(store, config, { fetch: fetcher, now = Date.now, intervalMs = 3000, serviceFile = join(process.env.XDG_STATE_HOME || join(homedir(), '.local/state'), 'opencode/service.json') } = {}) {
     this.store = store; this.config = openCodeConfig(config); this.now = now; this.intervalMs = intervalMs;
+    this.budget = { mode: 'weekly', usd: null, day: 7 };
     this.sessions = new Map(); this.usage = new Map(); this.requestKeys = new Set(); this.submissions = new Map();
     this.modelCatalogs = new Map(); this.chosenSettings = new Map();
     this.images = new OpenCodeImages();
@@ -135,7 +136,7 @@ export class OpenCodeAdapter {
     for (const [id, session] of this.sessions) if (!live.has(id)) { this.sessions.delete(id); this.images.delete(id); this.store.removeSession(session.id); }
     const all = new Set(infos.map(info => info.id));
     for (const id of this.usage.keys()) if (!all.has(id)) this.usage.delete(id);
-    const month = Math.min(usagePeriods([], this.now())[1].from, weeklyUsage([], this.now()).from);
+    const month = this.usageSince();
     let incomplete = rows.length >= maxSessions;
     await eachLimit(infos, async info => {
       const prior = this.sessions.get(info.id), status = states.get(info.id)?.type;
@@ -201,12 +202,16 @@ export class OpenCodeAdapter {
     for (const key of this.requestKeys) if (!keys.has(key)) this.store.removeSource(key);
     this.requestKeys = keys;
   }
+  // Oldest timestamp any usage view needs.
+  usageSince() { return Math.min(usagePeriods([], this.now())[1].from, weeklyUsage([], this.now()).from, budgetCycle(this.budget, this.now()).from); }
   usageSnapshot() {
     const records = [...this.usage.values()].flatMap(value => value.records), periods = usagePeriods(records, this.now()), week = weeklyUsage(records, this.now());
-    const incomplete = this.usageIncomplete || week.incomplete || periods.some(period => period.incomplete);
-    const missing = [...this.usage].flatMap(([id, value]) => value.records.filter(record => record.usd === null && record.at >= Math.min(periods[1].from, week.from) && record.at <= this.now()).map(record => ({ ...record, working: this.sessions.get(id)?.status === 'working' })));
+    const cycle = budgetCycle(this.budget, this.now()), spent = budgetUsage(records, cycle, this.now());
+    const incomplete = this.usageIncomplete || week.incomplete || spent.incomplete || periods.some(period => period.incomplete);
+    const since = this.usageSince();
+    const missing = [...this.usage].flatMap(([id, value]) => value.records.filter(record => record.usd === null && record.at >= since && record.at <= this.now()).map(record => ({ ...record, working: this.sessions.get(id)?.status === 'working' })));
     const updating = !this.usageIncomplete && missing.length > 0 && missing.every(record => record.pending && record.working);
-    return { provider: 'opencode', name: 'OpenCode', windows: [], periods: this.usageUpdatedAt ? periods : [], week: this.usageUpdatedAt ? week : null, updatedAt: this.usageUpdatedAt,
+    return { provider: 'opencode', name: 'OpenCode', windows: [], periods: this.usageUpdatedAt ? periods : [], week: this.usageUpdatedAt ? week : null, budget: { ...this.budget, ...cycle, spent: spent.usd }, updatedAt: this.usageUpdatedAt,
       status: !this.connected ? this.usageUpdatedAt ? 'stale' : 'unavailable' : updating ? 'updating' : incomplete ? 'partial' : 'ready',
       detail: !this.connected ? this.detail : `${updating ? 'A turn is still running; its final cost is not reported yet. ' : incomplete ? 'Some history or costs are unavailable; totals are incomplete. ' : ''}OpenCode estimates for recorded sessions, using this computer’s calendar. Free, subscription or unpriced models may report $0.`, estimated: true };
   }

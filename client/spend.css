@@ -37,7 +37,7 @@
 .spend-token-rail { display: flex; flex: 1; height: 3px; overflow: hidden; border-radius: 9px; background: var(--line); }
 .spend-token { display: block; height: 100%; background: var(--spend-color); }.spend-token.output { opacity: .5; }.spend-token.cache { background: var(--spend-cache); }
 .spend-token-label, .spend-cache { white-space: nowrap; }
-.budget-actions { display: flex; justify-content: end; gap: 8px; }.budget-actions > button:first-child { margin-right: auto; }.budget-dialog .form-error:empty { display: none; }
+.budget-actions { display: flex; justify-content: end; gap: 8px; }.budget-actions > button:first-child { margin-right: auto; }.budget-dialog .form-error:empty, .budget-dialog label[hidden] { display: none; }
 :root .usage-stale .spend-panel { opacity: .6; }
 
 /* Royal treasury: an inset inventory panel, gold stacks, and a segmented gold reserve. */

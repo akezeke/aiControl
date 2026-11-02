@@ -49,14 +49,14 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 :is(.secondary, .quiet-button):hover:not(:disabled) { background: var(--panel-2); border-color: var(--line-2); color: var(--text); }
 .quiet-button { font-weight: 500; }
 :is(.primary, .secondary, .quiet-button):active:not(:disabled) { transform: translateY(1px); }
-.login-form input, .access-form input:not([type=checkbox]), .custom-answer input, .message-form textarea, .new-session-form input { display: block; width: 100%; min-height: 44px; padding: 10px 12px; color: var(--text); background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 14px; line-height: 1.45; outline: none; caret-color: var(--accent); transition: border-color .15s, box-shadow .15s; }
-:is(.login-form input, .access-form input, .custom-answer input, .message-form textarea, .new-session-form input):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.login-form input, .access-form input:not([type=checkbox]), .custom-answer input, .message-form textarea, .new-session-form input, .new-session-form select { display: block; width: 100%; min-height: 44px; padding: 10px 12px; color: var(--text); background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 14px; line-height: 1.45; outline: none; caret-color: var(--accent); transition: border-color .15s, box-shadow .15s; }
+:is(.login-form input, .access-form input, .custom-answer input, .message-form textarea, .new-session-form input, .new-session-form select):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .new-session-dialog { width: min(420px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 24px; color: var(--text); background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: 0 16px 64px #0006; }
 .new-session-dialog::backdrop { background: #0009; }
 .new-session-form { display: grid; gap: 16px; }
 .new-session-form h2 { margin: 0; font-size: 18px; }
 .new-session-form label { display: grid; gap: 6px; font-size: 13px; }
-.new-session-form input { font-size: 16px; }
+.new-session-form input, .new-session-form select { font-size: 16px; }
 .new-session-form .form-error { margin: 0; overflow-wrap: anywhere; }
 .new-session-form .form-error:empty { display: none; }
 .new-session-actions { display: flex; justify-content: flex-end; gap: 8px; }

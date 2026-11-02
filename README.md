@@ -12,7 +12,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
 - Chat history with Markdown, diffs, tool calls, screenshots and older messages on demand.
 - Account usage limits, notifications and sounds when a session needs you.
-- OpenCode spend HUDs, daily cost charts, token mix and editable weekly budgets.
+- OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets.
 - Light, dark and themed interfaces, including a walkable 3D Office.
 - Local access or access from other devices over Tailscale, protected by a PIN or password.
 
@@ -52,7 +52,7 @@ Use **… → New OpenCode session** beside search to create a session in any fo
 
 For a standalone server or OpenCode 1, run `opencode serve --hostname 127.0.0.1 --port 4096`, enter its URL/password in `npm run setup`, then restart AI Control. Connect the terminal to that same server (`opencode --server URL` in V2; `opencode attach URL` in V1).
 
-Click the spend panel's balance to set a weekly USD budget (Monday reset, server timezone). It tracks recorded estimates, not provider credits, and does not cap API spending. **Updating** means final costs are pending; **Partial** means totals are incomplete. Fire archives idle sessions and subagents while leaving the terminal open; running or queued work blocks it. Advanced V2 forms stay in OpenCode. V1 model changes apply to the next dashboard message; its sessions must be exposed by the connected server.
+Click the spend panel's balance to set a USD budget: weekly (Monday reset) or monthly (reset on a day of your choice; day 31 resets on the last day of shorter months), in the server timezone. It tracks recorded estimates, not provider credits, and does not cap API spending. **Updating** means final costs are pending; **Partial** means totals are incomplete. Fire archives idle sessions and subagents while leaving the terminal open; running or queued work blocks it. Advanced V2 forms stay in OpenCode. V1 model changes apply to the next dashboard message; its sessions must be exposed by the connected server.
 
 ## Commands
 

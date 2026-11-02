@@ -39,6 +39,20 @@ export function weeklyUsage(records, now = Date.now()) {
   return { ...total, from: monday.getTime(), resetsAt, incomplete: days.some(day => day.incomplete), days };
 }
 
+// A monthly cycle runs from the reset day to the next one; days beyond a short month's end reset on its last day.
+export function budgetCycle({ mode, day } = {}, now = Date.now()) {
+  if (mode !== 'monthly') { const { from, resetsAt } = weeklyUsage([], now); return { from, resetsAt }; }
+  const date = new Date(now), at = (month) => new Date(date.getFullYear(), month, Math.min(day, new Date(date.getFullYear(), month + 1, 0).getDate())).getTime();
+  const month = at(date.getMonth()) > now ? date.getMonth() - 1 : date.getMonth();
+  return { from: at(month), resetsAt: at(month + 1) };
+}
+
+export function budgetUsage(records, cycle, now = Date.now()) {
+  let usd = 0, incomplete = false;
+  for (const record of records) if (record.at >= cycle.from && record.at <= now && record.at < cycle.resetsAt) { usd += number(record.usd); incomplete ||= record.usd === null; }
+  return { usd, incomplete };
+}
+
 export function openCodeMessages(rows, limit = messageLimit) {
   const messages = [];
   for (const { info, parts = [] } of rows) {
