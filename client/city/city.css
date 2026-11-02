@@ -1,4 +1,4 @@
-#city { position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: #0b5e65; touch-action: none; }
+#city { position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: #4d4a44; touch-action: none; }
 /* Sized in JS: whole device pixels per art pixel, so never stretched to fit. */
 #city > canvas { display: block; image-rendering: pixelated; transform-origin: 0 0; will-change: transform; }
 @media (max-width: 640px) { :root[data-theme-choice=city]:not([data-scene-fallback], [data-scene-list]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
@@ -11,18 +11,19 @@
 /* Pixel corners, from themes.css: a border image with the corner pixel missing and the fill kept off it. A hard drop shadow follows the cut; a box shadow wouldn't. */
 .city-controls button, .city-lost, .office-card, .office-menu, .city-bubble, .city-sign, .city-tag, .office-menu .office-folder { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; }
 .city-controls button, .city-lost, .office-card, .office-menu { filter: drop-shadow(2px 2px 0 #2e222f); }
-.city-controls button { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 36px; height: 36px; padding: 0 8px; background-color: var(--panel); color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); box-shadow: var(--px-raised); cursor: pointer; }
+.city-controls button { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 36px; height: 36px; padding: 0 8px; background-color: #454c4e; color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); box-shadow: inset 2px 2px 0 #4d65b4, inset -2px -2px 0 #323353; cursor: pointer; }
 .city-controls svg { flex: none; display: block; }
+.city-controls button { background-image: var(--rivet), var(--rivet), var(--rivet), var(--rivet); background-position: 2px 2px, calc(100% - 2px) 2px, 2px calc(100% - 2px), calc(100% - 2px) calc(100% - 2px); background-size: 3px 3px; background-repeat: no-repeat; }
 .city-controls button[hidden], .city-lost[hidden] { display: none; }
-.city-controls button:hover { background-color: var(--plan-faint); box-shadow: inset 2px 2px 0 var(--plan-line), inset -2px -2px 0 var(--panel); }
-.city-controls button:active { transform: translate(2px, 2px); filter: none; box-shadow: var(--px-sunk); }
+.city-controls button:hover { background-color: #565e60; box-shadow: inset 2px 2px 0 #8a9496, inset -2px -2px 0 #454c4e; }
+.city-controls button:active { transform: translate(2px, 2px); filter: none; box-shadow: inset 2px 2px 0 #2c3032; }
 .city-controls button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .city-controls .city-waiting { background-color: #f9c22b; color: #2e222f; box-shadow: inset 2px 2px 0 #fbff86, inset -2px -2px 0 #f79617; }
 .city-controls .city-waiting:hover { background-color: #fbff86; box-shadow: inset 2px 2px 0 #fff, inset -2px -2px 0 #f9c22b; }
 .city-lost { padding: 9px 8px; background-color: #e83b3b; color: #fff; font: 400 16px/1 var(--display, 'Silkscreen', ui-monospace, monospace); white-space: nowrap; }
 @media (pointer: coarse) { .city-controls button { min-width: 44px; height: 44px; } }
 
-.office-card { position: absolute; left: 0; top: 0; z-index: 2000; width: max-content; max-width: min(300px, calc(100% - 16px)); padding: 8px 10px; background-color: var(--panel); color: #fff; font: 500 13px/1.35 var(--font); box-shadow: var(--px-raised); pointer-events: none; image-rendering: pixelated; }
+.office-card { position: absolute; left: 0; top: 0; z-index: 2000; width: max-content; max-width: min(300px, calc(100% - 16px)); padding: 12px 10px 8px; background-color: var(--panel); background-image: var(--barrier), var(--rivet), var(--rivet); background-position: 0 0, 3px calc(100% - 3px), calc(100% - 3px) calc(100% - 3px); background-size: 8px 4px, 3px 3px, 3px 3px; background-repeat: repeat-x, no-repeat, no-repeat; color: #fff; font: 500 13px/1.35 var(--font); box-shadow: var(--px-raised); pointer-events: none; image-rendering: pixelated; }
 .office-card > div + div { margin-top: 4px; }
 .office-card .title, .office-card .detail { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .office-card .title { font-size: 14px; font-weight: 700; }
@@ -74,7 +75,7 @@
 .city-tag.gauge::after { content: ''; display: block; height: 4px; margin-top: 2px; background: linear-gradient(90deg, transparent var(--used), #565e60 0), repeating-linear-gradient(90deg, #c7dcd0 0 4px, transparent 4px 5px); }
 .city-tag.gauge.high::after { background: linear-gradient(90deg, transparent var(--used), #f79617 0), repeating-linear-gradient(90deg, #2e222f 0 4px, transparent 4px 5px); }
 
-.office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; padding: 4px; background-color: var(--panel); color: #fff; box-shadow: var(--px-raised); image-rendering: pixelated; }
+.office-menu { position: absolute; left: 0; top: 0; z-index: 2001; display: flex; flex-direction: column; gap: 2px; padding: 12px 4px 7px; background-color: var(--panel); background-image: var(--barrier), var(--rivet), var(--rivet); background-position: 0 0, 3px calc(100% - 3px), calc(100% - 3px) calc(100% - 3px); background-size: 8px 4px, 3px 3px, 3px 3px; background-repeat: repeat-x, no-repeat, no-repeat; color: #fff; box-shadow: var(--px-raised); image-rendering: pixelated; }
 .office-menu[hidden] { display: none; }
 .office-menu button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 0; background: none; color: #fff; font: 700 14px/1.2 var(--font); cursor: pointer; }
 .office-menu button:hover, .office-menu button:focus-visible { background: var(--sunken); box-shadow: var(--px-sunk); outline: none; }

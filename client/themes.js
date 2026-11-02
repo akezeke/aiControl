@@ -17,8 +17,8 @@ export const themes = [
   { id: 'office', scheme: 'light', name: 'Office', color: '#dcc6a3' },
   // The bridge is a 3D scene too; its colours are chosen on the bridge itself.
   { id: 'bridge', scheme: 'dark', name: 'Bridge', color: '#150f33' },
-  // A pixel-art city, drawn on a 2D canvas in the Resurrect 64 palette; its list is the map's own HUD.
-  { id: 'city', scheme: 'dark', name: 'Metropolis', color: '#0b5e65' },
+  // A pixel-art city, drawn on a 2D canvas in the Resurrect 64 palette; its list is the site office, in building materials.
+  { id: 'city', scheme: 'dark', name: 'Metropolis', color: '#4d4a44' },
   // Each project a battle, each session a party member: polygons on painted backgrounds, windows in canopy green.
   { id: 'fantasy', scheme: 'dark', name: 'Fantasy Battle', color: '#123b33' },
 ];
