@@ -1,17 +1,24 @@
 // What's written on the walls: usage limits and any agent the server can't reach on the whiteboard, the real time on the clock,
 // a sticky note per waiting session, the machine's name on the door, and a sign on the coffee machine while usage is used up.
-// Each is a canvas texture redrawn only when what it shows changes.
+// Each is a canvas texture redrawn only when what it shows changes. And the kitchen's: Trickshot's clipboard and score board.
 import * as THREE from 'three';
 import { usageWindowView } from '../usage-presentation.js';
+import { PLACES, aimAt, bestText, capital, challenges, dayKey, itemName, num, randomShot } from './daily.js';
+import { SPOTS, ZONES } from './kitchen-plan.js';
+import { MONDAY } from './levels.js';
+import { dims } from './lights.js';
 
 const MARKER = "'Comic Neue', 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive";
+const SHARPIE = "'Permanent Marker', 'Marker Felt', 'Comic Neue', cursive";
 const INK = { black: '#23262e', blue: '#2b59c3', red: '#d7263d', green: '#1f9d55' };
 
-function paint(face, width, height) {
-  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+// `scale`: texture pixels per drawing unit.
+function paint(face, width, height, scale = 1) {
+  const canvas = document.createElement('canvas'); canvas.width = width * scale; canvas.height = height * scale;
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 4;
   face.material.map = texture; face.material.color.set('#ffffff'); face.material.needsUpdate = true;
-  return { g: canvas.getContext('2d'), width, height, texture };
+  const g = canvas.getContext('2d'); g.scale(scale, scale);
+  return { g, width, height, texture };
 }
 // A slightly wobbly hand-drawn line.
 function scribble(g, x1, y1, x2, y2, seed = 1) {
@@ -27,46 +34,48 @@ function fit(g, text, width) {
   return `${text}…`;
 }
 
-function drawWhiteboard({ g, width: w, height: h }, usage, providers, error, now) {
+export function drawWhiteboard({ g, width: w, height: h }, usage, providers, error, now) {
   g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h);
   g.lineCap = 'round'; g.lineJoin = 'round';
-  g.fillStyle = INK.blue; g.font = `bold 52px ${MARKER}`; g.fillText('Usage', 40, 70);
-  g.strokeStyle = INK.blue; g.lineWidth = 4; scribble(g, 40, 84, 200, 86);
+  g.fillStyle = INK.blue; g.font = `52px ${SHARPIE}`; g.fillText('Usage', 40, 70);
+  g.strokeStyle = INK.blue; g.lineWidth = 4; scribble(g, 40, 84, 40 + g.measureText('Usage').width, 86);
   if (error) {
-    g.fillStyle = INK.red; g.font = `bold 64px ${MARKER}`; g.save(); g.translate(w / 2, h / 2 + 20); g.rotate(-0.08); g.textAlign = 'center'; g.fillText('connection lost', 0, 0); g.restore();
+    g.fillStyle = INK.red; g.font = `64px ${SHARPIE}`; g.save(); g.translate(w / 2, h / 2 + 20); g.rotate(-0.08); g.textAlign = 'center'; g.fillText('connection lost', 0, 0); g.restore();
     return;
   }
   // Agents the server can't reach, at the foot of the board: who in red, why underneath (the server's detail, less its "X disconnected:").
   const offline = (providers || []).filter(provider => !provider.connected).slice(0, 2);
   offline.forEach((provider, i) => {
     const y = h - 30 - (offline.length - 1 - i) * 76;
-    g.fillStyle = INK.red; g.font = `bold 36px ${MARKER}`; g.fillText(`${provider.name} offline`, 40, y - 34);
-    g.fillStyle = INK.black; g.font = `26px ${MARKER}`; g.fillText(fit(g, String(provider.detail || '').replace(/^[^:]*disconnected:\s*/i, ''), w - 80), 40, y);
+    g.fillStyle = INK.red; g.font = `36px ${SHARPIE}`; g.fillText(`${provider.name} offline`, 40, y - 34);
+    g.fillStyle = INK.black; g.font = `26px ${SHARPIE}`; g.fillText(fit(g, String(provider.detail || '').replace(/^[^:]*disconnected:\s*/i, ''), w - 80), 40, y);
   });
   const accounts = (usage || []).filter(account => account.windows?.length), space = h - 120 - offline.length * 76;
-  if (!accounts.length) { g.fillStyle = INK.black; g.font = `36px ${MARKER}`; g.fillText('no usage data yet', 40, 160); return; }
+  if (!accounts.length) { g.fillStyle = INK.black; g.font = `36px ${SHARPIE}`; g.fillText('no usage data yet', 40, 160); return; }
   // Two accounts fill the board; more (e.g. several Claude accounts) write smaller.
   const k = Math.min(1, space / (accounts.length * 182));
   let y = 110 + 40 * k, slow = false;
   accounts.forEach((account, a) => {
-    g.fillStyle = INK.black; g.font = `bold ${46 * k}px ${MARKER}`; g.fillText(account.name || account.provider, 40, y);
+    g.fillStyle = INK.black; g.font = `${46 * k}px ${SHARPIE}`; g.fillText(account.name || account.provider, 40, y);
     y += 58 * k;
     for (const window of account.windows.slice(0, 2)) {
-      const view = usageWindowView(window, now), x = 120, barW = w - x - 210, filled = barW * view.barPercent / 100;
-      g.fillStyle = INK.black; g.font = `${36 * k}px ${MARKER}`; g.fillText(view.shortLabel, x - 66, y);
+      const view = usageWindowView(window, now), x = 120, barW = w - x - 400, filled = barW * view.barPercent / 100;
+      g.fillStyle = INK.black; g.font = `${36 * k}px ${SHARPIE}`; g.fillText(view.shortLabel, x - 66, y);
       // Bar: an outline with a hatched fill, red once it's high.
       const color = view.tone ? INK.red : INK.green;
       g.strokeStyle = INK.black; g.lineWidth = 4; g.strokeRect(x, y - 30 * k, barW, 36 * k);
       g.save(); g.beginPath(); g.rect(x, y - 30 * k, filled, 36 * k); g.clip(); g.strokeStyle = color; g.lineWidth = 6;
       for (let i = -36; i < filled + 36; i += 13) scribble(g, x + i, y + 6 * k, x + i + 28, y - 30 * k, i + a);
       g.restore();
-      g.fillStyle = color; g.font = `bold ${40 * k}px ${MARKER}`; g.fillText(view.percentText, x + barW + 18, y + 4 * k);
+      g.fillStyle = color; g.font = `${40 * k}px ${SHARPIE}`; g.fillText(view.percentText, x + barW + 14, y + 4 * k);
+      // How long until this window resets, when that's known.
+      g.fillStyle = INK.blue; g.font = `${30 * k}px ${SHARPIE}`; g.fillText(view.expired ? 'reset due' : view.resetIn === '—' ? '' : `resets ${view.resetIn}`, x + barW + 136, y + 2 * k);
       if (view.pace > 100) slow = true;
       y += 52 * k;
     }
     y += 20 * k;
   });
-  if (slow) { g.save(); g.translate(w - 230, 70); g.rotate(-0.12); g.fillStyle = INK.red; g.font = `bold 46px ${MARKER}`; g.fillText('slow down!', 0, 0); g.restore(); }
+  if (slow) { g.save(); g.translate(w - 40, 66); g.rotate(-0.08); g.textAlign = 'right'; g.fillStyle = INK.red; g.font = `46px ${SHARPIE}`; g.fillText('slow down!', 0, 0); g.restore(); }
 }
 
 // Accounts with a usage window used up, each with when it's back (the last of its full windows to reset).
@@ -135,13 +144,128 @@ function drawWaiting({ g, width: w, height: h }, titles) {
   });
 }
 
+// Monday's page: each item, and under it its three lines. All three done, the item's crossed off too.
+export const clipboardLines = progress => MONDAY.flatMap(({ id, item, target, trick, set }) => {
+  const { away = false, trick: tricked = false, score = false } = progress.lines[id] ?? {};
+  return [{ text: itemName(item), done: away && tricked && score, indent: 0 }, { text: ZONES[target].surface ? capital(aimAt(target)) : 'Put it away', done: away, indent: 1 }, { text: capital(trick.name), done: tricked, indent: 1 }, { text: `Score ${num(set)}`, done: score, indent: 1 }];
+});
+// Today's page: the three challenges and your best at each (null: not played).
+export const dailyLines = (key, progress) => challenges(key).map(({ item, start, target }, i) => ({ text: `${itemName(item)}: ${PLACES[start]}${ZONES[target].surface ? ', ' : ' to '}${aimAt(target)}`, best: progress.daily[key]?.[i] ?? null }));
+
+// `size` as far down as `text` needs to fit `width`.
+function sized(g, text, size, width) { do g.font = `${size}px ${SHARPIE}`; while (g.measureText(text).width > width && (size -= 2) > 14); }
+
+// Where the clipboard's pages are written, in the sheet's own units: its clip covers the top 46.
+const SHEET = { w: 600, h: 808, left: 30 }, TODAY = { top: 130, tall: 200 };
+export function drawClipboard({ g, width: w, height: h }, page, lines) {
+  const { left } = SHEET, today = page === 'today', title = today ? 'Today' : 'Monday';
+  g.fillStyle = '#fbfaf5'; g.fillRect(0, 0, w, h);
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  g.fillStyle = INK.blue; g.font = `46px ${SHARPIE}`; g.fillText(title, left, 94);
+  g.strokeStyle = INK.blue; g.lineWidth = 3; scribble(g, left, 104, left + g.measureText(title).width, 106);
+  if (today) {
+    lines.forEach(({ text, best }, i) => {
+      const y = TODAY.top + i * TODAY.tall, right = w - left;
+      g.strokeStyle = INK.black; g.lineWidth = 3; g.strokeRect(left - 8, y + 8, right - left + 16, TODAY.tall - 22);
+      g.fillStyle = INK.black; sized(g, text, 36, right - left - 12); g.fillText(text, left + 6, y + 68);
+      g.fillStyle = best > 0 ? INK.green : INK.black; g.font = `44px ${SHARPIE}`; g.fillText(`Best ${bestText(best)}`, left + 6, y + 138);
+    });
+    return;
+  }
+  let y = 134;
+  lines.forEach(({ text, done, indent }, i) => {
+    if (!indent && i) y += 5;
+    const x = left + indent * 26;
+    g.fillStyle = done ? '#8b8f98' : indent ? INK.black : INK.blue; g.font = `${indent ? 23 : 29}px ${SHARPIE}`; g.fillText(text, x, y);
+    if (done) { g.strokeStyle = INK.red; g.lineWidth = 2; scribble(g, x - 4, y - 8, x + g.measureText(text).width + 4, y - 7, i); }
+    y += indent ? 26 : 29;
+  });
+}
+
+// The score board: each item's best down the left, today's three down the right.
+export function drawScores({ g, width: w, height: h }, progress, key) {
+  const mid = 440, heading = (text, x) => { g.fillStyle = INK.blue; g.font = `52px ${SHARPIE}`; g.fillText(text, x, 72); g.strokeStyle = INK.blue; g.lineWidth = 4; scribble(g, x, 84, x + g.measureText(text).width, 86); };
+  g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h);
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  heading('Best', 36); heading('Today', mid + 40);
+  g.strokeStyle = '#c0c4cc'; g.lineWidth = 3; scribble(g, mid, 30, mid, h - 30);
+  const best = (score, right, y) => { g.fillStyle = score > 0 ? INK.green : INK.black; g.textAlign = 'right'; g.font = `38px ${SHARPIE}`; g.fillText(bestText(score), right, y); g.textAlign = 'left'; };
+  MONDAY.forEach(({ id, item }, i) => { const y = 148 + i * 70; g.fillStyle = INK.black; g.font = `38px ${SHARPIE}`; g.fillText(itemName(item), 36, y); best(progress.best[id], mid - 28, y); });
+  dailyLines(key, progress).forEach(({ text, best: score }, i) => { const y = 148 + i * 140; g.fillStyle = INK.black; sized(g, text, 34, w - 36 - mid - 40); g.fillText(text, mid + 40, y); best(score, w - 36, y + 52); });
+}
+
+// The controls beside the clipboard, on one small sheet: name, colour. A page's tab is yellow when it's that page.
+const TABS = [['Monday', '#e6e0cc'], ['Today', '#e6e0cc'], ['Random shot', '#bfe3c0'], ['Copy', '#cfe0ff']], TAB = { w: 0.15, h: 0.05, cell: [256, 85] };
+function drawTabs({ g, width: w }, page) {
+  const tall = TAB.cell[1];
+  g.textBaseline = 'middle';
+  TABS.forEach(([text, color], i) => {
+    g.fillStyle = text.toLowerCase() === page ? '#ffe066' : color; g.fillRect(0, i * tall, w, tall);
+    g.strokeStyle = INK.black; g.lineWidth = 4; g.strokeRect(2, i * tall + 2, w - 4, tall - 4);
+    g.fillStyle = INK.black; sized(g, text, 40, w - 24); g.textAlign = 'center'; g.fillText(text, w / 2, i * tall + tall / 2 + 2);
+  });
+}
+
+// To the clipboard, or `refused` where it can't go: plain HTTP has no clipboard, and a browser may say no.
+export const copyText = (text, done, refused, clipboard = globalThis.navigator?.clipboard) => clipboard?.writeText ? clipboard.writeText(text).then(done, () => refused(text)) : refused(text);
+
+// The kitchen's two boards, built with the kitchen (kitchen.add, games' way): their pictures are drawn in that slice, and go up ahead of the doors with its other textures.
+// Hidden they do nothing; shown, a frame only compares two numbers. Read like the office's boards, close enough up for the clipboard's hand.
+const DAY_MS = 86400000, DIMMED_TO = 0.5, today = () => Math.floor(Date.now() / DAY_MS), PAPER = { w: 0.26, h: 0.35, y: -0.005, z: 0.0165 };
+const hung = ({ x, y, z }, turn) => { const board = new THREE.Group(); board.position.set(x, y, z); board.rotation.y = turn; board.userData.board = true; return board; };
+const surface = (w, h, x, y, z, material = dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }), DIMMED_TO)) => { const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material); mesh.position.set(x, y, z); return mesh; };
+// `inReach`: a hit's point is close enough to start a level; from further off a click `read`s the clipboard, as one on the rest of it does.
+export function createKitchenBoards(game, { inReach = () => true, read = () => {} } = {}) {
+  let page = 'monday', sheet = null, scores = null, tabs = null, saved = 0, day = 0;
+  const onToday = [];
+  const writePage = () => { const key = dayKey(new Date()); drawClipboard(sheet, page, page === 'today' ? dailyLines(key, game.progress) : clipboardLines(game.progress)); sheet.texture.needsUpdate = true; };
+  const writeTabs = () => { drawTabs(tabs, page); tabs.texture.needsUpdate = true; };
+  const write = () => { saved = game.saved; day = today(); writePage(); drawScores(scores, game.progress, dayKey(new Date())); scores.texture.needsUpdate = true; };
+  const turnTo = next => { page = next; for (const node of onToday) node.visible = page === 'today'; writePage(); writeTabs(); };
+  return {
+    build(room) {
+      const { w, h, x, y, z } = SPOTS.clipboard, clip = hung({ x, y, z }, -Math.PI / 2), hidden = new THREE.MeshBasicMaterial({ visible: false });
+      const paper = surface(PAPER.w, PAPER.h, 0, PAPER.y, PAPER.z), wall = hung(SPOTS.scores, Math.PI), face = surface(SPOTS.scores.w, SPOTS.scores.h, 0, 0, 0.002);
+      sheet = paint(paper, SHEET.w, SHEET.h); scores = paint(face, 1024, 585);
+      // A control: a small mesh, clicked or E'd, never thrown at. `name`d for what it does.
+      const control = (name, mesh, act) => { mesh.name = name; mesh.userData.toggle = act; mesh.userData.dropsHeld = true; clip.add(mesh); return mesh; };
+      const starts = entry => point => { if (inReach(point)) game.start(entry()); else read(clip); };
+      // Over the whole clipboard, clip and all, so nothing of it stops a click from reading it.
+      clip.add(paper, surface(w, h, 0, 0, 0.026, hidden));
+      const tabFace = dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }), DIMMED_TO);
+      tabs = paint({ material: tabFace }, TAB.cell[0], TAB.cell[1] * TABS.length);
+      const acts = [() => turnTo('monday'), () => turnTo('today'), starts(() => randomShot(Math.random())), () => game.copy()], heights = [0.15, 0.09, -0.03, -0.09];
+      TABS.forEach(([name], i) => {
+        const tab = surface(TAB.w, TAB.h, w / 2 + 0.015 + TAB.w / 2, heights[i], 0.012, tabFace), uv = tab.geometry.attributes.uv;
+        for (let n = 0; n < uv.count; n++) uv.setY(n, 1 - (i + 1 - uv.getY(n)) / TABS.length);
+        control(name, tab, acts[i]); if (i > 1) { onToday.push(tab); tab.visible = false; }
+      });
+      // Today's challenges: over each one's box on the sheet.
+      [0, 1, 2].forEach(i => {
+        const entry = control(`daily-${i}`, surface(PAPER.w, TODAY.tall / SHEET.h * PAPER.h, 0, PAPER.y + (0.5 - (TODAY.top + (i + 0.5) * TODAY.tall) / SHEET.h) * PAPER.h, 0.027, hidden), starts(() => game.entry(`daily-${i}`)));
+        onToday.push(entry); entry.visible = false;
+      });
+      clip.userData.near = 0.45; // it's small
+      wall.add(face); room.add(clip, wall);
+      write(); writeTabs();
+      // In a fallback hand until the font's in.
+      const font = "40px 'Permanent Marker'";
+      if (document.fonts?.check?.(font) === false) document.fonts.load(font).then(() => { write(); writeTabs(); }).catch(() => {});
+    },
+    update(dt, at, still, shown) { if (shown && (game.saved !== saved || today() !== day)) write(); },
+  };
+}
+
 export function createBoards(room) {
-  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1;
+  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1, written = null;
+  const writeUsage = () => { drawWhiteboard(boards.whiteboard, ...written); boards.whiteboard.texture.needsUpdate = true; };
+  // A canvas draws in a fallback until the font is in, so write the board again once it is.
+  document.fonts?.load(`40px 'Permanent Marker'`).then(() => { if (written) writeUsage(); }).catch(() => {});
   const ensure = () => {
     // The room rebuilds its walls (and so its boards) when it resizes; repaint onto the new faces.
     if (faces === room.boards.whiteboard) return;
     faces = room.boards.whiteboard;
-    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), sign: paint(room.coffeeSign.userData.face, 256, 192) };
+    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512, 1.5), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), sign: paint(room.coffeeSign.userData.face, 256, 192) };
     usageKey = waitingKey = ''; plateKey = null; minute = -1;
   };
   return {
@@ -149,7 +273,7 @@ export function createBoards(room) {
       ensure();
       const now = Date.now(), nextUsage = JSON.stringify([snapshot.usage, snapshot.providers, !!error, Math.floor(now / 60_000)]);
       if (nextUsage !== usageKey) {
-        usageKey = nextUsage; drawWhiteboard(boards.whiteboard, snapshot.usage, snapshot.providers, error, now); boards.whiteboard.texture.needsUpdate = true;
+        usageKey = nextUsage; written = [snapshot.usage, snapshot.providers, error, now]; writeUsage();
         const empty = usedUp(snapshot.usage, now); room.coffeeSign.visible = empty.length > 0;
         if (empty.length) { drawSign(boards.sign, empty); boards.sign.texture.needsUpdate = true; }
       }

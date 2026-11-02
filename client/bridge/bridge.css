@@ -1,0 +1,14 @@
+#bridge { position: relative; isolation: isolate; width: 100%; height: 100%; overflow: hidden; background: #070716; touch-action: none; }
+#bridge > canvas { display: block; width: 100%; height: 100%; }
+@media (max-width: 640px) { :root[data-theme=bridge]:not([data-scene-fallback], [data-scene-list]) .main-content { height: calc(100dvh - var(--topbar-height, 56px)); } }
+.bridge-overlay { position: absolute; z-index: 2; top: 10px; right: 10px; display: flex; gap: 6px; }
+.bridge-overlay button { --edge: var(--ship-edge, #3749a0); min-width: 38px; height: 36px; padding: 0 10px; border: 1px solid var(--edge); border-radius: 0; clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px)); background: linear-gradient(225deg, transparent 4.9px, var(--edge) 0 6.3px, transparent 0) 100% 0 / 10px 10px no-repeat, linear-gradient(45deg, transparent 4.9px, var(--edge) 0 6.3px, transparent 0) 0 100% / 10px 10px no-repeat, var(--ship-plate, #0c1338); color: var(--ship-text, #eef2fb); font: 500 16px/1 Antonio, sans-serif; letter-spacing: .04em; cursor: pointer; }
+.bridge-overlay button[hidden] { display: none; }
+.bridge-overlay button:hover, .bridge-overlay button:focus-visible, .bridge-overlay button[aria-pressed=true] { --edge: var(--ship-light, #ff5ad2); background-color: var(--ship-light, #ff5ad2); color: var(--ship-ink, #04050e); outline: none; }
+.bridge-overlay .bridge-next { --edge: #ff4a33; color: #ff4a33; }
+.bridge-overlay .bridge-next:hover, .bridge-overlay .bridge-next:focus-visible { --edge: #ff4a33; background-color: #ff4a33; color: #05060f; }
+/* Talking: a narrower panel and no dimming, so the bridge stays in view beside it. */
+@media (min-width: 641px) {
+  :root[data-theme=bridge]:not([data-scene-fallback], [data-scene-list]) .detail-panel { width: min(100%, max(520px, 44vw)); }
+  :root[data-theme=bridge]:not([data-scene-fallback], [data-scene-list]) .panel-backdrop { background: transparent; backdrop-filter: none; }
+}

@@ -13,6 +13,9 @@ class MessageRenderer extends Renderer {
   html({ text }) { return escapeHtml(text); }
   link({ href, title, tokens }) {
     const label = this.parser.parseInline(tokens);
+    // A link to a Markdown file keeps its path, in case the session has that document to open (client/document-links.js).
+    const document = /^([^:#?\s]+\.md)(?::\d+(?::\d+)?|#\S*)?$/.exec(href)?.[1];
+    if (document) return `<span data-doc-path="${escapeAttribute(document)}">${label}</span>`;
     // Absolute web/mail links only: file paths must not become dashboard routes,
     // and message content must never introduce executable URL schemes.
     if (!/^(https?:\/\/|mailto:)/i.test(href) || /[\u0000-\u0020\u007f]/.test(href)) return label;
@@ -42,3 +45,6 @@ export function renderMessageMarkdown(text, previewLength = 650) {
   while (split < tokens.length && length < previewLength) length += tokens[split++].raw.length;
   return { html: markdown.parser(tokens.slice(0, split)), more: markdown.parser(tokens.slice(split)) };
 }
+
+// A file, not a chat message: all of it, and a newline in a paragraph is only a wrapped line.
+export const renderDocument = text => markdown.parse(text, { breaks: false });

@@ -4,8 +4,9 @@ import { join, basename, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { fail } from './requests.mjs';
-import { TranscriptReader, claudeSessionTitle, claudeActivity, turnTool } from './messages.mjs';
+import { TranscriptReader, claudeSessionTitle, claudeActivity, claudeWaitingOn, turnTool } from './messages.mjs';
 import { TranscriptImages, imageLimit } from './images.mjs';
+import { TranscriptDocuments, readableDocuments, readDocument } from './documents.mjs';
 import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
 import { claudeModels } from './claude-models.mjs';
 import { processMatches } from './processes.mjs';
@@ -53,15 +54,19 @@ export class ClaudeAdapter {
   sessions = new Map();
   chosenSettings = new Map();
   hooks = new Map();
+  endings = new Map();
   sockets = new Set();
   registrations = new Map();
   owners = new Map();
   workflowNames = new Map();
   paths = new Map();
   stoppedAgents = new Set();
+  clearMs = 8000;
+  clearPollMs = 200;
   connected = false;
   detail = 'Discovering local Claude Code sessions…';
-  constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), accounts = [{ label: '', sessionsDir, projectsDir }], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.accounts = accounts; this.transcripts = new TranscriptReader(accounts.map(account => account.projectsDir)); this.images = new TranscriptImages(); this.agentTitles = new Map(); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
+  constructor(store, socketPath, { sessionsDir = join(homedir(), '.claude/sessions'), projectsDir = join(homedir(), '.claude/projects'), accounts = [{ label: '', sessionsDir, projectsDir }], alive = processMatches, messaging } = {}) { this.store = store; this.socketPath = socketPath; this.accounts = accounts; this.transcripts = new TranscriptReader(accounts.map(account => account.projectsDir)); this.images = new TranscriptImages();
+  this.documents = new TranscriptDocuments(); this.agentTitles = new Map(); this.alive = alive; this.messaging = messaging || new ClaudeMessaging({ alive }); }
   async start() {
     // The tmux/start guard prevents duplicate servers; only remove our stale socket.
     try { if ((await lstat(this.socketPath)).isSocket()) await unlink(this.socketPath); else throw new Error('Hook socket path is occupied by a file.'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
@@ -82,17 +87,17 @@ export class ClaudeAdapter {
         try {
           const record = JSON.parse(await readFile(join(account.sessionsDir, file), 'utf8'));
           if (!await this.alive(record.pid, record.procStart) || !record.sessionId) return;
-          const hook = this.hooks.get(record.sessionId);
+          // A parked session (handed off to a background job) keeps the last status of its registration and hooks, so it can say busy for days.
+          const hook = record.parkedJobId ? null : this.hooks.get(record.sessionId);
           const states = { idle: 'idle', shell: 'idle', busy: 'working', running: 'working', working: 'working', waiting: 'question', waiting_for_permission: 'permission', needs_permission: 'permission' };
           const transcript = hook?.transcriptPath || join(account.projectsDir, (record.cwd || '').replace(/[^a-zA-Z0-9-]/g, '-'), `${record.sessionId}.jsonl`);
           const { step, modifiedAt, ...history } = await this.transcripts.read(transcript, record.sessionId);
           const via = await this.messaging.available(record), canSend = !!via;
           registrations.set(record.sessionId, { record, account }); owners.set(record.sessionId, account);
           paths.set(`claude:${record.sessionId}`, transcript);
-          // A parked session (handed off to a background job) keeps its last status in the registration, so it can say busy for days.
-          const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux';
-          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: status === 'working' && !hook?.compacting && turnTool(history.messages) || hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, images: tmux, interrupt: tmux, effort: tmux, fire: tmux || record.kind === 'interactive' }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
-          for (const agent of await this.subagents(record, transcript, paths)) sessions.set(agent.id, agent);
+          const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux', agents = await this.subagents(record, transcript, paths);
+          sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, waitingOn: claudeWaitingOn(status, record, agents), parked: !!record.parkedJobId, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: status === 'working' && !hook?.compacting && turnTool(history.messages) || hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, images: tmux, interrupt: tmux, effort: tmux, fire: tmux || record.kind === 'interactive', clear: tmux && !record.parkedJobId }, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
+          for (const agent of agents) sessions.set(agent.id, agent);
         } catch { /* ignore partially written and stale registration files */ }
       }));
       for (const [id, hook] of this.hooks) {
@@ -196,7 +201,7 @@ export class ClaudeAdapter {
         if (e.hook_event_name === 'PreCompact') { state.compacting = e.trigger === 'manual' ? 'manual' : 'auto'; state.detail = 'Compacting context'; }
         if (e.hook_event_name === 'SessionStart') state.status = e.source !== 'compact' || previous?.compacting === 'manual' ? 'idle' : previous?.compacting ? 'working' : previous?.status || 'working';
         if (e.hook_event_name === 'Notification') { state.status = { permission_prompt: 'permission', idle_prompt: 'idle', elicitation_dialog: 'question' }[e.notification_type] || previous?.status || 'unknown'; state.detail = e.message || ''; }
-        if (e.hook_event_name === 'SessionEnd') { this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
+        if (e.hook_event_name === 'SessionEnd') { this.ended(e.session_id, e.reason); this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
         const request = claudeRequest(e);
         if (request) state.status = request.view.kind;
         this.hooks.set(e.session_id, state);
@@ -271,19 +276,41 @@ export class ClaudeAdapter {
   }
   // Firing ends the session (/exit in tmux, else SIGTERM), so it has to be quiet: idle by its registration and its hooks for a few seconds, not
   // compacting, no subagent or workflow working and nothing left running from its Bash tool, background ones included.
+  // A parked session's status is stale, so only what it still runs counts; its job carries on without it.
   // All of it is checked again just before Enter (with /exit typed) or the signal.
+  async quiet(sessionId) {
+    const record = await this.record(sessionId), parked = !!record.parkedJobId, hook = parked ? null : this.hooks.get(sessionId), transcript = this.paths.get(`claude:${sessionId}`);
+    if (!parked && record.status === 'shell') throw fail('Background shells are still running. Stop them first.', 409);
+    if ((!parked && record.status !== 'idle') || (hook && hook.status !== 'idle') || hook?.compacting) throw fail('Claude is working. Stop it first.', 409);
+    if (Date.now() - Math.max(record.statusUpdatedAt || record.updatedAt || 0, hook?.updatedAt || 0) < QUIET_MS) throw fail('Claude only just finished. Try again in a moment.', 409);
+    if (transcript && (await this.subagents(record, transcript, new Map())).some(agent => agent.status === 'working')) throw fail('A subagent is still working.', 409);
+    const commands = await this.messaging.commands(record.pid);
+    if (commands.length) throw fail(`Still running: ${commands[0].slice(0, 60)}${commands.length > 1 ? ` (+${commands.length - 1})` : ''}. Stop it first.`, 409);
+    return record;
+  }
   async fire(sessionId) {
-    const quiet = async () => {
-      const record = await this.record(sessionId), hook = this.hooks.get(sessionId), transcript = this.paths.get(`claude:${sessionId}`);
-      if (record.status === 'shell') throw fail('Background shells are still running. Stop them first.', 409);
-      if (record.status !== 'idle' || record.parkedJobId || (hook && hook.status !== 'idle') || hook?.compacting) throw fail('Claude is working. Stop it first.', 409);
-      if (Date.now() - Math.max(record.statusUpdatedAt || record.updatedAt || 0, hook?.updatedAt || 0) < QUIET_MS) throw fail('Claude only just finished. Try again in a moment.', 409);
-      if (transcript && (await this.subagents(record, transcript, new Map())).some(agent => agent.status === 'working')) throw fail('A subagent is still working.', 409);
-      const commands = await this.messaging.commands(record.pid);
-      if (commands.length) throw fail(`Still running: ${commands[0].slice(0, 60)}${commands.length > 1 ? ` (+${commands.length - 1})` : ''}. Stop it first.`, 409);
-      return record;
-    };
-    return this.messaging.fire(await quiet(), quiet);
+    const result = await this.messaging.fire(await this.quiet(sessionId), () => this.quiet(sessionId));
+    this.ended(sessionId, 'fired');
+    return result;
+  }
+  // How a session said it ended (SessionEnd's reason, or 'fired'), for recovery.mjs to tell a goodbye from a crash. Kept a while.
+  ended(sessionId, reason) {
+    const now = Date.now();
+    for (const [id, { at }] of this.endings) if (now - at > 600_000) this.endings.delete(id);
+    if (sessionId) this.endings.set(sessionId, { reason: String(reason || 'other'), at: now });
+  }
+  ending(sessionId) { return this.endings.get(sessionId)?.reason || ''; }
+  // /clear starts a new session in the same process, whose registration takes on the new id a second or so later.
+  // The panel moves to that id, so it comes back only once it's listed.
+  async clear(sessionId) {
+    const record = await this.quiet(sessionId), { pid } = record, id = `claude:${sessionId}`;
+    await this.messaging.clear(record, () => this.quiet(sessionId));
+    for (const end = Date.now() + this.clearMs; Date.now() < end; await new Promise(resolve => setTimeout(resolve, this.clearPollMs))) {
+      await this.refresh();
+      const fresh = this.list().find(session => session.pid === pid && session.id !== id && !session.parentId);
+      if (fresh) return { ok: true, id: fresh.id };
+    }
+    throw fail('/clear was sent but no new session showed up. Check its terminal.', 504);
   }
   async history(id, limit) {
     const [sessionId, agentId] = id.slice(7).split(':');
@@ -306,6 +333,19 @@ export class ClaudeAdapter {
     const image = path && await this.images.get(path, transcript.sessionId, own);
     if (!image) throw fail('Image not found.', 404);
     return image;
+  }
+  // Markdown files a session wrote or named, and those its subagents wrote (what a subagent only mentions isn't for you).
+  async documentList(id) {
+    const { sessionId, agentId, path } = await this.transcript(id), own = await this.documents.list(path, sessionId);
+    const agents = agentId !== undefined ? [] : await Promise.all((await this.agentTranscripts(path)).map(async agent => (await this.documents.list(agent.path, sessionId).catch(() => []))
+      .filter(document => document.written).map(document => ({ ...document, agent: agent.title }))));
+    return { documents: await readableDocuments([...own, ...agents.flat()]) };
+  }
+  async document(id, documentId) {
+    const found = (await this.documentList(id)).documents.find(document => document.id === documentId);
+    const document = found && await readDocument(found);
+    if (!document) throw fail('Document not found.', 404);
+    return document;
   }
   async transcript(id) {
     const [sessionId, agentId] = id.slice(7).split(':');

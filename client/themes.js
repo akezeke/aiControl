@@ -1,4 +1,6 @@
 import { setAlienAmbienceEnabled } from './alien-ambience.js';
+import { sceneFor } from './scenes.js';
+import { askForBoot } from './city/boot-ask.js';
 
 // `look` picks the CSS theme; Orbit's `scheme` is fixed, or follows the system when absent.
 export const themes = [
@@ -12,6 +14,12 @@ export const themes = [
   { id: 'heroes', scheme: 'dark', name: 'Heroes', color: '#172749' },
   // The office replaces the list with a 3D scene; the chrome around it is paper pinned to a corkboard.
   { id: 'office', scheme: 'light', name: 'Office', color: '#dcc6a3' },
+  // The bridge is a 3D scene too; its colours are chosen on the bridge itself.
+  { id: 'bridge', scheme: 'dark', name: 'Bridge', color: '#150f33' },
+  // A pixel-art city, drawn on a 2D canvas in the Resurrect 64 palette; its list is the site office, in building materials.
+  { id: 'city', scheme: 'dark', name: 'Metropolis', color: '#4d4a44' },
+  // Each project a battle, each session a party member: polygons on painted backgrounds, windows in canopy green.
+  { id: 'fantasy', scheme: 'dark', name: 'Fantasy Battle', color: '#123b33' },
 ];
 const storageKey = 'ai-control-theme';
 export function hasSavedTheme() { try { return themes.some(theme => theme.id === localStorage.getItem(storageKey)); } catch { return true; } }
@@ -23,6 +31,7 @@ export function applyTheme(id) {
   const theme = themes.find(theme => theme.id === id) || themes.find(theme => theme.id === 'alien');
   const root = document.documentElement, previous = root.dataset.theme, look = theme.look || theme.id;
   root.dataset.theme = look; root.dataset.themeChoice = theme.id;
+  root.toggleAttribute('data-scene', !!sceneFor(look));
   setAlienAmbienceEnabled(look === 'alien');
   const scheme = () => {
     const dark = theme.scheme ? theme.scheme === 'dark' : !!theme.dark && !!systemDark?.matches;
@@ -41,15 +50,29 @@ const bootLines = ['INTERFACE 2037 ............ READY', 'MU/TH/UR 6000 MAINFRAME
 // EVA's start: riveted blast doors with the emblem split across the seam slide apart.
 export function bootSequence(force = false) {
   const theme = document.documentElement.dataset.theme;
-  const previousOverlays = document.querySelectorAll('.boot, .eva-boot, .heroes-boot');
-  if (!['alien', 'command', 'heroes'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) { previousOverlays.forEach(overlay => overlay.remove()); return; }
+  const previousOverlays = document.querySelectorAll('.boot, .eva-boot, .heroes-boot, .fy-boot');
+  // Metropolis has no overlay: it builds the real city, once the scene has one to build.
+  if (theme === 'city') {
+    previousOverlays.forEach(overlay => overlay.remove());
+    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+    try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
+    askForBoot(document.documentElement, performance.now());
+    return;
+  }
+  if (!['alien', 'command', 'heroes', 'fantasy'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) { previousOverlays.forEach(overlay => overlay.remove()); return; }
   try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
   previousOverlays.forEach(overlay => overlay.remove());
-  const overlay = document.createElement('div'); overlay.className = { alien: 'boot', command: 'eva-boot', heroes: 'heroes-boot' }[theme]; overlay.setAttribute('aria-hidden', 'true');
+  const overlay = document.createElement('div'); overlay.className = { alien: 'boot', command: 'eva-boot', heroes: 'heroes-boot', fantasy: 'fy-boot' }[theme]; overlay.setAttribute('aria-hidden', 'true');
   if (theme === 'alien') bootLines.forEach((line, i) => { const p = document.createElement('p'); p.textContent = line; p.style.setProperty('--i', i); overlay.append(p); });
   else if (theme === 'command') {
     for (const side of ['left', 'right']) { const door = document.createElement('div'); door.className = `eva-door ${side}`; overlay.append(door); }
     const status = document.createElement('p'); status.textContent = 'EVA ▸ COMMAND LINK ONLINE'; overlay.append(status);
+  }
+  // Fantasy's console start: four facets lock into a gem on black, the name comes up, and any key or tap gets past it without losing the key.
+  else if (theme === 'fantasy') {
+    const gem = document.createElement('div'); gem.className = 'fy-gem'; for (let i = 0; i < 4; i++) gem.append(document.createElement('i'));
+    const name = document.createElement('p'); name.textContent = 'AI Control'; overlay.append(gem, name);
+    document.addEventListener('keydown', () => overlay.remove(), { once: true });
   }
   else { const crest = document.createElement('div'); crest.className = 'heroes-seal'; overlay.append(crest); }
   overlay.onclick = () => overlay.remove();

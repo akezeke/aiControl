@@ -10,10 +10,14 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Answer permissions and questions, send messages with pasted or picked images (Claude needs tmux), stop turns and start agents. Nothing is auto-approved.
 - Switch models and supported effort levels from session headers; remember choices for new sessions.
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
-- Chat history with Markdown, diffs, tool calls, screenshots and older messages on demand.
+- Chat history with Markdown, diffs, tool calls, screenshots, older messages on demand and the Markdown files a session writes.
 - Account usage limits, notifications and sounds when a session needs you.
 - OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets.
-- Light, dark and themed interfaces, including a walkable 3D Office.
+- Sessions lost to a crash, a killed tmux or a shutdown come back with their last prompt and reply, to resume in a click.
+- Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting.
+- A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
+- Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.
+- Trickshot in the Office's kitchen: land a paper ball or mug in its target or hit a fruit with a rubber ball or plate, with six levels, three daily shots and a score board.
 - Local access or access from other devices over Tailscale, protected by a PIN or password.
 
 ## Setup
@@ -80,6 +84,22 @@ npm run build
 | --- | --- | --- |
 | ![Springfield](docs/screenshots/springfield-overview.webp) | ![Sanctuary](docs/screenshots/diablo-overview.webp) | ![Heroes](docs/screenshots/heroes-opencode.webp) |
 
+| Bridge | Bridge, on alert | Bridge's list |
+| --- | --- | --- |
+| ![Bridge at warp](docs/screenshots/bridge-warp.webp) | ![Bridge on alert, in the Cobalt colours](docs/screenshots/bridge-hail.webp) | ![Bridge's session list](docs/screenshots/bridge-list.webp) |
+
+The Bridge theme is an original design and is not affiliated with any franchise.
+
+| Metropolis | Metropolis on a phone | Metropolis list |
+| --- | --- | --- |
+| ![Metropolis](docs/screenshots/city-overview.webp) | ![Metropolis on a phone](docs/screenshots/city-phone.webp) | ![Metropolis session list](docs/screenshots/city-list.webp) |
+
+| Fantasy Battle | A fight | On a phone |
+| --- | --- | --- |
+| ![Fantasy Battle](docs/screenshots/fantasy-overview.webp) | ![A fight in Fantasy Battle](docs/screenshots/fantasy-fight.webp) | ![Fantasy Battle on a phone](docs/screenshots/fantasy-phone.webp) |
+
+The Fantasy Battle theme is an original design and is not affiliated with any franchise.
+
 [More screenshots, including mobile](docs/screenshots).
 
 ## Network and security
@@ -96,4 +116,4 @@ Codex connects through its local app-server socket. Claude sessions and history 
 
 A hobby project provided as is under [MIT](LICENSE), without warranty. Use at your own risk, including approvals and messages sent to agents. Not affiliated with OpenAI, Anthropic, or the owners of *Alien* or *Command & Conquer*.
 
-Includes [Marked](client/vendor/marked/LICENSE.md) (MIT) and fonts under the [SIL Open Font License](client/public/fonts/OFL.txt).
+Includes [Marked](client/vendor/marked/LICENSE.md) (MIT) and fonts under the [SIL Open Font License](client/public/fonts/OFL.txt) and the [Apache License](client/public/fonts/APACHE-2.0.txt).

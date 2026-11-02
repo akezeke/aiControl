@@ -1,0 +1,71 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden}</style></head><body>
+<script type="module">
+// The title screen's still, drawn by the battle's own generators: a party squared up to a wyvern and its brood in the wood.
+// Render it in a browser and save the canvas as client/public/fantasy/title.webp (and title-portrait.webp from ?portrait).
+import * as THREE from 'three';
+import { POSE, makeCharacter, setPose } from '/fantasy/characters.js';
+import { PLANS, makeEnemy } from '/fantasy/enemies.js';
+import { PlatePainter, lightOf, glowOf } from '/fantasy/places.js';
+import { flareMap } from '/fantasy/fx.js';
+import { newShared } from '/fantasy/rig.js';
+
+const q = new URLSearchParams(location.search), num = (key, value) => q.has(key) ? +q.get(key) : value;
+const portrait = q.has('portrait'), W = num('w', portrait ? 1080 : 2560), H = num('h', portrait ? 1920 : 1440), place = q.get('place') || 'wood', time = q.get('time') || 'day';
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace; renderer.setClearColor(0x0e0b08, 1); renderer.setPixelRatio(1); renderer.setSize(W, H);
+renderer.domElement.style.cssText = 'width:100%;height:100%;object-fit:contain'; document.body.append(renderer.domElement);
+
+const scene = new THREE.Scene(), shared = newShared({ value: 1 }, lightOf(place, time)), taken = new Set();
+shared.uRes.value.set(W, H);
+const painter = new PlatePainter(), plates = painter.dress(scene, place, false, time);
+plates.tone(num('tone', 1)); plates.back.rotation.y = num('turn', plates.back.rotation.y);
+
+// The party on the right, facing left; who and how they stand.
+const PARTY = [
+  { id: 'title-knight-2', cls: 'knight', pose: 'stance', at: [4, 0, 3] },
+  { id: 'title-duelist-4', cls: 'duelist', pose: 'windup', at: [5.6, 0, -.8] },
+  { id: 'title-gunner-3', cls: 'gunner', pose: 'aim', at: [7.4, 0, 3.4] },
+  { id: 'title-sage-1', cls: 'sage', pose: 'cast', at: [9, 0, .2] },
+];
+for (const { id, cls, pose, at } of PARTY) {
+  const char = makeCharacter({ id: q.get(cls) || id, cls, session: { id } }, scene, shared, taken);
+  char.rig.show(true); setPose(char.rig.J, POSE[pose], 1); char.rig.root.position.set(...at); char.rig.root.rotation.y = -Math.PI / 2 + num(`${cls}Turn`, 0);
+}
+// The wyvern is the beasts' last plan, the brute their first; an ember between them.
+const FOES = [
+  { seed: q.get('wyvern') || 'title-wyvern-7', family: 'beast', plan: PLANS.beast - 1, size: 2.1, at: [-7.6, 0, -2.6], turn: -.45 },
+  { seed: q.get('beast') || 'title-beast-1', family: 'beast', plan: 0, size: .7, at: [-5, 0, 2.4], turn: -.2 },
+  { seed: q.get('critter') || 'title-critter-2', family: 'critter', plan: 2, size: 1.2, at: [-2.8, 0, .2] },
+];
+const foes = FOES.map(({ seed, family, plan, size, at, turn = 0 }) => { const enemy = makeEnemy(seed, family, scene, shared, size, plan); enemy.rig.show(true); enemy.rig.root.rotation.y = Math.PI / 2 + turn; enemy.rig.root.position.set(...at); enemy.anim(num('t', 2.4), 0); return enemy; });
+
+// Soft shadows under everyone, as in a fight.
+const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+const g = canvas.getContext('2d'), grad = g.createRadialGradient(32, 32, 0, 32, 32, 32); grad.addColorStop(0, '#000a'); grad.addColorStop(.6, '#0006'); grad.addColorStop(1, '#0000'); g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+const shadowMap = new THREE.CanvasTexture(canvas), disc = new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2);
+for (const [x, , z, r] of [...PARTY.map(p => [...p.at, .8]), ...FOES.map(f => [...f.at, 1.6 * f.size])]) { const shadow = new THREE.Mesh(disc, new THREE.MeshBasicMaterial({ map: shadowMap, transparent: true, depthWrite: false, toneMapped: false })); shadow.scale.setScalar(r); shadow.position.set(x, .03, z); shadow.renderOrder = 0; scene.add(shadow); }
+
+// Motes in the place's glow.
+const points = [], rand = (() => { let s = 7; return () => (s = s * 16807 % 2147483647) / 2147483647; })();
+for (let i = 0; i < num('motes', 90); i++) points.push((rand() - .5) * 34, rand() * 9, (rand() - .5) * 24);
+const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+const motes = new THREE.Points(geometry, new THREE.PointsMaterial({ color: glowOf(place), size: num('mote', .22), map: flareMap(), transparent: true, opacity: .85, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, fog: false }));
+motes.renderOrder = 3; scene.add(motes);
+// The sage's spell gathering over their hands.
+const sage = PARTY.find(p => p.cls === 'sage').at;
+for (const [size, color, opacity] of [[3.4, 0xffd27a, .55], [1.5, 0xfff4c4, .9]]) { const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: flareMap(), color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })); flare.scale.setScalar(size * num('spell', 1)); flare.position.set(sage[0] - .1, num('spellY', 3.55), sage[2]); flare.renderOrder = 4; scene.add(flare); }
+
+// Wide: across the clearing, foes left and party right, the middle kept clear for the logo and PIN window.
+// Portrait: over the party's shoulders at the wyvern, the canopy's upper half kept clear instead.
+const camera = new THREE.PerspectiveCamera(num('fov', portrait ? 66 : 34), W / H, .2, 600);
+const yaw = num('yaw', portrait ? 1.15 : .12), pitch = num('pitch', portrait ? .3 : .1), dist = num('dist', portrait ? 18 : 23);
+const target = new THREE.Vector3(num('tx', portrait ? -1.5 : .6), num('ty', portrait ? 7 : 4.6), num('tz', .5));
+camera.position.set(target.x + Math.sin(yaw) * Math.cos(pitch) * dist, target.y + Math.sin(pitch) * dist, target.z + Math.cos(yaw) * Math.cos(pitch) * dist);
+camera.lookAt(target);
+
+scene.updateMatrixWorld(true);
+const draw = () => renderer.render(scene, camera);
+// Plates load asynchronously; draw again until they're in.
+let frames = 0; (function loop() { draw(); if (++frames < 90) requestAnimationFrame(loop); else window.titleDone = true; })();
+window.titlePng = () => renderer.domElement.toDataURL('image/png');
+</script></body></html>

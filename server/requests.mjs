@@ -6,11 +6,11 @@ export const fail = (message, status = 400) => Object.assign(new Error(message),
 export const slashCommand = text => /^\s*(\/[a-z][\w-]*)(?=\s|$)/i.exec(text)?.[1] || '';
 
 // Sessions as the client sees them: a pending request sets the status, and so does an idle reply ending on a question
-// (`asks`; subagents answer their parent, not you). The adapters keep their own status, so sending is unaffected.
+// (`asks`; subagents answer their parent, not you, and a parked session's job took its question along). The adapters keep their own status, so sending is unaffected.
 export function mergeSessions(list, requests) {
   const sessions = list.map(session => {
     const pending = requests.filter(r => r.sessionId === session.id);
-    const asks = !pending.length && session.status === 'idle' && !session.parentId && lastQuestion(session.messages);
+    const asks = !pending.length && session.status === 'idle' && !session.parentId && !session.parked && lastQuestion(session.messages);
     return { ...session, ...(pending.length ? { status: pending[0].kind === 'question' ? 'question' : 'permission' } : asks ? { status: 'question', asks } : {}), requests: pending };
   });
   // A request may arrive just before session metadata; keep it visible.

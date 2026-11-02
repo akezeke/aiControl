@@ -1,18 +1,23 @@
 // Fake projects, sessions, subagents, requests and usage for screenshots.
 // Runs beside a real server: own port, temporary login, no agent connections.
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import { Auth, savePassword } from '../server/auth.mjs';
 import { RequestStore, fail } from '../server/requests.mjs';
 import { createHandler } from '../server/http.mjs';
+import { folderPath } from '../server/folders.mjs';
+import { OfficeSeats } from '../server/seats.mjs';
+import { CityTowers } from '../server/towers.mjs';
+import { Battlefields } from '../server/battlefields.mjs';
 import { claudeRequest } from '../server/claude.mjs';
 import { codexRequest } from '../server/codex.mjs';
 import { root } from '../server/config.mjs';
 
-const port = 47842, pin = '1234', now = Date.now(), min = 60_000, home = '/home/demo/code';
+const port = Number(process.env.DEMO_PORT) || 47842, pin = '1234', now = Date.now(), min = 60_000, home = '/home/demo/code';
 const ago = minutes => now - minutes * min;
 let n = 0;
 const msg = (role, text, minutes, extra = {}) => ({ id: `m${++n}`, role, text, truncated: false, timestamp: ago(minutes), ...extra });
@@ -20,7 +25,7 @@ const tool = (text, minutes, extra) => msg('assistant', text, minutes, { tool: t
 const steps = (done, ...names) => names.map((step, i) => ({ step, status: i < done ? 'done' : i === done ? 'active' : 'pending' }));
 
 function claude(id, project, title, status, minutes, messages, extra = {}) {
-  return { id: `claude:${id}`, nativeId: id, provider: 'claude', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'claude-opus-5-5', version: '2.4.1', effort: 'high', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], permissionMode: 'default', detail: '', control: true, messaging: { send: true, queue: false, via: 'tmux', images: true, interrupt: true, effort: true, fire: true }, messages, messagesState: 'ready', ...extra };
+  return { id: `claude:${id}`, nativeId: id, provider: 'claude', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'claude-opus-5-5', version: '2.4.1', effort: 'high', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], permissionMode: 'default', detail: '', control: true, messaging: { send: true, queue: false, via: 'tmux', images: true, interrupt: true, effort: true, fire: true, clear: true }, messages, messagesState: 'ready', ...extra };
 }
 function codex(id, project, title, status, minutes, messages, extra = {}) {
   return { id: `codex:${id}`, nativeId: id, provider: 'codex', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'gpt-5.5-codex', effort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh'], detail: '', control: true, messaging: { send: true, queue: true, images: true, interrupt: true, effort: true }, messages, messagesState: 'ready', queuedMessages: [], queueAvailable: true, queueError: '', ...extra };
@@ -34,7 +39,7 @@ const weather = claude('7f3c2a10-5b9e-4d21-a8c4-0e6f1b2d3c4a', 'weather-station'
   msg('assistant', "I'll split this up: one agent maps the sensor pipeline, another drafts the alert rules. Meanwhile I'll add the threshold config.", 13),
   msg('assistant', 'Threshold config:\n\n```ts\nexport const humidityAlert = { above: 70, forMinutes: 10 };\n```', 3),
   tool('Read · src/config/alerts.ts', 2.9), tool('Edit · src/config/alerts.ts', 2.8), tool('Bash · Type-check', 2.6, { failed: true }), tool('Edit · src/config/alerts.ts', 2.4), tool('Bash · Type-check', 2.2),
-  msg('assistant', 'Config is in place. Running the sensor tests next.', 2),
+  msg('assistant', 'Config is in place, and the plan is written up in `docs/humidity-alerts-plan.md`. Running the sensor tests next.', 2),
 ], { branch: 'feat/humidity-alerts', effort: 'xhigh', permissionMode: 'acceptEdits', context: { used: 207_000 }, lastTurnMs: 324_000, cost: { usd: 1.84, added: 96, removed: 12 },
   plan: steps(2, 'Map the sensor pipeline', 'Add threshold config', 'Run the sensor tests', 'Push notification', 'Dashboard banner') });
 const sessions = [
@@ -51,8 +56,8 @@ const sessions = [
   ]),
   claude('2d4f6a8c-1e3b-4c5d-9f7a-8b6c4d2e0f1a', 'weather-station', 'Fix flaky timezone test', 'idle', 95, [
     msg('user', 'The nightly summary test fails around midnight UTC. Fix it.', 120),
-    msg('assistant', 'The test used the local clock. It now freezes time at `2026-03-01T23:59:30Z` and passes in every timezone.', 95),
-  ]),
+    msg('assistant', 'The test used the local clock. It now freezes time at `2026-03-01T23:59:30Z` and passes in every timezone. The full nightly suite is running in the background.', 95),
+  ], { waitingOn: 'shell', context: { used: 60_000 }, account: 'work' }),
   codex('019a4c2e-7b1d-7e3f-a5c6-2d8e9f0a1b2c', 'recipe-api', 'Add pagination to /recipes', 'working', 1, [
     msg('user', 'Add cursor pagination to GET /recipes, 20 per page, and update the OpenAPI spec.', 8),
     tool('Shell · pnpm test -- recipes', 3), tool('Edit · src/routes/recipes.ts, openapi.yaml', 2),
@@ -62,11 +67,11 @@ const sessions = [
     msg('user', 'Review the ingredient parser for edge cases.', 260),
     msg('assistant', '| Input | Parsed | Issue |\n| --- | --- | --- |\n| `1 1/2 cups flour` | 1.5 cup flour | — |\n| `salt to taste` | salt | no quantity |\n| `2-3 eggs` | 2 eggs | range dropped |', 241),
     msg('assistant', 'Only ranges like `2-3 eggs` lose information; the other edge cases parse correctly.', 240),
-  ], { branch: 'main' }),
+  ], { branch: 'main', context: { used: 20_000 } }),
   claude('5e7a9c1b-3d5f-4a6b-8c0d-2e4f6a8b0c1d', 'pixel-garden', 'Seasonal tile palette', 'working', 3, [
     msg('user', 'Make the garden tiles change with the seasons.', 20),
     msg('assistant', 'I drafted spring, summer, autumn and winter palettes. Which style should winter use?', 3),
-  ]),
+  ], { context: { used: 90_000 }, account: 'work' }),
   codex('019a4c2f-1d2e-7a3b-c4d5-e6f708192a3b', 'home-lab', 'Upgrade Grafana dashboards', 'working', 0.5, [
     msg('user', 'Upgrade the Grafana dashboards to the new panel format and fix the broken disk usage panel.', 25),
     { ...msg('notice', 'stream disconnected before completion · retrying', 6), error: false },
@@ -75,7 +80,7 @@ const sessions = [
   claude('8a0c2e4f-6b8d-4f1a-9c3e-5d7f9b1d3f5a', 'dotfiles', 'Tidy shell startup', 'idle', 600, [
     msg('user', 'Shell startup takes 1.2 s. Make it faster.', 640),
     msg('assistant', 'Startup is down to **180 ms**: `nvm` now loads lazily and completions are cached.', 600),
-  ], { permissionMode: 'bypassPermissions' }),
+  ], { permissionMode: 'bypassPermissions', context: { used: 40_000 } }),
 ];
 
 const store = new RequestStore();
@@ -90,13 +95,19 @@ const usageWindow = (id, label, usedPercent, resetMinutes, scope = '') => ({ id,
 const usage = [
   { provider: 'codex', name: 'Codex', windows: [usageWindow('codex:primary', '5-hour', 38, 134), usageWindow('codex:secondary', 'Weekly', 21, 4 * 1440)], updatedAt: now, status: 'ready', detail: '' },
   { provider: 'claude', name: 'Claude Code', windows: [usageWindow('five_hour', '5-hour', 64, 71), usageWindow('seven_day', 'Weekly', 47, 2 * 1440)], updatedAt: now, status: 'ready', detail: '' },
+  { provider: 'claude', label: 'work', name: 'Claude Code · work', windows: [usageWindow('five_hour', '5-hour', 22, 188), usageWindow('seven_day', 'Weekly', 31, 5 * 1440)], updatedAt: now, status: 'ready', detail: '' },
 ];
 // Same merge as server/main.mjs: a pending request sets the session status.
+const seats = new OfficeSeats(), towers = new CityTowers(), battlefields = new Battlefields();
 const snapshot = () => {
   const requests = store.list();
   return {
     sessions: sessions.map(s => { const own = requests.filter(r => r.sessionId === s.id); return { ...s, ...(own.length ? { status: own[0].kind === 'question' ? 'question' : 'permission' } : {}), requests: own }; }),
-    usage, features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: 'demo',
+    office: seats.update(sessions),
+    towers: towers.update(sessions),
+    battlefields: battlefields.update(sessions),
+    lost,
+    usage, features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: 'demo', claudeAccounts: ['', 'work'],
     providers: [{ name: 'Codex', connected: true, detail: 'Demo data' }, { name: 'Claude Code', connected: true, detail: 'Demo data' }],
   };
 };
@@ -105,6 +116,35 @@ const shots = {
   'claude:7f3c2a10-5b9e-4d21-a8c4-0e6f1b2d3c4a': [['weather-before', 12, 'Map the sensor pipeline'], ['weather-settings', 10, 'Draft alert rules'], ['weather-phone', 6], ['weather-alert', 2.5], ['weather-push', 1]],
   'claude:5e7a9c1b-3d5f-4a6b-8c0d-2e4f6a8b0c1d': [['garden-seasons', 15], ['garden-winter', 2]],
 };
+const plan = `# Humidity alerts
+
+Warn when humidity stays above **70%** for more than 10 minutes.
+
+## Steps
+
+1. Map the sensor pipeline
+2. Add the threshold config in \`src/config/alerts.ts\`
+3. Run the sensor tests
+4. Send a push notification
+5. Show a banner on the dashboard
+
+## Decisions
+
+| Question | Answer |
+| --- | --- |
+| Where does it run? | Per-minute averages, in \`aggregate.ts\` |
+| What clears it? | Below 65% for 5 minutes |
+
+\`\`\`ts
+export const humidityAlert = { above: 70, forMinutes: 10 };
+\`\`\`
+
+Rules are drafted in docs/alert-rules.md.
+`;
+const rules = '# Alert rules\n\n- Warn above 70% for 10 minutes\n- Clear below 65% for 5 minutes\n\nBack to the plan: docs/humidity-alerts-plan.md\n';
+const docs = {
+  'claude:7f3c2a10-5b9e-4d21-a8c4-0e6f1b2d3c4a': [['humidity-alerts-plan.md', 2.2, plan], ['alert-rules.md', 2.1, rules, 'Draft alert rules']],
+};
 const messages = {
   send: async (id, body) => { sessions.find(s => s.id === id)?.messages.push(msg('user', body.text, 0)); return { status: 'sent', clientMessageId: body.clientMessageId }; },
   cancel: async () => ({ ok: true }),
@@ -112,9 +152,16 @@ const messages = {
   fire: async id => { const at = sessions.findIndex(s => s.id === id); if (at >= 0) sessions.splice(at, 1); return { ok: true }; },
   models: async id => { const s = sessions.find(s => s.id === id); return s ? [{ id: s.model || 'demo-model', name: s.model || 'Demo model', efforts: s.efforts || ['low', 'medium', 'high'] }] : []; },
   model: async (id, body) => { const s = sessions.find(s => s.id === id); if (s) s.model = body.model; return { ok: true, model: s?.model, effort: s?.effort }; },
+  clear: async id => { const s = sessions.find(s => s.id === id); if (!s) return { ok: true }; s.nativeId = randomUUID(); s.id = `claude:${s.nativeId}`; s.messages = []; s.context = undefined; return { ok: true, id: s.id }; },
   effort: async (id, body) => { const s = sessions.find(s => s.id === id); if (s) s.effort = body.effort; return { ok: true }; },
   history: async id => ({ messages: [msg('user', 'An older request from earlier today.', 400), msg('assistant', 'Older reply.', 399), ...(sessions.find(s => s.id === id)?.messages || [])], more: false }),
   images: async id => ({ images: (shots[id] || []).map(([, minutes, agent], n) => ({ id: `${agent ? 'a1b2c3.' : ''}0000000${n}-0000-4000-8000-000000000000:0`, type: 'image/webp', at: ago(minutes), tool: true, ...(agent && { agent }) })) }),
+  documents: async id => ({ documents: (docs[id] || []).map(([name, minutes, , agent], n) => ({ id: `doc${n}`, name, path: `${home}/weather-station/docs/${name}`, at: ago(minutes), written: true, ...(agent && { agent }) })) }),
+  document: async (id, documentId) => {
+    const found = (docs[id] || [])[Number(documentId.slice(3))];
+    if (!found) throw fail('Document not found.', 404);
+    return { name: found[0], path: `${home}/weather-station/docs/${found[0]}`, text: found[2] };
+  },
   image: async (id, imageId) => {
     const shot = (shots[id] || [])[Number(/0000000(\d)/.exec(imageId)?.[1])];
     if (!shot) throw fail('Image not found.', 404);
@@ -122,10 +169,40 @@ const messages = {
   },
 };
 
+// With --lost, sessions a crash took, as server/recovery.mjs offers them. Resuming brings one back after a moment.
+const lost = !process.argv.includes('--lost') ? [] : [
+  { id: 'claude:9a1b2c3d-0000-4000-8000-000000000001', provider: 'claude', nativeId: '9a1b2c3d-0000-4000-8000-000000000001', account: '', cwd: `${home}/garden-planner`, project: 'garden-planner', title: 'Frost dates per postcode', status: 'working', detail: 'Bash · npm test -- frost', mode: 'auto',
+    prompt: 'Use the Met Office station data to work out the last frost date for each postcode, and show it on the planting calendar.', reply: 'The station lookup works; 41 of 43 tests pass. The two failures are postcodes on islands with no station inside 50 km, so I am adding a fallback to the nearest coastal one.', activeAt: ago(6), seenAt: ago(5), lostAt: ago(4), resuming: false },
+  { id: 'codex:5e6f7a8b-0000-4000-8000-000000000002', provider: 'codex', nativeId: '5e6f7a8b-0000-4000-8000-000000000002', account: '', cwd: `${home}/weather-station`, project: 'weather-station', title: 'Battery voltage on the status page', status: 'idle', detail: '', mode: '',
+    prompt: 'Show the sensor battery voltage on the status page, red under 3.3 V.', reply: 'Done: the status page shows voltage per sensor with a red dot under 3.3 V. Want me to add a low-battery push too?', activeAt: ago(30), seenAt: ago(5), lostAt: ago(4), resuming: false },
+];
+const recovery = {
+  resume: async ids => { for (const entry of lost.filter(entry => ids.includes(entry.id))) { entry.resuming = true; setTimeout(() => { lost.splice(lost.indexOf(entry), 1); sessions.push({ ...sessions[0], id: entry.id, nativeId: entry.nativeId, provider: entry.provider, title: entry.title, cwd: entry.cwd, project: entry.project, status: 'idle', updatedAt: Date.now(), messages: [] }); }, 1500); } return { resumed: ids, failed: [] }; },
+  dismiss: async ids => { for (const id of ids) { const i = lost.findIndex(entry => entry.id === id); if (i >= 0) lost.splice(i, 1); } return { ok: true }; },
+};
+
+// Enough of a spawn to try by hand: the agent turns up a moment later, where it was asked for.
+let spawned = 0;
+const spawn = async ({ cwd: typed, slot } = {}) => {
+  const cwd = folderPath(typed, '/home/demo') || typed;
+  seats.reserve(cwd, slot);
+  setTimeout(() => {
+    const id = `demo-${++spawned}`, project = sessions.find(s => s.cwd === cwd)?.project || cwd.split('/').pop();
+    sessions.push({ ...sessions[0], id: `claude:${id}`, nativeId: id, title: `Agent ${spawned}`, cwd, project, status: 'idle', updatedAt: ago(0), context: 0 });
+  }, 800);
+  return { session: 'demo' };
+};
+
+// The new agent menu's folder check, over the made-up folders: a project's is there, one more inside ~/code or a project can be made.
+const folder = typed => {
+  const path = folderPath(typed, '/home/demo'), there = new Set(['/home/demo', home, ...sessions.map(s => s.cwd)]);
+  return !path ? 'none' : there.has(path) ? 'folder' : there.has(dirname(path)) ? 'new' : 'none';
+};
+
 const authFile = join(await mkdtemp(join(tmpdir(), 'ai-control-demo-')), 'auth.json');
 await savePassword(authFile, pin);
 const origins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
 const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: ['127.0.0.1', 'localhost'] } });
-const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages }));
+const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder, lost: recovery }));
 server.listen(port, '127.0.0.1', () => console.log(`AI Control demo: ${origins[0]}  PIN ${pin}  (Ctrl-C stops)`));
 process.once('SIGINT', () => { server.closeAllConnections(); server.close(); vite.close().finally(() => process.exit(0)); });

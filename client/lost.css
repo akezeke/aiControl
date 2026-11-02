@@ -1,0 +1,37 @@
+/* Lost sessions (main.js renderLost): above the list, or over a scene, until resumed or dismissed. */
+.lost { margin-bottom: 16px; }
+.lost details { overflow: hidden; color: var(--text); background: var(--panel); border: 1px solid var(--warn-line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.lost-summary { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 6px 4px 12px; font-size: 13px; color: var(--warn); cursor: pointer; list-style: none; }
+.lost-summary::-webkit-details-marker { display: none; }
+.lost-summary > .icon { flex: none; }
+.lost-summary strong { font-weight: 650; }
+.lost-when { color: var(--text-3); }
+.lost-summary .lost-actions { margin-left: auto; }
+.lost-actions { display: flex; flex: none; gap: 2px; }
+.lost-actions .quiet-button { min-height: 30px; padding: 0 8px; }
+.lost-actions .quiet-button:disabled { opacity: .5; cursor: default; }
+.lost-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.lost-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 8px 6px 8px 12px; }
+.lost-row + .lost-row { border-top: 1px solid var(--line); }
+.lost-row.resuming { opacity: .6; }
+.lost-mark { display: grid; place-items: center; width: 24px; height: 20px; font-size: 16px; line-height: 1; color: var(--codex); }
+.lost-mark.claude { color: var(--claude); }
+.lost-main { display: grid; gap: 2px; min-width: 0; }
+.lost-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 13px; }
+.lost-title { flex: 0 1 auto; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.lost-project, .lost-detail { min-width: 0; overflow: hidden; color: var(--text-3); text-overflow: ellipsis; white-space: nowrap; }
+.lost-head .chip { flex: none; }
+.lost-state.working { color: var(--ok); border-color: currentColor; }
+.lost-state:is(.permission, .question) { color: var(--warn); border-color: currentColor; }
+.lost-state.error { color: var(--danger); border-color: currentColor; }
+.lost-said, .lost-reply { overflow: hidden; font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.lost-said { color: var(--text-2); }
+.lost-said::before { content: '›'; margin-right: 6px; font-weight: 700; color: var(--accent); }
+.lost-reply { color: var(--text-3); }
+/* Over a scene, where the rest of the list is hidden: a floating card, below any open panel. */
+:root[data-scene]:not([data-scene-fallback], [data-scene-list]) .main-content > .lost:not([hidden]) { display: block; position: fixed; z-index: 9; top: max(12px, env(safe-area-inset-top)); right: 16px; width: min(560px, calc(100vw - 32px)); max-height: 50vh; margin: 0; overflow-y: auto; border-radius: var(--radius); box-shadow: 0 8px 28px #0b0f1740; }
+@media (max-width: 640px) {
+  .lost-row { grid-template-columns: 20px minmax(0, 1fr); }
+  .lost-row > .lost-actions { grid-column: 2; justify-self: end; }
+  .lost-detail { display: none; }
+}

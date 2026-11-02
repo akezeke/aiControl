@@ -632,7 +632,7 @@
   :is(.primary, .secondary, .quiet-button):active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
   .primary { background: var(--go); }
   .primary:hover:not(:disabled) { background: #a5e872; }
-  [data-decision=decline], [data-decision=cancel], .fire-button.armed { background: var(--stop); color: var(--ink); border-color: var(--ink); }
+  [data-decision=decline], [data-decision=cancel], .fire-button.armed, .clear-button.armed { background: var(--stop); color: var(--ink); border-color: var(--ink); }
   .stop-button { color: #b0182c; }
   .filter-menu.filtered > summary, .alerts-menu.alerts-on > summary { background: var(--sky); color: var(--ink); border-color: var(--ink); }
   .live-label { color: var(--ink); }
@@ -753,6 +753,39 @@
 /* hidden while behind the planet (the orbit's far half) */ @keyframes satellite { 0% { transform: rotate(-22deg) scaleY(.32) rotate(0deg) translateX(21px) scaleY(3); opacity: 1; } 59.7% { transform: rotate(-22deg) scaleY(.32) rotate(215deg) translateX(21px) scaleY(3); opacity: 1; } 63.9% { transform: rotate(-22deg) scaleY(.32) rotate(230deg) translateX(21px) scaleY(3); opacity: 0; } 86.1% { transform: rotate(-22deg) scaleY(.32) rotate(310deg) translateX(21px) scaleY(3); opacity: 0; } 90.3% { transform: rotate(-22deg) scaleY(.32) rotate(325deg) translateX(21px) scaleY(3); opacity: 1; } 100% { transform: rotate(-22deg) scaleY(.32) rotate(360deg) translateX(21px) scaleY(3); opacity: 1; } }
 @keyframes satellite-big { 0% { transform: rotate(-22deg) scaleY(.32) rotate(0deg) translateX(44px) scaleY(3); opacity: 1; } 59.7% { transform: rotate(-22deg) scaleY(.32) rotate(215deg) translateX(44px) scaleY(3); opacity: 1; } 63.9% { transform: rotate(-22deg) scaleY(.32) rotate(230deg) translateX(44px) scaleY(3); opacity: 0; } 86.1% { transform: rotate(-22deg) scaleY(.32) rotate(310deg) translateX(44px) scaleY(3); opacity: 0; } 90.3% { transform: rotate(-22deg) scaleY(.32) rotate(325deg) translateX(44px) scaleY(3); opacity: 1; } 100% { transform: rotate(-22deg) scaleY(.32) rotate(360deg) translateX(44px) scaleY(3); opacity: 1; } }
 
+:root[data-theme=city] {
+  /* The list as a game's menus: flat colour, square corners, a hard dark edge and pixel type on the labels. */
+  :is(.brand-name, .sidebar-label, .status-line, .page-heading h1, .empty h2) { font-family: var(--display); font-weight: 400; letter-spacing: 0; }
+  & *, & ::before, & ::after { border-radius: 0 !important; }
+  /* Corners cut by a border image and raised by a hard inner bevel. A drop shadow would fill the corners back in. */
+  :is(.session-card, .usage-accounts, .empty, .login-card, .request-box, .quiet-button, .stop-button, .clear-button, .spawn-button, .shot-button, .next-button, .back-button, .fire-button, .toast) { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-raised); }
+  :is(.quiet-button, .stop-button, .clear-button, .spawn-button, .shot-button, .next-button, .back-button, .fire-button):active { box-shadow: var(--px-sunk); }
+  :is(input:not([type=checkbox], [type=radio]), textarea, select) { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-sunk); }
+  :is(input, textarea, select):focus-visible { border-image-source: var(--px-accent); }
+  /* The search box is the wrapper around its input, so that's what gets the frame. */
+  .search input { border: 0; border-image: none; box-shadow: none; }
+  .search { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-sunk); }
+  .search:focus-within { border-image-source: var(--px-accent); box-shadow: var(--px-sunk); }
+  /* Meters count in blocks, like a game's power bar. */
+  :is(.usage-meter, .plan-meter) { height: 8px; background: #2e222f; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-bar { background: #2e222f; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-value { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
+  :is(.usage-meter, .plan-meter)::-moz-progress-bar { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
+  .stat { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-raised); }
+  .stat.selected { background-color: var(--hi-vis); color: var(--ink); box-shadow: inset 2px 2px 0 #fbb954, inset -2px -2px 0 #cd683d; }
+  .session-card:is(:hover, :focus-visible) { border-image-source: var(--px-accent); }
+  .session-card.needs-input { border-image-source: var(--px-warn); }
+  .session-card[data-status=error] { border-image-source: var(--px-red); }
+  :is(.badge, .chip, .ctx-chip, .compact-chip, .doc-chip, .mode-chip, .plan-chip, .project-tag, .subagent-tag, .workflow-tag, .nav-count, .group-count) { clip-path: var(--px-notch); }
+  scrollbar-color: #6f787a #2c3032;
+  .toast { background: var(--panel); color: var(--text); }
+  .shot-viewer::backdrop { background: #2e222fd9; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* A waiting card blinks like the beacon on its building, on the 3 s poll clock so a re-render doesn't restart it. */
+  :root[data-theme=city] .session-card.needs-input { animation: city-blink 1.5s steps(1) infinite; animation-delay: var(--since-load, 0s); }
+}
+@keyframes city-blink { 50% { border-image-source: var(--px-warn-line); box-shadow: inset 2px 2px 0 var(--warn), inset -2px -2px 0 var(--warn-line); } }
 @media (prefers-reduced-motion: no-preference) {
   :root:is([data-theme=alien], [data-theme=command]) {
     .theme-console[data-active] .console-signal i { animation: comm-signal 1.8s var(--signal-delay) ease-in-out infinite; }
@@ -926,7 +959,7 @@
 }
 
 /* An armed Fire stays red in every theme; the themed .quiet-button rules above outrank style.css. */
-:root .fire-button.armed { color: #fff; background: var(--danger); border-color: var(--danger); }
+:root :is(.fire-button, .clear-button).armed { color: #fff; background: var(--danger); border-color: var(--danger); }
 
 /* Screenshots, framed for each theme. Nothing covers or tints the picture itself: it has to show what the agent saw. */
 .history-shot::after { content: ''; position: absolute; pointer-events: none; }
@@ -937,8 +970,13 @@
   .shot-viewer { border: 2px solid #2c5a2a; background: linear-gradient(#1b2019, #0a0d09); box-shadow: inset 0 0 48px #7dff6a2e; color: #bdf7a8; }
   .shot-viewer::before { content: 'MU/TH/UR 6000 · VISUAL FEED'; display: block; margin-bottom: 10px; font: 15px/1 'VT323', var(--font); letter-spacing: .3em; color: #75b864; }
   .shot-full img { border-radius: 10px / 14px; box-shadow: 0 0 0 1px #000, 0 0 22px #7dff6a33; }
+  .shot-thumb { border: 1px solid #2c5a2a; border-radius: 6px / 8px; background: #070b07; }
+  .shot-thumb.current { border-color: #7dff6a; box-shadow: 0 0 8px #7dff6a66; }
   .shot-meta { font: 18px/1 'VT323', var(--font); letter-spacing: .08em; color: #93d980; }
   .shot-button { border-color: #2c5a2a; border-radius: 4px; background: #0a200b; color: #bdf7a8; font-family: 'VT323', var(--font); font-size: 20px; }
+  .doc-viewer::before { content: 'MU/TH/UR 6000 · DOCUMENT'; }
+  .doc-body { border: 1px solid #2c5a2a; border-radius: 10px / 14px; box-shadow: inset 0 0 22px #7dff6a14; }
+  .doc-chip { border-color: #2c5a2a; border-radius: 4px; background: #0a200b; color: #bdf7a8; font: 18px/1 'VT323', var(--font); letter-spacing: .06em; box-shadow: 0 0 8px #7dff6a26; }
 }
 :root[data-theme=command] {
   /* A riveted steel recon frame under a hazard stripe. */
@@ -950,8 +988,14 @@
   .shot-viewer::before { content: 'EVA ▸ RECON IMAGE'; display: block; margin-bottom: 12px; padding: 14px 6px 6px; font: 13px/1 var(--display); letter-spacing: .2em; color: #f0c94a; text-shadow: 0 1px 0 #000;
     background: linear-gradient(#0000 0 10px, #1b1604cc 10px), repeating-linear-gradient(-45deg, #f0c94a 0 9px, #1b1604 9px 18px) top / 100% 10px no-repeat; }
   .shot-full img { border: 2px solid #0a0e07; border-radius: 0; box-shadow: 0 0 0 1px #8a9070; }
+  .shot-thumb { border: 2px outset #90977a; border-radius: 0; background: var(--steel); }
+  .shot-thumb.current { border: 2px solid #f0c94a; }
   .shot-meta { font: 12px/1 var(--display); text-transform: uppercase; letter-spacing: .14em; color: #f0c94a; }
   .shot-button { border: 2px outset #90977a; border-radius: 0; background: linear-gradient(#646e54, #3b462e); color: #f6f0cd; }
+  .doc-viewer::before { content: 'EVA ▸ MISSION BRIEF'; flex: none; }
+  .doc-body { border: 2px inset #4b5b3a; border-radius: 0; }
+  .doc-chip { border: 2px outset #90977a; border-radius: 0; background: var(--steel); color: #f6f0cd; font: 12px/1 var(--display); text-transform: uppercase; letter-spacing: .08em; }
+  .doc-chip .icon { color: #f0c94a; }
 }
 :root[data-theme=office] {
   /* Prints on the board: white borders, a strip of tape, the thumbnails a little crooked. The viewer stays straight to stay sharp. */
@@ -964,8 +1008,13 @@
   .shot-viewer::before { content: ''; position: absolute; top: -11px; left: 50%; width: 96px; height: 24px; margin-left: -48px; background: #f3e9a8d9; box-shadow: 0 1px 2px #0002; transform: rotate(2deg); pointer-events: none; }
   .shot-viewer::backdrop { background: #2b1d10d0; }
   .shot-full img { border-radius: 0; box-shadow: 0 0 0 1px #0000001a; }
+  .shot-thumb { border: 0; border-radius: 1px; background: #fff; box-shadow: 0 1px 3px #0003, 0 0 0 1px #0000000f; }
+  .shot-thumb.current { box-shadow: 0 0 0 3px var(--accent); }
   .shot-meta { font: 700 15px/1.2 var(--hand); color: var(--text-2); }
   .shot-button { border: 0; border-radius: 2px; background: var(--postit); color: var(--text); box-shadow: 0 1px 3px #0003; }
   .shot-button:disabled { opacity: .45; }
+  .doc-body { border-radius: 0; background: #fff; box-shadow: 0 0 0 1px #0000001a; }
+  .doc-chip { border: 0; border-radius: 1px; background: #fff; box-shadow: 0 2px 5px #0003, 0 0 0 1px #0000000f; font: 700 15px/1.2 var(--hand); transform: rotate(-.6deg); }
+  .doc-chip:hover, .doc-chip:focus-visible { transform: none; box-shadow: 0 4px 10px #0003, 0 0 0 2px var(--accent); }
 }
 

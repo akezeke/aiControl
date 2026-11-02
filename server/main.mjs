@@ -1,9 +1,9 @@
 import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
 import { appendFile, writeFile, rename, unlink } from 'node:fs/promises';
-import { join, isAbsolute } from 'node:path';
-import { statSync } from 'node:fs';
-import { hostname as machineName, homedir } from 'node:os';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { hostname as machineName } from 'node:os';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
 import { RequestStore, mergeSessions } from './requests.mjs';
@@ -16,6 +16,12 @@ import { fail } from './requests.mjs';
 import { spawnAgent } from './claude-messaging.mjs';
 import { AgentDefaults } from './agent-defaults.mjs';
 import { SpendBudget } from './spend-budget.mjs';
+import { agentFolder, folderState } from './folders.mjs';
+import { OfficeSeats } from './seats.mjs';
+import { CityTowers } from './towers.mjs';
+import { Battlefields } from './battlefields.mjs';
+import { Recovery, resumeArgs } from './recovery.mjs';
+import { PromptHistory } from './prompt-history.mjs';
 import { root, authFile, dataDir, hookSocket, port, claudeAccounts, readSettings } from './config.mjs';
 
 export async function startServer({ host, hostname, tls = null }) {
@@ -37,9 +43,19 @@ export async function startServer({ host, hostname, tls = null }) {
   const claudeUsage = accounts.map(({ dir, label }) => ({ label, poller: new UsagePoller('claude', label ? `Claude Code · ${label}` : 'Claude Code', claudeUsageReader({ credentialsFile: join(dir, '.credentials.json') })) }));
   // Loading the .mjs directly avoids temporary bundled configs triggering Node 22's imported-module watcher.
   const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), configLoader: 'native', server: { middlewareMode: true, hmr: false, allowedHosts: origins.map(o => new URL(o).hostname) } });
+  const seats = new OfficeSeats(join(dataDir, 'office-seats.json'));
+  const towers = new CityTowers(join(dataDir, 'city-towers.json'));
+  const battlefields = new Battlefields(join(dataDir, 'fantasy-battlefields.json'));
+  // Kept up whether or not anyone's looking, so a crash leaves the file as it was seconds before.
+  const recovery = new Recovery(join(dataDir, 'recovery.json'));
+  const prompts = new PromptHistory(accounts.map(({ dir }) => join(dir, 'history.jsonl')));
+  const recover = async () => {
+    await prompts.refresh();
+    recovery.update([...codex.list(), ...claude.list()], { ended: entry => entry.provider === 'claude' ? claude.ending(entry.nativeId) : '', typed: session => session.provider === 'claude' ? prompts.get(session.nativeId) : '' });
+  };
   const snapshot = () => {
     const sessions = mergeSessions([...codex.list(), ...claude.list(), ...opencode.list()], store.list());
-    return { sessions, usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
+    return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -66,26 +82,49 @@ export async function startServer({ host, hostname, tls = null }) {
     cancel: (id, queuedId) => openCodeId(id) ? unsupportedOpenCode() : codex.cancelQueuedMessage(messageTarget(id), queuedId),
     interrupt: id => openCodeId(id) ? opencode.interrupt(openCodeId(id)) : claudeId(id) ? claude.interrupt(claudeId(id)) : codex.interrupt(messageTarget(id)),
     fire: id => openCodeId(id) ? opencode.fire(openCodeId(id)) : claudeId(id) ? claude.fire(claudeId(id)) : codex.fire(messageTarget(id)),
+    clear: id => claudeId(id) ? claude.clear(claudeId(id)) : Promise.reject(fail('Only Claude sessions can be cleared for now.', 409)),
     models: id => { const [adapter, nativeId] = settingTarget(id); return adapter.modelOptions(nativeId); },
     model: (id, body) => setAgentSetting(id, 'model', body?.model),
     effort: (id, body) => setAgentSetting(id, 'effort', body?.effort),
     history: (id, limit) => openCodeId(id) ? opencode.history(openCodeId(id), limit) : claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
     images: id => openCodeId(id) ? opencode.imageList(openCodeId(id)) : claudeId(id) ? claude.imageList(id) : codex.imageList(messageTarget(id)),
     image: (id, imageId) => openCodeId(id) ? opencode.image(openCodeId(id), imageId) : claudeId(id) ? claude.image(id, imageId) : codex.image(messageTarget(id), imageId),
+    documents: id => openCodeId(id) ? { documents: [] } : claudeId(id) ? claude.documentList(id) : codex.documentList(messageTarget(id)),
+    document: (id, documentId) => openCodeId(id) ? unsupportedOpenCode() : claudeId(id) ? claude.document(id, documentId) : codex.document(messageTarget(id), documentId),
   };
-  // Any existing directory (~ expands). Claude starts under the account asked for, or the one the project last used.
-  const spawn = async ({ cwd, provider, account: label } = {}) => {
-    if (typeof cwd === 'string') cwd = cwd.trim().replace(/^~(?=\/|$)/, homedir()).replace(/(.)\/+$/, '$1');
-    if (typeof cwd !== 'string' || !isAbsolute(cwd) || !statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return Promise.reject(fail('No such folder.', 404));
+  // Any existing directory (~ expands), or with `create` a new one in an existing directory. Claude starts under the account
+  // asked for, or the one the project last used. `slot` is the desk or lot the agent was asked for, if any.
+  const spawn = async ({ cwd: typed, provider, account: label, slot, create } = {}) => {
+    const cwd = agentFolder(typed, { create: create === true });
     if (provider === 'opencode') {
       const created = await opencode.spawn(cwd, await defaults.read(provider));
+      seats.reserve(cwd, slot);
       try { return { ...created, ...await spawnAgent(cwd, provider, { sessionId: created.sessionId.slice(9) }) }; }
       catch { return { ...created, warning: 'Session created, but its tmux terminal could not open.' }; }
     }
     const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
-    return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '', ...await defaults.read(provider, account?.label) });
+    seats.reserve(cwd, slot);
+    return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '', ...await defaults.read(provider, account?.label) }).catch(e => { seats.release(cwd, slot); throw e; });
   };
-  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, budget: async value => opencode.budget = await spendBudget.save(value) });
+  // One at a time, so two in a new folder don't both make its tmux session. Each in its own account and permission mode.
+  const lost = {
+    async resume(ids) {
+      const resumed = [], failed = [];
+      for (const id of ids) {
+        const entry = recovery.get(id);
+        if (!entry) continue;
+        try {
+          if (!existsSync(entry.cwd)) throw fail('Its folder is gone.', 409);
+          const account = entry.provider === 'claude' ? claude.accountFor(entry.cwd, entry.account) : null;
+          await spawnAgent(entry.cwd, entry.provider, { configDir: account?.label ? account.dir : '', args: resumeArgs(entry) });
+          recovery.resumed(id); resumed.push(id);
+        } catch (e) { failed.push({ id, error: e.status ? e.message : 'Could not open a tmux window.' }); }
+      }
+      return { resumed, failed };
+    },
+    dismiss: ids => { recovery.dismiss(ids); return { ok: true }; },
+  };
+  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {
@@ -98,6 +137,7 @@ export async function startServer({ host, hostname, tls = null }) {
   codex.start();
   opencode.start();
   for (const { poller } of claudeUsage) poller.start();
+  const recovering = setInterval(() => recover().catch(error => console.error('[Recovery]', error.message)), 4000);
   // npm start polls for this file; write then rename so it never reads a partial file.
   await writeFile(join(dataDir, 'server.json.tmp'), JSON.stringify({ pid: process.pid, url: origin, host, port, startedAt: new Date().toISOString() }), { mode: 0o600 });
   await rename(join(dataDir, 'server.json.tmp'), join(dataDir, 'server.json'));
@@ -106,7 +146,7 @@ export async function startServer({ host, hostname, tls = null }) {
   async function close() {
     if (closing) return; closing = true;
     auth.persist(loginsFile);
-    codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
+    clearInterval(recovering); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
     await closeServers();
     await unlink(join(dataDir, 'server.json')).catch(() => {});
   }

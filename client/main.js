@@ -6,8 +6,12 @@ import './theme-access.css';
 import './simpsons.css';
 import './diablo.css';
 import './heroes.css';
+import './city-list.css';
+import './fantasy-list.css';
+import './bridge-list.css';
 import './provider-icons.css';
 import './agent-header.css';
+import './lost.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
@@ -20,12 +24,16 @@ import { messagingUnavailableReason } from './messaging-status.js';
 import { ComposerInput, followKeyboard } from './composer-input.js';
 import { attachment, imageFiles, maxImages, releaseImages } from './composer-images.js';
 import { LiveRender } from './live-render.js';
-import { renderMessageMarkdown } from './message-markdown.js';
+import { renderMessageMarkdown, renderDocument } from './message-markdown.js';
+import { documentSegments, matchDocument } from './document-links.js';
 import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
+import { paletteFor, savedColour, wearColours } from './bridge/palettes.js';
+import { sceneFor, sceneAction } from './scenes.js';
 import { hireChoices } from './hire.js';
 import { agentSettings } from './agent-settings.js';
 import { budgetDialog } from './spend.js';
+import { createFolderField, hireCaret, hireRows } from './scene-ui.js';
 import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
 
 const app = document.querySelector('#app');
@@ -38,22 +46,28 @@ const statValues = new Map();
 const previousStatuses = new Map();
 // Older history fetched for an open panel: session id → { limit, messages, more }.
 const older = new Map();
-// Screenshots a session looked at, listed again while its panel is open and it changes.
-const shots = new Map(); // session id → { images, changed, fetched }
-const shotUrl = (id, imageId) => `/api/sessions/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`;
-function sessionShots(session) {
-  let entry = shots.get(session.id);
-  if (!entry) shots.set(session.id, entry = { images: [], changed: null, fetched: 0 });
-  if ((entry.changed !== session.updatedAt || !entry.images.length) && Date.now() - entry.fetched > 10_000) {
+// What an open panel lists from the server, listed again while its session changes.
+function sessionList(cache, session, kind) {
+  let entry = cache.get(session.id);
+  if (!entry) cache.set(session.id, entry = { items: [], changed: null, fetched: 0 });
+  if ((entry.changed !== session.updatedAt || (kind === 'images' && !entry.items.length)) && Date.now() - entry.fetched > 10_000) {
     entry.changed = session.updatedAt; entry.fetched = Date.now();
-    api(`sessions/${encodeURIComponent(session.id)}/images`).then(({ images = [] }) => {
-      if (JSON.stringify(images) === JSON.stringify(entry.images)) return;
-      entry.images = images;
+    api(`sessions/${encodeURIComponent(session.id)}/${kind}`).then(result => {
+      const items = result[kind] || [];
+      if (JSON.stringify(items) === JSON.stringify(entry.items)) return;
+      entry.items = items;
       if (state.selected === session.id && state.snapshot) renderPanel();
     }, () => {});
   }
-  return entry.images;
+  return entry.items;
 }
+// Screenshots a session looked at (server/images.mjs for Claude and its subagents, server/codex-images.mjs for Codex).
+const shots = new Map(); // session id → { items, changed, fetched }
+const shotUrl = (id, imageId) => `/api/sessions/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`;
+const sessionShots = session => sessionList(shots, session, 'images');
+// Markdown files a session wrote or named (server/documents.mjs).
+const docs = new Map(); // session id → { items, changed, fetched }
+const sessionDocs = session => sessionList(docs, session, 'documents');
 // Effort chosen here for Claude, shown until its transcript reports it.
 const pendingEffort = new Map();
 // When each session was last opened, so finished work you haven't looked at gets a dot.
@@ -69,6 +83,9 @@ const unread = session => session.status === 'idle' && !session.parentId && (ses
 const liveRender = new LiveRender(() => renderData());
 const groupingKey = 'ai-control-grouping';
 const savedGrouping = () => { try { return localStorage.getItem(groupingKey) === 'flat' ? 'flat' : 'project'; } catch { return 'project'; } };
+// The office's own option, under the themes: outlines on everything, or only on what's pointed at or picked.
+const outlinesKey = 'ai-control-office-outlines';
+let outlined = (() => { try { return localStorage.getItem(outlinesKey) !== 'off'; } catch { return true; } })();
 const state = { csrf: '', snapshot: null, filter: 'all', project: '', provider: 'all', grouping: savedGrouping(), search: '', selected: null, error: '', lastActivity: Date.now() };
 const navigation = new PanelNavigation(window, id => {
   if (!state.csrf) return;
@@ -76,7 +93,7 @@ const navigation = new PanelNavigation(window, id => {
   state.selected = id; panelSignature = '';
   if (id === 'access') renderAccessPanel(); else if (state.snapshot) renderPanel();
 });
-let poll, touching = 0, activityTimer, panelSignature = '', loading = false;
+let poll, touching = 0, activityTimer, panelSignature = '', loading = false, clearing = false;
 const statuses = { working: ['Working', 'green'], idle: ['Idle', 'gray'], permission: ['Permission', 'amber'], question: ['Question', 'amber'], offline: ['Offline', 'gray'], error: ['Error', 'red'], unknown: ['Unknown', 'gray'] };
 const icons = {
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
@@ -87,6 +104,9 @@ const icons = {
   back: '<path d="m15 5-7 7 7 7"/>',
   down: '<path d="m5 9 7 7 7-7"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  restore: '<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8m0-5v5h5"/><path d="M12 7v5l3 2"/>',
+  play: '<path d="M7 4.5v15l12-7.5Z"/>',
+  file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   activity: '<path d="M2 12h5l3-8 4 16 3-8h5"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>',
@@ -100,6 +120,10 @@ const icons = {
   next: '<path d="m6 5 7 7-7 7m7-14 7 7-7 7"/>',
   exit: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m5-12 4 4-4 4m4-4H9"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m4 18 5-5 4 4 3-3 4 4"/>',
+  eraser: '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21m9 0H7M5 11l9 9"/>',
+  bridge: '<path d="M12 2c1.500 1.800 2.300 4.200 2.600 7l.4 2.500 5 4V12m0 3.500.9 5-6.400-1.500-.5 2.500h-4l-.5-2.500-6.400 1.500.9-5V12m0 3.500 5-4 .4-2.500c.3-2.800 1.100-5.200 2.600-7M12 6.500v2.500"/>',
+  city: '<path d="M3 21h18M7 21V3M3 6h17M7 3 3 6m4-3 13 3M17 6v3m-2 0h4v3h-4zM12 21v-6h8v6"/>',
+  fantasy: '<path d="M14.500 17.500 3 6V3h3l11.500 11.500M13 19l6-6m-3 3 4 4m-1 1 2-2M9.500 17.500 21 6V3h-3L6.500 14.500M11 19l-6-6m3 3-4 4m1 1-2-2"/>',
   office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
@@ -119,18 +143,28 @@ function uuid() {
 }
 function chooseTheme(id) {
   applyTheme(id);
+  for (const card of document.querySelectorAll('#groups .session-card')) delete card.dataset.sig; // A look may draw its cards differently.
   for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
-  // Picking the Office opens its scene, even if its list was showing last.
-  if (id === 'office' && officeList) setOfficeList(false); else syncOffice();
+  // Picking a scene theme opens its scene, even if its list was showing last.
+  if (sceneFor(document.documentElement.dataset.theme) && sceneList) setSceneList(false); else syncScene();
+  dressTheme();
 }
 function themeMenu() {
   const menu = el('details', 'theme-menu');
   const summary = el('summary', 'quiet-button'); summary.append(icon('theme')); summary.setAttribute('aria-label', 'Change theme'); summary.title = 'Change theme';
   const choices = el('div', 'theme-options'); choices.setAttribute('aria-label', 'Color theme');
+  // The office's own checkbox, tucked under it and shown only while it's the theme.
+  const outlines = button('Outlines', 'theme-sub office-option', () => {
+    outlined = !outlined; try { localStorage.setItem(outlinesKey, outlined ? 'on' : 'off'); } catch { /* per tab only */ }
+    for (const option of document.querySelectorAll('.office-option')) option.setAttribute('aria-checked', String(outlined));
+    scene?.outlines?.(outlined);
+  });
+  outlines.setAttribute('role', 'checkbox'); outlines.setAttribute('aria-checked', String(outlined)); outlines.title = 'Off: only on what you point at';
   for (const theme of themes) {
     const choice = button(theme.name, 'theme-choice', () => { chooseTheme(theme.id); menu.open = false; summary.focus(); });
     choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(document.documentElement.dataset.themeChoice === theme.id));
     choice.prepend(el('i', `theme-swatch ${theme.id}`)); choices.append(choice);
+    if (theme.id === 'office') choices.append(outlines);
   }
   menu.append(summary, choices); placeMenu(menu, summary, choices); return menu;
 }
@@ -162,7 +196,8 @@ function alertsMenu() {
   return menu;
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
-const brandNames = { modern: 'AI Control', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary' };
+wearColours(paletteFor(savedColour()));
+const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {
@@ -174,6 +209,10 @@ function brand() {
 }
 function badge(status) { const [label, color] = statuses[status] || statuses.unknown; const node = el('span', `badge ${color}`); node.append(el('i', 'dot'), el('span', '', label)); return node; }
 const needsInput = session => ['permission', 'question'].includes(session.status);
+// The sidebar's filter and project as a test on a session; null while it's all of them. The list shows who passes, the
+// office outlines them.
+const picked = () => state.filter === 'all' && !state.project ? null
+  : s => (!state.project || (s.cwd || s.project) === state.project) && (state.filter === 'all' || (state.filter === 'attention' ? needsInput(s) : s.status === state.filter));
 const providerName = provider => ({ codex: 'Codex', claude: 'Claude Code', opencode: 'OpenCode' })[provider] || provider;
 function age(time) { if (!time) return 'No activity time'; const seconds = Math.max(0, (Date.now() - time) / 1000); return seconds < 60 ? 'Just now' : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`; }
 
@@ -190,9 +229,9 @@ async function api(path, body, options = {}) {
 function showLogin(message = '') {
   disposeHistory();
   disposeComposer(); liveRender.cancel();
-  messageDrafts.clear(); shots.clear();
+  messageDrafts.clear(); shots.clear(); docs.clear();
   clearTimeout(activityTimer); activityTimer = null;
-  clearInterval(poll); office?.unmount(); office = null; state.csrf = ''; state.snapshot = null; state.selected = null; panelSignature = ''; document.body.classList.remove('panel-open');
+  clearInterval(poll); closeScene(); state.csrf = ''; state.snapshot = null; state.selected = null; panelSignature = ''; document.body.classList.remove('panel-open');
   app.replaceChildren(); document.documentElement.removeAttribute('data-attention'); document.documentElement.removeAttribute('data-working');
   const screen = el('main', 'login-screen');
   screen.append(themeMenu());
@@ -211,6 +250,8 @@ function showLogin(message = '') {
   };
   card.append(form); screen.append(card);
   app.append(screen);
+  // Fantasy starts like a console: the boot logo comes before the title screen, not after it.
+  if (document.documentElement.dataset.theme === 'fantasy') { bootSequence(); if (globalThis.matchMedia?.('(hover: hover)').matches) input.focus(); }
   api('auth').then(data => {
     if (!input.isConnected) return;
     const pin = data.kind === 'pin'; input.setAttribute('aria-label', pin ? 'PIN' : 'Password');
@@ -229,7 +270,7 @@ function showWorkspace() {
   shell.append(aside);
   const content = el('div', 'workspace');
   const topbar = el('header', 'topbar');
-  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; const officeButton = button('Office', 'quiet-button office-button', () => setOfficeList(false), 'office'); officeButton.title = 'Back to the office'; topActions.append(live, officeButton, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
+  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; const officeButton = button('Office', 'quiet-button office-button', () => setSceneList(false), 'office'); officeButton.title = 'Back to the office'; topActions.append(live, officeButton, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
   // Desktop has no top bar: its controls sit at the bottom of the sidebar.
   const wide = matchMedia('(min-width: 641px)'), placeActions = () => (wide.matches ? aside : topbar).append(topActions);
   wide.onchange = placeActions; placeActions();
@@ -245,13 +286,26 @@ function showWorkspace() {
   for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code'], ['opencode', 'OpenCode']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
-  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu); main.append(toolbar);
+  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu, newAgentMenu()); main.append(toolbar);
   const create = button('New OpenCode session', 'tab new-session-button', () => { menu.open = false; newOpenCodeSession(); }, 'plus');
   tabs.append(create);
+  const lost = el('section', 'lost'); lost.id = 'lost'; lost.hidden = true; lost.setAttribute('aria-label', 'Lost sessions'); main.append(lost);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
   const screen = el('div', 'main-screen'); screen.append(main); content.append(screen); shell.append(content); app.append(shell);
-  const backdrop = el('div', 'panel-backdrop'); backdrop.id = 'backdrop'; backdrop.hidden = true; backdrop.onclick = closePanel;
+  // A scene showing beside the panel stays in reach: a session clicked through the backdrop takes the panel's place, and the wheel still scrolls it.
+  const backdrop = el('div', 'panel-backdrop'); backdrop.id = 'backdrop'; backdrop.hidden = true;
+  const through = event => scene?.at?.(event.clientX, event.clientY) ?? null;
+  // The scene's own commands too: most take the panel's place, those marked `beside` work with it still open.
+  const command = event => scene?.control?.(event.clientX, event.clientY) ?? null;
+  backdrop.onclick = event => {
+    const control = command(event);
+    if (control) { if (!('beside' in control.dataset)) closePanel(); control.click(); return; }
+    const id = through(event); if (!id) closePanel(); else if (id !== state.selected) navigation.open(id, { replace: true });
+  };
+  backdrop.onwheel = event => { if (scene?.scroll?.(event.clientX, event.clientY, event.deltaY * (event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? innerHeight : 1))) event.preventDefault(); };
+  backdrop.onpointermove = event => { if (event.pointerType !== 'mouse' || !scene?.at) return; backdrop.style.cursor = through(event) || command(event) ? 'pointer' : ''; scene.hover?.(event.clientX, event.clientY); };
+  backdrop.onpointerleave = () => scene?.hover?.(null);
   const panel = el('section', 'detail-panel'); panel.id = 'panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-label', 'Session details');
   app.append(backdrop, panel);
   poll = setInterval(refresh, 3000);
@@ -273,35 +327,62 @@ async function refresh() {
   } finally { loading = false; }
 }
 
-// The Office theme swaps the list for a 3D scene, downloaded only once it is chosen.
-// Its ☰ shows the list in the same paper look (the scene is unmounted meanwhile) and 🏢 goes back; the choice is remembered.
-const officeViewKey = 'ai-control-office-view';
-// Phones open on the list until the office is picked: it's the quicker check on a small screen.
+// Scene themes swap the list for a 3D scene, downloaded only once it is chosen.
+// Its ☰ shows the list in the same look (the scene is unmounted meanwhile) and a button goes back; the choice is remembered.
+const sceneViewKey = 'ai-control-office-view';
+// Phones open on the list until the scene is picked: it's the quicker check on a small screen.
 const phone = () => !!globalThis.matchMedia?.('(max-width: 640px) and (pointer: coarse)').matches;
-let office = null, officeModule = null, officeList = (() => { try { return (localStorage.getItem(officeViewKey) ?? (phone() ? 'list' : 'scene')) === 'list'; } catch { return phone(); } })();
-function setOfficeList(list) {
-  officeList = list; try { localStorage.setItem(officeViewKey, list ? 'list' : 'scene'); } catch { /* per-tab only */ }
-  syncOffice(); renderData();
+const sceneModules = {};
+let scene = null, sceneLook = null, failedLook = null, sceneList = (() => { try { return (localStorage.getItem(sceneViewKey) ?? (phone() ? 'list' : 'scene')) === 'list'; } catch { return phone(); } })();
+function setSceneList(list) {
+  sceneList = list; try { localStorage.setItem(sceneViewKey, list ? 'list' : 'scene'); } catch { /* per-tab only */ }
+  syncScene(); renderData();
   if (list) document.querySelector('.office-button')?.focus();
 }
-function syncOffice() {
-  const root = document.documentElement, main = document.querySelector('.main-content'), chosen = root.dataset.themeChoice === 'office';
-  root.toggleAttribute('data-office-list', chosen && officeList);
-  if (!chosen) root.removeAttribute('data-office-fallback');
-  if (!chosen || officeList || !main) { office?.unmount(); office = null; document.querySelector('#office')?.remove(); return; }
-  // Any failure (download, no WebGL2, renderer refused) shows the list once and stays that way for this theme choice.
-  const fallBack = message => { root.setAttribute('data-office-fallback', ''); document.querySelector('#office')?.remove(); toast(message); };
-  // An office bug must not take the session list down with it.
-  if (office) { if (state.snapshot) try { office.update(state.snapshot, { error: state.error }); } catch (error) { console.error(error); office.unmount(); office = null; fallBack('Office stopped; showing the list'); } return; }
-  if (root.hasAttribute('data-office-fallback')) return;
-  if (!officeModule) { officeModule = import('./office/office.js').then(module => { officeModule = module; syncOffice(); }, () => { officeModule = null; fallBack('Office failed to load; showing the list'); }); return; }
-  if (officeModule instanceof Promise) return;
-  if (!officeModule.webglAvailable()) { fallBack('Office needs WebGL 2; showing the list'); return; }
-  const box = el('div'); box.id = 'office'; main.append(box);
+// City's list and panel show each session's own tower, baked by the scene's generator; Fantasy's sidebar map puts each party on its land. Each loaded only for its theme.
+let portraits = null, portraitsLoading = false, worldMap = null, worldMapLoading = false;
+function dressTheme() {
+  const theme = document.documentElement.dataset.theme;
+  if (theme === 'fantasy') {
+    if (worldMap) { worldMap.dressMap(document.querySelector('#theme-console .console-screen'), state.snapshot); return; }
+    if (worldMapLoading) return;
+    worldMapLoading = true;
+    import('./fantasy/worldmap.js').then(module => { worldMap = module; dressTheme(); }).catch(() => { /* The map only lacks its dots. */ }).finally(() => { worldMapLoading = false; });
+    return;
+  }
+  if (theme !== 'city') return;
+  if (portraits) { portraits.dressList(document, state.snapshot, { error: !!state.error, reduced: reducedMotion.matches, selected: state.selected }); return; }
+  if (portraitsLoading) return;
+  portraitsLoading = true;
+  import('./city/portrait.js').then(module => { portraits = module; dressTheme(); }).catch(() => { /* The list is complete without them. */ }).finally(() => { portraitsLoading = false; });
+}
+// A scene that throws while unmounting has already stopped drawing: its box goes anyway, or its last frame stays up, frozen.
+function closeScene() { try { scene?.unmount(); } catch (error) { console.error(error); } scene = null; sceneLook = null; document.querySelector('.main-content > .scene')?.remove(); }
+function syncScene() {
+  const root = document.documentElement, main = document.querySelector('.main-content'), look = root.dataset.theme, entry = sceneFor(look);
+  root.toggleAttribute('data-scene-list', !!entry && sceneList);
+  if (failedLook !== look) { failedLook = null; root.removeAttribute('data-scene-fallback'); }
+  const back = document.querySelector('.office-button');
+  if (back && entry && back.dataset.look !== look) { back.dataset.look = look; back.title = `Back to the ${entry.name.toLowerCase()}`; back.lastElementChild.textContent = entry.name; back.firstElementChild.replaceWith(icon(look)); }
+  const action = sceneAction(sceneLook, main && entry ? look : null, sceneList);
+  if (action === 'unmount' || action === 'swap') closeScene();
+  if (action === 'unmount' || action === 'none') { document.querySelector('.main-content > .scene')?.remove(); return; }
+  // Any failure (download, no WebGL2, renderer refused) shows the list once and stays that way for this look.
+  const fallBack = message => { failedLook = look; root.setAttribute('data-scene-fallback', ''); document.querySelector('.main-content > .scene')?.remove(); toast(message); };
+  // A scene bug must not take the session list down with it.
+  if (action === 'keep') { if (state.snapshot) try { scene.update(state.snapshot, { error: state.error }); } catch (error) { console.error(error); closeScene(); fallBack(`${entry.name} stopped; showing the list`); } return; }
+  if (root.hasAttribute('data-scene-fallback')) return;
+  const module = sceneModules[look];
+  if (!module) { sceneModules[look] = entry.load().then(loaded => { sceneModules[look] = loaded; syncScene(); }, () => { delete sceneModules[look]; if (document.documentElement.dataset.theme === look) fallBack(`${entry.name} failed to load; showing the list`); }); return; }
+  if (module instanceof Promise) return;
+  if (!module.webglAvailable()) { fallBack(`${entry.name} needs ${entry.needs || 'WebGL 2'}; showing the list`); return; }
+  const box = el('div', 'scene'); box.id = look; main.append(box);
   try {
-    office = officeModule.mountOffice(box, { openPanel, nextWaiting: () => nextWaiting(), showList: () => setOfficeList(true), isUnread: unread, describe: sessionFacts, spawn: spawnAgent });
-    if (state.snapshot) office.update(state.snapshot, { error: state.error });
-  } catch (error) { console.error(error); office?.unmount(); office = null; fallBack('Office could not start; showing the list'); }
+    sceneLook = look;
+    scene = module.mount(box, { mapScreen: () => document.querySelector('#theme-console .console-screen'), openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, selected: () => state.selected, describe: sessionFacts, spawn: spawnAgent, showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
+    if (state.snapshot) scene.update(state.snapshot, { error: state.error });
+    scene.pick(picked(), false); scene.outlines?.(outlined);
+  } catch (error) { console.error(error); closeScene(); fallBack(`${entry.name} could not start; showing the list`); }
 }
 
 function renderData() {
@@ -309,7 +390,7 @@ function renderData() {
   if (!state.snapshot || !document.querySelector('#groups')) {
     const error = document.querySelector('#error'); if (error && state.error) { error.hidden = false; error.textContent = state.error; } return;
   }
-  syncOffice();
+  syncScene();
   const { sessions, providers } = state.snapshot;
   const count = sessions.filter(needsInput).length;
   setProperty(document, 'title', `${count ? `(${count}) ` : ''}AI Control`);
@@ -328,9 +409,10 @@ function renderData() {
   document.querySelector('#machine').textContent = state.snapshot.machine;
   const usage = document.querySelector('#usage'), usageSignature = JSON.stringify([state.snapshot.usage, !!state.error, Math.floor(Date.now() / 60_000)]);
   if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error, editBudget: account => budgetDialog(account, async budget => { await api('usage/opencode/budget', budget); toast('Budget saved'); await refresh(); }) }); }
+  renderLost(document.querySelector('#lost'), state.snapshot.lost || []);
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
-  const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); };
+  const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); scene?.pick(picked(), true); };
   // Desktop filters live here; the stat row below replaces them on phones.
   syncList(document.querySelector('#navigation'), [['all', 'All sessions', 'grid', sessions.length], ['attention', 'Needs you', 'bell', count], ['working', 'Working', 'activity', working], ['idle', 'Idle', 'moon', idle]]
     .map(([value, label, glyph, number]) => [value, [value, label, glyph, number, state.filter === value && !state.project]]),
@@ -340,7 +422,7 @@ function renderData() {
     data => {
       if (!data) return el('span', 'no-projects', 'Projects appear with sessions');
       const [key, name, active, waiting] = data;
-      const b = button(name, `nav-item ${active ? 'active' : ''}`, () => { state.project = state.project === key ? '' : key; state.filter = 'all'; renderData(); }, 'folder'); b.title = key; b.append(el('span', 'project-dot', waiting || '')); return b;
+      const b = button(name, `nav-item ${active ? 'active' : ''}`, () => { state.project = state.project === key ? '' : key; state.filter = 'all'; renderData(); scene?.pick(picked(), !!state.project); }, 'folder'); b.title = key; b.append(el('span', 'project-dot', waiting || '')); return b;
     });
   syncList(document.querySelector('#stats'), [
     ['all', 'All', sessions.length, `${projects.size} projects on this computer`, ''],
@@ -357,7 +439,7 @@ function renderData() {
   const filterMenu = document.querySelector('#agent-filter-menu'); filterMenu.classList.toggle('filtered', state.provider !== 'all'); filterMenu.querySelector('summary').setAttribute('aria-label', `Session options: ${state.provider === 'all' ? 'All agents' : providerName(state.provider)}`);
   const focusedSession = document.activeElement?.classList.contains('session-card') ? document.activeElement.dataset.sessionId : null;
   const groups = document.querySelector('#groups');
-  const visible = sessions.filter(s => (!state.project || (s.cwd || s.project) === state.project) && (state.provider === 'all' || s.provider === state.provider) && (state.filter === 'all' || (state.filter === 'attention' ? needsInput(s) : s.status === state.filter)) && `${s.title} ${s.project} ${s.cwd} ${s.model}`.toLowerCase().includes(state.search.toLowerCase()));
+  const pick = picked(), visible = sessions.filter(s => (!pick || pick(s)) && (state.provider === 'all' || s.provider === state.provider) && `${s.title} ${s.project} ${s.cwd} ${s.model}`.toLowerCase().includes(state.search.toLowerCase()));
   const visibleGroups = new Map(); for (const session of visible) { const key = session.cwd || session.project; if (!visibleGroups.has(key)) visibleGroups.set(key, []); visibleGroups.get(key).push(session); }
   // Flat: one list in status order, with a project label on each card.
   const flat = state.grouping === 'flat';
@@ -372,7 +454,7 @@ function renderData() {
   const sessionsById = new Map();
   for (const [cwd, list] of sorted) {
     const group = [...groups.children].find(node => node.dataset.key === cwd), header = group.firstChild;
-    const headerSignature = JSON.stringify([list[0].project, list.length, cwd, hireChoices(state.snapshot, cwd).map(choice => choice.label)]);
+    const headerSignature = JSON.stringify([list[0].project, list.length, cwd, hireSignature(cwd)]);
     header.hidden = flat;
     if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
@@ -385,7 +467,7 @@ function renderData() {
     syncList(group.lastChild, ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren).map(session => {
       sessionsById.set(session.id, session);
       const lastMessage = session.messages?.at(-1);
-      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
+      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), waitingOn: session.waitingOn, detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
         plan: planProgress(session), mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), compacting: compacting(session), unread: unread(session) }];
     }), renderCard);
   }
@@ -399,6 +481,7 @@ function renderData() {
       const row = el('div', 'integration'); const status = el('span', `connection-dot ${provider.connected ? 'online' : ''}`); row.title = provider.detail; row.append(status, el('strong', '', provider.name), el('span', 'muted', provider.detail)); integrations.append(row);
     }
   }
+  dressTheme();
 }
 
 // One-line previews: drop code blocks and Markdown markers (keep snake_case underscores).
@@ -416,7 +499,7 @@ const compacting = session => session.status === 'working' && session.activity =
 const planProgress = session => session.plan?.length ? [session.plan.filter(step => step.status === 'done').length, session.plan.length] : null;
 function cardDetail(session) {
   if (session.provider === 'claude' && !session.control && needsInput(session) && !session.asks) return 'Open the original client · Hooks not connected';
-  return session.requests[0]?.title || session.asks || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
+  return session.requests[0]?.title || session.asks || (session.waitingOn && `Waiting · ${session.waitingOn}`) || session.detail || (session.status === 'idle' ? 'Waiting for the next task' : session.status === 'working' ? 'Working on the current task' : 'Open for details');
 }
 // What the office's card shows for whoever is outlined: the details a list card has.
 function sessionFacts(session) {
@@ -432,10 +515,11 @@ function renderCard(session, previous) {
   // Long card loops run on a page-wide clock, so a rebuilt card continues them instead of restarting.
   card.style.setProperty('--since-load', `${-Math.round(performance.now())}ms`); card.dataset.sessionId = session.id; card.dataset.status = session.status; card.setAttribute('aria-label', `${session.title}, ${providerName(session.provider)}, ${(statuses[session.status] || statuses.unknown)[0]}`);
   const mark = el('span', `agent-mark ${session.provider}`); mark.append(providerIcon(session.provider)); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
+  if (document.documentElement.dataset.theme === 'fantasy') import('./fantasy/portraits.js').then(({ paintPortrait }) => paintPortrait(mark, session)).catch(() => {});
   if (session.unread) card.classList.add('unread');
   if (session.plan) { card.dataset.plan = ''; card.style.setProperty('--plan', session.plan[0] / session.plan[1]); }
   const body = el('span', 'session-body');
-  const chips = [session.branch && el('span', 'branch', session.branch), session.plan && chip(`${session.plan[0]}/${session.plan[1]}`, 'plan-chip', 'Plan steps done'),
+  const chips = [session.branch && el('span', 'branch', session.branch), session.plan && chip(`${session.plan[0]}/${session.plan[1]}`, 'plan-chip', 'Plan steps done'), session.waitingOn && chip(`Waiting · ${session.waitingOn}`, 'plan-chip', 'Still running'),
     session.mode && chip(modeLabels[session.mode], `mode-chip ${session.mode}`, 'Permission mode'), session.compacting ? chip('compacting', 'compact-chip', 'Compacting context') : session.context >= 80 && chip(`ctx ${session.context}%`, 'ctx-chip', 'Context window used')].filter(Boolean);
   if (chips.length) { const meta = el('span', 'session-meta'); meta.append(...chips); body.append(meta); }
   const title = el('strong', 'session-title'); if (session.project) title.append(el('span', 'project-tag', session.project)); if (session.parentId) { const workflow = session.agentKind === 'workflow', tag = el('span', `subagent-tag${workflow ? ' workflow-tag' : ''}`, workflow ? 'Workflow' : 'Subagent'); tag.title = session.kind || ''; title.append(tag); } title.append(session.title); body.append(title);
@@ -494,12 +578,15 @@ function flipFrom(root, before) {
 let previousFocus;
 function openPanel(id) { previousFocus = document.activeElement; navigation.open(id); document.querySelector('#panel button')?.focus(); }
 function closePanel() { navigation.close(); }
-function hidePanel() { office?.panelClosed(); const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData(); const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
+function hidePanel() { scene?.panelClosed(); const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; const open = !panel.hidden; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData();
+  // Closing twice (the call, then the history step it takes) mustn't pull focus back from whatever the first close handed it to.
+  if (!open) return;
+  const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
 function revealPanel() { const panel = document.querySelector('#panel'); panel.hidden = false; document.querySelector('#backdrop').hidden = false; document.querySelector('.shell').setAttribute('inert', ''); document.body.classList.add('panel-open'); return panel; }
 function renderPanel() {
   const session = state.snapshot.sessions.find(s => s.id === state.selected);
   const panel = document.querySelector('#panel');
-  if (!session) { navigation.reset(); hidePanel(); return; }
+  if (!session) { if (clearing) return; navigation.reset(); hidePanel(); return; }
   if (panel.dataset.sessionId !== session.id) {
     disposeHistory(); disposeComposer(); panelSignature = '';
     if (panel.dataset.sessionId) { markSeen(panel.dataset.sessionId); older.delete(panel.dataset.sessionId); }
@@ -513,7 +600,7 @@ function renderPanel() {
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
-    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireChoices(state.snapshot, session.cwd).map(choice => choice.label)]);
+    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireSignature(session.cwd)]);
   const settingsActive = panel.querySelector('.agent-settings:focus-within, .agent-settings[data-busy]');
   if (signature !== panelSignature && (!settingsActive || state.error)) {
     panelSignature = signature;
@@ -527,6 +614,7 @@ function renderPanel() {
   }
   renderRecentMessages(session);
   renderComposer(session);
+  dressTheme();
 }
 
 // Triage: the next session waiting for you, in overview order.
@@ -540,6 +628,7 @@ function renderSessionHeader(header, session) {
   if (next) { const b = button('Next', 'quiet-button next-button', openNext, 'next'); b.title = `Next waiting (n): ${next.title}`; actions.append(b); }
   if (session.status === 'working' && session.messaging?.interrupt) { const stop = button('Stop', 'quiet-button stop-button', () => interrupt(session, stop), 'stop'); stop.title = 'Interrupt the current turn'; stop.disabled = !!state.error; actions.append(stop); }
   if ((session.status === 'idle' || session.asks) && !session.parentId && session.messaging?.fire) { const fire = button('Fire', 'quiet-button stop-button fire-button', () => fireSession(session, fire), 'exit'); fire.title = session.provider === 'codex' ? 'End and archive this session and its subagents; history remains resumable (refused while work is running or queued)' : session.provider === 'opencode' ? 'Archive this idle session and its subagents; keep history and the terminal open (refused while work is running or queued)' : `End this session with ${session.messaging.via === 'tmux' ? '/exit' : 'SIGTERM'} (refused while anything is still running)`; fire.disabled = !!state.error; actions.append(fire); }
+  if ((session.status === 'idle' || session.asks) && !session.parentId && session.messaging?.clear) { const clear = button('Clear', 'quiet-button clear-button', () => clearSession(session, clear), 'eraser'); clear.title = 'Start over with /clear'; clear.disabled = !!state.error; actions.append(clear); }
   actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
   const identity = el('div', 'agent-identity'), portrait = el('span', `agent-mark ${session.provider}`);
   portrait.append(providerIcon(session.provider)); portrait.setAttribute('aria-hidden', 'true');
@@ -577,18 +666,29 @@ function renderSessionHeader(header, session) {
   }
   if (state.error) header.append(el('p', 'connection-error', 'Reconnecting. Actions are temporarily disabled.'));
 }
-// The first click arms it for a few seconds; the second ends the session. The server refuses if anything is still running.
+// The first click arms it for a few seconds; the second goes ahead. The server refuses if anything is still running.
+function armed(control) {
+  if (control.classList.contains('armed')) return true;
+  const label = control.querySelector('span:not(.icon)'), name = label.textContent;
+  control.classList.add('armed'); label.textContent = 'Sure?'; control.setAttribute('aria-label', `Click again to ${name.toLowerCase()}`);
+  setTimeout(() => { control.classList.remove('armed'); label.textContent = name; control.removeAttribute('aria-label'); }, 3000);
+  return false;
+}
 async function fireSession(session, control) {
-  if (state.error) return;
-  const label = control.querySelector('span:not(.icon)');
-  if (!control.classList.contains('armed')) {
-    control.classList.add('armed'); label.textContent = 'Sure?'; control.setAttribute('aria-label', 'Click again to fire');
-    setTimeout(() => { control.classList.remove('armed'); label.textContent = 'Fire'; control.removeAttribute('aria-label'); }, 3000);
-    return;
-  }
+  if (state.error || !armed(control)) return;
   control.disabled = true;
-  try { await api(`sessions/${encodeURIComponent(session.id)}/fire`, {}); toast('Fired'); office?.fire(session.id); closePanel(); await refresh(); }
+  try { await api(`sessions/${encodeURIComponent(session.id)}/fire`, {}); toast('Fired'); scene?.fire(session.id); closePanel(); await refresh(); }
   catch (error) { toast(error.message); control.disabled = false; }
+}
+// /clear gives the session a new id, so the panel moves to it. Until a snapshot has it, a missing session doesn't close the panel.
+async function clearSession(session, control) {
+  if (state.error || !armed(control)) return;
+  control.disabled = true; clearing = true;
+  try {
+    const { id } = await api(`sessions/${encodeURIComponent(session.id)}/clear`, {});
+    toast('Cleared'); if (state.selected === session.id) navigation.open(id, { replace: true }); await refresh();
+    setTimeout(() => { clearing = false; }, 4000);
+  } catch (error) { clearing = false; toast(error.message); control.disabled = false; }
 }
 async function interrupt(session, control) {
   if (state.error) return;
@@ -837,9 +937,9 @@ function renderRecentMessages(session, savedPosition) {
     delete region.dataset.signature;
   }
   const flow = region.historyScroll;
-  const extra = older.get(session.id), messages = mergeHistory(extra?.messages, session.messages || []), images = sessionShots(session);
+  const extra = older.get(session.id), messages = mergeHistory(extra?.messages, session.messages || []), images = sessionShots(session), documents = sessionDocs(session);
   const moreAvailable = extra ? extra.more : session.historyMore || (session.messages || []).filter(m => !m.tool).length >= 40;
-  const signature = JSON.stringify([messages, images, session.messagesState, moreAvailable, !!extra?.loading]);
+  const signature = JSON.stringify([messages, images, documents, session.messagesState, moreAvailable, !!extra?.loading]);
   if (region.dataset.signature === signature) { if (savedPosition) flow.restore(savedPosition); return; }
   const saved = savedPosition || flow.capture();
   const content = region.querySelector('.history-content');
@@ -858,16 +958,58 @@ function renderRecentMessages(session, savedPosition) {
     const run = entries.at(-1);
     if (message.tool && Array.isArray(run) && run[0].tool) run.push(message); else entries.push(message.tool ? [message] : message);
   }
-  for (const entry of placeShots(entries.flatMap(item => Array.isArray(item) && (item.length < 3 || session.parentId) ? item : [item]), images)) {
-    const id = entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id, previous = existing.get(id), entrySignature = JSON.stringify(entry);
+  for (const entry of placeShots(entries.flatMap(item => Array.isArray(item) && (item.length < 3 || session.parentId) ? item : [item]), images, documents.filter(document => document.written))) {
+    const id = entry.docs ? `docs:${entry.docs[0].id}` : entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id, previous = existing.get(id), entrySignature = JSON.stringify(entry);
     if (previous?.dataset.signature === entrySignature) { children.push(previous); continue; }
-    const node = entry.shots ? shotStrip(session.id, entry) : Array.isArray(entry) ? toolRun(entry, !!previous?.open) : messageNode(entry, session, previous);
+    const node = entry.docs ? docStrip(session, entry.docs) : entry.shots ? shotStrip(session.id, entry) : Array.isArray(entry) ? toolRun(entry, !!previous?.open) : messageNode(entry, session, previous);
     node.dataset.messageId = id; node.dataset.signature = entrySignature; children.push(node);
   }
   // Keep unchanged messages mounted so expanded text and keyboard focus survive polling.
   for (const node of [...content.children]) if (!children.includes(node)) node.remove();
   children.forEach((node, index) => { if (content.children[index] !== node) content.insertBefore(node, content.children[index] || null); });
+  linkDocuments(content, documents, session.cwd, doc => showDocument(session, doc.id));
   flow.restore(saved);
+}
+function docStrip(session, group) {
+  const strip = el('div', 'history-docs');
+  for (const doc of group) {
+    const chip = el('button', 'doc-chip'); chip.type = 'button';
+    chip.title = [doc.path, doc.agent, doc.at && new Date(doc.at).toLocaleString()].filter(Boolean).join(' · ');
+    chip.append(icon('file'), el('span', '', doc.name)); chip.onclick = () => showDocument(session, doc.id); strip.append(chip);
+  }
+  return strip;
+}
+// The names of a session's documents in rendered text open them. Text already linked is left alone, so this can run again as documents turn up.
+function linkDocuments(root, documents, cwd, open) {
+  if (!documents.length) return;
+  const link = (doc, content) => { const b = el('button', 'doc-link'); b.type = 'button'; b.title = doc.path; b.append(...content); b.onclick = () => open(doc); return b; };
+  for (const span of root.querySelectorAll('[data-doc-path]')) { const doc = matchDocument(span.dataset.docPath, documents, cwd); if (doc) span.replaceWith(link(doc, [...span.childNodes])); }
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), texts = [];
+  while (walker.nextNode()) if (walker.currentNode.nodeValue.includes('.md') && walker.currentNode.parentElement.closest('.message-text') && !walker.currentNode.parentElement.closest('a, button, pre')) texts.push(walker.currentNode);
+  for (const text of texts) {
+    const segments = documentSegments(text.nodeValue, documents, cwd);
+    if (segments.some(segment => segment.document)) text.replaceWith(...segments.map(segment => segment.document ? link(segment.document, [segment.text]) : segment.text));
+  }
+}
+const viewerButton = (content, label, action) => { const b = el('button', 'shot-button'); b.type = 'button'; b.append(content); b.setAttribute('aria-label', label); b.title = label; b.onclick = action; return b; };
+// One document, as it is on disk now. A document it links to opens over it. Esc or the backdrop closes.
+function showDocument(session, documentId) {
+  const listed = () => docs.get(session.id)?.items || [], known = listed().find(doc => doc.id === documentId);
+  const dialog = el('dialog', 'shot-viewer doc-viewer'); dialog.setAttribute('aria-label', 'Document');
+  const bar = el('div', 'shot-bar'), meta = el('span', 'shot-meta', known?.name || 'Document'), body = el('div', 'doc-body message-text', 'Loading…');
+  meta.title = known?.path || '';
+  bar.append(meta, viewerButton('✕', 'Close (Esc)', () => dialog.close()));
+  dialog.append(bar, body);
+  // Only a press on the backdrop: dragging a text selection off the page ends with a click here too.
+  let pressed = null;
+  dialog.addEventListener('pointerdown', event => { pressed = event.target; });
+  dialog.addEventListener('click', event => { if (event.target === dialog && pressed === dialog) dialog.close(); });
+  dialog.onclose = () => dialog.remove();
+  app.append(dialog); dialog.showModal();
+  api(`sessions/${encodeURIComponent(session.id)}/documents/${encodeURIComponent(documentId)}`).then(({ name, path, text }) => {
+    meta.textContent = name; meta.title = path; body.innerHTML = renderDocument(text); body.scrollTop = 0;
+    linkDocuments(body, listed(), session.cwd, doc => showDocument(session, doc.id));
+  }, error => { body.textContent = error.message; });
 }
 function shotStrip(id, { shots: group, user }) {
   const strip = el('div', `history-shots${user ? ' user' : ''}`);
@@ -879,9 +1021,9 @@ function shotStrip(id, { shots: group, user }) {
   }
   return strip;
 }
-// Full-screen screenshots: pinch/scroll to zoom, drag to pan, swipe at fit size to step.
-function showShot(id, imageId) {
-  const images = shots.get(id)?.images || []; let at = Math.max(0, images.findIndex(image => image.id === imageId));
+// One screenshot big over a strip of them all: pinch/scroll to zoom, drag to pan; a thumbnail, ‹ ›, ←/→ or a swipe at fit size steps; Esc or the backdrop closes.
+function showShot(id, imageId, images = shots.get(id)?.items || [], closed) {
+  let at = Math.max(0, images.findIndex(image => image.id === imageId));
   if (!images.length) return;
   const dialog = el('dialog', 'shot-viewer'); dialog.setAttribute('aria-label', 'Screenshot');
   const viewport = el('div', 'shot-full'); viewport.tabIndex = 0; viewport.setAttribute('aria-label', 'Image preview');
@@ -889,20 +1031,27 @@ function showShot(id, imageId) {
   const picture = el('img'); picture.alt = ''; picture.draggable = false; viewport.append(picture);
   const link = el('a', 'shot-button', '↗'); link.target = '_blank'; link.rel = 'noopener'; link.title = 'Full size'; link.setAttribute('aria-label', 'Open full-size image');
   const bar = el('div', 'shot-bar'), meta = el('span', 'shot-meta');
-  const control = (text, label, action) => { const b = el('button', 'shot-button', text); b.type = 'button'; b.setAttribute('aria-label', label); b.title = label; b.onclick = action; return b; };
   const step = by => { const next = Math.max(0, Math.min(images.length - 1, at + by)); if (next !== at) { at = next; show(); } };
-  const prev = control('‹', 'Previous (←)', () => step(-1)), next = control('›', 'Next (→)', () => step(1));
-  bar.append(prev, meta, next, link, control('✕', 'Close (Esc)', () => dialog.close()));
+  const prev = viewerButton('‹', 'Previous (←)', () => step(-1)), next = viewerButton('›', 'Next (→)', () => step(1));
+  bar.append(prev, meta, next, link, viewerButton('✕', 'Close (Esc)', () => dialog.close()));
   const panZoom = new ImagePanZoom(viewport, picture, step);
+  const thumbs = images.map((image, n) => {
+    const thumb = el('button', 'shot-thumb'); thumb.type = 'button'; thumb.setAttribute('aria-label', `Screenshot ${n + 1}`);
+    thumb.title = [image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
+    const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = shotUrl(id, image.id);
+    thumb.append(img); thumb.onclick = () => { if (at !== n) { at = n; show(); } }; return thumb;
+  });
+  const strip = el('div', 'shot-strip'); strip.append(...thumbs);
   const show = () => {
     panZoom.reset();
     const image = images[at]; picture.src = link.href = shotUrl(id, image.id);
+    thumbs.forEach((thumb, n) => thumb.classList.toggle('current', n === at)); thumbs[at].scrollIntoView({ block: 'nearest', inline: 'nearest' });
     meta.textContent = [`${at + 1}/${images.length}`, image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
     const focused = document.activeElement;
     prev.disabled = at === 0; next.disabled = at === images.length - 1;
     if ((focused === prev && prev.disabled) || (focused === next && next.disabled)) viewport.focus({ preventScroll: true });
   };
-  dialog.append(viewport, bar);
+  dialog.append(...(images.length > 1 ? [viewport, strip, bar] : [viewport, bar]));
   dialog.addEventListener('keydown', event => {
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); step(event.key === 'ArrowLeft' ? -1 : 1); }
     else if (['+', '=', '-', '0'].includes(event.key)) {
@@ -911,7 +1060,7 @@ function showShot(id, imageId) {
     }
   });
   dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
-  dialog.onclose = () => { panZoom.destroy(); dialog.remove(); };
+  dialog.onclose = () => { panZoom.destroy(); dialog.remove(); closed?.(); };
   app.append(dialog); show(); dialog.showModal();
 }
 // Older pages end where the live window starts, so polling keeps the newest part current.
@@ -1038,16 +1187,128 @@ function newOpenCodeSession() {
   dialog.onclick = event => { if (event.target === dialog && !sending) { const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); } };
   form.append(title, label, known, connection, error, actions); dialog.append(form); app.append(dialog); dialog.updateConnection(); dialog.showModal(); folder.focus();
 }
+const hireSignature = cwd => hireChoices(state.snapshot, cwd).flatMap(choice => [choice.label, ...(choice.accounts || []).map(account => account.label)]);
 function spawnButtons(cwd) {
   const actions = el('span', 'group-actions');
-  for (const choice of hireChoices(state.snapshot, cwd)) { const b = button(choice.label, 'quiet-button spawn-button', () => spawnAgent(cwd, choice, b), 'plus'); b.insertBefore(providerIcon(choice.provider), b.lastChild); b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}${choice.last ? ' · last used here' : ''}`; actions.append(b); }
+  for (const choice of hireChoices(state.snapshot, cwd)) {
+    const b = button(choice.label, 'quiet-button spawn-button', () => choice.accounts ? toggleAccountMenu(b, cwd, choice.accounts) : spawnAgent(cwd, choice, b), 'plus');
+    b.insertBefore(providerIcon(choice.provider), b.lastChild);
+    if (choice.accounts) { b.append(hireCaret()); b.title = 'Claude account'; b.setAttribute('aria-haspopup', 'menu'); b.setAttribute('aria-expanded', 'false'); }
+    else b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}`;
+    actions.append(b);
+  }
   return actions;
 }
-async function spawnAgent(cwd, choice, control) {
+// In the top layer and outside the list: no scrolling parent clips it, and a panel or header redraw can't close it mid-pick.
+let closeAccountMenu = null;
+function toggleAccountMenu(control, cwd, accounts) {
+  const reopen = closeAccountMenu?.control !== control;
+  closeAccountMenu?.();
+  if (!reopen) return;
+  const menu = el('div', 'filter-options account-options'); menu.popover = 'manual'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Claude account');
+  const items = accounts.map(account => {
+    const item = button(account.label, 'tab', () => { close(); spawnAgent(cwd, account, control); });
+    item.setAttribute('role', 'menuitem'); item.title = `New ${account.name} in tmux${account.last ? ' · last used here' : ''}`;
+    if (account.last) item.append(el('span', 'last', 'last'));
+    return item;
+  });
+  const listening = new AbortController();
+  function close(returnFocus) {
+    listening.abort(); menu.remove(); closeAccountMenu = null; control.setAttribute('aria-expanded', 'false');
+    if (returnFocus && control.isConnected) control.focus();
+  }
+  close.control = control; closeAccountMenu = close;
+  // Keys stay in the menu: Esc would close the panel behind it, and j, k and n act on the list.
+  menu.onkeydown = event => {
+    event.stopPropagation();
+    if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); close(true); }
+    else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+  };
+  for (const [type, target] of [['scroll', document], ['resize', window]]) target.addEventListener(type, () => close(), { capture: true, signal: listening.signal });
+  document.addEventListener('pointerdown', event => { if (!menu.contains(event.target) && !control.contains(event.target)) close(); }, { capture: true, signal: listening.signal });
+  menu.append(...items); app.append(menu); menu.showPopover(); control.setAttribute('aria-expanded', 'true');
+  const at = control.getBoundingClientRect(), { offsetWidth: w, offsetHeight: h } = menu;
+  menu.style.left = `${Math.max(8, Math.min(at.right, innerWidth - 8) - w)}px`;
+  menu.style.top = `${at.bottom + 4 + h > innerHeight - 8 ? Math.max(8, at.top - 4 - h) : at.bottom + 4}px`;
+  items[0].focus();
+}
+// Sessions that went without a goodbye (server/recovery.mjs): what each was last asked, said and doing, to resume in tmux or let go.
+const lostStates = { working: 'was working', permission: 'needed approval', question: 'asked you', idle: 'idle', error: 'error' };
+let lostOpen = true;
+function renderLost(section, lost) {
+  const signature = JSON.stringify([lost, !!state.error, Math.floor(Date.now() / 60_000)]);
+  if (section.dataset.sig === signature) return;
+  section.dataset.sig = signature; section.hidden = !lost.length;
+  if (!lost.length) { section.replaceChildren(); return; }
+  const ready = lost.filter(entry => !entry.resuming).map(entry => entry.id);
+  const details = el('details'); details.open = lostOpen; details.ontoggle = () => { lostOpen = details.open; };
+  const summary = el('summary', 'lost-summary'); summary.title = 'Ended without exiting: a crash, a killed tmux or a shutdown';
+  const actions = el('span', 'lost-actions');
+  if (ready.length > 1) actions.append(lostButton('Resume all', 'play', ready, 'resume', `Resume ${ready.length} in tmux`));
+  actions.append(lostButton('', 'close', lost.map(entry => entry.id), 'dismiss', 'Dismiss all'));
+  summary.append(icon('restore'), el('strong', '', `${lost.length} lost`), el('span', 'lost-when', age(lost[0].seenAt)), actions);
+  const list = el('ul', 'lost-list');
+  for (const entry of lost) {
+    const row = el('li', `lost-row${entry.resuming ? ' resuming' : ''}`), main = el('div', 'lost-main'), head = el('div', 'lost-head');
+    const mark = el('span', `lost-mark ${entry.provider}`); mark.append(providerIcon(entry.provider)); mark.title = providerName(entry.provider);
+    head.append(el('strong', 'lost-title', entry.title || 'Untitled'), el('span', 'lost-project', entry.project));
+    head.lastChild.title = entry.cwd;
+    if (entry.account) head.append(chip(entry.account, 'account-chip', 'Claude account'));
+    if (lostStates[entry.status]) head.append(chip(lostStates[entry.status], `lost-state ${entry.status}`, `Last seen ${age(entry.seenAt).toLowerCase()}`));
+    if (entry.detail) head.append(el('span', 'lost-detail', entry.detail));
+    main.append(head);
+    for (const [key, text] of [['said', entry.prompt], ['reply', entry.reply]]) if (text) { const line = el('div', `lost-${key}`, text); line.title = text; main.append(line); }
+    const buttons = el('div', 'lost-actions');
+    buttons.append(lostButton(entry.resuming ? 'Starting' : 'Resume', 'play', [entry.id], 'resume', `${entry.provider === 'codex' ? 'codex resume' : 'claude --resume'} in tmux${entry.mode ? ` · ${entry.mode} mode` : ''}`, entry.resuming), lostButton('', 'close', [entry.id], 'dismiss', 'Dismiss'));
+    row.append(mark, main, buttons); list.append(row);
+  }
+  details.append(summary, list); section.replaceChildren(details);
+}
+function lostButton(label, iconName, ids, action, title, busy = false) {
+  const b = button(label, `quiet-button lost-${action}`, async event => {
+    event.preventDefault(); event.stopPropagation(); // In the summary, a press would fold the list too.
+    b.disabled = true;
+    try {
+      const { resumed = [], failed = [] } = await api(`lost/${action}`, { ids });
+      const names = new Map((state.snapshot.lost || []).map(entry => [entry.id, entry.title]));
+      if (failed.length) toast(failed.map(({ id, error }) => `${names.get(id) || 'Session'}: ${error}`).join(' · '));
+      else if (resumed.length) toast(resumed.length > 1 ? `Resuming ${resumed.length} in tmux` : 'Resuming in tmux');
+    } catch (error) { toast(error.message); }
+    refresh();
+  }, iconName);
+  b.title = title; if (!label) b.setAttribute('aria-label', title);
+  b.disabled = busy || !!state.error;
+  return b;
+}
+
+// The toolbar's +: an agent in any folder, a new one included, like a scene's + (scene-ui.js).
+function newAgentMenu() {
+  const menu = el('details', 'filter-menu new-agent-menu'); menu.id = 'new-agent-menu';
+  const summary = el('summary', 'quiet-button'); summary.append(icon('plus')); summary.setAttribute('aria-label', 'New agent'); summary.title = 'New agent';
+  const options = el('div', 'filter-options new-agent-options'); options.setAttribute('role', 'group'); options.setAttribute('aria-label', 'New agent');
+  const field = createFolderField(() => options.querySelector('.tab')?.click());
+  menu.append(summary, options);
+  menu.ontoggle = () => {
+    if (!menu.open) return;
+    field.reset([...new Set((state.snapshot?.sessions || []).map(s => s.cwd).filter(Boolean))].sort());
+    options.replaceChildren(...field.nodes, ...hireRows(hireChoices(state.snapshot, ''), choice => {
+      const b = button(choice.label, 'tab', () => {
+        if (!field.value || field.refused) { field.input.focus(); return; }
+        menu.open = false; spawnAgent(field.value, { ...choice, create: true }, b);
+      });
+      if (choice.account === undefined) b.insertBefore(providerIcon(choice.provider), b.lastChild);
+      b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}`; return b;
+    }));
+    field.input.focus();
+  };
+  return menu;
+}
+// `choice.create`: a typed folder (a scene's + or the toolbar's), made first if it isn't there yet.
+async function spawnAgent(cwd, choice, control, slot) {
   if (state.error) return;
   control.disabled = true;
   try {
-    const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account });
+    const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account, ...typeof slot === 'number' ? { slot } : {}, ...choice.create ? { create: true } : {} });
     if (result.sessionId) { await refresh(); openPanel(result.sessionId); toast(result.warning || `${choice.name} session created`); }
     else toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`);
   }
@@ -1066,9 +1327,10 @@ document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' && event.key !== 'Tab') return;
   const openTheme = document.querySelector('.theme-menu[open]');
   if (event.key === 'Escape' && openTheme) { openTheme.open = false; openTheme.querySelector('summary').focus(); return; }
-  const menu = document.querySelector('#agent-filter-menu');
-  if (event.key === 'Escape' && menu?.open) { menu.open = false; menu.querySelector('summary').focus(); return; }
-  if (event.key === 'Escape' && state.selected) closePanel();
+  const menu = document.querySelector('#agent-filter-menu[open], #new-agent-menu[open]');
+  if (event.key === 'Escape' && menu) { menu.open = false; menu.querySelector('summary').focus(); return; }
+  // Esc in a dialog closes that dialog, not the panel behind it.
+  if (event.key === 'Escape' && state.selected && !event.target.closest?.('dialog')) closePanel();
   if (event.key === 'Tab' && state.selected) {
     const controls = [...document.querySelector('#panel').querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), summary, a[href], [tabindex]:not([tabindex="-1"])')].filter(node => node.getClientRects().length);
     const first = controls[0], last = controls.at(-1);
@@ -1078,8 +1340,8 @@ document.addEventListener('keydown', event => {
 });
 // Single-key shortcuts outside text fields: / search, j k move between cards, n next waiting session.
 document.addEventListener('keydown', event => {
-  if (!state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open]')) return;
-  if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); if (office && !state.selected) office.talkTo(nextWaiting().id); else openNext(); return; }
+  if (!state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open], #new-agent-menu[open]')) return;
+  if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); if (scene && !state.selected) scene.talkTo(nextWaiting().id); else openNext(); return; }
   if (state.selected) return;
   if (event.key === '/') { event.preventDefault(); document.querySelector('.search input')?.focus(); return; }
   if (event.key !== 'j' && event.key !== 'k') return;
@@ -1088,7 +1350,7 @@ document.addEventListener('keydown', event => {
   event.preventDefault();
 });
 listenForOpen(id => { if (state.csrf) openPanel(id); });
-document.addEventListener('pointerdown', event => { for (const menu of document.querySelectorAll('#agent-filter-menu, .theme-menu')) if (menu.open && !menu.contains(event.target)) menu.open = false; });
+document.addEventListener('pointerdown', event => { for (const menu of document.querySelectorAll('#agent-filter-menu, #new-agent-menu, .theme-menu')) if (menu.open && !menu.contains(event.target)) menu.open = false; });
 function sendActivity() {
   clearTimeout(activityTimer); activityTimer = null;
   if (!state.csrf) return;
@@ -1132,7 +1394,7 @@ function showThemePicker() {
     choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
   }
   dialog.append(el('h2', '', 'Pick a theme'), grid);
-  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncOffice(); };
+  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncScene(); dressTheme(); };
   document.body.append(dialog); dialog.showModal();
 }
 if (firstVisit) showThemePicker();

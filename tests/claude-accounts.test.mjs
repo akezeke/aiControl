@@ -89,3 +89,29 @@ test('a working session shows the tool call it is running from its transcript, n
   await adapter.refresh();
   assert.deepEqual(adapter.list().map(s => [s.nativeId, s.detail]).sort(), [[id, 'Bash · Type-check after the route change'], ['helper', 'Read · office/room.js']]);
 });
+
+test('an idle session says what it is still waiting on: its background shells and its working subagents', async t => {
+  const root = await temporary(t), [account] = claudeAccounts({ claudeDirs: [join(root, '.claude')] }, root);
+  const ids = { shell: 'aaaaaaaa-1111-2222-3333-444444444441', agents: 'aaaaaaaa-1111-2222-3333-444444444442', both: 'aaaaaaaa-1111-2222-3333-444444444443', parked: 'aaaaaaaa-1111-2222-3333-444444444444', busy: 'aaaaaaaa-1111-2222-3333-444444444445', plain: 'aaaaaaaa-1111-2222-3333-444444444446' };
+  const project = join(account.projectsDir, '-w-app'), row = (id, uuid, type, content) => JSON.stringify({ uuid, sessionId: id, type, timestamp: '2026-10-29T10:00:00Z', message: { id: uuid, role: type, content } });
+  await mkdir(account.sessionsDir, { recursive: true }); await mkdir(project, { recursive: true });
+  const session = async (pid, id, record, agents = 0) => {
+    await writeFile(join(account.sessionsDir, `${pid}.json`), JSON.stringify({ pid, procStart: 'live', sessionId: id, cwd: '/w/app', updatedAt: 1, ...record }));
+    await writeFile(join(project, `${id}.jsonl`), `${row(id, 'a', 'user', 'Go')}\n`);
+    if (agents) await mkdir(join(project, id, 'subagents'), { recursive: true });
+    for (let i = 0; i < agents; i++) await writeFile(join(project, id, 'subagents', `agent-helper${i}.jsonl`), `${row(id, `c${i}`, 'user', 'Look around')}\n${row(id, `d${i}`, 'assistant', [{ type: 'tool_use', id: `t${i}`, name: 'Read', input: { file_path: '/w/a.js' } }])}\n`);
+  };
+  await session(1, ids.shell, { status: 'shell' });
+  await session(2, ids.agents, { status: 'idle' }, 2);
+  await session(3, ids.both, { status: 'shell' }, 1);
+  await session(4, ids.parked, { status: 'shell', parkedJobId: 'job' });
+  await session(5, ids.busy, { status: 'busy' }, 1);
+  await session(6, ids.plain, { status: 'idle' });
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock', { accounts: [account], alive: async () => true, messaging: { available: async () => false, stop() {} } });
+  adapter.hooks.set(ids.shell, { status: 'idle', cwd: '/w/app', updatedAt: 1 }); // the Stop hook says idle, the registration knows better
+  await adapter.refresh();
+  const listed = new Map(adapter.list().map(s => [s.nativeId, s]));
+  assert.deepEqual(Object.entries(ids).map(([name, id]) => [name, listed.get(id).status, listed.get(id).waitingOn]), [
+    ['shell', 'idle', 'shell'], ['agents', 'idle', '2 agents'], ['both', 'idle', '1 agent, shell'], ['parked', 'idle', undefined], ['busy', 'working', undefined], ['plain', 'idle', undefined],
+  ]);
+});

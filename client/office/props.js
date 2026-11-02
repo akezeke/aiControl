@@ -2,31 +2,33 @@
 // A football in the lounge and paper balls by the printer are one instanced mesh per kind plus its outline. What stands on
 // the desks (furniture.js marks it userData.loose) comes loose the first time it's picked up and stays the mesh it was. The
 // coffee is a stream of drops and the puddles they leave, one draw call each, and only while there are any.
-// Walking into a ball kicks it; E or a click picks a thing up and throws it; F (held) pours; the machine (fill) tops it up.
+// Walking into a ball kicks it; E or a click picks a thing up, into your hand, and held down and let go throws it (office.js
+// charges it, throwing.js has how); F (held) pours; the machine (fill) tops it up.
 // Whoever gets hit, or whose desk or things do, turns on the boss with a word or two (onHit); `others` adds anyone else who
 // can be hit (the goose). The goose can carry a thing off in its beak (carry, drop).
-// With reduced motion a kick or a throw lands at once, and pouring leaves its puddle without the stream.
+// With reduced motion a kick or a drop lands at once, and pouring leaves its puddle without the stream. A throw flies: you aimed it.
 import * as THREE from 'three';
-import { WALL_H, canvasTexture } from './furniture.js';
+import { WALL_H, WALL_T, canvasTexture } from './furniture.js';
 import { toonMaterial, instancedOutline, highlight } from './toon.js';
 import { EYE } from './player.js';
+import { GRAVITY, advance, contact, escaped, makeBody, stopShort } from './flight.js';
+import { BLEND, drawnAt, launch } from './throwing.js';
 
 export const REACH = 2.6; // from your eyes
-const GRAVITY = 9.8, BODY = 0.3, KICK = 10; // the boss is a column this wide; the hardest kick, m/s
-const HOLD = new THREE.Vector3(-0.3, -0.27, -0.8); // where a thing sits in hand, in front of the camera
-const UP = new THREE.Vector3(0, 1, 0);
+const BODY = 0.3, KICK = 10; // the boss is a column this wide; the hardest kick, m/s
+const UP = new THREE.Vector3(0, 1, 0), axis = new THREE.Vector3(), q = new THREE.Quaternion(), tilt = new THREE.Quaternion();
 // Balls: spots are [x, z] in a room `w` by `d`; `roll` is how fast they slow on the ground, `drag` in the air, `tumble` how
 // fast a throw spins them. `low` is how high their middle rests, `centre` where it is from their mesh's origin.
-const BALLS = [
-  { radius: 0.11, bounce: 0.6, roll: 0.8, drag: 0.05, throw: 7, spots: (w, d) => [[w - 3.2, d - 2.6]], make: football },
-  { radius: 0.045, bounce: 0.25, roll: 4, drag: 0.5, throw: 8, spots: w => [[w - 0.95, 0.85], [w - 1.25, 1.45], [w - 1.5, 2.2], [w - 0.85, 2.7]], make: () => crumpled(0.045) },
+export const BALLS = [
+  { radius: 0.11, bounce: 0.6, roll: 0.8, drag: 0.05, throw: 11, spots: (w, d) => [[w - 3.2, d - 2.6]], make: football },
+  { radius: 0.045, bounce: 0.35, roll: 4, drag: 0.3, throw: 13, spots: w => [[w - 0.95, 0.85], [w - 1.25, 1.45], [w - 1.5, 2.2], [w - 0.85, 2.7]], make: () => crumpled(0.045) },
 ].map(kind => ({ ...kind, low: kind.radius, tumble: 20, centre: new THREE.Vector3() }));
 // What's on the desks, by furniture.js's name: how high its middle is over its base, how far it reaches from there, what its
 // owner calls it, and how bouncy it is. These slide rather than roll, and stand back up.
-const LOOSE = Object.fromEntries(Object.entries({
+export const LOOSE = Object.fromEntries(Object.entries({
   mug: [0.05, 0.07, 'mug'], cup: [0.07, 0.08, 'coffee'], duck: [0.07, 0.09, 'duck', 0.55], books: [0.054, 0.12, 'books'],
   plant: [0.13, 0.16, 'plant'], cactus: [0.11, 0.13, 'cactus'], frame: [0.07, 0.09, 'photo'],
-}).map(([key, [low, radius, name, bounce = 0.2]]) => [key, { low, radius, name, bounce, roll: 6, drag: 0.3, throw: 6, tumble: 8, upright: true, centre: new THREE.Vector3(0, low, 0) }]));
+}).map(([key, [low, radius, name, bounce = 0.2]]) => [key, { low, radius, name, bounce, roll: 6, drag: 0.3, throw: 10, tumble: 8, upright: true, centre: new THREE.Vector3(0, low, 0) }]));
 // What they say: hit by something, by the coffee, coffee on their desk, something knocking into it.
 const LINES = { hit: ['Hey!', 'Ow!', 'Watch it!', 'Really?'], coffee: ['Hot!', 'My shirt!', 'Seriously?'], desk: ['My desk!', 'Not the keyboard!', 'Ugh, sticky!'], knock: ['Careful!', 'Hey!', 'Easy!'] };
 // Coffee: drops a second while pouring, how much of a mug a second, what each drop adds to a puddle (m²), the largest puddle.
@@ -63,12 +65,30 @@ function crumpled(radius) {
   return [geometry, toonMaterial('#f4f1ea')];
 }
 
-export function createProps(scene, { room, cast, camera, player, view, bounds, reducedMotion, onHit, others = () => [] }) {
+// A frame of a thing: flight.js moves it (world: colliders, columns, ceiling, onContact) but knows nothing of how it's turned.
+// Here it turns by its spin and one that stands stands back up, at rest only once it's straight. Where it rests, if that's
+// somewhere `reachable`, is `home`, which it goes back to if it rests anywhere else or ever gets out of the `building`.
+export function moveBody(b, dt, world, building, reachable = () => true) {
+  advance(b, dt, world);
+  const turning = b.spin.length();
+  if (turning > 1e-4) b.turn.premultiply(q.setFromAxisAngle(axis.copy(b.spin).normalize(), turning * dt));
+  if (b.kind.upright && b.ground) b.turn.premultiply(tilt.identity().slerp(q.setFromUnitVectors(axis.copy(UP).applyQuaternion(b.turn), UP), 1 - Math.exp(-12 * dt)));
+  const lost = escaped(b.pos, building);
+  if (!lost && b.rest && b.kind.upright && axis.copy(UP).applyQuaternion(b.turn).y <= 0.999) b.rest = false; // still leaning: stays awake
+  else if (lost || (b.rest && !reachable(b.pos))) { b.pos.copy(b.home); b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); b.rest = false; b.quiet = 0; }
+  else if (b.rest) { b.hits.clear(); b.home.copy(b.pos); }
+}
+
+// Where a thing can lie and still be got at: the office (to the middle of its walls, so the doorway counts) or a room off it.
+// A new room joins the `||`s.
+export const reachableIn = (room, { width, depth }, p) => (p.x >= -WALL_T / 2 && p.x <= width + WALL_T / 2 && p.z >= 0 && p.z <= depth) || room.secret.inside(p) || room.kitchen.inside(p);
+
+export function createProps(scene, { room, cast, camera, player, view, bounds, reducedMotion, onHit, others = () => [], hand }) {
   const root = new THREE.Group(); scene.add(root);
-  const bodies = [], matrix = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1);
-  const near = new THREE.Vector3(), normal = new THREE.Vector3(), axis = new THREE.Vector3(), q = new THREE.Quaternion(), tilt = new THREE.Quaternion();
+  const bodies = [], matrix = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), none = new THREE.Vector3(0, 0, 0), drawn = new THREE.Vector3();
+  const near = new THREE.Vector3(), normal = new THREE.Vector3();
   // `free`: ours to move (a desk thing isn't until it's first picked up); `grip`: how it's turned in hand, from where you face.
-  const body = (kind, extra) => ({ kind, pos: new THREE.Vector3(), vel: new THREE.Vector3(), turn: new THREE.Quaternion(), spin: new THREE.Vector3(), grip: new THREE.Quaternion(), held: false, rest: false, grace: 0, hits: new Set(), ...extra });
+  const body = (kind, extra) => ({ ...makeBody(kind), turn: new THREE.Quaternion(), grip: new THREE.Quaternion(), home: new THREE.Vector3(), held: false, off: false, grace: 0, hits: new Set(), ...extra });
   for (const kind of BALLS) {
     const [geometry, material] = kind.make(), count = kind.spots(10, 10).length;
     const mesh = new THREE.InstancedMesh(geometry, material, count), hull = instancedOutline(mesh, kind.radius > 0.1 ? 0.008 : 0.005);
@@ -76,18 +96,25 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     root.add(mesh);
     for (let i = 0; i < count; i++) bodies.push(body(kind, { mesh, hull, i, free: true }));
   }
-  let placed = false, holding = null, aimed = null, boxes = null;
+  let placed = false, holding = null, aimed = null, boxes = null, building = null;
+  // Just thrown it's drawn coming out of your hand (`fromHand`, throwing.js). Everything else goes by where it really is.
   const show = b => {
-    if (b.obj) { b.obj.quaternion.copy(b.turn); b.obj.position.copy(b.kind.centre).applyQuaternion(b.turn).negate().add(b.pos); return; }
-    b.mesh.setMatrixAt(b.i, matrix.compose(b.pos, b.turn, one)); b.mesh.instanceMatrix.needsUpdate = true;
+    const at = b.fromHand ? drawnAt(drawn, b.pos, b.fromHand, b.flown, b.kind, worldAt(b.pos).colliders) : b.pos;
+    if (b.obj) { b.obj.visible = !b.off; b.obj.quaternion.copy(b.turn); b.obj.position.copy(b.kind.centre).applyQuaternion(b.turn).negate().add(at); return; }
+    b.mesh.setMatrixAt(b.i, matrix.compose(at, b.turn, b.off ? none : one)); b.mesh.instanceMatrix.needsUpdate = true;
     b.mesh.boundingSphere = b.hull.boundingSphere = null; // worked out again for culling and picking
   };
   const light = (b, on) => b.obj ? highlight(b.obj, on) : b.hull.light(b.i, on);
-  const spawn = (b, w, d) => { const [x, z] = b.kind.spots(w, d)[b.i]; b.pos.set(x, b.kind.radius, z); b.vel.set(0, 0, 0); b.rest = false; b.turn.setFromAxisAngle(UP, b.i * 2.1); };
+  // Where it starts, and where it goes back to if its home is gone: a ball to its spot, a desk thing to the middle of the room.
+  const start = (b, w, d) => { if (b.obj) b.home.set(w / 2, 1, d / 2); else { const [x, z] = b.kind.spots(w, d)[b.i]; b.home.set(x, b.kind.radius, z); } };
+  const spawn = (b, w, d) => { start(b, w, d); b.pos.copy(b.home); b.vel.set(0, 0, 0); b.rest = false; b.turn.setFromAxisAngle(UP, b.i * 2.1); };
+  const reachable = p => reachableIn(room, bounds(), p);
+  // In a room off the office that isn't drawn now (shut, or the overview), so neither is what's in it. What's in hand goes with you.
+  const hides = p => (!room.kitchen.shown && room.kitchen.inside(p)) || (!room.secret.shown && room.secret.inside(p));
 
   // The characters as columns: where, how wide, how tall. Someone hit, or whose things are, says so (once a moment).
   let people = [];
-  const gather = () => { people = []; for (const [id, c] of cast.characters) if (!c.plus && c.root.visible) { const top = cast.positionOf(id); if (top) people.push({ id, x: top.x, z: top.z, r: 0.24 * c.scale, top: top.y - 0.08 }); } people.push(...others()); };
+  const gather = () => { people = []; for (const [id, c] of cast.characters) if (!c.plus && c.root.visible) { const top = cast.positionOf(id); if (top) people.push({ id, x: top.x, z: top.z, r: 0.24 * c.scale, top: top.y - 0.08 }); } people.push(...others()); world.columns = people; };
   const minded = new Map(); // who and why → when they last said so, so a stream of coffee is one complaint
   const hit = (id, now, cause, line) => {
     const key = `${id}:${cause}`;
@@ -100,13 +127,13 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
   const thing = item => {
     const b = item.userData.body ??= body(LOOSE[item.userData.loose], { obj: item });
     if (!b.free) { item.updateWorldMatrix(true, false); item.matrixWorld.decompose(b.pos, b.turn, scale); b.pos.add(near.copy(b.kind.centre).applyQuaternion(b.turn)); }
-    return b.held ? null : b;
+    return b.held || b.off ? null : b;
   };
   // Picked up the first time: a stand-in keeps its place (room.js counts the cups) and it joins the balls. Its owner minds.
   const free = b => {
     const item = b.obj, parent = item.parent, stub = new THREE.Object3D();
     stub.position.copy(item.position); parent.children[parent.children.indexOf(item)] = stub; stub.parent = parent; item.parent = null;
-    root.add(item); b.free = true; bodies.push(b);
+    root.add(item); b.free = true; bodies.push(b); b.home.copy(b.pos);
     near.copy(b.pos).y -= b.kind.low + 0.01;
     const owner = boxes?.find(box => box.owner && box.containsPoint(near))?.owner;
     if (owner) hit(owner, performance.now() / 1000, null, `My ${b.kind.name}!`);
@@ -114,62 +141,20 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
   // pick() in player.js finds anything with userData.prop.
   const scan = () => scene.traverse(node => { if (node.userData.loose && !node.userData.prop) node.userData.prop = () => thing(node); });
 
-  // One step of a thing's flight: gravity and drag, then the floor, the walls and the ceiling, then people (before their
-  // chairs, which would shield them), then furniture and desks (pushed out of the nearest face and bouncing off it; a hard
-  // knock bounces, a soft one just stops). A ball rolls on the ground; anything else slides and stands back up.
-  const contact = (b, n) => { const vn = b.vel.dot(n); if (vn < 0) b.vel.addScaledVector(n, -(vn < -1 ? 1 + b.kind.bounce : 1) * vn); return n.y > 0.7; };
-  function step(b, h, w, d, now) {
-    const { radius: r, low, roll, drag, upright } = b.kind;
-    b.vel.y -= GRAVITY * h; b.vel.multiplyScalar(Math.exp(-drag * h)); b.pos.addScaledVector(b.vel, h);
-    let ground = false;
-    if (b.pos.y < low) { b.pos.y = low; ground = contact(b, normal.set(0, 1, 0)); }
-    if (b.pos.y > WALL_H - r) { b.pos.y = WALL_H - r; contact(b, normal.set(0, -1, 0)); }
-    for (const [key, max] of [['x', w], ['z', d]]) {
-      if (b.pos[key] < r) { b.pos[key] = r; contact(b, normal.set(0, 0, 0).setComponent(key === 'x' ? 0 : 2, 1)); }
-      if (b.pos[key] > max - r) { b.pos[key] = max - r; contact(b, normal.set(0, 0, 0).setComponent(key === 'x' ? 0 : 2, -1)); }
-    }
-    for (const p of people) {
-      const dx = b.pos.x - p.x, dz = b.pos.z - p.z, gap = Math.hypot(dx, dz), reach = p.r + r;
-      if (gap >= reach || b.pos.y - low > p.top) continue;
-      normal.set(dx, 0, dz).divideScalar(gap || 1); b.pos.x = p.x + normal.x * reach; b.pos.z = p.z + normal.z * reach;
-      if (b.vel.length() > 1.5 && !b.hits.has(p.id)) { b.hits.add(p.id); hit(p.id, now, 'hit'); }
-      contact(b, normal);
-    }
-    for (const box of boxes) {
-      box.clampPoint(b.pos, near); normal.subVectors(b.pos, near);
-      let gap = normal.length();
-      if (gap >= r) continue;
-      if (gap > 1e-6) normal.divideScalar(gap);
-      else { // its middle is inside: out through the nearest side or the top
-        const sides = [[b.pos.x - box.min.x, -1, 0, 0], [box.max.x - b.pos.x, 1, 0, 0], [b.pos.z - box.min.z, 0, 0, -1], [box.max.z - b.pos.z, 0, 0, 1], [box.max.y - b.pos.y, 0, 1, 0]];
-        const [depth, x, y, z] = sides.reduce((best, side) => side[0] < best[0] ? side : best);
-        normal.set(x, y, z); gap = -depth;
-      }
-      const reach = normal.y > 0.7 ? low : r; // it stands on what it lands on
-      if (gap >= reach) continue;
-      if (box.owner && b.vel.lengthSq() > 4 && !b.hits.has(box.owner)) { b.hits.add(box.owner); hit(box.owner, now, 'knock'); }
-      b.pos.addScaledVector(normal, reach - gap);
-      ground = contact(b, normal) || ground;
-    }
-    const turning = b.spin.length();
-    if (turning > 1e-4) b.turn.premultiply(q.setFromAxisAngle(axis.copy(b.spin).normalize(), turning * h));
-    if (ground && upright) {
-      const k = Math.exp(-roll * h); b.vel.x *= k; b.vel.z *= k; b.spin.set(0, 0, 0);
-      b.turn.premultiply(tilt.identity().slerp(q.setFromUnitVectors(axis.copy(UP).applyQuaternion(b.turn), UP), 1 - Math.exp(-12 * h)));
-    } else if (ground) { const k = Math.exp(-roll * h); b.vel.x *= k; b.vel.z *= k; b.spin.set(b.vel.z, 0, -b.vel.x).divideScalar(r); }
-    else b.spin.multiplyScalar(Math.exp(-0.5 * h));
-    return ground;
-  }
-  // A frame of a thing: small enough steps not to pass through a desk; at rest once it's barely moving on the ground, upright.
-  function fly(b, dt, w, d, now) {
-    const steps = Math.min(10, Math.ceil(b.vel.length() * dt / (b.kind.radius * 0.5)) || 1);
-    let ground = false;
-    for (let s = 0; s < steps; s++) ground = step(b, dt / steps, w, d, now);
-    b.grace = Math.max(0, b.grace - dt);
-    if (ground && b.vel.lengthSq() < 0.01 && (!b.kind.upright || axis.copy(UP).applyQuaternion(b.turn).y > 0.999)) { b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); b.rest = true; b.hits.clear(); }
-  }
+  // What flies, and who minds when it hits them. A person's hit is once a throw, a little harder for their things.
+  const world = {
+    colliders: [], columns: [], ceiling: WALL_H,
+    onContact(b, { surface, box }) {
+      const who = surface === 'person' ? box.id : box?.owner;
+      if (!who || b.hits.has(who) || b.vel.lengthSq() <= (surface === 'person' ? 5.76 : 10.24)) return; // 2.4 and 3.2 m/s: a tap at a desk still isn't a knock
+      b.hits.add(who); hit(who, performance.now() / 1000, surface === 'person' ? 'hit' : 'knock');
+    },
+  };
+  const quiet = {}; // a bounce nobody hears about: you walking into it
   // Reduced motion: straight to where it ends up.
-  const settle = (b, w, d, now) => { for (let i = 0; i < 600 && !b.rest; i++) fly(b, 1 / 60, w, d, now); };
+  // With the kitchen's doors shut, its room's boxes are only for what's in it: everything moving out here would look at them each step.
+  const indoors = Object.create(world), worldAt = p => room.kitchen.inside(p) ? indoors : world;
+  const settle = b => { for (let i = 0; i < 600 && !b.rest; i++) moveBody(b, 1 / 60, worldAt(b.pos), building, reachable); };
 
   // Coffee: drops in flight, and puddles that grow where they land and dry up in time.
   const dot = canvasTexture(32, 32, (g, w) => { g.fillStyle = '#fff'; g.beginPath(); g.arc(w / 2, w / 2, w / 2 - 1, 0, 7); g.fill(); });
@@ -196,7 +181,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
   let wet = null;
   const surface = (x, y, z) => {
     wet = null;
-    for (const box of boxes) if (box.containsPoint(near.set(x, y, z))) { wet = box.owner; return box.max.y < 0.9 && y > box.max.y - 0.1 ? box.max.y : null; }
+    for (const box of worldAt(near.set(x, y, z)).colliders) if (box.containsPoint(near)) { wet = box.owner; return box.max.y < 0.9 && y > box.max.y - 0.1 ? box.max.y : null; }
     return y <= 0 ? 0 : undefined; // undefined: still falling
   };
 
@@ -207,7 +192,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     if (level < 0.05) return;
     const ahead = player.forward.multiplyScalar(0.55).add(player.position);
     let y = 0, owner = null;
-    for (const box of boxes) if (box.max.y < 0.9 && ahead.x > box.min.x && ahead.x < box.max.x && ahead.z > box.min.z && ahead.z < box.max.z && box.max.y > y) { y = box.max.y; owner = box.owner; }
+    for (const box of worldAt(ahead).colliders) if (box.max.y < 0.9 && ahead.x > box.min.x && ahead.x < box.max.x && ahead.z > box.min.z && ahead.z < box.max.z && box.max.y > y) { y = box.max.y; owner = box.owner; }
     for (const p of people) if (Math.hypot(p.x - ahead.x, p.z - ahead.z) < p.r + 0.15) hit(p.id, now, 'coffee');
     if (owner) hit(owner, now, 'desk');
     land(ahead.x, y, ahead.z, DROP * RATE * Math.min(level, 0.3) / DRAIN, now); level = Math.max(0, level - 0.3);
@@ -221,26 +206,40 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
 
   const props = {
     get holding() { return holding; },
+    get heldKind() { return holding?.kind; },
+    release(charge, direction) { props.throw(direction, false, charge); },
+    abort() { hand.pull(0); }, // it stays in your hand
+    // What `throw` would do with it, and the world it'd fly in without anyone minding: for the arc.
+    launch(charge, direction) { return launch(holding.kind, charge, camera, direction, walk); },
+    aimWorld() { return { colliders: worldAt(player.position).colliders, columns: world.columns, ceiling: world.ceiling }; },
     // A thing comes to hand if it's within reach; it turns with you from then on.
     grab(b) {
       if (holding || b.held || b.pos.distanceTo(player.position) > REACH) return;
       if (!b.free) free(b);
-      holding = b; b.held = true; b.carried = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0);
+      holding = b; b.held = true; b.carried = null; b.fromHand = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); hand.hold(null, b.kind.radius, b.kind.low);
       b.grip.setFromAxisAngle(UP, -player.yaw).multiply(b.turn);
       if (aimed === b) props.aim(null);
     },
-    // Where you look (or along `direction`), on top of how you're moving; a let go drops it.
-    throw(direction, drop = false) {
+    // Where you look (or along `direction`), as hard as `charge` says; a let go drops it.
+    throw(direction, drop = false, charge = 1) {
       const b = holding; if (!b) return;
-      holding = null; b.held = false; b.grace = 0.3; b.hits.clear();
+      if (!drop) hand.palm.getWorldPosition(drawn); // before it lets go, with the charge's pull still in it
+      holding = null; b.held = false; b.grace = 0.3; b.hits.clear(); hand.free();
       if (drop) b.vel.set(0, 0, 0);
-      else { // let go on the line you aim along, so it goes where you look
-        const aim = direction || camera.getWorldDirection(forward);
-        b.pos.copy(camera.position).addScaledVector(aim, 0.5); b.vel.copy(aim).multiplyScalar(b.kind.throw).add(walk); b.vel.y += 1.2;
+      else {
+        const { pos, vel } = launch(b.kind, charge, camera, direction || camera.getWorldDirection(forward), walk);
+        b.pos.copy(pos); b.vel.copy(vel);
         b.spin.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(b.kind.tumble);
       }
-      const size = bounds(); if (reducedMotion() && size) settle(b, size.width, size.depth, performance.now() / 1000);
+      // Let go, it's this side of any wall in front of you. Dropped and still in the games room (you're going through the secret
+      // door with it) it stays in the office, by the door where the shelf isn't, open or shut.
+      stopShort(player.position, b.pos, b.kind, worldAt(player.position).colliders);
+      if (!drop) { b.fromHand = drawn.clone().sub(b.pos); b.flown = 0; show(b); }
+      if (drop && room.secret.inside(b.pos)) { const { x, z } = room.secret.spot; b.pos.x = x; b.pos.z = z; }
+      if (drop && reducedMotion() && building) { settle(b); show(b); }
     },
+    // The kitchen moved `dz` with the room growing, and what lies in it (`inside`, still where it was) with it. In the air or in hand it's its own.
+    shift(inside, dz) { for (const b of bodies) { if (b.held || b.carried) continue; if (inside(b.pos)) { b.pos.z += dz; show(b); } if (inside(b.home)) b.home.z += dz; } for (const p of puddles) if (inside(p)) p.z += dz; },
     // Outline the thing a click or E would pick up.
     aim(b) { if (b === aimed) return; if (aimed) light(aimed, false); if (b) light(b, true); aimed = b; },
     pour(on) { if (on && !pouring && reducedMotion() && boxes) splash(performance.now() / 1000); pouring = on; },
@@ -250,7 +249,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     get machineSpot() { const machine = room.coffeeMachine; return machine && machine.localToWorld(new THREE.Vector3(machine.userData.spout.x, 0, 0.8)); },
     // What could be carried off: anything lying still, on the floor or a desk, that nobody has.
     loose() {
-      const out = bodies.filter(b => b.rest && !b.held && !b.carried);
+      const out = bodies.filter(b => b.rest && !b.held && !b.carried && b.pos.x >= 0 && b.pos.x < bounds()?.width); // the goose stays out of the secret room and the kitchen
       scene.traverse(node => { if (node.userData.loose && !node.userData.body?.free) { const b = thing(node); if (b) out.push(b); } });
       return out;
     },
@@ -263,7 +262,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       const { width: w, depth: d } = size, still = reducedMotion(), now = performance.now() / 1000;
       if (!placed) { placed = true; for (const b of bodies) { spawn(b, w, d); show(b); } }
       // Desks come and go: whatever rested on one falls, and there may be new things on them.
-      if (boxes !== room.colliders) { boxes = room.colliders; for (const b of bodies) b.rest = false; scan(); }
+      if (boxes !== room.flightColliders) { boxes = world.colliders = room.flightColliders; indoors.colliders = room.kitchen.within.length ? [...boxes, ...room.kitchen.within] : boxes; building = room.secret.bounds(size); for (const b of bodies) { b.rest = false; if (!reachable(b.home)) start(b, w, d); } scan(); }
       gather();
       // How you're moving; flying over to someone doesn't kick.
       walk.subVectors(player.position, was).setY(0).divideScalar(Math.max(dt, 1e-3)); was.copy(player.position);
@@ -273,24 +272,27 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       if (holding && busy) props.throw(null, true);
       camera.updateMatrixWorld();
       for (const b of bodies) {
-        if (b.held) { b.pos.copy(HOLD).applyMatrix4(camera.matrixWorld); b.turn.setFromAxisAngle(UP, player.yaw).multiply(b.grip); show(b); continue; }
-        if (b.carried) { b.pos.copy(b.carried()); show(b); continue; }
+        if (b.held) { hand.palm.getWorldPosition(b.pos); b.turn.setFromAxisAngle(UP, player.yaw).multiply(b.grip); show(b); continue; }
+        if (b.carried) { b.fromHand = null; b.pos.copy(b.carried()); show(b); continue; }
         if (!Number.isFinite(b.pos.x + b.pos.y + b.pos.z)) { if (b.obj) b.pos.set(w / 2, 1, d / 2); else spawn(b, w, d); }
+        if (b.grace) b.grace = Math.max(0, b.grace - dt);
         // You walk into it: a kick if you're moving and it's at your feet, else it's nudged aside.
         const feet = player.position.y - EYE, r = BODY + b.kind.radius, bottom = b.pos.y - b.kind.low;
         normal.subVectors(b.pos, player.position).setY(0);
         const gap = normal.length();
         if (!b.grace && gap < r && bottom < feet + 1.7 && b.pos.y + b.kind.radius > feet) {
           normal.divideScalar(gap || 1); b.pos.x = player.position.x + normal.x * r; b.pos.z = player.position.z + normal.z * r;
+          stopShort(axis.set(player.position.x, b.pos.y, player.position.z), b.pos, b.kind, worldAt(player.position).colliders); // against a wall it stays there, under your feet
           const speed = walk.length();
           if (speed > 0.5 && bottom < feet + 0.4) {
             const push = Math.min(KICK, speed * 1.5 + 1);
             b.vel.copy(walk).normalize().add(normal).normalize().multiplyScalar(push).setY(1 + push * 0.25); b.hits.clear();
-            if (still) { b.rest = false; settle(b, w, d, now); }
-          } else contact(b, normal);
+            if (still) { b.rest = false; settle(b); }
+          } else contact(b, quiet, normal);
           b.rest = false;
         }
-        if (!b.rest) { fly(b, dt, w, d, now); show(b); }
+        if (b.fromHand && (b.flown += dt) >= BLEND) { b.fromHand = null; show(b); }
+        if (!b.rest) { moveBody(b, dt, worldAt(b.pos), building, reachable); show(b); } else if (b.fromHand) show(b); // at rest within the blend it still gets there
       }
       // Things knock into each other, the heavier pushing the lighter more.
       for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
@@ -303,6 +305,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
         if (closing < 0) { const j = -(1 + Math.min(a.kind.bounce, b.kind.bounce)) * closing / (1 / ma + 1 / mb); a.vel.addScaledVector(normal, -j / ma); b.vel.addScaledVector(normal, j / mb); }
         a.rest = b.rest = false; show(a); show(b);
       }
+      for (const b of bodies) { const off = !b.held && !b.carried && hides(b.pos); if (off !== b.off) { b.off = off; show(b); } }
 
       // The mug tips while F is held, and pours once it's over far enough. The machine fills it while you stay by it, its
       // own little stream running into the drip tray.
@@ -310,6 +313,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       tip = still ? want : tip + (want - tip) * (1 - Math.exp(-dt * 8));
       if (filling && (level >= 1 || !byMachine())) filling = false;
       if (filling) level = still ? 1 : Math.min(1, level + dt * FILL);
+      level = Math.max(0, level - view.drunk); view.drunk = 0; // a sip (camera.js)
       view.pour = tip; view.level = level;
       const pours = !still && tip > 0.75 && level > 0 && view.mug;
       if (pours) {
@@ -334,17 +338,20 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
         const top = surface(x, y, z), who = people.find(p => Math.hypot(p.x - x, p.z - z) < p.r && y < p.top);
         if (who) hit(who.id, now, 'coffee');
         else if (top !== undefined) { if (top !== null) land(x, top, z, DROP, now); if (wet) hit(wet, now, 'desk'); }
-        if (who || top !== undefined || x < 0 || z < 0 || x > w || z > d) drops.splice(i, 1);
+        if (who || top !== undefined || !reachable(drop.pos)) drops.splice(i, 1);
       }
-      drops.forEach((drop, i) => drop.pos.toArray(dropPositions, i * 3));
-      dropGeometry.setDrawRange(0, drops.length); dropGeometry.attributes.position.needsUpdate = true; stream.visible = drops.length > 0;
+      let drawn = 0;
+      for (const drop of drops) if (!hides(drop.pos)) drop.pos.toArray(dropPositions, drawn++ * 3);
+      dropGeometry.setDrawRange(0, drawn); dropGeometry.attributes.position.needsUpdate = true; stream.visible = drawn > 0;
       // Puddles shrink over their last 20 seconds.
       for (let i = puddles.length - 1; i >= 0; i--) if (now - puddles[i].at > DRY) puddles.splice(i, 1);
-      puddles.forEach((p, i) => {
+      drawn = 0;
+      for (const p of puddles) {
+        if (hides(p)) continue;
         const size = Math.sqrt(p.area / Math.PI) * Math.min(1, (DRY - (now - p.at)) / 20);
-        pool.setMatrixAt(i, matrix.compose(near.set(p.x, p.y + 0.02, p.z), q.setFromAxisAngle(axis.set(0, 1, 0), p.angle), out.setScalar(size)));
-      });
-      pool.count = puddles.length; pool.instanceMatrix.needsUpdate = true; pool.visible = puddles.length > 0;
+        pool.setMatrixAt(drawn++, matrix.compose(near.set(p.x, p.y + 0.02, p.z), q.setFromAxisAngle(axis.set(0, 1, 0), p.angle), out.setScalar(size)));
+      }
+      pool.count = drawn; pool.instanceMatrix.needsUpdate = true; pool.visible = drawn > 0;
     },
     dispose() { root.removeFromParent(); },
   };

@@ -1,8 +1,8 @@
 // What a session looks like in the office: its pose, face, speech bubble and monitor, and its fixed fruit identity. Pure.
-export const FRUITS = ['apple', 'pear', 'banana', 'orange', 'lemon', 'eggplant', 'strawberry'];
+export const FRUITS = ['apple', 'pear', 'banana', 'orange', 'lemon', 'eggplant', 'strawberry', 'kiwi', 'watermelon', 'pineapple'];
 const palettes = {
   apple: ['#d62828', '#b81d24', '#f2c14e'], pear: ['#b5c934', '#e0b73f'], banana: ['#f7d23e'], orange: ['#f28c28'],
-  lemon: ['#f9e04b'], eggplant: ['#5b2a86', '#7a3ea8'], strawberry: ['#e63946'],
+  lemon: ['#f9e04b'], eggplant: ['#5b2a86', '#7a3ea8'], strawberry: ['#e63946'], kiwi: ['#8c6a3c', '#7a5a32'], watermelon: ['#1f6b33'], pineapple: ['#f2b632'],
 };
 const PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books'];
 // Accessories come in slots, one pick or none each, so glasses go with a tie but never two hats; a style keeps an outfit
@@ -12,7 +12,7 @@ const STYLES = [
   { lips: ['moustache', '', '', ''], head: ['cap', 'beanie', 'headphones', '', '', ''], neck: ['tie', 'tie', 'scarf', '', ''], eyes: ['glasses', '', ''] },
   { head: ['beanie', 'cap', 'headphones', '', '', '', ''], neck: ['scarf', '', '', '', ''], eyes: ['glasses', '', ''] },
 ];
-const HATS = ['beanie', 'cap', 'headphones'], TRIMS = ['#ff5d8f', '#3a86ff', '#8338ec', '#06d6a0', '#ffbe0b'], CLASH = { eggplant: '#8338ec', banana: '#ffbe0b', lemon: '#ffbe0b' };
+const HATS = ['beanie', 'cap', 'headphones'], TRIMS = ['#ff5d8f', '#3a86ff', '#8338ec', '#06d6a0', '#ffbe0b'], CLASH = { eggplant: '#8338ec', banana: '#ffbe0b', lemon: '#ffbe0b', pineapple: '#ffbe0b', watermelon: '#06d6a0' };
 const MAX_TEXT = 48;
 // Permission modes the office shows: bypass wears sunglasses, plan keeps a clipboard on the desk.
 const MODES = { bypassPermissions: 'bypass', plan: 'plan' };
@@ -24,6 +24,7 @@ const looks = {
   permission: ['waving', 'worried', '✋', 'amber'],
   question: ['raising', 'curious', '❓', 'amber'],
   idle: ['sleeping', 'asleep', '💤', 'dark'],
+  waiting: ['drumming', 'neutral', '⏳', 'blue'],
   error: ['slumped', 'frown', '⚠️', 'red'],
 };
 // A working bubble's icon follows the running call's tool: "Edit · office/room.js" gets a pencil. Shells and the rest type.
@@ -35,9 +36,10 @@ const oneLine = text => {
 };
 
 // `activity` is 'thinking' while the model works out its next step (Codex reasoning, or a quiet Claude transcript),
-// and 'compacting' while it squeezes its context down to a summary. `since` is when a session needing you started waiting.
+// and 'compacting' while it squeezes its context down to a summary. `waitingOn` is what an idle session still has running: it stays awake for that.
+// `since` is when a session needing you started waiting.
 export function officeStatus(session, now = Date.now()) {
-  const activity = session.status === 'working' && ['thinking', 'compacting'].includes(session.activity) ? session.activity : '', look = looks[activity || session.status];
+  const activity = session.status === 'working' && ['thinking', 'compacting'].includes(session.activity) ? session.activity : '', look = looks[activity || (session.status === 'idle' && session.waitingOn ? 'waiting' : session.status)];
   const mode = MODES[session.permissionMode] || '', provider = session.provider;
   if (!look) return { pose: 'still', expression: 'neutral', bubble: null, screen: 'off', mode, provider, wear: 0, cups: 0 };
   const [pose, expression, icon, screen] = look, request = session.requests?.[0]?.title;
@@ -45,7 +47,7 @@ export function officeStatus(session, now = Date.now()) {
     working: session.detail || 'Working',
     permission: request || 'Needs permission',
     question: request || session.asks || 'Has a question',
-    idle: '',
+    idle: session.waitingOn ? `Waiting · ${session.waitingOn}` : '',
     error: session.detail || 'Error',
   }[session.status];
   // Helpers on a desk only chat while working, but always speak up when they need you.

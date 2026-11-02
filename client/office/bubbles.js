@@ -2,9 +2,15 @@
 // Plus the few controls that stay on screen: who's waiting, low usage, back to the list, the phone overview button, the aiming dot and the hint,
 // and the card beside whoever is outlined.
 import * as THREE from 'three';
-import { providerIcon } from '../provider-icons.js';
+import { GAUGE_SIZE, createGauge, createThrowButton } from './throwing.js';
 
 const hintKey = 'ai-control-office-hint-3';
+
+// The power gauge's arc, going clockwise from the left over the top to the bottom: its opening faces the lower left, where the hand and the dots come from.
+const gaugeArc = () => {
+  const c = GAUGE_SIZE / 2, r = 27;
+  return `M ${c - r} ${c} A ${r} ${r} 0 1 1 ${c} ${c + r}`;
+};
 
 // Emoji sit at different heights in their fonts (on Windows the keyboard sits low and the zzz high), so the icon is
 // drawn on a canvas with the drawing itself centred instead of set as text.
@@ -80,95 +86,32 @@ export class Bubbles {
   dispose() { this.layer.remove(); }
 }
 
-// What the list shows and the scene doesn't: branch, plan steps, permission mode, context, how long in this state.
-const span = (className, text) => { const node = document.createElement('span'); node.className = className; node.textContent = text; return node; };
-// Below and right of a screen point, flipped to stay in the scene.
-function placeNear(container, node, at) {
-  const box = container.getBoundingClientRect(), x = at.clientX - box.left, y = at.clientY - box.top, w = node.offsetWidth, h = node.offsetHeight;
-  const left = x + 18 + w > box.width - 8 ? x - 18 - w : x + 18, top = y + 18 + h > box.height - 8 ? y - 18 - h : y + 18;
-  node.style.transform = `translate(${Math.max(8, left).toFixed(0)}px, ${Math.max(8, top).toFixed(0)}px)`;
-}
+export { createCard, createMenu } from '../scene-ui.js';
 
-export function createCard(container) {
-  const card = document.createElement('div'); card.className = 'office-card'; card.hidden = true; card.setAttribute('aria-hidden', 'true'); container.append(card);
-  const line = (className, ...parts) => { const div = document.createElement('div'); div.className = className; div.append(...parts.filter(part => part || part === 0)); return div; };
-  let shown = '';
-  return {
-    // `facts` from main.js's sessionFacts (or just a title and project, for a pod's sign), or null to hide.
-    show(facts) {
-      card.hidden = !facts;
-      const signature = facts ? JSON.stringify(facts) : '';
-      if (!facts || signature === shown) return;
-      shown = signature;
-      const where = [facts.agent, facts.project, facts.branch && span('branch', facts.branch)].filter(Boolean).flatMap((part, i) => i ? [' · ', part] : [part]);
-      const chips = line('chips', facts.plan && span('chip', `${facts.plan[0]}/${facts.plan[1]} steps`), facts.mode && span(`chip ${facts.mode}`, `${facts.mode} mode`),
-        facts.context != null && span(`chip${facts.context >= 80 ? ' full' : ''}`, `ctx ${facts.context}%`), facts.state && span('state', facts.state));
-      card.replaceChildren(...[
-        line('title', facts.provider && providerIcon(facts.provider), facts.title || facts.providerName),
-        where.length && line('where', ...where),
-        chips.childElementCount && chips,
-        facts.detail && line('detail', facts.detail),
-      ].filter(Boolean));
-    },
-    move(at) { if (!card.hidden && at) placeNear(container, card, at); },
-    dispose() { card.remove(); },
-  };
-}
-
-// A pod sign's menu: Claude (once per account, see hire.js) or Codex, started in the pod's folder. It closes on a pick, Esc or a press anywhere else.
-export function createMenu(container, onChoose) {
-  const menu = document.createElement('div'); menu.className = 'office-menu'; menu.setAttribute('role', 'menu'); menu.hidden = true; container.append(menu);
-  let cwd = null, items = [];
-  // Without a folder (the + button) the menu asks for one, suggesting the folders sessions run in.
-  const folder = document.createElement('input'); folder.className = 'office-folder'; folder.placeholder = '~/folder'; folder.setAttribute('aria-label', 'Folder'); folder.setAttribute('list', 'office-folders'); folder.autocomplete = 'off'; folder.spellcheck = false;
-  const folders = document.createElement('datalist'); folders.id = 'office-folders';
-  folder.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); items[0]?.click(); } });
-  const build = (choices, known) => {
-    items = choices.map(choice => {
-      const item = document.createElement('button'); item.type = 'button'; item.setAttribute('role', 'menuitem'); item.title = `New ${choice.name} in tmux${choice.last ? ' · last used here' : ''}`;
-      item.append(providerIcon(choice.provider), choice.label);
-      if (choice.last) item.append(span('last', 'last'));
-      item.onclick = () => { const at = cwd ?? folder.value.trim(); if (!at) { folder.focus(); return; } result.close(); onChoose(at, choice, item); };
-      return item;
-    });
-    folders.replaceChildren(...known.map(path => Object.assign(document.createElement('option'), { value: path })));
-    menu.replaceChildren(...(cwd === null ? [folder, folders] : []), ...items);
-  };
-  // Keys stay in the menu: the arrows and WASD would otherwise walk or pan the camera behind it.
-  menu.addEventListener('keydown', event => {
-    event.stopPropagation();
-    if (event.key === 'Escape') result.close();
-    else if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
-      event.preventDefault();
-      items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
-    }
-  });
-  const result = {
-    get open() { return !menu.hidden; },
-    contains: node => menu.contains(node),
-    get asking() { return !menu.hidden && cwd === null; },
-    // At a screen point; `focus` for the keyboard. A null folder asks for one; `known` are the suggestions.
-    show(where, at, focus, choices, known = []) {
-      cwd = where; build(choices, known); menu.setAttribute('aria-label', where === null ? 'New agent' : `New agent in ${where}`); menu.hidden = false; if (at) placeNear(container, menu, at);
-      if (where === null) { folder.value = ''; folder.focus(); } else if (focus) items[0].focus();
-    },
-    move(at) { if (!menu.hidden) placeNear(container, menu, at); },
-    close() { if (menu.hidden) return; if (menu.contains(document.activeElement)) document.activeElement.blur(); menu.hidden = true; cwd = null; },
-    dispose() { menu.remove(); },
-  };
-  return result;
-}
-
-export function createOverlays(container, { onNext, onList, onOverview, onNew, onLeave }) {
+export function createOverlays(container, { onNext, onList, onOverview, onNew, onLeave, onCopy, onThrow }) {
   const bar = document.createElement('div'); bar.className = 'office-overlay'; container.append(bar);
   const button = (className, text, title, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.className = className; b.textContent = text; b.title = title; b.setAttribute('aria-label', title); if (onclick) b.onclick = onclick; bar.append(b); return b; };
-  const leave = button('office-leave', '✕', 'Leave the game (Esc)', onLeave); leave.hidden = true;
+  const leave = button('office-leave', '✕ Quit game', 'Stop playing and stand up (Esc)', onLeave); leave.hidden = true;
+  const copy = button('office-copy', 'Copy', 'Copy today\'s scores (C)', event => { event.currentTarget.blur(); onCopy(); }); copy.hidden = true;
   const waiting = button('office-waiting', '', 'Walk to the next one waiting (n)', onNext); waiting.hidden = true;
   const usage = button('office-usage', '⚡', 'Usage is near its limit; see the whiteboard'); usage.hidden = true;
   button('office-new', '+', 'New agent in a folder', event => onNew(event.currentTarget));
   button('office-list', '☰', 'Show the list', onList);
   const eye = button('office-eye', '👁', 'Overview (Tab)', () => onOverview()); eye.setAttribute('aria-pressed', 'false');
   const dot = document.createElement('div'); dot.className = 'office-dot'; dot.hidden = true; container.append(dot);
+  const meter = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); meter.setAttribute('class', 'office-charge'); meter.setAttribute('viewBox', `0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`); meter.setAttribute('aria-hidden', 'true');
+  meter.innerHTML = `<g>${['ink', 'track', 'fill', 'shine'].map(name => `<path class="${name}" d="${gaugeArc()}" pathLength="1"/>`).join('')}</g>`; container.append(meter);
+  const thrower = document.createElement('button'); thrower.type = 'button'; thrower.className = 'office-throw'; thrower.textContent = 'Throw'; thrower.setAttribute('aria-label', 'Throw'); thrower.hidden = true; container.append(thrower);
+  const throwing = createThrowButton(thrower, onThrow);
+  const score = document.createElement('div'); score.className = 'office-score'; score.hidden = true; container.append(score);
+  const copied = document.createElement('div'); copied.className = 'office-copied'; copied.textContent = 'Copied'; copied.hidden = true; container.append(copied);
+  // Where the clipboard can't be written: the line selected, to copy by hand. Esc, its ✕ or a click anywhere else closes it; while it's up the office has no keys (menuOpen), focus in the input or not, so selecting by hand on a phone leaves it up.
+  const line = document.createElement('div'); line.className = 'office-copyline'; line.hidden = true; container.append(line);
+  const field = line.appendChild(document.createElement('input')); field.readOnly = true; field.setAttribute('aria-label', 'Today\'s scores');
+  const closeLine = () => { if (line.hidden) return false; line.hidden = true; field.blur(); return true; };
+  const close = line.appendChild(document.createElement('button')); close.type = 'button'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.setAttribute('aria-label', 'Close'); close.onclick = closeLine;
+  line.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); closeLine(); } });
+  let copiedFor = 0;
   let seen = false; try { seen = !!localStorage.getItem(hintKey); } catch { /* storage may be off */ }
   const hint = document.createElement('div'); hint.className = 'office-hint'; hint.textContent = 'Click or arrows to look · WASD · Shift run · Space jump · E grab · F pour · Tab overview'; hint.hidden = seen; container.append(hint);
   return {
@@ -178,8 +121,25 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
     setPlaying(on) { leave.hidden = !on; },
     showDot(on) { dot.hidden = !on; },
     setAim(on) { dot.classList.toggle('aim', on); },
+    // on: truthy, an empty hand's holding being null; again: the item's away, so it's another go instead of a throw
+    showThrow(on, again = false) { if (thrower.hidden === !!on) thrower.hidden = !on; if (thrower.classList.contains('again') !== again) { thrower.classList.toggle('again', again); thrower.textContent = again ? '↻' : 'Throw'; thrower.setAttribute('aria-label', again ? 'Try again' : 'Throw'); } },
+    dropThrow() { throwing.drop(); },
+    setCharge: createGauge(container, meter, meter.querySelector('.fill')),
+    // What a shot asks (goalOf's list, a ticked line struck through) and, beside it, how it went; a null goal hides it.
+    setScore(goal, verdict, canCopy) {
+      score.hidden = !goal; score.replaceChildren(); copy.hidden = !canCopy; bar.classList.toggle('level', !!goal);
+      if (!goal) return;
+      const asks = score.appendChild(document.createElement('span'));
+      goal.forEach(({ text, done }, i) => { if (i) asks.append(' · '); asks.appendChild(document.createElement(done ? 's' : 'span')).textContent = text; });
+      if (verdict) { const said = score.appendChild(document.createElement('b')); said.textContent = verdict; }
+    },
+    showCopy(text) { field.value = text; line.hidden = false; field.focus(); field.select(); },
+    showCopied() { copied.hidden = false; clearTimeout(copiedFor); copiedFor = setTimeout(() => { copied.hidden = true; }, 1200); },
+    get copying() { return !line.hidden; },
+    // Closes it unless `target`'s part of it; says whether it did.
+    closeCopy(target) { return !line.contains(target) && closeLine(); },
     // The hint goes once you've used the overview.
     overviewUsed() { if (hint.hidden) return; hint.classList.add('gone'); setTimeout(() => { hint.hidden = true; }, 600); try { localStorage.setItem(hintKey, '1'); } catch { /* per tab only */ } },
-    dispose() { bar.remove(); dot.remove(); hint.remove(); },
+    dispose() { clearTimeout(copiedFor); bar.remove(); dot.remove(); thrower.remove(); meter.remove(); score.remove(); copied.remove(); line.remove(); hint.remove(); },
   };
 }

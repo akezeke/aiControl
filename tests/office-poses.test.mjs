@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { poseTargets, waitingPose } from '../client/office/animation.js';
+import * as THREE from 'three';
+import { Cast, poseTargets, waitingPose, finishes } from '../client/office/animation.js';
 import { handGeometry, fistGeometry } from '../client/office/fruit.js';
 
 const fruit = { height: 0.5, surface: () => ({ x: 0, r: 0.22 }) };
@@ -12,6 +13,19 @@ test('a compacting fruit shivers in its seat, big enough to see across the room'
   assert.ok(range(p => p.x) > 0.03, 'jiggles on the spot');
   assert.ok(range(p => p.body.y) < 0.04 && Math.abs(frames[0].z - poseTargets('thinking', 0, 1, fruit).z) < 0.01, 'stays in the chair');
   assert.deepEqual(poseTargets('squeezing', 0, 1, fruit), poseTargets('squeezing', 0, 1, fruit), 'reduced motion (t = 0) holds still');
+});
+
+test('waiting on a task: awake in the seat, drumming on the desk in bursts, looking up at the monitor now and then', () => {
+  const frames = Array.from({ length: 600 }, (_, i) => poseTargets('drumming', i / 30, 1, fruit)), typing = poseTargets('typing', 0, 1, fruit), lift = frames.map(p => p.limbs.rightHand.y);
+  assert.ok(frames.every(p => Math.abs(p.z - typing.z) < 0.01), 'stays in the chair');
+  assert.ok(Math.max(...lift) - Math.min(...lift) > 0.03, 'the fingers lift and come back down');
+  assert.ok(frames.some(p => p.glance) && frames.some(p => !p.glance), 'checks the monitor now and then');
+  assert.deepEqual(poseTargets('drumming', 0, 1, fruit), poseTargets('drumming', 0, 1, fruit), 'reduced motion (t = 0) holds still');
+});
+
+test('a finish plays when the work is really over: from working or waiting to asleep, not from working to waiting', () => {
+  assert.deepEqual(['typing', 'drumming', 'raising'].map(from => finishes(from, 'sleeping')), [true, true, false]);
+  assert.equal(finishes('typing', 'drumming'), false);
 });
 
 test('waiting on you gets louder: a raised hand, waving after two minutes, a tapping foot after ten', () => {
@@ -56,4 +70,44 @@ test('neighbours: a thumbs up goes up beside the head on their side; a worried l
   assert.ok(Math.abs(worried.limbs.leftHand.z - typing.limbs.leftHand.z) < 0.05 && Math.abs(worried.limbs.leftHand.y - typing.limbs.leftHand.y) < 0.03, 'hands stay on the keys');
   const [hand, fist] = [handGeometry(), fistGeometry()];
   assert.ok(fist.attributes.position.count === hand.attributes.position.count && fist.index.count === hand.index.count, 'the fist swaps in for the hand in place');
+});
+
+test('the fired sob with their hands over their eyes, sitting and then running for the door', () => {
+  for (const pose of ['crying', 'fleeing']) {
+    // The eyes, where leaning forward has carried them.
+    const p = poseTargets(pose, 0.4, 1, fruit), eyes = p.body.y + fruit.height * 0.6 * Math.cos(p.body.lean) - fruit.surface().r * Math.sin(p.body.lean);
+    for (const hand of [p.limbs.leftHand, p.limbs.rightHand]) assert.ok(Math.abs(hand.y - eyes) < 0.08 && hand.z > fruit.surface().r && Math.abs(hand.x) < 0.12, `${pose}: a hand on the face`);
+  }
+  const strides = Array.from({ length: 30 }, (_, i) => poseTargets('fleeing', i / 30, 1, fruit).limbs.leftFoot.z), walk = Array.from({ length: 30 }, (_, i) => poseTargets('walking', i / 30, 1, fruit).limbs.leftFoot.z);
+  assert.ok(Math.max(...strides) - Math.min(...strides) > Math.max(...walk) - Math.min(...walk), 'longer strides than a walk');
+});
+
+test('startled, a sitter sits up to turn round, feet and hands off the desk, then goes back to what it was doing', t => {
+  const blank = () => new Proxy({}, { get: () => () => ({ addColorStop() {} }), set: () => true }), was = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: blank }) };
+  t.after(() => { if (was) globalThis.document = was; else delete globalThis.document; });
+  const seated = pose => {
+    const cast = new Cast(new THREE.Scene()), statuses = new Map([['a', { pose, expression: 'neutral' }]]);
+    const room = { deskAnchor: () => ({ seat: new THREE.Vector3(), facing: 0, helpers: [] }) };
+    cast.sync({ door: { x: 5, z: 5 }, desks: new Map([['a', { subagents: [], leaving: [], overflow: 0 }]]) }, new Map(), room, statuses);
+    const c = cast.characters.get('a'); c.habits.sleeping = 'heels';
+    const run = seconds => { for (let i = 0; i < seconds * 60; i++) cast.update(1 / 60, new THREE.Vector3(3, 1.6, 0)); return c.current; };
+    return { cast, c, run };
+  };
+  const { cast, c, run } = seated('sleeping'), heels = run(1).limbs.leftFoot.y;
+  assert.ok(heels > 0.5, 'heels up on the desk to start with');
+  cast.startle('a');
+  const up = run(1);
+  assert.ok(up.limbs.leftFoot.y < 0.1, 'feet back on the floor');
+  assert.ok(up.turn > 0.5, 'turned to the boss');
+  assert.deepEqual(cast.sleepers(), [], 'awake, for the goose');
+  assert.ok(run(3).limbs.leftFoot.y > 0.5, 'and back to sleep');
+
+  const typist = seated('typing'), keys = typist.run(1).limbs.leftHand.y;
+  typist.cast.startle('a');
+  assert.ok(typist.run(1).limbs.leftHand.y < keys - 0.1, 'hands off the keys');
+
+  const waver = seated('raising'), hand = waver.run(1).limbs.rightHand.y;
+  waver.cast.startle('a');
+  assert.ok(Math.abs(waver.run(1).limbs.rightHand.y - hand) < 0.15, 'someone already on their feet keeps standing');
 });

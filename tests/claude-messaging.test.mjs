@@ -282,6 +282,8 @@ test('the prompt reads empty under Claude’s dim placeholder, and only a prompt
   assert.equal(await read(['> an earlier prompt', '\x1b[38;5;244m────', '\x1b[39m❯\u00a0\x1b[2mTry "write a test"', '\x1b[0m\x1b[38;5;244m────', '\x1b[39m  ⏵⏵ auto mode on']), '');
   assert.equal(await read(['────', '❯\u00a0\x1b[38;5;2mfix the \x1b[1;38;2;2;2;2mtests\x1b[22m', '────']), 'fix the tests');
   assert.equal(await read(['────', '❯ /exit', '────']), '/exit');
+  // Typing a slash command opens its menu under the box, the match marked with its own ❯.
+  assert.equal(await read(['────', '❯ /exit', '────', '  ❯ /exit       Exit the CLI', '    /context    Visualize current context usage']), '/exit');
   assert.equal(await read(['────', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No']), null);
   assert.equal(await read(['user@host:~$ ']), null);
 });
@@ -336,6 +338,64 @@ test('Fire outside tmux sends SIGTERM to an interactive Claude after the recheck
   await assert.rejects(stays.adapter.fire(terminal, async () => {}), e => e.status === 504 && /still running/.test(e.message));
 });
 
+test('Fire signals a parked Claude, whatever its status says, and types nothing into its pane', async () => {
+  const parked = { ...paneRecord, kind: 'interactive', status: 'busy', parkedJobId: 'job' };
+  const signals = [];
+  const { adapter, calls } = tmuxFixture({ pollMs: 1, alive: async () => !signals.length, signal: (pid, name) => signals.push(name) });
+  assert.deepEqual(await adapter.fire(parked, async () => {}), { ok: true });
+  assert.deepEqual(signals, ['SIGTERM']);
+  assert.deepEqual(calls.filter(args => ['send-keys', 'paste-buffer'].includes(args[0])), []);
+});
+
+test('Clear types /clear only into an empty prompt, rechecks before Enter and wipes it again if that fails', async () => {
+  const cleared = tmuxFixture();
+  assert.deepEqual(await cleared.adapter.clear(paneRecord, async () => { cleared.calls.push(['recheck']); }), { ok: true });
+  assert.deepEqual(cleared.calls.map(args => args[0]), ['display-message', 'copy-mode', 'load-buffer', 'paste-buffer', 'recheck', 'send-keys']);
+  assert.equal(cleared.calls[2].at(-1), '/clear');
+  assert.deepEqual(cleared.calls.at(-1).slice(-1), ['Enter']);
+
+  const draft = tmuxFixture({ typed: 'half a thought' });
+  await assert.rejects(draft.adapter.clear(paneRecord, async () => {}), /draft/);
+  assert.equal(draft.calls.some(args => args[0] === 'paste-buffer'), false);
+
+  await assert.rejects(tmuxFixture().adapter.clear({ ...paneRecord, status: 'busy' }, async () => {}), /working/);
+  await assert.rejects(tmuxFixture().adapter.clear({ ...paneRecord, parkedJobId: 'job' }, async () => {}), /parked/);
+  await assert.rejects(tmuxFixture().adapter.clear({ ...record, status: 'idle' }, async () => {}), /inside tmux/);
+
+  const changed = tmuxFixture();
+  await assert.rejects(changed.adapter.clear(paneRecord, async () => { throw new Error('busy now'); }), /busy now/);
+  assert.equal(changed.calls.filter(args => args.at(-1) === 'BSpace').length, 1);
+  assert.equal(changed.calls.at(-1).filter(key => key === 'BSpace').length, '/clear'.length);
+  assert.equal(changed.calls.some(args => args.at(-1) === 'Enter'), false);
+});
+
+test('Claude adapter clears only a quiet session and answers with the new id once it is listed', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'aicontrol-claude-clear-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, `${record.pid}.json`), register = extra => writeFile(path, JSON.stringify({ ...record, cwd: '/work/project', status: 'idle', statusUpdatedAt: Date.now() - 60_000, ...extra }));
+  await register();
+  const fresh = '99999999-2222-3333-4444-555555555555';
+  let swap = async () => {};
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock', { sessionsDir: dir, projectsDir: dir, alive: async () => true, messaging: {
+    available: async () => 'tmux', commands: async () => [], stop() {},
+    clear: async (live, recheck) => { await recheck(); await swap(); return { ok: true }; },
+  } });
+  adapter.clearMs = 60; adapter.clearPollMs = 1;
+  await adapter.refresh();
+  assert.equal(adapter.list()[0].messaging.clear, true);
+
+  await register({ status: 'busy' });
+  await assert.rejects(adapter.clear(record.sessionId), /working/);
+  await register();
+  await assert.rejects(adapter.clear(record.sessionId), e => e.status === 504 && /Check its terminal/.test(e.message));
+
+  swap = () => register({ sessionId: fresh });
+  assert.deepEqual(await adapter.clear(record.sessionId), { ok: true, id: `claude:${fresh}` });
+
+  await register({ sessionId: record.sessionId, parkedJobId: 'job' });
+  await adapter.refresh();
+  assert.equal(adapter.list()[0].messaging.clear, false);
+});
+
 test('Claude adapter fires only a session that is quiet: idle a while, no subagent, no command running', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'aicontrol-claude-fire-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, `${record.pid}.json`), register = extra => writeFile(path, JSON.stringify({ ...record, cwd: '/work/project', status: 'idle', statusUpdatedAt: Date.now() - 60_000, ...extra }));
@@ -367,6 +427,16 @@ test('Claude adapter fires only a session that is quiet: idle a while, no subage
   await assert.rejects(adapter.fire(record.sessionId), /subagent/);
   await rm(subagents, { recursive: true });
 
+  assert.deepEqual(await adapter.fire(record.sessionId), { ok: true });
+  assert.deepEqual(fired, [record.pid]);
+
+  // A parked session's status stops changing, so it's stale; only what it still runs counts.
+  fired.length = 0;
+  await register({ status: 'busy', parkedJobId: 'job' });
+  adapter.hooks.set(record.sessionId, { status: 'working', updatedAt: 0 });
+  running = ['npm run dev'];
+  await assert.rejects(adapter.fire(record.sessionId), /npm run dev/);
+  running = [];
   assert.deepEqual(await adapter.fire(record.sessionId), { ok: true });
   assert.deepEqual(fired, [record.pid]);
 });

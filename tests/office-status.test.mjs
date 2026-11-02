@@ -6,6 +6,12 @@ test('every status maps to a pose', () => {
   const want = { working: 'typing', permission: 'waving', question: 'raising', idle: 'sleeping', error: 'slumped', offline: 'still', unknown: 'still' };
   for (const [status, pose] of Object.entries(want)) assert.equal(officeStatus({ status, requests: [] }).pose, pose);
 });
+test('an idle session with work still running waits awake, in its own colour, without asking for you', () => {
+  const look = officeStatus({ status: 'idle', waitingOn: '2 agents, shell', requests: [] });
+  assert.deepEqual([look.pose, look.expression, look.screen, look.since], ['drumming', 'neutral', 'blue', undefined]);
+  assert.deepEqual(look.bubble, { icon: '⏳', text: 'Waiting · 2 agents, shell', highlight: false });
+  assert.equal(officeStatus({ status: 'working', waitingOn: 'shell', requests: [] }).pose, 'typing', 'only an idle session waits');
+});
 test('waiting sessions get highlighted bubbles from their request', () => {
   const b = officeStatus({ status: 'permission', requests: [{ title: 'Run npm test' }] }).bubble;
   assert.deepEqual(b, { icon: '✋', text: 'Run npm test', highlight: true });
@@ -23,6 +29,12 @@ test('identity is deterministic and varied', () => {
   assert.deepEqual(identity('claude:abc'), identity('claude:abc'));
   const fruits = new Set(Array.from({ length: 50 }, (_, i) => identity(`s${i}`).fruit));
   assert.ok(fruits.size >= 5 && [...fruits].every(f => FRUITS.includes(f)));
+});
+test('every fruit gets hired, and comes in a colour', () => {
+  const people = Array.from({ length: 500 }, (_, i) => identity(`s${i}`));
+  assert.deepEqual(new Set(people.map(p => p.fruit)), new Set(FRUITS));
+  assert.ok(['kiwi', 'watermelon', 'pineapple'].every(f => FRUITS.includes(f)));
+  assert.ok(people.every(p => /^#[0-9a-f]{6}$/.test(p.color)));
 });
 test('accessories combine, one per slot', () => {
   const people = Array.from({ length: 300 }, (_, i) => identity(`s${i}`)), hats = ['beanie', 'cap', 'headphones', 'bow', 'flower'];

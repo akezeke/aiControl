@@ -9,18 +9,19 @@ const STEPS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, Math.SQRT2],
 const p = new THREE.Vector3();
 
 // A cell is open when all four of its corners are free: the boxes (grown by the body's width) are wider than a cell, so then
-// all of it is. ponytail: every corner against every box; the caller keeps the grid until the boxes change (gridKey).
+// all of it is. The cells run from `room.left` and `room.back` (0 if it has none) on the same lattice whatever they are, so what's beside the
+// office doesn't move the office's cells; free() minds the exact edge. ponytail: every corner against every box; the caller keeps the grid until the boxes change (gridKey).
 export function walkGrid(colliders, room) {
-  const cols = Math.ceil(room.width / CELL), rows = Math.ceil(room.depth / CELL), open = new Uint8Array(cols * rows), corners = new Uint8Array((cols + 1) * (rows + 1));
-  for (let k = 0; k < corners.length; k++) corners[k] = free(p.set(k % (cols + 1) * CELL, 0, Math.floor(k / (cols + 1)) * CELL), colliders, room) ? 1 : 0;
+  const left = Math.floor((room.left ?? 0) / CELL) * CELL, back = Math.floor((room.back ?? 0) / CELL) * CELL, cols = Math.ceil((room.width - left) / CELL), rows = Math.ceil((room.depth - back) / CELL), open = new Uint8Array(cols * rows), corners = new Uint8Array((cols + 1) * (rows + 1));
+  for (let k = 0; k < corners.length; k++) corners[k] = free(p.set(left + k % (cols + 1) * CELL, 0, back + Math.floor(k / (cols + 1)) * CELL), colliders, room) ? 1 : 0;
   for (let k = 0; k < open.length; k++) { const c = k + Math.floor(k / cols); open[k] = corners[c] & corners[c + 1] & corners[c + cols + 1] & corners[c + cols + 2]; }
-  return { cols, rows, open, key: gridKey(colliders, room) };
+  return { left, back, cols, rows, open, key: gridKey(colliders, room) };
 }
 // Changes when a box or the room does (the room hands over a new list of the same boxes with every snapshot).
-export const gridKey = (colliders, room) => `${room.width}x${room.depth}:${colliders.map(b => [b.min.x, b.min.z, b.max.x, b.max.z].map(v => v.toFixed(2)).join()).join(';')}`;
+export const gridKey = (colliders, room) => `${room.left ?? 0},${room.back ?? 0}:${room.width}x${room.depth}:${colliders.map(b => [b.min.x, b.min.z, b.max.x, b.max.z].map(v => v.toFixed(2)).join()).join(';')}`;
 
-const index = (grid, at) => { const i = Math.floor(at.x / CELL), j = Math.floor(at.z / CELL); return i >= 0 && j >= 0 && i < grid.cols && j < grid.rows ? j * grid.cols + i : -1; };
-const centre = (grid, k) => new THREE.Vector3((k % grid.cols + 0.5) * CELL, 0, (Math.floor(k / grid.cols) + 0.5) * CELL);
+const index = (grid, at) => { const i = Math.floor((at.x - grid.left) / CELL), j = Math.floor((at.z - grid.back) / CELL); return i >= 0 && j >= 0 && i < grid.cols && j < grid.rows ? j * grid.cols + i : -1; };
+const centre = (grid, k) => new THREE.Vector3(grid.left + (k % grid.cols + 0.5) * CELL, 0, grid.back + (Math.floor(k / grid.cols) + 0.5) * CELL);
 const clear = (grid, a, b) => {
   const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (CELL / 3)));
   for (let t = 0; t <= n; t++) if (grid.open[index(grid, p.lerpVectors(a, b, t / n))] !== 1) return false;
@@ -29,7 +30,7 @@ const clear = (grid, a, b) => {
 
 // The middle of the open cell nearest a point, ring by ring outwards; null if there's nowhere to stand.
 export function nearestOpen(grid, at) {
-  const { cols, rows, open } = grid, i = THREE.MathUtils.clamp(Math.floor(at.x / CELL), 0, cols - 1), j = THREE.MathUtils.clamp(Math.floor(at.z / CELL), 0, rows - 1);
+  const { cols, rows, open } = grid, i = THREE.MathUtils.clamp(Math.floor((at.x - grid.left) / CELL), 0, cols - 1), j = THREE.MathUtils.clamp(Math.floor((at.z - grid.back) / CELL), 0, rows - 1);
   for (let r = 0; r < Math.max(cols, rows); r++) {
     let best = -1, bestD = Infinity;
     for (let b = Math.max(0, j - r); b <= Math.min(rows - 1, j + r); b++) for (let a = Math.max(0, i - r); a <= Math.min(cols - 1, i + r); a++) {

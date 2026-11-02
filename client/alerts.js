@@ -40,6 +40,12 @@ const sounds = {
   // An original cartoon mallet cue, played only through the opt-in Sound control.
   simpsons: kind => { const notes = kind === 'input' ? [783.99, 1046.5, 783.99] : [523.25, 783.99, 1046.5]; notes.forEach((note, i) => tone(note, i * .1, .22, 'triangle', .055)); },
   alien: kind => { for (let i = 0; i < (kind === 'input' ? 7 : 3); i++) tone(i % 2 ? 1480 : 1760, i * .065, .04, 'square', .025); },
+  // A short comm chirp when someone needs you, a lower tone when they're done.
+  bridge: kind => kind === 'input' ? (tone(1174.66, 0, .08, 'sine', .06), tone(1567.98, .09, .16, 'sine', .06)) : tone(392, 0, .35, 'triangle', .06),
+  // Two square-wave blips when someone needs you, one when they're done.
+  city: kind => kind === 'input' ? (tone(880, 0, .07, 'square', .03), tone(880, .12, .07, 'square', .03)) : tone(523.25, 0, .12, 'square', .03),
+  // A menu's rising confirm when someone needs you, a short fanfare when they're done.
+  fantasy: kind => (kind === 'input' ? [659.25, 880] : [523.25, 659.25, 783.99, 1046.5]).forEach((note, i) => tone(note, i * .08, .1, 'square', .03)),
   command: kind => speak({ input: 'Orders required', ready: 'Unit ready', on: 'EVA online' }[kind]) || tone(440, 0, .2, 'sawtooth', .04),
   // An original, quiet dungeon bell; enabled only through the existing Sound control.
   diablo: kind => { const notes = kind === 'input' ? [146.83, 155.56] : [146.83, 220]; notes.forEach((note, i) => { tone(note, i * .22, 1.1, 'triangle', .055); tone(note * 3, i * .22, .65, 'sine', .018); }); },

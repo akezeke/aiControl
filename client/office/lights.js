@@ -7,9 +7,9 @@ import { toonMaterial } from './toon.js';
 const KEY = 'office-lights', DIM = 0.2; // the share of its brightness a dimmed board or clock keeps (pod signs stay lit)
 // The screens' light is a fixed pool of spot lights on the nearest lit desks: adding lights would recompile every material.
 const HOLD = 0.5, ROW = 0.3; // start-up: how long the room stays dark, then the time between rows of lamps
-const SCREENS = 8, SCREEN_POWER = 1.6, SCREEN_LIT = 0.3; // the share they keep while the room lights are on
+const SCREENS = 4, SCREEN_POWER = 1.6, SCREEN_LIT = 0.3; // the share they keep while the room lights are on
 // Each screen tone's light, a whiter shade of its accent, and how bright.
-const tones = { green: ['#a4f2c2', 1], amber: ['#ffd496', 1], red: ['#ffa3a3', 1], dark: ['#aebcd8', 0.45] };
+const tones = { green: ['#a4f2c2', 1], amber: ['#ffd496', 1], blue: ['#a8d4ff', 0.8], red: ['#ffa3a3', 1], dark: ['#aebcd8', 0.45] };
 
 // Marks what the switch dims (a light's intensity, a material's colour or opacity) and how much of it stays.
 export function dims(target, keep = DIM, what = target.isLight ? 'intensity' : 'color') {
@@ -20,7 +20,9 @@ export function dims(target, keep = DIM, what = target.isLight ? 'intensity' : '
 // `beam`: where a desk's screen light sits and what it points at, in the desk's frame.
 export function createLights(root, beam) {
   const sun = dims(new THREE.DirectionalLight('#fff8ee', 0.55), 0.2); sun.position.set(-2, 6, -7);
-  root.add(dims(new THREE.HemisphereLight('#f6f4ff', '#5d6575', 0.6), 0.25), sun);
+  // The ceiling lamps' light, as one light straight down: every light costs every lit pixel, so not a point light per lamp.
+  const lamps = dims(new THREE.DirectionalLight('#ffecd0', 1.3), 0); lamps.position.set(0, 1, 0);
+  root.add(dims(new THREE.HemisphereLight('#f6f4ff', '#5d6575', 0.6), 0.25), sun, lamps);
   const pool = Array.from({ length: SCREENS }, () => {
     // A soft, wide cone that fades slowly, like a lit panel rather than a bulb.
     const light = new THREE.SpotLight('#ffffff', 0, 2.5, 1.35, 1, 1); root.add(light, light.target);
@@ -62,10 +64,10 @@ export function createLights(root, beam) {
     update(dt, eye, still, desks) {
       dt = Math.max(0, dt); // the first frame's dt can be negative (its timestamp predates the loop starting)
       if (boot?.rows) {
-        // Each row catches with one blink, like a tube; reduced motion or the switch off skips to the end.
+        // Each row comes on in turn; reduced motion or the switch off skips to the end.
         boot.t += Math.min(dt, 0.05);
         const done = still || !on || boot.t > boot.rows * ROW + 0.2;
-        const lit = Array.from({ length: boot.rows }, (_, i) => { const t = boot.t - i * ROW; return done || (t >= 0 && (t < 0.06 || t >= 0.14)); }), key = lit.join();
+        const lit = Array.from({ length: boot.rows }, (_, i) => { const t = boot.t - i * ROW; return done || t >= 0; }), key = lit.join();
         if (key !== boot.key || stale) { boot.key = key; level = done ? +on : lit.filter(Boolean).length / boot.rows; apply(); boot.show(done ? null : lit); }
         if (done) boot = null;
       } else if (+on !== level || (stale && level < 1)) { level = +on; apply(); }

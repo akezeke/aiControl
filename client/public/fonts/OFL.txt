@@ -1,7 +1,16 @@
 Fonts in this folder, from Google Fonts (latin subset), served locally:
 
+nunito-*.woff2 (Nunito):
+Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)
+
 vt323.woff2 (VT323):
 Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)
+
+silkscreen.woff2 (Silkscreen):
+Copyright 2001 The Silkscreen Project Authors (https://github.com/googlefonts/silkscreen)
+
+antonio.woff2 (Antonio):
+Copyright 2013 The Antonio Project Authors (https://github.com/googlefonts/antonioFont)
 
 josefin-slab.woff2 (Josefin Slab):
 Copyright 2020 The Josefin Slab Project Authors (https://github.com/googlefonts/josefinslab/)
@@ -12,6 +21,9 @@ Copyright 2022 The Black-Ops Project Authors (https://github.com/googlefonts/goo
 
 comic-neue-bold.woff2 (Comic Neue Bold):
 Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue)
+
+cinzel-decorative-900.woff2 (Cinzel Decorative Black):
+Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

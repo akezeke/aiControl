@@ -11,11 +11,13 @@ const SETTLED = 0.7;    // seconds after a pose change, after which the pose is 
 // The sitter's root sits a little forward of the chair; standing, they step out behind it.
 const SEAT_FORWARD = 0.06, STAND_BACK = -0.8, STANDING = new Set(['waving', 'raising', 'impatient']);
 const KEYS = KEYS_Z - CHAIR_Z - SEAT_FORWARD; // the keyboard, from the sitter's root (the mouse's x is the same from either)
-const LOOK_RANGE = 4, WALK_SPEED = 2, GOODBYE = 1.2, STARTLED = 2.5, FINISHED = 2.5, WORKING = new Set(['typing', 'thinking', 'squeezing']);
+const LOOK_RANGE = 4, WALK_SPEED = 2, RUN_SPEED = 4, GOODBYE = 1.2, STARTLED = 2.5, FINISHED = 2.5, WORKING = new Set(['typing', 'thinking', 'squeezing', 'drumming']);
 // Waiting on you gets louder: a raised hand, then after a couple of minutes both arms waving, after ten a tapping foot.
 const WAVE_AFTER = 2 * 60_000, TAP_AFTER = 10 * 60_000;
 // Neighbours within NEAR metres react: a thumbs up for a finish, and every GLANCE_EVERY seconds a GLANCE_FOR look at a red desk.
 const NEAR = 6, GLANCE_EVERY = 7, GLANCE_FOR = 1.6;
+// The stretch or cheer on going to sleep, only once nothing is left running.
+export const finishes = (from, to) => to === 'sleeping' && WORKING.has(from);
 export const waitingPose = (since, now = Date.now()) => now - since >= TAP_AFTER ? 'impatient' : now - since >= WAVE_AFTER ? 'waving' : 'raising';
 
 // t is seconds (frozen at 0 with reduced motion), seed spreads characters out of step, fruit gives the body's height and shape,
@@ -57,6 +59,12 @@ export function poseTargets(pose, t, seed, fruit, wear = 0, habit = '') {
         leftHand: V(crown.x + crown.r * 0.5, SEAT_H + h * 0.78, -crown.r - 0.1), rightHand: V(crown.x - crown.r * 0.5, SEAT_H + h * 0.78, -crown.r - 0.1), ...feetUnder } };
       return { ...seated(-0.1, wave(1.2) * 0.006), limbs: {
         leftHand: desk, rightHand: V(-0.09, SEAT_H + h * 0.46 + Math.max(0, wave(3)) * 0.012, 0.33), ...feetUnder } };
+    }
+    // Waiting on a task: awake and upright, one hand drumming on the desk in bursts, the other resting; now and then a look up at the monitor.
+    case 'drumming': {
+      const burst = clamp(wave(0.8) * 3, 0, 1), resting = DESK_H + 0.03, z = KEYS - 0.08;
+      return { ...seated(0.04, wave(1.2) * 0.004), glance: wave(0.5) > 0.6 ? V(0, DESK_H + 0.34, 1) : null, limbs: {
+        leftHand: V(0.2, resting, z), rightHand: V(-0.24, resting + Math.abs(s(t * 13 + seed)) * 0.05 * burst, z), ...feetUnder } };
     }
     // Compacting: hunched forward hugging itself, eyes screwed shut (fruit.js), shivering hard enough to see across the room.
     case 'squeezing': {
@@ -110,6 +118,17 @@ export function poseTargets(pose, t, seed, fruit, wear = 0, habit = '') {
       const chuckle = Math.max(0, wave(0.7)) ** 6;
       return { ...seated(-0.12, Math.abs(s(t * 15)) * 0.01 * chuckle), limbs: {
         leftHand: V(0.24, DESK_H + 0.03, KEYS - 0.1), rightHand: V(MOUSE_X, DESK_H + 0.045, KEYS + wave(0.6) * 0.015), ...feetUnder } };
+    }
+    // Fired: hunched over and sobbing, both hands over the eyes; then running for the door like that ('fleeing', Cast.#walk).
+    case 'crying': case 'fleeing': {
+      const fleeing = pose === 'fleeing', lean = fleeing ? 0.2 : 0.3, sob = Math.abs(s(t * 9 + seed));
+      const base = fleeing ? { ...standing(Math.abs(wave(14)) * 0.05), z: 0 } : seated(lean, sob * 0.012);
+      base.body.lean = lean;
+      // A point on the face (eye height, just off the skin), where the lean has carried it.
+      const faceY = fruit.faceY ?? h * 0.6, out = fruit.surface(faceY).r + 0.06, y = base.body.y + faceY * Math.cos(lean) - out * Math.sin(lean) + sob * 0.008;
+      const palm = side => V(side * (0.075 + s(t * 23 + seed + side) * 0.004), y, faceY * Math.sin(lean) + out * Math.cos(lean));
+      const feet = fleeing ? { leftFoot: V(0.11, 0.03 + Math.max(0, wave(14)) * 0.1, -wave(14) * 0.22), rightFoot: V(-0.11, 0.03 + Math.max(0, -wave(14)) * 0.1, wave(14) * 0.22) } : feetUnder;
+      return { ...base, limbs: { leftHand: palm(1), rightHand: palm(-1), ...feet } };
     }
     case 'slumped': return { ...seated(0.55), limbs: {
       leftHand: V(0.3, DESK_H + 0.03, KEYS - 0.06), rightHand: V(-0.3, DESK_H + 0.03, KEYS - 0.06), ...feetUnder } };
@@ -167,24 +186,31 @@ export class Cast {
   // Who's turned toward you right now (the one you're talking to), or null.
   greet(id) { this.facingYou = id; }
   // Just above the character's head, in world space.
-  positionOf(id) { const c = this.characters.get(id); if (!c?.fruit) return null; const p = c.fruit.body.getWorldPosition(new THREE.Vector3()); p.y += c.fruit.height * c.scale + 0.08; return p; }
+  // Where to hang a bubble over someone; none once they've gone out of the door.
+  positionOf(id) { const c = this.characters.get(id); if (!c?.fruit || !c.root.visible) return null; const p = c.fruit.body.getWorldPosition(new THREE.Vector3()); p.y += c.fruit.height * c.scale + 0.08; return p; }
 
   sync(layout, sessions, room, statuses, { animate = true } = {}) {
     const seen = new Set(), still = this.reducedMotion();
     this.door = new THREE.Vector3(layout.door.x, 0, layout.door.z - 0.6);
     const firstSync = !this.synced; this.synced = true;
-    const place = (id, make) => {
+    // Someone on their way out (gone, or a helper that's done) waves.
+    const place = (id, make, going = false) => {
       seen.add(id);
       let c = this.characters.get(id);
       if (!c) { c = make(); this.characters.set(id, c); this.scene.add(c.root); }
-      const status = statuses.get(id) || { pose: 'waving', expression: 'smile' };
+      const status = !going && statuses.get(id) || { pose: 'waving', expression: 'smile' };
       c.expression = status.expression; c.since = status.since;
       // Done: a sitter going from work to idle stretches or punches the air before nodding off (not on a page load).
-      if (c.pose !== status.pose && !firstSync && !still && WORKING.has(c.pose) && status.pose === 'sleeping') { c.finished = this.time; c.fan = undefined; }
+      if (c.pose !== status.pose && !firstSync && !still && finishes(c.pose, status.pose)) { c.finished = this.time; c.fan = undefined; }
       if (c.pose !== status.pose) { c.pose = status.pose; c.changed = this.time; c.fruit.setGrey(status.pose === 'still'); }
       if (c.wear !== (status.wear || 0)) { c.wear = status.wear || 0; c.changed = this.time; c.fruit.setWear(c.wear); }
       if (c.shades !== (status.mode === 'bypass')) { c.shades = status.mode === 'bypass'; c.fruit.setShades(c.shades); }
       return c;
+    };
+    // Waves goodbye, then walks out (with reduced motion just vanishes); or, back after all, goes back to the desk.
+    const leave = (c, going) => {
+      if (!going && c.leaving) { c.leaving = false; c.root.visible = true; c.trip = still ? null : { to: 'desk' }; }
+      if (going && !c.leaving) { c.leaving = true; c.trip = still ? null : { wait: GOODBYE, to: 'door' }; c.root.visible = !still; }
     };
     for (const [id, desk] of layout.desks) {
       const anchor = room.deskAnchor(id); if (!anchor) continue;
@@ -192,11 +218,14 @@ export class Cast {
       c.anchor = anchor;
       // Newcomers walk in from the door (not on the first load, when everyone is simply there).
       if (isNew && !firstSync && animate && !still) c.trip = { at: this.door.clone(), to: 'desk' };
-      // Ended sessions say goodbye, then walk out; with reduced motion they just vanish.
-      if (desk.vacantSince === undefined && c.leaving) { c.leaving = false; c.root.visible = true; c.trip = still ? null : { to: 'desk' }; }
-      if (desk.vacantSince !== undefined && !c.leaving) { c.leaving = true; c.trip = still ? null : { wait: GOODBYE, to: 'door' }; c.root.visible = !still; }
-      // Helpers sit at their own tiny desks beside the parent's; more than fit show as a +N above the last one.
-      desk.subagents.forEach((kid, i) => { const k = place(kid, () => this.#character(kid, HELPER_SCALE)); k.anchor = anchor.helpers[i]; });
+      leave(c, desk.vacantSince !== undefined);
+      // Helpers sit at their own tiny desks beside the parent's, and leave like anyone else once done (layout.js); moved up a
+      // seat when one before them has gone, they walk over. More than fit show as a +N above the last one.
+      desk.subagents.forEach((kid, i) => {
+        const going = desk.leaving.includes(kid), k = place(kid, () => this.#character(kid, HELPER_SCALE), going), seat = anchor.helpers[i];
+        if (k.anchor && !k.leaving && animate && !still && k.anchor.seat.distanceTo(seat.seat) > 0.05) k.trip = { to: 'desk' };
+        k.anchor = seat; leave(k, going);
+      });
       let plus = this.characters.get(`${id}#plus`);
       if (desk.overflow && (!plus || plus.count !== desk.overflow)) {
         if (plus) { plus.root.removeFromParent(); plus.root.material.map.dispose(); plus.root.material.dispose(); }
@@ -224,8 +253,11 @@ export class Cast {
     this.characters.delete(id);
   }
 
-  // Hit by something or the boss's coffee, or their desk was: a jump, then a frown and a glare at the boss for a moment.
-  startle(id) { const c = this.characters.get(id); if (c && !c.plus) c.startled = this.time; }
+  // Hit by something or the boss's coffee, or their desk was: a jump, then a frown and a glare at the boss for a moment; at
+  // `from` instead if that's where it came from (the goose, honking a sleeper awake).
+  startle(id, from = null) { const c = this.characters.get(id); if (c && !c.plus) { c.startled = this.time; c.startledBy = from?.clone() ?? null; } }
+  // Who's dozing at their desk right now (not slacking off or talking to you), and their seat.
+  sleepers() { return [...this.characters.values()].filter(c => c.shown === 'sleeping' && !c.trip && !c.leaving).map(c => ({ id: c.id, at: c.anchor.seat })); }
 
   update(dt, playerPos) {
     if (this.frozen) return; // connection lost: everyone holds still until it's back
@@ -236,7 +268,7 @@ export class Cast {
     // and anyone typing or thinking near a red desk keeps glancing over.
     const sitters = [...this.characters.values()].filter(c => !c.plus && c.anchor && !c.trip && !c.leaving), fans = new Map();
     const nearest = (c, ok) => { let best = null, d = NEAR; for (const o of sitters) if (o !== c && ok(o)) { const e = o.root.position.distanceTo(c.root.position); if (e < d) [best, d] = [o, e]; } return best; };
-    const red = still ? [] : sitters.filter(o => o.pose === 'slumped');
+    const red = still ? [] : sitters.filter(o => o.pose === 'slumped' || o.pose === 'crying');
     if (!still) for (const f of sitters) if (this.time - f.finished < FINISHED) {
       if (f.fan === undefined) f.fan = nearest(f, o => ['typing', 'thinking', 'sleeping'].includes(o.pose) && !(this.time - o.finished < FINISHED) && this.facingYou !== o.id && !fans.has(o.id))?.id ?? null;
       if (f.fan) fans.set(f.fan, f);
@@ -247,11 +279,12 @@ export class Cast {
       // Whoever you're talking to stops what they're doing (a sleeper wakes up), turns in the chair and listens.
       // A working or idle sitter may be slacking off (room.js and slack.js have it), or just caught at it.
       const talking = this.facingYou === c.id && !STANDING.has(c.pose), busy = ['typing', 'thinking', 'sleeping'].includes(c.pose), slack = c.anchor.slack;
+      // Startled, a sitter sits up to turn round: a pose kept would swing its heels and hands round with it, off the desk they rest on.
+      const since = this.time - c.startled, startled = since < STARTLED, sitsUp = startled && !STANDING.has(c.pose) && c.pose !== 'crying';
       const finishing = this.time - c.finished < FINISHED, cheer = c.habits.finish, cheering = fans.get(c.id);
-      const worry = red.length && ['typing', 'thinking'].includes(c.pose) && (this.time + c.seed) % GLANCE_EVERY < GLANCE_FOR ? nearest(c, o => o.pose === 'slumped') : null;
-      const pose = talking ? 'listening' : finishing ? cheer : cheering ? 'thumbsup' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted'
+      const worry = red.length && ['typing', 'thinking'].includes(c.pose) && (this.time + c.seed) % GLANCE_EVERY < GLANCE_FOR ? nearest(c, o => o.pose === 'slumped' || o.pose === 'crying') : null;
+      const pose = talking || sitsUp ? 'listening' : finishing ? cheer : cheering ? 'thumbsup' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted'
         : worry ? 'concerned' : STANDING.has(c.pose) && c.since ? waitingPose(c.since) : c.pose;
-      const since = this.time - c.startled, startled = since < STARTLED;
       const face = startled ? 'frown' : talking && ['asleep', 'squeezed'].includes(c.expression) ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : pose === 'impatient' ? 'annoyed' : pose === 'stretching' ? 'asleep' : pose === 'cheering' || pose === 'thumbsup' ? 'smile' : pose === 'concerned' ? 'worried' : c.expression;
       if (c.shown !== pose) { if (c.shown) c.changed = this.time; c.shown = pose; }
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
@@ -269,7 +302,7 @@ export class Cast {
         other.fruit.body.getWorldPosition(head).y += other.fruit.height * other.scale * 0.6; target.glance = fruit.group.worldToLocal(head);
       }
       // Standing characters turn toward the boss when they want something, and anyone you're talking to turns in their chair.
-      if (playerPos && (STANDING.has(pose) || this.facingYou === c.id || startled)) target.turn = toward(c, playerPos);
+      if (playerPos && (STANDING.has(pose) || this.facingYou === c.id || startled)) target.turn = toward(c, startled && c.startledBy || playerPos);
       // Caught out, they snap to it; startled, they whip round.
       const kPose = (pose === 'busted' || startled) && !still ? 1 - Math.exp(-dt * 20) : k;
       if (!c.current) c.current = clonePose(target); else blendPose(c.current, target, this.time - c.changed > SETTLED ? 1 : kPose, kPose);
@@ -301,8 +334,10 @@ export class Cast {
       if (trip.to === 'door') c.root.visible = false;
       return trip.to === 'door';
     }
-    trip.at.addScaledVector(to.normalize(), Math.min(distance, WALK_SPEED * dt));
-    const target = poseTargets('walking', t, c.seed, fruit);
+    // The fired run for it.
+    const fleeing = trip.to === 'door' && c.pose === 'crying';
+    trip.at.addScaledVector(to.normalize(), Math.min(distance, (fleeing ? RUN_SPEED : WALK_SPEED) * dt));
+    const target = poseTargets(fleeing ? 'fleeing' : 'walking', t, c.seed, fruit);
     if (!c.current) c.current = clonePose(target); else blendPose(c.current, target, k);
     const yaw = c.root.rotation.y, turn = Math.atan2(to.x, to.z) - yaw; // turning the corners rather than snapping round
     c.root.position.copy(trip.at); c.root.rotation.y = yaw + Math.atan2(Math.sin(turn), Math.cos(turn)) * Math.min(1, dt * 10);

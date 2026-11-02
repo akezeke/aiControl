@@ -8,9 +8,12 @@ import { toonMaterial, withOutline } from './toon.js';
 export const WALL_H = 3, WALL_T = 0.2;
 export const shared = {};
 export const once = (key, make) => shared[key] ??= make();
-export const rounded = (w, h, d, r = 0.04) => new RoundedBoxGeometry(w, h, d, 3, r);
+export const rounded = (w, h, d, r = 0.04) => new RoundedBoxGeometry(w, h, d, 2, r);
 
+// Built once and never bent, so it gets a box: a ray (the pointer's, every hover) through its bounding sphere that misses the
+// box skips the triangles.
 export function mesh(geometry, material, outline = 0.01) {
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
   const m = new THREE.Mesh(geometry, material);
   return outline ? withOutline(m, outline) : m;
 }
@@ -158,6 +161,13 @@ export const picture = (i, w = 0.8, h = 1) => piece(`picture${i}:${w}x${h}`, () 
 
 // Lounge: a sofa, an armchair and a low table, each facing +z.
 const cushion = '#e07a5f', cushionDark = '#c8664c';
+// One leaf of the kitchen's swinging doors, hinged at the origin and reaching along +z, with a round frosted window, a push plate and a kick plate on both faces.
+export const swingDoor = () => piece('swingDoor', () => {
+  const wide = 0.74, tall = 2.17, thick = 0.05, across = (r, h, y, z) => new THREE.CylinderGeometry(r, r, h, 28).rotateZ(Math.PI / 2).translate(0, y, z);
+  return [[box(thick, tall, wide, 0, tall / 2 + 0.01, wide / 2), '#4f8f8a'], [across(0.17, thick + 0.012, 1.5, wide / 2), '#59616c'], [across(0.14, thick + 0.018, 1.5, wide / 2), '#d6e8ee'],
+    [box(thick + 0.012, 0.28, wide - 0.08, 0, 0.16, wide / 2, 0), '#b9bec6'], [box(thick + 0.012, 0.3, 0.09, 0, 1.05, wide - 0.08, 0), '#b9bec6']];
+}, 0.006);
+
 export const sofa = () => piece('sofa', () => [
   [box(1.9, 0.26, 0.86, 0, 0.2, 0, 0.05), cushionDark], [box(0.86, 0.14, 0.68, -0.44, 0.39, 0.06, 0.05), cushion], [box(0.86, 0.14, 0.68, 0.44, 0.39, 0.06, 0.05), cushion],
   [box(1.9, 0.5, 0.22, 0, 0.55, -0.32, 0.07), cushion], [box(0.2, 0.48, 0.86, -0.85, 0.36, 0, 0.06), cushionDark], [box(0.2, 0.48, 0.86, 0.85, 0.36, 0, 0.06), cushionDark],

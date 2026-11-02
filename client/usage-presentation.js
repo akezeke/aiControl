@@ -8,22 +8,23 @@ export function usageWindowView(window, now = Date.now()) {
   const pace = !expired && elapsed > span / 10 && elapsed <= span ? Math.round(used * span / elapsed) : null;
   const minutes = Math.max(1, Math.ceil((window.resetsAt - now) / 60_000));
   let resetText = 'Reset time unavailable';
+  let resetIn = '—';
   let resetShortText = '—';
-  if (expired) resetText = 'Reset due · awaiting refresh';
+  if (expired) { resetText = 'Reset due · awaiting refresh'; resetIn = 'due'; }
   else if (Number.isFinite(window.resetsAt)) {
-    const duration = minutes >= 1440 ? `${Math.floor(minutes / 1440)}d ${Math.floor(minutes % 1440 / 60)}h`
+    resetIn = minutes >= 1440 ? `${Math.floor(minutes / 1440)}d ${Math.floor(minutes % 1440 / 60)}h`
       : minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
-    resetText = `Resets in ${duration}`;
+    resetText = `Resets in ${resetIn}`;
   }
   if (expired) resetShortText = 'due';
-  else if (window.label === '5-hour' && Number.isFinite(window.resetsAt)) {
+  else if (Number.isFinite(window.resetsAt) && minutes < 1440) {
     resetShortText = new Date(window.resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   } else if (Number.isFinite(window.resetsAt)) {
-    const days = (window.resetsAt - now) / 86_400_000;
-    resetShortText = days < .01 ? '<0.01d' : `${Number(days.toFixed(days < 1 ? 2 : 1))}d`;
+    const hours = Math.floor(minutes % 1440 / 60);
+    resetShortText = `${Math.floor(minutes / 1440)}d${hours ? ` ${hours}h` : ''}`;
   }
   const shortLabel = window.label === 'Weekly' ? 'w' : window.label.replace(/-(hour|day|minute)$/, (_, unit) => ({ hour: 'h', day: 'd', minute: 'm' })[unit]);
-  return { shortLabel, pace, paceText: pace == null ? '' : `On pace for ${pace}% by reset`, percentText: `${Number(used.toFixed(1))}%`, barPercent: Math.min(100, Math.max(0, used)), tone: used >= 100 ? 'usage-full' : used >= 80 ? 'usage-high' : '', expired, resetText, resetShortText };
+  return { shortLabel, pace, paceText: pace == null ? '' : `On pace for ${pace}% by reset`, percentText: `${Number(used.toFixed(1))}%`, barPercent: Math.min(100, Math.max(0, used)), tone: used >= 100 ? 'usage-full' : used >= 80 ? 'usage-high' : '', expired, resetText, resetIn, resetShortText };
 }
 
 export function usageUpdatedText(account, now = Date.now(), stale = false) {

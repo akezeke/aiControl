@@ -30,6 +30,28 @@ export function lineImages(line, sessionId) {
   });
 }
 
+// Each complete line after `end` (at most `scanBytes` back from `size`); returns where the next read starts.
+const pieceBytes = 8 * 1024 * 1024;
+export async function readLines(handle, end, size, scanBytes, onLine) {
+  let start = end, aligned = true, length = pieceBytes;
+  if (size - start > scanBytes) { start = size - scanBytes; aligned = false; }
+  // In pieces, so a long transcript isn't all in memory at once; a line longer than a piece is read again with a bigger one.
+  while (start < size) {
+    const buffer = Buffer.alloc(Math.min(size - start, length)), { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+    if (!bytesRead) break;
+    const piece = buffer.subarray(0, bytesRead);
+    let from = 0, to;
+    // A tail read starts mid-line; the first full line follows the first newline.
+    if (!aligned) { from = piece.indexOf(10) + 1; if (!from) { start += bytesRead; continue; } aligned = true; }
+    while ((to = piece.indexOf(10, from)) >= 0) { onLine(piece.subarray(from, to), start + from); from = to + 1; }
+    if (from) { start += from; length = pieceBytes; continue; }
+    // A line still being written is read again next time.
+    if (start + bytesRead >= size) break;
+    length *= 2;
+  }
+  return start;
+}
+
 export class TranscriptImages {
   cache = new Map();
   // `scanBytes` bounds the first look at a transcript (and a burst of output since the last one) to its tail.
@@ -58,22 +80,10 @@ export class TranscriptImages {
     const { size } = await handle.stat(), cached = this.cache.get(path);
     // A copy, so two requests scanning at once can't both append the same images.
     const entry = cached && cached.end <= size ? { end: cached.end, images: [...cached.images] } : { end: 0, images: [] };
-    let start = entry.end, aligned = true;
-    if (size - start > this.scanBytes) { start = size - this.scanBytes; aligned = false; }
-    if (size > start) {
-      const buffer = Buffer.alloc(size - start);
-      await handle.read(buffer, 0, buffer.length, start);
-      // A tail read starts mid-line; the first full line follows the first newline.
-      let from = aligned ? 0 : buffer.indexOf(10) + 1 || buffer.length, to;
-      while ((to = buffer.indexOf(10, from)) >= 0) {
-        const line = buffer.subarray(from, to);
-        if (line.includes(marker)) for (const { data, ...image } of lineImages(line.toString('utf8'), sessionId)) entry.images.push({ ...image, offset: start + from, length: to - from });
-        from = to + 1;
-      }
-      // A line still being written is read again next time.
-      entry.end = start + from;
-      entry.images = entry.images.slice(-imageLimit);
-    }
+    entry.end = await readLines(handle, entry.end, size, this.scanBytes, (line, offset) => {
+      if (line.includes(marker)) for (const { data, ...image } of lineImages(line.toString('utf8'), sessionId)) entry.images.push({ ...image, offset, length: line.length });
+    });
+    entry.images = entry.images.slice(-imageLimit);
     this.cache.delete(path); this.cache.set(path, entry);
     if (this.cache.size > 1000) this.cache.delete(this.cache.keys().next().value);
     return entry;

@@ -211,6 +211,8 @@ test('Claude session facts come from the newest transcript records', () => {
   assert.deepEqual(meta.context, { used: 1017 });
   assert.deepEqual(meta.plan.map(step => step.status), ['done', 'active', 'pending']);
   assert.deepEqual(meta.queuedMessages.map(entry => entry.text), ['second']);
+  // Newer Claude Code records a mode change as its own line.
+  assert.equal(claudeMeta([JSON.stringify({ type: 'permission-mode', permissionMode: 'auto', sessionId })], sessionId).permissionMode, 'auto');
 });
 
 test('a message removed with different tag attributes leaves the queue', () => {

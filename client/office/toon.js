@@ -17,29 +17,44 @@ export function toonMaterial(color, options = {}) {
 // so it's pushed along the average of the distinct normals at each point instead.
 function outlineNormals(geometry) {
   if (geometry.attributes.outlineNormal) return;
-  const { position, normal } = geometry.attributes, at = new Map(), keys = [], n = new THREE.Vector3();
+  // Points are matched to 0.1 mm, hashed to a number (strings were most of the load-time cost), checked against the bucket.
+  const { position, normal } = geometry.attributes, buckets = new Map(), of = [], n = new THREE.Vector3();
   for (let i = 0; i < position.count; i++) {
-    const key = [position.getX(i), position.getY(i), position.getZ(i)].map(v => Math.round(v * 1e4)).join();
-    const seen = at.get(key) || at.set(key, []).get(key);
+    const x = Math.round(position.getX(i) * 1e4), y = Math.round(position.getY(i) * 1e4), z = Math.round(position.getZ(i) * 1e4);
+    const hash = Math.imul(x, 73856093) ^ Math.imul(y, 19349663) ^ Math.imul(z, 83492791), bucket = buckets.get(hash);
+    let point = bucket?.find(p => p.x === x && p.y === y && p.z === z);
+    if (!point) { point = { x, y, z, normals: [], sum: new THREE.Vector3() }; if (bucket) bucket.push(point); else buckets.set(hash, [point]); }
     n.fromBufferAttribute(normal, i);
-    if (!seen.some(m => m.dot(n) > 0.999)) seen.push(n.clone());
-    keys.push(key);
+    if (!point.normals.some(m => m.dot(n) > 0.999)) { point.normals.push(n.clone()); point.sum.add(n); }
+    of.push(point);
   }
+  for (const bucket of buckets.values()) for (const point of bucket) point.sum = point.sum.lengthSq() > 1e-8 ? point.sum.normalize() : null;
   const out = new Float32Array(position.count * 3);
-  keys.forEach((key, i) => {
-    const sum = at.get(key).reduce((total, m) => total.add(m), new THREE.Vector3());
-    (sum.lengthSq() > 1e-8 ? sum.normalize() : n.fromBufferAttribute(normal, i)).toArray(out, i * 3);
-  });
+  of.forEach((point, i) => (point.sum ?? n.fromBufferAttribute(normal, i)).toArray(out, i * 3));
   geometry.setAttribute('outlineNormal', new THREE.BufferAttribute(out, 3));
 }
-const outlines = new Map();
-function outlineMaterial(thickness, color = '#1b1a1f') {
+const outlines = new Map(), INK = '#1b1a1f', HOVER = '#4f7cff', ink = { value: new THREE.Color(INK) }, shown = { value: 1 };
+// Outlines on everything, or only on what's hovered or picked: the plain ink ones are hidden then, and an instanced hull's
+// ink copies collapse to a point in its shader.
+export function showOutlines(on) {
+  shown.value = on ? 1 : 0;
+  for (const material of outlines.values()) if (material.userData.ink) material.visible = on;
+}
+function outlineMaterial(thickness, color = INK) {
   const key = `${thickness}:${color}`;
   if (outlines.has(key)) return outlines.get(key);
-  const material = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
-  material.onBeforeCompile = shader => { shader.vertexShader = `attribute vec3 outlineNormal;\n${shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\ntransformed += normalize(outlineNormal) * ${thickness.toFixed(4)};`)}`; };
-  material.customProgramCacheKey = () => `outline-${thickness}`;
-  material.userData.thickness = thickness;
+  // The thickness is a uniform, so every outline (and hover's thicker ones) shares one shader: no compile on a first hover.
+  const material = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide, visible: color !== INK || !!shown.value }), uniform = { value: thickness };
+  material.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, { outlineThickness: uniform, outlineShown: shown, outlineInk: ink });
+    shader.vertexShader = `attribute vec3 outlineNormal;\nuniform float outlineThickness, outlineShown;\nuniform vec3 outlineInk;\n${shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+transformed += normalize(outlineNormal) * outlineThickness;
+#ifdef USE_INSTANCING_COLOR
+if (outlineShown < 0.5 && distance(instanceColor, outlineInk) < 0.01) transformed = vec3(0.0);
+#endif`)}`;
+  };
+  material.customProgramCacheKey = () => 'outline';
+  Object.assign(material.userData, { thickness, ink: color === INK });
   outlines.set(key, material);
   return material;
 }
@@ -50,23 +65,22 @@ export function withOutline(mesh, thickness = 0.009) {
   mesh.add(hull);
   return mesh;
 }
-// Hover: everything outlined under `root` gets a thicker blue outline; off puts the usual one back.
-export function highlight(root, on) {
+// Hover: everything outlined under `root` gets a thicker blue outline (or `color`); off puts the usual one back.
+export function highlight(root, on, color = HOVER) {
   root?.traverse(node => {
     if (!node.userData.outline) return;
     node.userData.plain ??= node.material;
-    node.material = on ? outlineMaterial(node.userData.plain.userData.thickness * 1.5, HOVER) : node.userData.plain;
+    node.material = on ? outlineMaterial(node.userData.plain.userData.thickness * 1.5, color) : node.userData.plain;
   });
 }
-const INK = new THREE.Color('#1b1a1f'), HOVER = '#4f7cff';
 // An instanced mesh's outline: another instanced mesh sharing its instances, coloured per instance, so `light(i, on)` can
 // outline one copy blue for hover (the same thickness, though).
 export function instancedOutline(mesh, thickness = 0.009) {
   outlineNormals(mesh.geometry);
   const hull = new THREE.InstancedMesh(mesh.geometry, outlineMaterial(thickness, '#ffffff'), mesh.count);
   hull.instanceMatrix = mesh.instanceMatrix; hull.raycast = () => {};
-  for (let i = 0; i < mesh.count; i++) hull.setColorAt(i, INK);
-  hull.light = (i, on) => { hull.setColorAt(i, on ? new THREE.Color(HOVER) : INK); hull.instanceColor.needsUpdate = true; };
+  for (let i = 0; i < mesh.count; i++) hull.setColorAt(i, ink.value);
+  hull.light = (i, on) => { hull.setColorAt(i, on ? new THREE.Color(HOVER) : ink.value); hull.instanceColor.needsUpdate = true; };
   mesh.add(hull);
   return hull;
 }

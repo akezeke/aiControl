@@ -124,7 +124,7 @@ const unwrapped = text => text.replace(/^<([\w-]+)[^>]*>/, '<$1>');
 export function claudeMeta(lines, sessionId) {
   const meta = {}; let queue = [];
   for (const line of lines) {
-    if (!/"(assistant|system|cost-state|queue-operation|user)"/.test(line)) continue;
+    if (!/"(assistant|system|cost-state|queue-operation|user|permission-mode)"/.test(line)) continue;
     try {
       const row = JSON.parse(line);
       if ((row.sessionId && row.sessionId !== sessionId) || row.isSidechain) continue;
@@ -179,6 +179,12 @@ export function claudeStep(lines) {
 }
 // 'thinking' once a working session's model has been quiet for a while; short gaps between tool calls don't count.
 export const claudeActivity = (status, step, modifiedAt, now = Date.now()) => status === 'working' && step === 'model' && now - modifiedAt > 8000 ? 'thinking' : '';
+// What a session that finished its turn still has running: its working subagents and background shells. A parked session's registration is stale.
+export function claudeWaitingOn(status, record, agents) {
+  if (status !== 'idle') return undefined;
+  const working = agents.filter(agent => agent.status === 'working').length;
+  return [working && `${working} agent${working === 1 ? '' : 's'}`, !record.parkedJobId && record.status === 'shell' && 'shell'].filter(Boolean).join(', ') || undefined;
+}
 // The current turn's latest tool line ("Bash · Type-check after the route change"): hooks only see a call once it has finished,
 // and only its tool's name.
 export function turnTool(messages = []) {

@@ -17,9 +17,11 @@ const runTmux = (args, input) => new Promise((resolve, reject) => {
 // A new agent gets a window in the tmux session already working in this project, else in a session
 // named after it. The command is typed into a shell, so an error or exit stays readable there.
 // configDir starts Claude under another account (CLAUDE_CONFIG_DIR); empty means the default ~/.claude.
-export async function spawnAgent(cwd, provider, { configDir = '', sessionId, model, effort, tmux = runTmux, update = updateCodex } = {}) {
+// `args` follow the agent's name (recovery.mjs's resume arguments: ids and modes, nothing a shell would read).
+export async function spawnAgent(cwd, provider, { configDir = '', sessionId, model, effort, args = [], tmux = runTmux, update = updateCodex } = {}) {
   if (!['claude', 'codex', 'opencode'].includes(provider)) throw fail('Unknown agent.');
   if (provider === 'opencode' && !/^ses[\w-]+$/.test(sessionId || '')) throw fail('Invalid OpenCode session ID.');
+  if (args.some(arg => !/^[\w-]+$/.test(arg))) throw fail('Unexpected agent arguments.');
   const panes = (await tmux(['list-panes', '-a', '-F', '#{session_name}\t#{pane_current_path}']).catch(() => '')).split('\n').map(line => line.split('\t'));
   // npm stop ends the server's own session, so agents never go there.
   let name = panes.find(([session, path]) => path === cwd && session !== 'aiControl')?.[0] || basename(cwd).replace(/[^\w-]/g, '_');
@@ -35,14 +37,15 @@ export async function spawnAgent(cwd, provider, { configDir = '', sessionId, mod
       if (model) command += ` --model ${quote(model)}`;
       if (effort && claudeEfforts.includes(effort)) command += ` --effort ${quote(effort)}`;
     }
+    if (args.length) command += ` ${args.join(' ')}`;
     await tmux(['send-keys', '-t', pane, command, 'Enter']);
-    if (provider === 'codex') update(pane, { tmux }).catch(() => {});
+    if (provider === 'codex') update(pane, { tmux, command }).catch(() => {});
     return { session: name, pane, window: (await tmux(['display-message', '-p', '-t', pane, '#{window_index}']).catch(() => '')).trim() };
   } catch { throw fail('Could not open a tmux window.', 503); }
 }
 // The thread only loads past Codex's startup update prompt, so take its default, Update now; the update ends Codex, so
 // start it again once it reports success. A started Codex or any other question (trusting a folder) is left alone.
-export async function updateCodex(pane, { tmux = runTmux, pollMs = 1000, startMs = 20_000, updateMs = 180_000 } = {}) {
+export async function updateCodex(pane, { tmux = runTmux, command = 'codex', pollMs = 1000, startMs = 20_000, updateMs = 180_000 } = {}) {
   const screen = () => tmux(['capture-pane', '-p', '-J', '-t', pane]).catch(() => '');
   const wait = () => new Promise(resolve => setTimeout(resolve, pollMs));
   for (const end = Date.now() + startMs; Date.now() < end; await wait()) {
@@ -51,7 +54,7 @@ export async function updateCodex(pane, { tmux = runTmux, pollMs = 1000, startMs
     if (!/Update available/.test(text) || !/›\s*1\.\s*Update now/.test(text)) continue;
     await tmux(['send-keys', '-t', pane, 'Enter']);
     for (const until = Date.now() + updateMs; Date.now() < until; await wait()) {
-      if (/Update ran successfully/.test(await screen())) { await tmux(['send-keys', '-t', pane, 'codex', 'Enter']); return true; }
+      if (/Update ran successfully/.test(await screen())) { await tmux(['send-keys', '-t', pane, command, 'Enter']); return true; }
     }
     return false;
   }
@@ -183,22 +186,47 @@ export class ClaudeMessaging {
     return all.filter(child => child.ppid === pid && child.args.includes('/shell-snapshots/')).map(shell => all.find(child => child.ppid === shell.pid)?.args || 'a shell command');
   }
   // What's typed at Claude's prompt: '' when it's empty, null when no prompt shows (a dialog, or Claude has gone).
-  // The input box is the prompt line, and the lines it wraps onto, between two rules.
+  // The input box is the prompt line, and the lines it wraps onto, between two rules. A slash command's menu opens under
+  // the box with its own ❯ on the row after the bottom rule; no rule closes it, so it isn't taken for the box.
   async inputText(pane) {
     const screen = await this.tmux(['capture-pane', '-p', '-e', '-J', '-t', pane]).catch(() => null);
     if (screen === null) return null;
     const rows = undimmedRows(screen), rule = row => /^\s*─/.test(row ?? '');
-    const start = rows.findLastIndex((row, i) => rule(rows[i - 1]) && /^\s*[❯>]/.test(row)), end = rows.findIndex((row, i) => i > start && rule(row));
+    const start = rows.findLastIndex((row, i) => rule(rows[i - 1]) && /^\s*[❯>]/.test(row) && rows.some((later, j) => j > i && rule(later))), end = rows.findIndex((row, i) => i > start && rule(row));
     if (start < 0 || end < 0) return null;
     return rows.slice(start, end).join('\n').replace(/^\s*[❯>]/, '').replaceAll('\u00a0', ' ').trim();
   }
-  // Ends the session with /exit, typed only into an empty prompt. `recheck` runs once /exit shows there, just before
-  // Enter; if it throws, /exit is wiped again. Done when the process has gone.
+  // Types a command only into an empty prompt. `recheck` runs once it shows there, just before Enter; if it throws, the
+  // command is wiped again.
+  async typeAlone(pane, command, recheck) {
+    const typed = () => this.inputText(pane);
+    const before = await typed();
+    if (before === null) throw fail('Claude’s prompt isn’t showing. Check its terminal.', 409);
+    if (before) throw fail('There’s a draft in Claude’s prompt. Send or clear it first.', 409);
+    await this.paste(pane, command, randomUUID());
+    try {
+      if (!await this.until(async () => await typed() === command, this.settleMs)) throw fail(`Could not type ${command} into Claude’s prompt. Check its terminal.`, 503);
+      await recheck();
+    } catch (error) {
+      if ((await typed())?.endsWith(command)) await this.tmux(['send-keys', '-t', pane, ...Array(command.length).fill('BSpace')]).catch(() => {});
+      throw error;
+    }
+    try { await this.tmux(['send-keys', '-t', pane, 'Enter']); } catch { throw fail(`${command} is in Claude’s prompt but Enter failed. Check the terminal.`, 504); }
+  }
+  // Starts over in the same pane. A parked session has no prompt of its own to type into, and its status is stale.
+  async clear(record, recheck) {
+    if (record.parkedJobId) throw fail('A parked session has no prompt to clear.', 409);
+    const pane = await this.readyPane(record);
+    if (record.status !== 'idle') throw fail('Claude is working. Stop it first.', 409);
+    return this.queue(async () => { await this.typeAlone(pane, '/clear', recheck); return { ok: true }; });
+  }
+  // Ends the session with /exit, typed like any command above. Done when the process has gone.
   // Outside tmux, an interactive Claude gets SIGTERM instead, which it takes like /exit: it quits within a second or two,
   // its terminal gets its shell back and the session can be resumed. A draft in its prompt can't be seen, so it goes too.
+  // So does a parked Claude, in tmux or not: it has no prompt of its own to type into, and its status is stale.
   async fire(record, recheck) {
-    const pane = await this.readyPane(record, false);
-    if (record.status !== 'idle') throw fail('Claude is working. Stop it first.', 409);
+    const parked = !!record.parkedJobId, pane = parked ? null : await this.readyPane(record, false);
+    if (!parked && record.status !== 'idle') throw fail('Claude is working. Stop it first.', 409);
     if (!pane) {
       if (record.kind !== 'interactive') throw fail('Only terminal sessions can be fired.', 409);
       await recheck();
@@ -207,20 +235,8 @@ export class ClaudeMessaging {
       if (!await this.until(async () => !await this.alive(record.pid, record.procStart), this.exitMs)) throw fail('Claude is still running after SIGTERM. Check its terminal.', 504);
       return { ok: true };
     }
-    const typed = () => this.inputText(pane);
     return this.queue(async () => {
-      const before = await typed();
-      if (before === null) throw fail('Claude’s prompt isn’t showing. Check its terminal.', 409);
-      if (before) throw fail('There’s a draft in Claude’s prompt. Send or clear it first.', 409);
-      await this.paste(pane, '/exit', randomUUID());
-      try {
-        if (!await this.until(async () => await typed() === '/exit', this.settleMs)) throw fail('Could not type /exit into Claude’s prompt. Check its terminal.', 503);
-        await recheck();
-      } catch (error) {
-        if ((await typed())?.endsWith('/exit')) await this.tmux(['send-keys', '-t', pane, ...Array(5).fill('BSpace')]).catch(() => {});
-        throw error;
-      }
-      try { await this.tmux(['send-keys', '-t', pane, 'Enter']); } catch { throw fail('/exit is in Claude’s prompt but Enter failed. Check the terminal.', 504); }
+      await this.typeAlone(pane, '/exit', recheck);
       if (!await this.until(async () => !await this.alive(record.pid, record.procStart), this.exitMs)) throw fail('Claude is still running after /exit. Check its terminal.', 504);
       return { ok: true };
     });

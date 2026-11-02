@@ -17,7 +17,8 @@ function baked(geometry, position, turn = [0, 0, 0]) {
 }
 export const LEG = 0.56;            // hip to floor when standing
 const LIMB_R = 0.02, TUBE = 14, RADIAL = 7;
-const INK = '#1b1a1f', LIMB = '#26252b', ROT = new THREE.Color('#5c3c1c'); // ROT: what wear browns the skin toward
+export const LIMB = '#26252b';
+const INK = '#1b1a1f', ROT = new THREE.Color('#5c3c1c'); // ROT: what wear browns the skin toward
 
 // Profiles run bottom to top as [radius, height]; a Catmull-Rom pass smooths them before lathing.
 const profiles = {
@@ -28,8 +29,10 @@ const profiles = {
   // Long and slim, heaviest low down, so it never reads as a purple pear.
   eggplant: [[0, 0], [0.14, 0.015], [0.22, 0.08], [0.245, 0.2], [0.235, 0.34], [0.21, 0.5], [0.175, 0.66], [0.13, 0.8], [0.08, 0.9], [0, 0.93]],
   strawberry: [[0, 0], [0.06, 0.02], [0.16, 0.13], [0.26, 0.3], [0.31, 0.45], [0.28, 0.55], [0.14, 0.6], [0, 0.6]],
-  // The boss only.
   pineapple: [[0, 0], [0.18, 0.02], [0.29, 0.14], [0.32, 0.32], [0.3, 0.5], [0.22, 0.64], [0.1, 0.69], [0, 0.7]],
+  // Its top is sliced off flat, for the green inside to show (stemGeometry).
+  kiwi: [[0, 0], [0.1, 0.005], [0.2, 0.06], [0.26, 0.18], [0.275, 0.31], [0.255, 0.44], [0.215, 0.54], [0.2, 0.56], [0.1, 0.565], [0, 0.565]],
+  watermelon: Array.from({ length: 13 }, (_, i) => { const a = -Math.PI / 2 + Math.PI * i / 12; return [Math.max(0, Math.cos(a) * 0.33), 0.37 + Math.sin(a) * 0.37]; }),
 };
 // Banana: a bent tube, fattest in the middle; `curve` is its spine.
 const bananaSpine = new THREE.CatmullRomCurve3([V(-0.02, 0.0), V(0.11, 0.2), V(0.14, 0.42), V(0.08, 0.66), V(-0.06, 0.86)]);
@@ -49,6 +52,13 @@ function shareNormals(geometry) {
 function smooth(points, count = 28) {
   const curve = new THREE.CatmullRomCurve3(points.map(([r, y]) => V(r, y)));
   return curve.getPoints(count).map(p => new THREE.Vector2(Math.max(0, p.x), p.y));
+}
+
+// A fruit seen from the front, for a flat picture of one: [x, y] all the way round, shaped as its body is. Its y runs from the foot up.
+export function outline(fruit) {
+  if (fruit === 'banana') { const up = [], down = [], T = 40; for (let i = 0; i <= T; i++) { const t = i / T, p = bananaSpine.getPoint(t), d = bananaSpine.getTangent(t), r = bananaRadius(t); up.push([p.x - d.y * r, p.y + d.x * r]); down.unshift([p.x + d.y * r, p.y - d.x * r]); } return [...up, ...down]; }
+  const side = smooth(profiles[fruit]);
+  return [...side.map(p => [p.x, p.y]), ...side.toReversed().map(p => [-p.x, p.y])];
 }
 
 // Each body: geometry plus a `surface(y)` → { x, r } (centre offset and radius at height y) so the face and clothes sit on it;
@@ -149,8 +159,26 @@ const diamonds = () => textures.pineapple ??= canvasTexture(128, (g, n) => {
   g.fillStyle = '#f2b632'; g.fillRect(0, 0, n, n); g.strokeStyle = '#b97d1c'; g.lineWidth = 4;
   for (let i = -n; i < n * 2; i += 32) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + n, n); g.stroke(); g.beginPath(); g.moveTo(i + n, 0); g.lineTo(i, n); g.stroke(); }
 });
+// A kiwi's fuzz: short hairs, lighter and darker than the skin.
+const fuzz = color => textures[`fuzz${color}`] ??= canvasTexture(256, (g, n) => {
+  g.fillStyle = color; g.fillRect(0, 0, n, n); g.lineWidth = 1.5; g.lineCap = 'round';
+  for (let i = 0; i < 2600; i++) {
+    const x = Math.random() * n, y = Math.random() * n, a = Math.random() * 7;
+    g.strokeStyle = i % 2 ? 'rgba(235,205,150,.4)' : 'rgba(55,32,12,.4)'; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * 5, y + Math.sin(a) * 5); g.stroke();
+  }
+});
+// A watermelon's rind: one dark, jagged stripe from pole to pole on pale green, its wobbles whole waves so it tiles.
+const rind = color => textures[`rind${color}`] ??= canvasTexture(128, (g, n) => {
+  g.fillStyle = '#8cc65a'; g.fillRect(0, 0, n, n); g.fillStyle = color; g.beginPath();
+  const edge = (y, side) => { const k = y / n * Math.PI * 2; return [n / 2 + 7 * Math.sin(k * 3) + 3 * Math.sin(k * 7 + 1) + side * (24 + 5 * Math.sin(k * 5) + (y / 4 % 2 ? 4 : -4)), y]; };
+  for (let y = 0; y <= n; y += 4) g.lineTo(...edge(y, 1));
+  for (let y = n; y >= 0; y -= 4) g.lineTo(...edge(y, -1));
+  g.fill();
+});
 function bodyMaterial(fruit, color) {
   if (fruit === 'orange') return toonMaterial(color, { bumpMap: peel(), bumpScale: 1.2 });
+  if (fruit === 'kiwi') { const map = fuzz(color).clone(); map.repeat.set(3, 2); map.needsUpdate = true; return toonMaterial('#ffffff', { map }); }
+  if (fruit === 'watermelon') { const map = rind(color).clone(); map.repeat.set(8, 1); map.needsUpdate = true; return toonMaterial('#ffffff', { map }); }
   if (fruit === 'pineapple') { const map = diamonds().clone(); map.repeat.set(4, 2); map.needsUpdate = true; return toonMaterial('#ffffff', { map }); }
   if (fruit === 'strawberry') { const map = seeds(color).clone(); map.repeat.set(3, 2); map.needsUpdate = true; return toonMaterial('#ffffff', { map }); }
   return toonMaterial(color).clone(); // its own, since wear browns it
@@ -168,8 +196,9 @@ function wearable(material) {
     shader.fragmentShader = `uniform sampler2D bruiseMap;\nuniform sampler2D tipMap;\nuniform vec3 tests, spotColor, rotColor, tipColor, greyColor;\nuniform float grey;\nvarying vec2 vSkinUv;\n${shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
       diffuseColor.rgb = mix(diffuseColor.rgb, greyColor, grey);
       // Each layer is a 90% coat with the texture as its alpha, shown where that alpha passes the layer's test. Mixed in
-      // screen space (gamma 2.2) like blended overlays, or faint freckles vanish into a bright skin.
-      float bruise = texture2D(bruiseMap, vSkinUv * vec2(2.5, 1.5)).g * 0.9, tip = texture2D(tipMap, vSkinUv).g * 0.9;
+      // screen space (gamma 2.2) like blended overlays, or faint freckles vanish into a bright skin. Whole repeats both ways, so
+      // there's no seam where the uvs wrap round (u on a lathe body, v on the banana).
+      float bruise = texture2D(bruiseMap, vSkinUv * vec2(3.0, 2.0)).g * 0.9, tip = texture2D(tipMap, vSkinUv).g * 0.9;
       vec3 shown = pow(diffuseColor.rgb, vec3(1.0 / 2.2));
       shown = mix(shown, pow(spotColor, vec3(1.0 / 2.2)), step(tests.x, bruise) * bruise);
       shown = mix(shown, pow(rotColor, vec3(1.0 / 2.2)), step(tests.y, bruise) * bruise);
@@ -213,10 +242,12 @@ class Limbs {
     // The right hand is a mirrored left hand, so its triangles wind the other way round to keep facing out.
     const order = this.geometry.index.array, right = slots[names.length + 1];
     for (let i = right.first; i < right.first + right.size; i += 3) [order[i + 1], order[i + 2]] = [order[i + 2], order[i + 1]];
-    // Limbs move every frame, so the bounds are fixed: wide enough for a reach across the desk or heels up on it.
+    // Limbs move every frame, so the sphere is fixed: wide enough for a reach across the desk or heels up on it. The box is
+    // kept up as they move (from each limb's own), so a ray (the pointer's, every hover) passing near skips the triangles.
     this.geometry.boundingSphere = new THREE.Sphere(V(0, 0.6, 0.2), 1.3);
+    this.geometry.computeBoundingBox();
     this.mesh = new THREE.Mesh(this.geometry, material);
-    this.limbs = Object.fromEntries(names.map((name, i) => [name, { radius: LIMBS[name], tube: slots[i], end: slots[names.length + i], template: parts[names.length + i].attributes, curve: new THREE.QuadraticBezierCurve3(V(0, 0), V(0, 0), V(0, 0)), last: null }]));
+    this.limbs = Object.fromEntries(names.map((name, i) => [name, { radius: LIMBS[name], tube: slots[i], end: slots[names.length + i], template: parts[names.length + i].attributes, curve: new THREE.QuadraticBezierCurve3(V(0, 0), V(0, 0), V(0, 0)), box: this.geometry.boundingBox.clone(), last: null }]));
   }
   // A limb's tube runs from `from`, bowed by `bend`, to `to`; a hand there points along it, a shoe is turned by `turn`.
   // A `fist` hand is a thumbs up instead.
@@ -224,8 +255,9 @@ class Limbs {
     const limb = this.limbs[name], key = [from, to, bend].map(v => `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`).join() + fist;
     if (key === limb.last) return;
     limb.last = key;
-    const { curve, radius, tube, end } = limb, template = fist ? fistGeometry().attributes : limb.template, { position, normal } = this.geometry.attributes;
+    const { curve, radius, tube, end, box } = limb, template = fist ? fistGeometry().attributes : limb.template, { position, normal } = this.geometry.attributes;
     curve.v0.copy(from); curve.v2.copy(to); curve.v1.copy(from).add(to).multiplyScalar(0.5).add(bend);
+    box.makeEmpty().expandByPoint(curve.v0).expandByPoint(curve.v1).expandByPoint(curve.v2).expandByScalar(radius); // a bezier stays among its points
     curve.updateArcLengths(); // getPointAt and the frames read a cached length table
     const { tangents, normals, binormals } = curve.computeFrenetFrames(TUBE, false);
     for (let i = 0; i <= TUBE; i++) {
@@ -239,9 +271,11 @@ class Limbs {
     if (turn) q.setFromEuler(turn); else q.setFromUnitVectors(FORWARD, tangents[TUBE]);
     m.compose(to, q, name === 'rightHand' ? MIRROR : ONE); nm.getNormalMatrix(m);
     for (let i = 0; i < end.count; i++) {
-      p.fromBufferAttribute(template.position, i).applyMatrix4(m); position.setXYZ(end.start + i, p.x, p.y, p.z);
+      p.fromBufferAttribute(template.position, i).applyMatrix4(m); position.setXYZ(end.start + i, p.x, p.y, p.z); box.expandByPoint(p);
       n.fromBufferAttribute(template.normal, i).applyMatrix3(nm).normalize(); normal.setXYZ(end.start + i, n.x, n.y, n.z);
     }
+    const all = this.geometry.boundingBox.makeEmpty();
+    for (const other in this.limbs) all.union(this.limbs[other].box);
     for (const attribute of [position, normal]) { for (const { start, count } of [tube, end]) attribute.addUpdateRange(start * 3, count * 3); attribute.needsUpdate = true; }
   }
 }
@@ -273,7 +307,17 @@ function stemGeometry(fruit, h) {
   } else if (fruit === 'strawberry') {
     for (let i = 0; i < 6; i++) parts.push([baked(new THREE.SphereGeometry(0.075, 10, 6).scale(1, 0.15, 0.45).translate(0.06, 0, 0), V(0, h - 0.01), [0, i / 6 * Math.PI * 2, -0.35]), green]);
     parts.push([new THREE.CylinderGeometry(0.018, 0.025, 0.09, 8).translate(0, h + 0.03, 0), '#3f7d22']);
-  } else if (fruit === 'banana') {
+  } else if (fruit === 'kiwi') {
+    // The cut face: green flesh, a pale core and a ring of seeds. Core and seeds stand half out of the flesh, so their outlines stay under it.
+    const dome = 0.012;
+    parts.push([new THREE.SphereGeometry(0.205, 24, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, dome / 0.205, 1).translate(0, h - 0.003, 0), '#9ccb3b']);
+    parts.push([new THREE.SphereGeometry(0.058, 16, 6).scale(1, 0.17, 1).translate(0, h + dome - 0.007, 0), '#eef2c8']);
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2;
+      parts.push([baked(new THREE.SphereGeometry(0.014, 8, 5).scale(0.6, 0.4, 1.3), V(Math.cos(a) * 0.1, h + dome - 0.006, Math.sin(a) * 0.1), [0, Math.PI / 2 - a, 0]), INK]);
+    }
+  } else if (fruit === 'watermelon') parts.push([arc([V(0, h - 0.02), V(0.01, h + 0.06), V(0.07, h + 0.07)], 0.016), '#5d7a2a']);
+  else if (fruit === 'banana') {
     parts.push([new THREE.CylinderGeometry(0.02, 0.028, 0.07, 8).translate(0, 0.03, 0).translate(...bananaSpine.getPoint(1).toArray()), brown]);
     parts.push([new THREE.SphereGeometry(0.03, 8, 6).translate(...bananaSpine.getPoint(0).toArray()), brown]);
   }
@@ -306,19 +350,30 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
   // Both eyes are one mesh pivoting on the body's axis: turning it slides them around the skin, squashing it closes them.
   const centre = shape.surface(faceY);
   // Lashes flick out from the top outer edge of each eye; they're part of the eyes, so they blink and look along.
-  const lashes = has.has('lashes') ? [-1, 1].flatMap(side => [0.35, 0.8, 1.2].map(a => {
-    const rim = (k, lift) => onSkin(side * (spread + Math.cos(a) * 0.03 * k / centre.r), faceY + Math.sin(a) * 0.047 * k + lift, 0.002);
-    return arc([rim(1, 0), rim(1.35, 0.004), rim(1.6, 0.016)], 0.0045);
-  })) : [];
-  const eyeGeometry = mergeGeometries([...[-1, 1].map(side => { const at = onSkin(side * spread, faceY, -0.004); return baked(new THREE.SphereGeometry(0.042, 14, 10).scale(0.72, 1.12, 0.45), at, outward(at)); }), ...lashes]).translate(-centre.x, -faceY, 0);
-  const eyes = new THREE.Mesh(eyeGeometry, ink); own.push(eyeGeometry); face.add(eyes);
+  // `lid`, 0 to 1: how far a heavy upper lid has come down. It cuts the top off each eye, sloping down to the outside, with a line along the cut.
+  const eyeGeometry = lid => {
+    const height = 0.047 - lid * 0.045, slope = lid * 0.5, parts = [];
+    for (const side of [-1, 1]) {
+      const at = onSkin(side * spread, faceY, -0.004), eye = new THREE.SphereGeometry(0.042, 14, 10).scale(0.72, 1.12, 0.45), p = eye.attributes.position;
+      for (let i = 0; i < p.count; i++) p.setY(i, Math.min(p.getY(i), height - side * p.getX(i) * slope));
+      parts.push(baked(eye, at, outward(at)));
+      const skin = (along, up, out = 0.004) => onSkin(side * (spread + along / centre.r), faceY + height - along * slope + up, out);
+      if (lid) parts.push(arc([skin(-0.036, 0), skin(0.003, 0.004), skin(0.044, 0)], 0.0045));
+      if (has.has('lashes')) for (const a of [0.35, 0.8, 1.2]) {
+        const rim = (k, lift) => skin(Math.cos(a) * 0.03 * k, Math.sin(a) * height * k - height + lift, 0.002);
+        parts.push(arc([rim(1, 0), rim(1.35, 0.004), rim(1.6, 0.016)], 0.0045));
+      }
+    }
+    return mergeGeometries(parts).translate(-centre.x, -faceY, 0);
+  };
+  const eyes = new THREE.Mesh(eyeGeometry(0), ink); face.add(eyes);
   const placeEyes = (dx = 0, dy = 0) => { const { x, r } = shape.surface(faceY + dy), out = r - centre.r; eyes.position.set(x + Math.sin(dx) * out, faceY + dy, Math.cos(dx) * out); eyes.rotation.y = dx; };
   placeEyes();
-  // Brows, mouth and bags are one painted mesh, rebuilt when the expression or the wear changes.
+  // Brows and mouth are one painted mesh, rebuilt when the expression changes.
   const lines = new THREE.Mesh(new THREE.BufferGeometry(), painted()); face.add(lines);
-  let expression = [], bags = [];
+  let expression = [];
   const lips = has.has('lipstick') && '#c2185b';
-  const redraw = () => { lines.geometry.dispose(); lines.geometry = paint([...expression, ...bags]); };
+  const redraw = () => { lines.geometry.dispose(); lines.geometry = paint(expression); };
   const setExpression = name => {
     expression = [];
     const line = (points, radius, color = INK) => expression.push([arc(points, radius), color]);
@@ -331,6 +386,8 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
       frown: { brows: [-0.02, 0.01], mouth: [-0.02, 0.012], width: 0.11 },
       // Fired: brows up in the middle, the mouth well down at the corners.
       sad: { brows: [0.03, -0.018], mouth: [-0.03, 0.016], width: 0.12 },
+      // Fired and leaving: sad, with tears running down from both eyes.
+      crying: { brows: [0.035, -0.02], mouth: [-0.035, 0.02], width: 0.13, tears: true },
       neutral: { brows: [0, 0], mouth: [0, -0.008], width: 0.09 },
       // One brow up, a small flat mouth pushed to one side and slanted: "hmm".
       thinking: { brows: [-0.01, 0.004], raise: 0.03, mouth: [0, 0], width: 0.06, shift: 0.1, slant: 0.012 },
@@ -345,6 +402,7 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
       line([onSkin(side * (s - 0.07), browY + inner + raise), onSkin(side * s, browY + 0.012 + (inner + outer) / 2 + raise), onSkin(side * (s + 0.07), browY + outer + raise)], 0.006);
     }
     eyes.visible = name !== 'asleep' && name !== 'squeezed';
+    if (shapes.tears) for (const side of [-1, 1]) line([0.04, 0.1, 0.17].map((drop, i) => onSkin(side * (s + 0.012 * i), faceY - drop)), 0.011, '#5fb8ff');
     // Screwed shut: > < , each from two straight strokes so the point stays sharp.
     if (name === 'squeezed') for (const side of [-1, 1]) {
       const tip = onSkin(side * (s - 0.04), faceY), stroke = dy => { const end = [side * (s + 0.045), faceY + dy]; line([onSkin(...end), onSkin(side * (s + 0.0025), faceY + dy / 2), tip], 0.009); };
@@ -365,27 +423,18 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
   };
   setExpression('smile');
 
-  // Wear: the skin browns and bruises (a banana's ends go black), then come bags under the eyes, heavy lids and flies.
+  // Wear: the skin browns and bruises (a banana's ends go black), then come heavy lids and flies.
   const skin = wearable(colorMaterial);
   // The flies are three copies of one sphere; they circle in a fixed ball above the head.
   const buzzX = shape.surface(h * 0.9).x, flies = new THREE.InstancedMesh(flyGeometry(), ink, 3);
   flies.visible = false; flies.boundingSphere = new THREE.Sphere(V(buzzX, h + 0.1), 0.4); body.add(flies); own.push(flies);
-  const bagHalf = 0.034 / centre.r;
-  let droop = 1, blink = 1;
   const setWear = wear => {
-    bags = [];
     // Freckles first, then spots and rot; the flies only come when auto-compact is close.
     const age = Math.min(1, wear * 1.2);
     colorMaterial.color.copy(fresh).lerp(ROT, age * 0.55);
     skin.tests.value.set(wear > 0.15 ? 1 - age * 0.8 : 2, wear > 0.45 ? 1 - (wear - 0.4) * 0.75 : 2, fruit === 'banana' && wear > 0.25 ? 1 - age * 0.75 : 2); // 2: never shows
     flies.visible = wear >= 0.9;
-    for (let level = 0; level < (wear >= 0.75 ? 2 : wear >= 0.4 ? 1 : 0); level++) for (const side of [-1, 1]) {
-      const y = faceY - 0.058 - level * 0.016;
-      bags.push([arc([onSkin(side * spread - bagHalf, y + 0.008), onSkin(side * spread, y - 0.006), onSkin(side * spread + bagHalf, y + 0.008)], 0.0045), '#6a5470']);
-    }
-    redraw();
-    droop = 1 - Math.max(0, wear - 0.3) * 0.55;
-    eyes.scale.y = Math.max(0.1, blink * droop);
+    eyes.geometry.dispose(); eyes.geometry = eyeGeometry(Math.max(0, wear - 0.2) / 0.8);
   };
 
   // Accessories (status.js picks them, at most one per slot).
@@ -543,9 +592,9 @@ export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }
       flies.instanceMatrix.needsUpdate = true;
     },
     setGrey(on) { skin.grey.value = +on; },
-    setBlink(open) { if (open === blink) return; blink = open; eyes.scale.y = Math.max(0.1, open * droop); },
+    setBlink(open) { eyes.scale.y = Math.max(0.1, open); },
     // Eyes slide a little toward a point given in the fruit's local space; null looks ahead.
     lookAt(point) { if (!point) { placeEyes(); return; } const dx = THREE.MathUtils.clamp(Math.atan2(point.x, point.z) * 0.25, -0.12, 0.12), dy = THREE.MathUtils.clamp((point.y - body.position.y - faceY) * 0.05, -0.02, 0.02); placeEyes(dx, dy); },
-    dispose() { group.removeFromParent(); lines.geometry.dispose(); for (const item of own) item.dispose(); },
+    dispose() { group.removeFromParent(); lines.geometry.dispose(); eyes.geometry.dispose(); for (const item of own) item.dispose(); },
   };
 }

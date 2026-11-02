@@ -1,0 +1,132 @@
+/* City's list and panel, as the site office of the city going up: poured concrete, riveted steel, girders for projects, a lot for each session with its tower on it, and the map's speech bubbles for what's said. */
+.city-portrait, .city-map, .city-view { display: none; }
+:root[data-theme=city] {
+  .city-portrait { display: block; width: var(--w); height: var(--h); overflow: hidden; flex: none; pointer-events: none; }
+  .city-portrait canvas { display: block; height: 100%; image-rendering: pixelated; }
+
+  /* The ground: poured concrete, its form's joints and tie holes still showing. */
+  .main-content, .history-viewport { background: var(--bg) url('/city-formwork.svg') 0 0 / 96px 48px; }
+  body, .shell { background-color: var(--bg); }
+
+  /* Plates are bolted on. */
+  :is(.session-card, .usage-accounts, .nav-item, .stat, .login-card, .empty) { background-image: var(--rivet), var(--rivet), var(--rivet), var(--rivet); background-position: 3px 3px, calc(100% - 3px) 3px, 3px calc(100% - 3px), calc(100% - 3px) calc(100% - 3px); background-size: 4px 4px; background-repeat: no-repeat; }
+
+  /* The site behind the page's name, and the road barrier in front of it. */
+  &:is([data-scene-list], [data-scene-fallback]) .page-heading { position: relative; margin-inline: -24px; padding: 16px 24px 20px; background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, url('/city-skyline.svg') 0 calc(100% - 8px) / 640px 56px repeat-x; box-shadow: 0 2px 0 var(--ink); }
+
+  /* A phone has no page heading to stand on: the barrier runs under its top bar. */
+  .topbar { background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, var(--panel); padding-bottom: 10px; box-shadow: 0 2px 0 var(--ink); }
+
+  /* A project is a girder, with its name on a street sign bolted to it. */
+  .group-heading { min-height: 34px; margin: 0 0 8px; padding: 0 6px; background: url('/city-girder.svg') 0 0 / 32px 34px repeat-x; filter: drop-shadow(0 2px 0 var(--ink)); }
+  .group-title { position: relative; padding: 2px 8px 2px 6px; background: var(--sign); box-shadow: inset 2px 2px 0 var(--sign-lit), inset -2px -2px 0 #0d3d33, 0 0 0 2px var(--ink); color: #fff; }
+  .group-title::before { content: ''; flex: none; width: 12px; height: 12px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill-rule='evenodd' d='M1 3h6v2h8v9H1zM3 7v5h10V7z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Cpath fill-rule='evenodd' d='M1 3h6v2h8v9H1zM3 7v5h10V7z'/%3E%3C/svg%3E") center / contain no-repeat; }
+  .group-title h2 { font: 700 13px/1.3 var(--font); color: #fff; }
+  .group-title .group-count { padding: 0 5px; background: #0d3d33; color: #fff; font: 400 12px/1.4 var(--display); }
+  .project-path { padding: 1px 6px; background: var(--asphalt); color: var(--text-2); }
+
+  /* A session is a lot: the tower in its bay on the left, the ground under it lit by what it's doing. */
+  .session-card { grid-template-columns: 46px minmax(0, 1fr) auto; min-height: 64px; padding: 4px 12px 4px 4px; --lot-ground: #565e60; }
+  .session-card .agent-mark { position: relative; align-self: stretch; display: flex; align-items: flex-end; justify-content: center; width: 46px; height: auto; min-height: 54px; overflow: visible; border: 0; background: linear-gradient(var(--lot-ground) 0 0) 0 100% / 100% 5px no-repeat, var(--asphalt); box-shadow: inset 2px 2px 0 var(--ink); }
+  .session-card .agent-mark .city-portrait { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); max-width: 46px; }
+  /* Which agent it is, on a tile at the lot's corner. */
+  .session-card .agent-mark > .provider-icon { position: absolute; right: -2px; bottom: -2px; z-index: 1; width: 14px; height: 14px; box-shadow: 0 0 0 2px var(--ink); background-color: var(--ink); }
+  .session-card .unread-dot { z-index: 2; top: 2px; right: 2px; border-radius: 0; background: #e83b3b; box-shadow: 0 0 0 2px var(--ink); }
+  .session-card.subagent { grid-template-columns: 34px minmax(0, 1fr) auto; min-height: 46px; }
+  .session-card.subagent .agent-mark { width: 34px; height: auto; min-height: 38px; }
+  .session-card.subagent::before { border-color: var(--kerb); border-width: 0 0 2px 2px; }
+  /* Awake and asleep tell apart before reading anything. */
+  .session-card[data-status=working] { --lot-ground: #91db69; background-color: #4d5658; }
+  .session-card.needs-input { --lot-ground: var(--warn); }
+  .session-card[data-status=error] { --lot-ground: #e83b3b; }
+  /* Tape round whatever needs you, and only that: it's the one place yellow goes. */
+  .session-card.needs-input { position: relative; padding-bottom: 12px; }
+  .session-card.needs-input::after { content: ''; position: absolute; inset: auto 0 0; height: 6px; background: url('/city-hazard.svg') 0 0 / 16px 8px repeat-x; pointer-events: none; }
+  /* Going up: the bay's ground runs. */
+  .session-card[data-status=working] .agent-mark { background: url('/city-busy.svg') 0 100% / 16px 8px repeat-x, var(--asphalt); }
+  .session-card:is([data-status=idle], [data-status=offline]) { background-color: #3f4648; box-shadow: inset 2px 2px 0 #4d5456, inset -2px -2px 0 #33383a; --text: #d9e2dc; }
+  .session-card:is([data-status=idle], [data-status=offline]) .session-title { color: #d9e2dc; }
+
+  /* The sidebar: the same poured wall as the panel beside it, with the site plan and steel plates for the tools bolted on. */
+  .sidebar { background: var(--bg) url('/city-formwork.svg') 0 0 / 96px 48px; border-right: 2px solid var(--ink); }
+  .brand-variant.city .brand-mark { width: 32px; height: 32px; padding: 0; background: url('/city-mark.svg') center / 100% 100%; image-rendering: pixelated; box-shadow: none; }
+  .brand-variant.city .brand-mark i { display: none; }
+  .brand-variant.city .brand-name { font-size: 15px; }
+  .nav-item { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; background-color: #4d5456; box-shadow: var(--px-raised); color: #fff; }
+  .nav-item + .nav-item { margin-top: 2px; }
+  .nav-item:hover { background-color: #565e60; box-shadow: inset 2px 2px 0 #8a9496, inset -2px -2px 0 #454c4e; }
+  .nav-item.active { background-color: var(--hi-vis); color: var(--ink); font-weight: 700; box-shadow: inset 2px 2px 0 #fbb954, inset -2px -2px 0 #cd683d; }
+  .nav-item.active .nav-count { background: var(--ink); color: #fff; }
+  .project-dot { border-radius: 0; }
+
+  /* The site plan, bolted to the wall in a steel frame. */
+  .theme-console { position: relative; display: block; margin: 10px 0 0; padding: 6px; background-color: var(--panel); border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; box-shadow: var(--px-raised), 2px 2px 0 #0005; }
+  .console-lamps, .console-vector, .console-sweep, .console-signal, .console-power, .console-heading { display: none; }
+  .console-screen { position: relative; height: 128px; overflow: hidden; isolation: isolate; border: 2px solid var(--ink); background: #0b5e65 url('/city-map.svg') center / 100% 100%; image-rendering: pixelated; }
+  .console-screen[data-live] { cursor: crosshair; touch-action: none; }
+  .city-map { display: block; position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  .console-screen[data-live] .city-view { display: block; position: absolute; left: 0; top: 0; z-index: 2; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--ink), inset 0 0 0 1px var(--ink); pointer-events: none; }
+  .console-contacts { position: absolute; inset: 0; z-index: 1; }
+  /* The building is in the picture: the button is only what's over it, and a lamp on its roof when there's news. */
+  .console-contact { position: absolute; width: 18px; height: 18px; padding: 0; border: 0; background: none; transform: translate(-50%, -100%); }
+  .console-screen[data-mapped] .console-contact { left: var(--site-x, 50%) !important; top: var(--site-y, 50%) !important; }
+  .console-screen[data-mapped] .console-contact[data-unsited] { display: none; }
+  .console-contact[data-status=working]::after, .console-contact:is([data-status=question], [data-status=permission], [data-status=offline], [data-status=error])::after { content: ''; position: absolute; left: 50%; top: -2px; width: 4px; height: 4px; margin-left: -2px; background: #91db69; box-shadow: 0 0 0 1px var(--ink); opacity: 1; }
+  .console-contact:is([data-status=question], [data-status=permission])::after { top: -4px; width: 6px; height: 6px; margin-left: -3px; background: var(--warn); box-shadow: 0 0 0 2px var(--ink); }
+  .console-contact:is([data-status=offline], [data-status=error])::after { background: #e83b3b; }
+  .console-contact:is(:hover, :focus-visible, [data-tracked]) { z-index: 1; outline: 2px solid #fff; outline-offset: -2px; }
+  /* Only there when pointing at something, or when the link's down. */
+  .console-readout { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 1px 4px; background: var(--ink); pointer-events: none; }
+  .console-readout[data-status=''] { display: none; }
+  .console-track-label { flex: none; color: #fff; font: 400 11px/1.3 var(--display); }
+  .console-track-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #d9e2dc; }
+  .console-empty { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: #2c3032e6; color: #fff; font: 400 14px var(--display); }
+  .theme-console[data-disconnected=true] .console-contacts { opacity: .3; }
+
+  /* The panel: the session's own tower at the kerb of its street. */
+  .detail-panel { border-left: 2px solid var(--ink); }
+  .chat-header { grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: 'back portrait title actions' '. . info info'; padding-bottom: 18px; background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, url('/city-skyline.svg') 0 calc(100% - 8px) / 640px 56px repeat-x, var(--bg); box-shadow: 0 2px 0 var(--ink); position: relative; z-index: 1; }
+  .chat-header > .city-portrait { grid-area: portrait; align-self: end; margin-bottom: -8px; max-height: 64px; }
+  /* On a plate of its own: the site behind it runs right through this line. */
+  .chat-header .chat-info { justify-self: start; max-width: 100%; padding: 1px 6px; background: var(--asphalt); color: var(--text-2); }
+  .chat-header .panel-title { font-family: var(--font); font-weight: 700; font-size: 17px; text-shadow: 2px 2px 0 var(--ink); }
+
+  /* What's said, in the map's speech bubbles: paper for the agent, a street sign for you. */
+  .recent-message:not(.tool, .notice) { position: relative; --text: #2e222f; --text-2: #3e3546; --text-3: #625565; --panel-2: #e3e6dc; --line-2: #9babb2; --accent: #165a4c; --sunken: #2e222f; border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-color: var(--paper); background-clip: padding-box; color: var(--text); box-shadow: inset 0 -2px 0 var(--concrete); }
+  .recent-message.user:not(.tool, .notice) { --text: #fff; --text-2: #d9e2dc; --text-3: #c7dcd0; --panel-2: #0d3d33; --line-2: #239063; --accent: #8ff8e2; background-color: var(--sign); box-shadow: inset 0 -2px 0 #0d3d33; }
+  .recent-message:not(.tool, .notice)::before, .recent-message:not(.tool, .notice)::after { content: ''; position: absolute; top: 100%; left: 12px; width: 10px; height: 6px; margin-top: 2px; pointer-events: none; }
+  .recent-message:not(.tool, .notice)::before { background: var(--ink); clip-path: polygon(0 0, 10px 0, 10px 2px, 8px 2px, 8px 4px, 6px 4px, 6px 6px, 4px 6px, 4px 4px, 2px 4px, 2px 2px, 0 2px); }
+  .recent-message:not(.tool, .notice)::after { background: var(--paper); clip-path: polygon(2px 0, 8px 0, 8px 2px, 6px 2px, 6px 4px, 4px 4px, 4px 2px, 2px 2px); }
+  .recent-message.user:not(.tool, .notice)::before, .recent-message.user:not(.tool, .notice)::after { left: auto; right: 12px; }
+  .recent-message.user:not(.tool, .notice)::after { background: var(--sign); }
+  .recent-message:not(.tool, .notice) { margin-bottom: 8px; }
+  .recent-message:not(.tool, .notice) pre { --text: #fff; color: #fff; }
+  .recent-message:not(.tool, .notice) pre code { color: #fff; }
+  .recent-message:not(.tool, .notice) .message-table-card { background: var(--panel-2); }
+  .recent-message.tool { border-left: 2px solid var(--kerb); }
+  .message-text code { border-radius: 0; }
+
+  /* A question stops the street: paper between two lengths of tape. */
+  .request-box { --text: #2e222f; --text-2: #3e3546; --text-3: #625565; --panel-2: #e3e6dc; --accent: #165a4c; padding-block: 20px; border-image-source: var(--px-warn); background: url('/city-hazard.svg') 0 0 / 16px 8px repeat-x, url('/city-hazard.svg') 0 100% / 16px 8px repeat-x, var(--paper); background-clip: padding-box; color: var(--text); box-shadow: none; }
+  .request-box .eyebrow { color: #8a4b00; }
+  .request-box .answer-option { background: var(--panel-2); border-color: #8d9a8f; }
+  .request-box .answer-option:hover { border-color: var(--accent); }
+  .request-box .answer-option:has(input:checked) { background: #c3dccb; border-color: var(--accent); }
+  .request-box :is(button, input, textarea, select) { --text: #fff; --text-2: #d9e2dc; --text-3: #c7dcd0; --panel-2: #565e60; --accent-ink: #fff; }
+  .request-box :is(input:not([type=radio], [type=checkbox]), textarea, select, pre, pre code) { color: #fff; }
+  .message-composer { border-top: 2px solid var(--ink); position: relative; background-color: var(--panel); box-shadow: inset 0 2px 0 #6f787a; }
+}
+/* Between phone and desktop the sidebar is too narrow for a map, as in the other themes that have one. */
+@media (min-width: 641px) and (max-width: 900px) { :root[data-theme=city] .theme-console { display: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme=city] {
+    .city-portrait canvas.beats { animation: city-beats 2.6s steps(4) infinite; }
+    .console-contact:is([data-status=question], [data-status=permission])::after { animation: city-contact 1s steps(1) infinite; }
+    .console-contact[data-status=working]::after { animation: city-lamp 1.6s steps(1) infinite; }
+    .session-card[data-status=working] .agent-mark { animation: city-site 1.6s steps(8) infinite; }
+  }
+}
+@keyframes city-beats { to { transform: translateX(-100%); } }
+@keyframes city-contact { 50% { background: #fff; } }
+@keyframes city-lamp { 50% { opacity: .35; } }
+@keyframes city-site { to { background-position: 16px 100%, 0 0; } }

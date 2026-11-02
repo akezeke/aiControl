@@ -3,17 +3,27 @@
 // Everything is anchored at the back-left corner, pods keep their grid cell once placed, and the room only grows,
 // so nobody already seated moves when projects come and go.
 // ponytail: cells fit CELL_PAIRS pairs; a pod bigger than that widens every cell and shifts later columns once.
-export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3, VACANT_MS = 30_000;
-// The first column sits a little nearer the left wall (bookshelf and coffee corner) than AISLE, leaving more room by the lounge.
+export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3, VACANT_MS = 30_000, DONE_MS = 60_000;
+// The first column sits a little nearer the left wall (bookshelf and the kitchen doorway) than AISLE, leaving more room by the lounge.
 const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8, CELL_PAIRS = 3, LEFT = 1.5;
+
+// Where the coffee counter stands along the door wall (world x), and the kitchen doorway in the left wall (world z).
+export const KITCHEN_DOOR_W = 1.5, COFFEE_X = 1.05;
+export const kitchenDoor = depth => depth - 1.5;
+// How far the kitchen, and whoever's in it, moves when the room's depth changes.
+export const kitchenShift = (before, after) => kitchenDoor(after) - kitchenDoor(before);
 
 const podKey = session => session.cwd || session.project || 'Unknown';
 
 // A desk's `rotation` is the yaw its sitter faces (0 = +z). Slot k is pair k >> 1; even slots face +z, odd face -z, across a shared desk edge.
 const seat = (pod, slot) => ({ x: pod.left + DESK_W * ((slot >> 1) + 0.5), z: pod.z + (slot % 2 ? DESK_D / 2 : -DESK_D / 2), rotation: slot % 2 ? Math.PI : 0 });
 
+// The layout as the server sends it (server/seats.mjs), desks as a list, back in the form everything here reads.
+export const sharedLayout = office => ({ ...office, desks: new Map(office.desks.map(desk => [desk.sessionId, desk])) });
+
 // A session that ends keeps its (empty) desk for VACANT_MS, so it can walk out and the pod doesn't jump at once.
-export function layoutOffice(sessions, previous, now = Date.now()) {
+// `reserved` is Map<podKey, slots, oldest first>: slots asked for by a spawn, which the next newcomers take if still free.
+export function layoutOffice(sessions, previous, now = Date.now(), reserved = new Map()) {
   const top = sessions.filter(s => !s.parentId), ids = new Set(top.map(s => s.id));
   for (const [id, old] of previous?.desks || []) {
     if (ids.has(id)) continue;
@@ -45,14 +55,19 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
       if (old?.podKey === pod.key && slots[old.slot] === undefined) { slots[old.slot] = session.id; kept.add(session.id); }
     }
     // By id, so a fresh page seats everyone the same way whatever order the snapshot lists them in.
+    const wanted = [...reserved.get(pod.key) || []];
     for (const session of [...pod.sessions].sort((a, b) => a.id.localeCompare(b.id))) {
       if (kept.has(session.id)) continue;
-      let slot = 0; while (slots[slot] !== undefined) slot++;
+      // Someone who has left only holds a seat until it's asked for: they're off the floor once its agent arrives.
+      const open = slot => slots[slot] === undefined || pod.sessions.some(other => other.id === slots[slot] && other.vacantSince !== undefined);
+      let slot = wanted.shift();
+      while (slot !== undefined && !open(slot)) slot = wanted.shift();
+      if (slot === undefined) { slot = 0; while (slots[slot] !== undefined) slot++; }
       slots[slot] = session.id;
     }
     pod.slots = slots;
-    // The folder the pod's sign starts another agent in (room.js), from someone still here.
-    pod.cwd = pod.sessions.find(session => session.cwd && session.vacantSince === undefined)?.cwd;
+    // The folder the pod's sign starts another agent in (room.js), from someone still here, or as last known while the last of them leaves.
+    pod.cwd = pod.sessions.find(session => session.cwd && session.vacantSince === undefined)?.cwd ?? previous?.pods.find(old => old.key === pod.key)?.cwd;
     pod.pairs = Math.max(1, Math.ceil(slots.length / 2));
     pod.width = pod.pairs * DESK_W;
     pod.depth = 2 * DESK_D + 2 * CHAIR;
@@ -73,10 +88,12 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
   const width = Math.max(MIN_ROOM, previous?.room.width || 0, cols * cellW + AISLE), depth = Math.max(MIN_ROOM, previous?.room.depth || 0, rows * cellD + AISLE + START);
 
   const vacant = new Map(top.filter(s => s.vacantSince !== undefined).map(s => [s.id, s.vacantSince]));
-  const kids = new Map();
-  for (const session of sessions) if (session.parentId && ids.has(session.parentId)) {
+  // A helper that's finished (idle since it last wrote) sits DONE_MS, then walks out (`leaving`) and is gone VACANT_MS later.
+  // One already done when first seen never sits down.
+  const kids = new Map(), done = session => session.status === 'idle' ? now - (session.updatedAt ?? now) : -Infinity;
+  for (const session of sessions) if (session.parentId && ids.has(session.parentId) && done(session) < DONE_MS + VACANT_MS) {
     if (!kids.has(session.parentId)) kids.set(session.parentId, []);
-    kids.get(session.parentId).push(session.id);
+    kids.get(session.parentId).push(session);
   }
 
   const desks = new Map();
@@ -86,10 +103,12 @@ export function layoutOffice(sessions, previous, now = Date.now()) {
     pod.z = AISLE + pod.row * cellD + pod.depth / 2;
     pod.slots.forEach((id, slot) => {
       if (id === undefined) return;
-      const children = kids.get(id) || [];
+      // Helpers keep the seats they had, newcomers after them in the order they came.
+      const before = previous?.desks.get(id)?.subagents || [], rank = kid => { const i = before.indexOf(kid.id); return i < 0 ? before.length : i; };
+      const children = (kids.get(id) || []).filter(kid => done(kid) < DONE_MS || before.includes(kid.id)).sort((a, b) => rank(a) - rank(b)), seated = children.slice(0, MAX_SUBAGENTS);
       desks.set(id, {
         sessionId: id, podKey: pod.key, slot, ...seat(pod, slot),
-        subagents: children.slice(0, MAX_SUBAGENTS), overflow: Math.max(0, children.length - MAX_SUBAGENTS),
+        subagents: seated.map(kid => kid.id), leaving: seated.filter(kid => done(kid) >= DONE_MS).map(kid => kid.id), overflow: Math.max(0, children.length - MAX_SUBAGENTS),
         ...(vacant.has(id) && { vacantSince: vacant.get(id) }),
       });
     });

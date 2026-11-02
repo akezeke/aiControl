@@ -1,17 +1,20 @@
 // The secret room. A tall bookshelf against the right wall, a little past the lounge, stands in front of a doorway: press the
 // right book (the red one with gold bands, leaning a little proud; it doesn't light up under the pointer) and the shelf slides
 // aside. Behind it is a games room: confetti carpet, a neon sign, string lights, a disco ball whose spots sweep the walls and
-// floor, a lava lamp and beanbags, under two coloured lamps of its own that don't reach the office. It isn't drawn at all
-// until the shelf moves, nor in the overview, and the shelf slides shut by itself once you've left and walked off.
+// floor, a lava lamp and beanbags, under two coloured lamps of its own that don't reach the office. Nothing in it is even
+// built until the shelf first moves; after that, shut (or in the overview) it's skipped whole: not drawn, its matrices not
+// kept up and no ray tested on it. The shelf slides shut by itself once you've left and walked off.
 // Fruit and the goose stay out (no paths in here yet). With reduced motion the shelf jumps and nothing in there moves.
 import * as THREE from 'three';
 import { WALL_H, WALL_T, mesh, once, canvasTexture, glowTexture, paint, painted, piece } from './furniture.js';
 import { toonMaterial } from './toon.js';
+import { KITCHEN } from './kitchen-plan.js';
+import { kitchenDoor } from './layout.js';
 
 // The doorway in the office's right wall: wide and high, its middle this far from the front wall (room.js cuts it).
 export const DOOR = { w: 1.3, h: 2.2, back: 3.8 };
 // The games room, from the doorway's middle on its far side: how far it reaches in (x), behind it (-z) and in front (+z).
-export const SECRET = { w: 6, back: 4.1, front: 3.1 };
+export const SECRET = { w: 13, back: 4.1, front: 3.1 };
 const SHELF = { w: 1.5, h: 2.3, d: 0.38 }, SLIDE = 1.6, MOVE = 1.4; // metres; seconds to slide open or shut
 const SHUT_AFTER = 5, AWAY = 3; // it shuts once you've been out of the room and this far from the doorway this many seconds
 // The right book: which shelf (from the floor), where along it, its size; it leans out LEAN and tips out further when pressed.
@@ -63,7 +66,7 @@ const neon = (g, w, h) => {
   for (let k = 1; k <= 12; k++) g.lineTo(w * 0.18 + k * w * 0.64 / 12, h * (k % 2 ? 0.72 : 0.8)); g.stroke();
 };
 
-export function createSecret({ onPress }) {
+export function createSecret({ onPress, onMove }) {
   let open = false, t = 0, idle = 0, press = 0, time = 0, built = null;
   const games = []; // what's played in here (darts.js): built into the room and updated with it
   const shelf = new THREE.Group(); shelf.userData.secret = 'shelf'; // userData keeps room.js's bake off what moves
@@ -77,28 +80,37 @@ export function createSecret({ onPress }) {
     shelf,
     // Inside the games room (past the middle of the wall), at `p`.
     inside(p) { return !!built && p.x > built.door.x + WALL_T / 2 && p.z > built.door.z - SECRET.back && p.z < built.door.z + SECRET.front; },
-    // How far you may walk: the office and the games room beside it (walls and the shelf do the rest).
-    bounds(room) { return { width: room.width + WALL_T + SECRET.w, depth: room.depth }; },
+    // How far you may walk: the office with the kitchen and the games room either side of it (walls and the shelf do the rest). In a small
+    // room the kitchen reaches back past the office's windows wall, so the building starts behind z = 0.
+    bounds(room) { return { left: -(WALL_T + KITCHEN.width), back: Math.min(0, kitchenDoor(room.depth) + KITCHEN.back - WALL_T), width: room.width + WALL_T + SECRET.w, depth: room.depth }; },
     // Where to stand to press the right book.
+    get shown() { return !!built?.room?.visible; },
     get spot() { return built && new THREE.Vector3(built.door.x - 0.9, 0, built.door.z); },
     toggle() { open = !open; idle = 0; press = PRESS; },
-    add(game) { games.push(game); if (built) game.build(built.room); },
+    add(game) { games.push(game); if (built?.room) game.build(built.room); },
     // A room `width` × `depth` (a new shell): the shelf and the games room go in `shell`; returns what blocks walking.
     build({ width, depth, shell }) {
-      const door = new THREE.Vector3(width, 0, depth - DOOR.back), room = buildRoom(), collider = new THREE.Box3();
-      room.position.set(width + WALL_T, 0, door.z); room.visible = false; shell.add(room, shelf);
-      shelf.rotation.y = -Math.PI / 2;
+      const door = new THREE.Vector3(width, 0, depth - DOOR.back), collider = new THREE.Box3();
+      shell.add(shelf); shelf.rotation.y = -Math.PI / 2;
+      // A wooden sill across the doorway's floor, where the wall stands (neither room's floor reaches into it).
+      const sill = mesh(once('secretSill', () => new THREE.BoxGeometry(WALL_T, 0.012, DOOR.w)), toonMaterial('#7a4e2d'), 0.004); sill.position.set(width + WALL_T / 2, 0.006, door.z); shell.add(sill);
       // Its own lamps sit in the shell, always there, so showing the room never changes the count of lights (which would
-      // recompile every material); hidden, they're just off. Neither reaches past the wall into the office.
-      const lamps = [[NEON[0], 5, 4.2, 4.5, -0.4], [NEON[1], 4, 3.3, 3.4, 1.9]].map(([color, power, reach, x, z]) => {
-        const light = new THREE.PointLight(color, 0, reach, 1.2); light.position.set(width + WALL_T + x, 2.5, door.z + z); shell.add(light);
+      // recompile every material); hidden, they're just off. Neither reaches past the wall into the office. They're spot
+      // lights opened out to a half sphere pointing down, the same kind as the screens' (lights.js), so no point light is
+      // left for every pixel to pay for.
+      const lamps = [[NEON[0], 5, 4.2, 7.8, -0.5], [NEON[1], 4, 2.1, 2.2, 0.8]].map(([color, power, reach, x, z]) => {
+        const light = new THREE.SpotLight(color, 0, reach, Math.PI / 2, 1, 1.2); light.position.set(width + WALL_T + x, 2.5, door.z + z); light.target.position.set(light.position.x, 0, light.position.z); shell.add(light, light.target);
         return [light, power];
       });
-      room.updateMatrixWorld(true);
-      const colliders = room.userData.walls.map(wall => new THREE.Box3().setFromObject(wall));
-      built = { door, room, collider, lamps }; place();
-      for (const game of games) game.build(room);
-      return [...colliders, collider];
+      // Its walls block walking from the start, as boxes: the end walls from the office's wall out, the far wall across.
+      const { w, back, front } = SECRET, x0 = width + WALL_T, box = (xa, za, xb, zb) => new THREE.Box3(new THREE.Vector3(xa, 0, za), new THREE.Vector3(xb, WALL_H, zb));
+      const walls = [box(x0, door.z - back - WALL_T, x0 + w + WALL_T, door.z - back), box(x0, door.z + front, x0 + w + WALL_T, door.z + front + WALL_T), box(x0 + w, door.z - back - WALL_T, x0 + w + WALL_T, door.z + front + WALL_T)];
+      built = { door, shell, room: null, collider, lamps }; place();
+      // What a game stands on the floor (in the room's frame) blocks walking too.
+      const blocks = games.flatMap(game => game.blocks ?? []).map(b => b.clone().translate(new THREE.Vector3(x0, 0, door.z)));
+      // The floor outside the office's windows wall, beside the kitchen where it reaches back that far: nobody gets there, so no route may end there.
+      const edge = secret.bounds({ width, depth }).back, outside = edge < -WALL_T ? [Object.assign(box(-WALL_T, edge, x0 + w + WALL_T, -WALL_T), { surface: 'behind', walkOnly: true })] : [];
+      return [...walls, ...blocks, collider, ...outside];
     },
     // Each frame, with where you stand (not the camera, which the overview lifts away).
     update(dt, at, still, overview) {
@@ -107,13 +119,20 @@ export function createSecret({ onPress }) {
       const inside = secret.inside(at);
       if (open && !inside && Math.hypot(at.x - built.door.x, at.z - built.door.z) > AWAY) { if ((idle += dt) > SHUT_AFTER) open = false; } else idle = 0;
       const goal = open ? 1 : 0;
-      if (t !== goal) { t = still ? goal : THREE.MathUtils.clamp(t + (goal ? dt : -dt) / MOVE, 0, 1); place(); }
+      // ponytail: onMove wakes every loose thing each frame of the slide, on purpose: the shelf pushes what's in its way and drops what's on top. About a step per thing per frame, for 1.4 s.
+      if (t !== goal) { t = still ? goal : THREE.MathUtils.clamp(t + (goal ? dt : -dt) / MOVE, 0, 1); place(); onMove?.(); }
       press = Math.max(0, press - dt);
       key.rotation.x = LEAN + (still ? 0 : 0.4 * Math.sin(Math.PI * press / PRESS));
-      const shown = (t > 0 || inside) && overview < 0.01, { room } = built;
-      room.visible = shown;
+      const shown = (t > 0 || inside) && overview < 0.01;
+      // The first time it shows, the room and its games are built.
+      if (shown && !built.room) {
+        built.room = buildRoom(); built.room.position.set(built.door.x + WALL_T, 0, built.door.z); built.shell.add(built.room);
+        for (const game of games) game.build(built.room);
+      }
+      const { room } = built;
+      if (room) room.visible = room.matrixWorldAutoUpdate = shown;
       for (const [light, power] of built.lamps) light.intensity = shown ? power : 0;
-      if (shown && !still) room.userData.animate(time);
+      if (shown && !still) room?.userData.animate(time);
       for (const game of games) game.update(dt, at, still, shown);
     },
   };
@@ -127,10 +146,10 @@ export function createSecret({ onPress }) {
 }
 
 // The games room in its own frame: the doorway's middle at the origin on the floor, the room reaching out along +x.
-// userData.walls are its walls (to block walking); userData.animate(time) moves what moves.
+// userData.animate(time) moves what moves.
 function buildRoom() {
   const { w, back, front } = SECRET, long = back + front, mid = (front - back) / 2, group = new THREE.Group();
-  group.userData.secret = 'room';
+  group.userData.secret = 'room'; group.raycast = () => group.visible; // hidden, a ray (the pointer's, every hover) skips all of it
   const carpet = canvasTexture(256, 256, confetti); carpet.wrapS = carpet.wrapT = THREE.RepeatWrapping; carpet.repeat.set(w / 2, long / 2);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, long).rotateX(-Math.PI / 2), toonMaterial('#ffffff', { map: carpet }));
   floor.position.set(w / 2, 0, mid); floor.userData.floor = true; group.add(floor);
@@ -141,9 +160,9 @@ function buildRoom() {
   // Deep purple walls; the office's coral wall gets a purple lining this side, the doorway cut out of it.
   const purple = toonMaterial('#4a3380');
   // The end and far walls start where the office's wall stops (x = 0): any further in and their ends would share its face and flicker.
-  group.userData.walls = [[w + WALL_T, WALL_T, (w + WALL_T) / 2, -back - WALL_T / 2], [w + WALL_T, WALL_T, (w + WALL_T) / 2, front + WALL_T / 2], [WALL_T, long + 2 * WALL_T, w + WALL_T / 2, mid]].map(([sx, sz, x, z]) => {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(sx, WALL_H, sz), purple); wall.position.set(x, WALL_H / 2, z); group.add(wall); return wall;
-  });
+  for (const [sx, sz, x, z] of [[w + WALL_T, WALL_T, (w + WALL_T) / 2, -back - WALL_T / 2], [w + WALL_T, WALL_T, (w + WALL_T) / 2, front + WALL_T / 2], [WALL_T, long + 2 * WALL_T, w + WALL_T / 2, mid]]) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(sx, WALL_H, sz), purple); wall.position.set(x, WALL_H / 2, z); group.add(wall);
+  }
   const outline = new THREE.Shape().moveTo(-front, 0).lineTo(-DOOR.w / 2, 0).lineTo(-DOOR.w / 2, DOOR.h).lineTo(DOOR.w / 2, DOOR.h).lineTo(DOOR.w / 2, 0).lineTo(back, 0).lineTo(back, WALL_H).lineTo(-front, WALL_H);
   const lining = new THREE.Mesh(new THREE.ShapeGeometry(outline).rotateY(Math.PI / 2), purple); lining.position.x = 0.005; group.add(lining);
   // LED strips: cyan along the skirting, pink along the top, either side of the doorway on the near wall.
@@ -186,14 +205,14 @@ function buildRoom() {
   const colors = bulbs.instanceColor.array.slice(); bulbs.raycast = () => {}; group.add(bulbs);
   const wire = new THREE.Line(new THREE.BufferGeometry().setFromPoints([...at, at[0]]), new THREE.LineBasicMaterial({ color: '#2a2238' })); wire.raycast = () => {}; group.add(wire);
 
-  // Two beanbags and a side table with a lava lamp, along the far wall.
-  for (const [z, color, turn] of [[-1.3, '#ff5fa2', 0.5], [1.4, '#2ec4b6', -0.4]]) {
+  // Two beanbags and a side table with a lava lamp, in the front corner by the doorway.
+  for (const [x, color, turn] of [[0.85, '#ff5fa2', 0.4], [2.55, '#2ec4b6', -0.4]]) {
     const bag = piece(`beanbag${color}`, () => [[new THREE.SphereGeometry(0.42, 16, 12).scale(1, 0.55, 1).translate(0, 0.23, 0), color], [new THREE.SphereGeometry(0.3, 14, 10).scale(1, 0.6, 0.8).translate(0, 0.42, -0.14), color]]);
-    bag.position.set(w - 0.65, 0, z); bag.rotation.y = -Math.PI / 2 + turn; group.add(bag);
+    bag.position.set(x, 0, front - 0.6); bag.rotation.y = Math.PI + turn; group.add(bag);
   }
   const table = piece('sideTable', () => [[new THREE.CylinderGeometry(0.24, 0.24, 0.04, 24).translate(0, 0.52, 0), '#2a2238'], [new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8).translate(0, 0.26, 0), '#2a2238'], [new THREE.CylinderGeometry(0.16, 0.18, 0.02, 20).translate(0, 0.01, 0), '#2a2238']]);
-  table.position.set(w - 0.45, 0, 0.1); group.add(table);
-  const lamp = new THREE.Group(); lamp.position.set(w - 0.45, 0.54, 0.1); group.add(lamp);
+  table.position.set(1.7, 0, front - 0.4); group.add(table);
+  const lamp = new THREE.Group(); lamp.position.set(1.7, 0.54, front - 0.4); group.add(lamp);
   lamp.add(piece('lavaBase', () => [[new THREE.CylinderGeometry(0.05, 0.085, 0.12, 16).translate(0, 0.06, 0), '#c0c4cc'], [new THREE.CylinderGeometry(0.03, 0.045, 0.05, 16).translate(0, 0.415, 0), '#c0c4cc']], 0.004));
   lamp.add(new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.07, 0.27, 16, 1, true).translate(0, 0.255, 0), new THREE.MeshBasicMaterial({ color: '#ff3d2e', transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false })));
   const blobs = [0.022, 0.03, 0.018].map(r => { const b = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8).scale(1, 1.3, 1), new THREE.MeshBasicMaterial({ color: '#ffb02e' })); lamp.add(b); return b; });

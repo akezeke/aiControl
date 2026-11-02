@@ -7,18 +7,29 @@ import { processCommand as command, parentPid } from '../server/processes.mjs';
 const serverPath = join(root, 'scripts/server.mjs');
 // A watcher whose server crashed has no server.json; ending the tmux session stops it.
 function endSession() { try { execFileSync('tmux', ['kill-session', '-t', '=aiControl'], { stdio: 'ignore' }); return true; } catch { return false; } }
+// A node watching the server. The shell running start.mjs's pipeline (`sh -c '… --watch … | tee …'`) names the same
+// flags and path but isn't one; nor can a process's name tell them apart, as Node 24 calls its main thread MainThread.
+const watching = line => line.includes('--watch') && line.includes(serverPath) && !/^\S+\s+-c\s/.test(line);
+// The outermost watcher, or the server itself when unwatched. Should a second watcher be nested (start.mjs), ending only
+// the inner one leaves the outer waiting for a file change, holding the tmux session.
+async function watcherOf(pid) {
+  let target = pid;
+  for (let parent = await parentPid(pid); parent > 1 && watching(await command(parent)); parent = await parentPid(parent)) target = parent;
+  return target;
+}
+const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
 
 try {
   const { pid } = JSON.parse(await readFile(join(dataDir, 'server.json'), 'utf8'));
   if (!(await command(pid)).includes(serverPath)) throw new Error('The recorded PID does not belong to AI Control.');
-  // Stop the --watch parent too, or it would wait for the next file change.
-  const parent = await parentPid(pid), parentCommand = await command(parent);
-  process.kill(parentCommand.includes('--watch') && parentCommand.includes(serverPath) ? parent : pid, 'SIGTERM');
+  // A watcher ends its server before it exits; the tmux session ends with the outermost one.
+  const target = await watcherOf(pid);
+  process.kill(target, 'SIGTERM');
   console.log('AI Control is stopping.');
   let stopped = false;
   for (let i = 0; i < 100; i++) {
     await new Promise(resolve => setTimeout(resolve, 100));
-    try { process.kill(pid, 0); } catch (error) { if (error.code === 'ESRCH') { stopped = true; break; } throw error; }
+    if (!alive(pid) && !alive(target)) { stopped = true; break; }
   }
   if (!stopped) throw new Error('Shutdown is still in progress. Check npm run attach before starting again.');
   await new Promise(resolve => setTimeout(resolve, 150));

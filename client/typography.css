@@ -1,6 +1,13 @@
-/* System fonts, plus four OFL theme fonts served locally from /fonts (no third-party requests).
+/* System fonts, plus OFL theme fonts served locally from /fonts (no third-party requests).
    Browsers fetch each file only when a theme actually uses that family. */
 @font-face { font-family: 'Josefin Slab'; src: url('/fonts/josefin-slab.woff2') format('woff2'); font-weight: 100 700; font-display: swap; }
 @font-face { font-family: 'Black Ops One'; src: url('/fonts/black-ops-one.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Antonio'; src: url('/fonts/antonio.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
 @font-face { font-family: 'VT323'; src: url('/fonts/vt323.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Permanent Marker'; src: url('/fonts/permanent-marker.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Silkscreen'; src: url('/fonts/silkscreen.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'Comic Neue'; src: url('/fonts/comic-neue-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Nunito'; src: url('/fonts/nunito-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Nunito'; src: url('/fonts/nunito-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Nunito'; src: url('/fonts/nunito-800.woff2') format('woff2'); font-weight: 800; font-display: swap; }
+@font-face { font-family: 'Cinzel Decorative'; src: url('/fonts/cinzel-decorative-900.woff2') format('woff2'); font-weight: 900; font-display: swap; }

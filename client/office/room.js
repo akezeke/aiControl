@@ -10,7 +10,9 @@ import { createSlacking } from './slack.js';
 import { createWindows } from './windows.js';
 import { createScreens, SCREEN_W, SCREEN_H } from './screens.js';
 import { createSecret, DOOR } from './secret.js';
-import { DESK_W, DESK_D } from './layout.js';
+import { createKitchen } from './kitchen.js';
+import { bays, cardsMesh, officeCutouts } from './cutouts.js';
+import { DESK_W, DESK_D, COFFEE_X, KITCHEN_DOOR_W, kitchenDoor } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
   counter, coffeeMachine, mugShelf, waterCooler, bookshelf, printer, filingCabinet, coatRack, extinguisher, glowTexture, floorShadow,
@@ -31,7 +33,7 @@ const teams = [['#f4a6a6', '#e0675c'], ['#a6d8f4', '#3d8fd1'], ['#b9e4a1', '#4fa
 const HELPER_SPOTS = [[0.56, -0.66], [-0.56, -0.66], [-0.6, -1.42]];
 const CUP_SPOTS = [[0.5, -0.34], [0.62, -0.3], [0.56, -0.2], [0.68, -0.19], [0.5, -0.1], [0.63, -0.09]];
 const ITEM_SPOTS = [[-0.6, 0.22], [-0.42, 0.3], [-0.62, -0.06]]; // the front-left corner stays free, and the back left for a second monitor
-const leds = { green: '#5ee08a', amber: '#ffb23e', dark: '#4d6fa8', red: '#ff6b6b', off: '#2a2d35' };
+const leds = { green: '#5ee08a', amber: '#ffb23e', blue: '#4aa8ff', dark: '#4d6fa8', red: '#ff6b6b', off: '#2a2d35' };
 // A desk pops up out of the floor for someone new and sinks back into it once someone leaving has got up (animation.js's
 // goodbye), not on a page load; with reduced motion it's just there, or gone. Seconds, but SINK_AFTER is ms; BURIED is metres.
 const RISE = 0.6, SINK = 0.8, SINK_AFTER = 1800, BURIED = 1.4;
@@ -153,7 +155,7 @@ function createDesk(color, width = DESK_W, helper = false, notes = 0, provider =
   return desk;
 }
 
-const tints = { green: ['#0f2a1a', '#5ee08a'], amber: ['#2e2108', '#ffb23e'], dark: ['#151821', '#7d8699'], red: ['#2e0f0f', '#ff6b6b'], off: ['#0d0e12', '#3a3f4b'] };
+const tints = { green: ['#0f2a1a', '#5ee08a'], amber: ['#2e2108', '#ffb23e'], blue: ['#0c2238', '#5db4ff'], dark: ['#151821', '#7d8699'], red: ['#2e0f0f', '#ff6b6b'], off: ['#0d0e12', '#3a3f4b'] };
 // Drawn at 432×256 and scaled to the canvas, so helpers' smaller screens show the same thing.
 function drawScreen(g, w, h, monitor = null, tone = 'off') {
   const [background, accent] = tints[tone] || tints.off;
@@ -214,9 +216,9 @@ const badgeGeometry = () => { const g = new THREE.CylinderGeometry(0.12, 0.12, 0
 // The board's edges in one group and its two faces in another (a box's groups run +x, -x, +y, -y, +z, -z).
 const boardGeometry = () => { const g = rounded(1.6, 0.4, 0.05, 0.03), [, , , , front, back] = g.groups; g.clearGroups(); g.addGroup(0, front.start, 0); g.addGroup(front.start, front.count + back.count, 1); return g; };
 
-// A wall `w` long, centred and WALL_T thick like a box, with a doorway cut out of its foot at `door` along it.
-const notched = (w, door) => {
-  const [a, b, top, foot] = [door - DOOR.w / 2, door + DOOR.w / 2, DOOR.h - WALL_H / 2, -WALL_H / 2];
+// A wall `w` long, centred and WALL_T thick like a box, with a doorway `doorW` wide cut out of its foot at `door` along it.
+const notched = (w, door, doorW = DOOR.w) => {
+  const [a, b, top, foot] = [door - doorW / 2, door + doorW / 2, DOOR.h - WALL_H / 2, -WALL_H / 2];
   const shape = new THREE.Shape().moveTo(-w / 2, foot).lineTo(a, foot).lineTo(a, top).lineTo(b, top).lineTo(b, foot).lineTo(w / 2, foot).lineTo(w / 2, -foot).lineTo(-w / 2, -foot);
   return new THREE.ExtrudeGeometry(shape, { depth: WALL_T, bevelEnabled: false }).translate(0, 0, -WALL_T / 2);
 };
@@ -226,7 +228,7 @@ export function createRoom(scene, renderer) {
   // Every screen, on shared textures (screens.js); `shots`: each session's newest screenshot, for its second monitor.
   const screens = createScreens(root, renderer), shots = new Map();
   const shell = new THREE.Group(); root.add(shell);
-  // Fill, daylight and the screens' glow (lights.js); the ceiling lamps (point lights, in the shell) do the rest.
+  // Fill, daylight, the lamps' light from above and the screens' glow (lights.js).
   const lights = createLights(root, BEAM);
   // Back to the terminal: redrawn from the latest status even if it hasn't changed.
   const slacking = createSlacking(desk => { desk.screenKey = null; redraw(desk, desk.status); });
@@ -234,8 +236,15 @@ export function createRoom(scene, renderer) {
   const deskShadows = floorShadow(1, 1, 0.3); deskShadows.geometry = new THREE.BufferGeometry(); root.add(deskShadows);
   const room = {
     // The secret room behind the lounge's bookshelf; pressing its right book calls room.onSecret (office.js walks you over).
-    secret: createSecret({ onPress: () => room.onSecret?.() }),
-    colliders: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
+    secret: createSecret({ onPress: () => room.onSecret?.(), onMove: () => room.refreshFlight() }),
+    // The kitchen through the left wall's doors; when it's first built or its doors move, things fly differently (and new things need dimming).
+    kitchen: createKitchen({ onMove: () => { room.refreshFlight(); lights.refresh(); } }),
+    colliders: [], flightColliders: [], lintels: [], cutouts: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
+    // What thrown things meet: what blocks walking, less what's only for walking, plus what you can't walk into (the wall over a
+    // doorway). A new list whenever room.colliders changes or a door moves: it's how props.js knows to wake things.
+    // ponytail: so things can be thrown into the games room and lie there. Picked up in there they land back in the office, the
+    // goose ignores them, and a ball in there floats over nothing in the overview, which doesn't draw the room.
+    refreshFlight() { room.flightColliders = [...room.colliders.filter(box => !box.walkOnly), ...room.lintels, ...room.kitchen.flight, ...room.cutouts]; },
     deskAnchor(id) {
       const desk = desks.get(id); if (!desk) return null;
       desk.group.updateMatrixWorld();
@@ -249,7 +258,8 @@ export function createRoom(scene, renderer) {
       };
     },
     sync(layout, statuses) {
-      if (room.size !== `${layout.room.width}x${layout.room.depth}`) buildShell(layout);
+      // Cells can widen without the room growing, if it's already wide from before the floor closed up (layout.js): the pear goes by them.
+      if (room.size !== `${layout.room.width}x${layout.room.depth}` || room.cellW !== layout.grid.cellW) buildShell(layout);
       const solid = [];
       for (const pod of layout.pods) if (!podColors.has(pod.key)) podColors.set(pod.key, podColors.size % teams.length);
       for (const [id, place] of layout.desks) {
@@ -295,7 +305,7 @@ export function createRoom(scene, renderer) {
         if (sign.waiting !== waiting) { sign.waiting = waiting; sign.texture.redraw(waiting); }
       }
       for (const [key, sign] of signs) if (!podKeys.has(key)) { disposeTree(sign.group); signs.delete(key); }
-      room.colliders = [...room.wallColliders, ...room.furnitureColliders, ...solid];
+      room.colliders = [...room.wallColliders, ...room.furnitureColliders, ...solid]; room.refreshFlight();
       lights.refresh();
     },
     // A session's newest screenshot ({ bitmap, count }) for its second monitor, or null for none (and no second monitor).
@@ -382,9 +392,9 @@ export function createRoom(scene, renderer) {
     for (const d of [desk, ...desk.helpers || []]) { screens.remove(d.glass); screens.remove(d.side?.glass); d.screenTexture.dispose(); d.side?.texture.dispose(); d.led?.material.dispose(); }
   }
 
-  function buildShell({ room: { width, depth }, door }) {
+  function buildShell({ room: { width, depth }, door, grid: { cellW } }) {
     disposeTree(shell, false);
-    room.size = `${width}x${depth}`;
+    room.size = `${width}x${depth}`; room.cellW = cellW;
     // Floor: carpet tiles, a shade apart, drawn once into a repeating texture.
     const carpet = canvasTexture(128, 128, g => {
       for (const [x, y] of [[0, 0], [64, 0], [0, 64], [64, 64]]) { g.fillStyle = (x + y) % 128 ? '#8899af' : '#8192a9'; g.fillRect(x, y, 64, 64); }
@@ -396,25 +406,30 @@ export function createRoom(scene, renderer) {
 
     // Walls, each with the inward normal used to fade the ones between the overview camera and the room.
     // What hangs on a wall is its child, so it hides with the wall. Side walls' local x runs toward -z: x = depth / 2 - z.
-    room.fadeables.walls = []; room.wallColliders = [];
-    // `door`: where along it (its local x) a doorway is cut, DOOR.w wide and DOOR.h high; the trim and what blocks walking stop
+    room.fadeables.walls = []; room.wallColliders = []; room.lintels = [];
+    // `door`: where along it (its local x) a doorway is cut, `doorW` wide and DOOR.h high; the trim and what blocks walking stop
     // either side of it.
-    const wall = (w, x, z, rotation, normal, color = '#eef1f5', door) => {
-      const spans = door === undefined ? [[-w / 2, w / 2]] : [[-w / 2, door - DOOR.w / 2], [door + DOOR.w / 2, w / 2]];
-      const m = mesh(door === undefined ? new THREE.BoxGeometry(w, WALL_H, WALL_T) : notched(w, door), toonMaterial(color, { transparent: true }), 0);
+    const wall = (w, x, z, rotation, normal, color = '#eef1f5', door, doorW = DOOR.w) => {
+      const spans = door === undefined ? [[-w / 2, w / 2]] : [[-w / 2, door - doorW / 2], [door + doorW / 2, w / 2]];
+      // The trim stops a hair short of the doorway: ending flush, its ends would share the jambs' faces and flicker.
+      const trims = door === undefined ? spans : [[-w / 2, door - doorW / 2 - 0.003], [door + doorW / 2 + 0.003, w / 2]];
+      const m = mesh(door === undefined ? new THREE.BoxGeometry(w, WALL_H, WALL_T) : notched(w, door, doorW), toonMaterial(color, { transparent: true }), 0);
       m.position.set(x, WALL_H / 2, z); m.rotation.y = rotation; shell.add(m); m.updateMatrixWorld();
-      const trim = mesh(mergeGeometries(spans.map(([a, b]) => new THREE.BoxGeometry(b - a, 0.14, WALL_T + 0.04).translate((a + b) / 2, 0, 0))), toonMaterial('#3a4352'), 0); trim.position.y = -WALL_H / 2 + 0.07; m.add(trim);
+      const trim = mesh(mergeGeometries(trims.map(([a, b]) => new THREE.BoxGeometry(b - a, 0.14, WALL_T + 0.04).translate((a + b) / 2, 0, 0))), toonMaterial('#3a4352'), 0); trim.position.y = -WALL_H / 2 + 0.07; m.add(trim);
       room.fadeables.walls.push({ mesh: m, normal });
-      for (const [a, b] of spans) room.wallColliders.push(new THREE.Box3(new THREE.Vector3(a, -WALL_H / 2, -WALL_T / 2), new THREE.Vector3(b, WALL_H / 2, WALL_T / 2)).applyMatrix4(m.matrixWorld));
+      const solid = (a, b, y = -WALL_H / 2) => new THREE.Box3(new THREE.Vector3(a, y, -WALL_T / 2), new THREE.Vector3(b, WALL_H / 2, WALL_T / 2)).applyMatrix4(m.matrixWorld);
+      for (const [a, b] of spans) room.wallColliders.push(solid(a, b));
+      if (door !== undefined) room.lintels.push(solid(door - doorW / 2, door + doorW / 2, DOOR.h - WALL_H / 2));
       return m;
     };
     // Two accent walls: teal behind the windows, coral on the right.
     const back = wall(width + WALL_T * 2, width / 2, -WALL_T / 2, 0, new THREE.Vector3(0, 0, 1), '#3fa39b');
     const front = wall(width + WALL_T * 2, width / 2, depth + WALL_T / 2, 0, new THREE.Vector3(0, 0, -1));
-    const left = wall(depth, -WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(1, 0, 0));
+    const along = z => depth / 2 - z;
+    const left = wall(depth, -WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(1, 0, 0), undefined, along(kitchenDoor(depth)), KITCHEN_DOOR_W);
     // The right wall has the secret room's doorway in it, behind the lounge's tall bookshelf (secret.js).
     const right = wall(depth, width + WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(-1, 0, 0), '#ee8a6c', DOOR.back - depth / 2);
-    room.wallColliders.push(...room.secret.build({ width, depth, shell }));
+    room.wallColliders.push(...room.secret.build({ width, depth, shell }), ...room.kitchen.build({ depth, shell, wall: left }));
     // Hangs `item` on a wall at world height y; `along` is the wall's local x. Back and left walls face +z locally, front and right -z.
     const hang = (on, item, along, y, out = 0.02) => { const flip = on === front || on === right; item.position.set(along, y - WALL_H / 2, (WALL_T / 2 + out) * (flip ? -1 : 1)); if (flip) item.rotation.y = Math.PI; on.add(item); return item; };
 
@@ -431,7 +446,7 @@ export function createRoom(scene, renderer) {
     const notes = (key, list) => piece(`notes-${key}`, () => noteParts(list));
 
     // Windows on the back wall (windows.js), with posters and plants between them.
-    const count = Math.max(1, Math.floor(width / 4)), xs = Array.from({ length: count }, (_, i) => -width / 2 + (i + 0.5) * width / count);
+    const count = bays(width), xs = Array.from({ length: count }, (_, i) => -width / 2 + (i + 0.5) * width / count);
     const windows = createWindows(xs); back.add(windows);
     for (const [i, x] of xs.entries()) {
       if (i) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
@@ -453,34 +468,36 @@ export function createRoom(scene, renderer) {
     hang(front, notes('switch', [[0, 0, -0.08, NOTE.yellow]]), door.x - width / 2 - 0.72, 1.38, 0.004);
 
     // Boards; boards.js draws on their faces. The whiteboard is on the left wall, the clock above the door, the waiting board beside it.
-    const board = (w, h, frameColor) => { const g = new THREE.Group(); const frame = mesh(rounded(w + 0.1, h + 0.1, 0.05, 0.02), toonMaterial(frameColor), 0.008); g.add(frame); const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); face.position.z = 0.03; g.add(face); g.userData.face = face; return g; };
-    const whiteboard = hang(left, board(2.4, 1.2, '#c0c4cc'), 0, 1.65, 0.03);
+    const board = (w, h, frameColor, keep) => { const g = new THREE.Group(); const frame = mesh(rounded(w + 0.1, h + 0.1, 0.05, 0.02), toonMaterial(frameColor), 0.008); g.add(frame); const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }), keep)); face.position.z = 0.03; g.add(face); g.userData.face = face; return g; };
+    // Its foot sits at the middle of the left wall, clear of the kitchen doorway at the front; readable with the lights off.
+    const whiteboard = hang(left, board(3, 1.5, '#c0c4cc', 0.5), 0, 1.75, 0.03);
     const clock = new THREE.Group(); const rim = mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 32).rotateX(Math.PI / 2), toonMaterial('#2f3542'), 0.008); clock.add(rim);
     const clockFace = new THREE.Mesh(new THREE.CircleGeometry(0.25, 32), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); clockFace.position.z = 0.032; clock.add(clockFace); clock.userData.face = clockFace;
     hang(front, clock, door.x - width / 2, 2.6, 0.04);
     const waiting = hang(front, board(1.1, 0.8, '#3a4352'), door.x - width / 2 - 1.4, 1.5, 0.03);
     // Post-its on the boards' frames, clear of what boards.js writes.
-    hang(left, notes('whiteboard', [[0, 0.32, 0.1, NOTE.yellow], [0.012, 0.2, -0.07, NOTE.yellow], [-0.008, -0.34, 0.05, NOTE.pink]]), 1.24, 1.65, 0.0585);
+    hang(left, notes('whiteboard', [[0, 0.32, 0.1, NOTE.yellow], [0.012, 0.2, -0.07, NOTE.yellow], [-0.008, -0.34, 0.05, NOTE.pink]]), 1.54, 1.75, 0.0585);
     hang(front, notes('noticeboard', [[-0.57, 0.41, -0.15, NOTE.pink], [0.57, -0.4, 0.12, NOTE.blue], [0.585, -0.29, -0.06, NOTE.yellow]]), door.x - width / 2 - 1.4, 1.5, 0.0585);
     room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face, plate };
 
-    // Left wall: a bookshelf at the back, the coffee corner at the front, pictures where there's room.
-    const along = z => depth / 2 - z;
+    // Left wall: a bookshelf at the back, the whiteboard, pictures where there's room; the front is kept clear for the kitchen doorway.
     place(bookshelf(), 0.2, 1.45, Math.PI / 2); shadowUnder(0.25, 1.45, 0.5, 1);
-    if (depth / 2 - 1.3 - 1.95 > 1.1) hang(left, picture(1, 0.8, 0.6), along((1.95 + depth / 2 - 1.3) / 2), 1.7);
-    place(counter(), 0.32, depth - 1.6, Math.PI / 2); shadowUnder(0.35, depth - 1.6, 0.7, 2.1);
+    if (depth / 2 - 1.6 - 1.95 > 1.1) hang(left, picture(1, 0.8, 0.6), along((1.95 + depth / 2 - 1.6) / 2), 1.7);
+    // The coffee corner is in the front corner of the door wall, beside the kitchen doorway.
+    const spot = COFFEE_X, row = depth - 0.32;
+    place(counter(), spot, row, Math.PI); shadowUnder(spot, depth - 0.35, 2.1, 0.7);
     // E or a click on the machine fills the boss's mug (room.onCoffee, from office.js).
-    room.coffeeMachine = place(coffeeMachine(), 0.32, depth - 1.6, Math.PI / 2, false); room.coffeeMachine.userData.toggle = () => room.onCoffee?.();
+    room.coffeeMachine = place(coffeeMachine(), spot, row, Math.PI, false); room.coffeeMachine.userData.toggle = () => room.onCoffee?.();
     // Taped over its front while a usage window is used up, with its light gone red; boards.js writes on it and shows it.
     const sign = new THREE.Group(); sign.visible = false; sign.position.set(-0.535, 1.23, 0.122); room.coffeeMachine.add(sign);
     sign.userData.face = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.135), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); sign.userData.face.rotation.z = 0.06;
     const led = new THREE.Mesh(new THREE.SphereGeometry(0.017, 10, 8), new THREE.MeshBasicMaterial({ color: '#ff3b30' })); led.position.set(0.135, -0.01, -0.006);
     sign.add(sign.userData.face, led); room.coffeeSign = sign;
-    hang(left, mugShelf(), along(depth - 1.6), 1.75, 0.11);
-    hang(left, notes('coffee', [[0, 0.05, 0.08, NOTE.yellow], [0.07, -0.05, -0.12, NOTE.green]]), along(depth - 0.75), 1.25, 0.004);
-    bin('#3a3d46', 0.3, depth - 0.35);
-    if (depth - 3.05 > depth / 2 + 1.35) place(waterCooler(), 0.24, depth - 3.05, Math.PI / 2);
-    if (depth - 3.65 > depth / 2 + 1.35) place(plant('bush'), 0.42, depth - 3.65);
+    hang(front, mugShelf(), spot - width / 2, 1.75, 0.11);
+    hang(front, notes('coffee', [[0, 0.05, 0.08, NOTE.yellow], [0.07, -0.05, -0.12, NOTE.green]]), spot - 0.75 - width / 2, 1.25, 0.004);
+    bin('#3a3d46', spot + 1.3, depth - 0.3);
+    if (depth - 3.05 > depth / 2 + 1.65) place(waterCooler(), 0.24, depth - 3.05, Math.PI / 2);
+    if (depth - 3.65 > depth / 2 + 1.65) place(plant('bush'), 0.42, depth - 3.65);
 
     // Right wall: printer and filing cabinet at the back, pictures along it, the lounge in the front corner.
     place(printer(), width - 0.36, 1.25, -Math.PI / 2); place(filingCabinet(), width - 0.32, 2.05, -Math.PI / 2); shadowUnder(width - 0.35, 1.65, 0.65, 1.4);
@@ -498,8 +515,13 @@ export function createRoom(scene, renderer) {
     place(floorLamp(), width - 0.38, depth - 0.38);
     if (lx - 1.3 > door.x + 1.4) place(plant('snake'), lx - 1.3, depth - 0.45);
     hang(front, picture(0, 1.2, 0.8), lx - width / 2, 1.85);
-    // Front wall left of the boards: a picture and a plant when there's room.
-    if (door.x - 2.2 > 2) { hang(front, picture(5, 0.8, 0.8), (door.x - 2.2) / 2 + 0.4 - width / 2, 1.7); place(plant('bush'), door.x - 2.6, depth - 0.45); }
+    // Front wall between the coffee corner and the boards: a picture and a plant when there's room.
+    if (door.x - 2.2 > 3.4) { hang(front, picture(5, 0.8, 0.8), (2.6 + door.x - 2.2) / 2 - width / 2, 1.7); place(plant('bush'), door.x - 2.6, depth - 0.45); }
+
+    // Low-Hanging Fruit's cutouts along the walls (cutouts.js): one mesh, walked round by their boxes and thrown at by their cards and struts.
+    const cutouts = officeCutouts({ width, depth, cellW });
+    room.cutouts = cutouts.flatMap(c => [c.card, c.strut]); room.furnitureColliders.push(...cutouts.map(c => c.walk)); shell.add(cardsMesh(cutouts));
+    for (const { walk, yaw } of cutouts) shadowUnder((walk.min.x + walk.max.x) / 2, (walk.min.z + walk.max.z) / 2, 0.85, 0.5, THREE.MathUtils.degToRad(yaw));
 
     // Ceiling tiles and round lamps, each with a soft glow; hidden as one group in the overview.
     const tiles = canvasTexture(128, 128, g => { g.fillStyle = '#fbfbfa'; g.fillRect(0, 0, 128, 128); g.strokeStyle = '#d8dce2'; g.lineWidth = 4; g.strokeRect(0, 0, 128, 128); });
@@ -516,11 +538,6 @@ export function createRoom(scene, renderer) {
       const glow = new THREE.Mesh(once('glow', () => white(new THREE.PlaneGeometry(2.4, 2.4).rotateX(Math.PI / 2))), glowMaterial); glow.position.set(x, WALL_H - 0.005, z); ceiling.add(glow);
     }
     room.fadeables.ceiling = ceiling;
-    // The lamps' light: a few point lights on a coarse grid (each one costs every lit pixel, so not one per lamp).
-    const cols = Math.ceil(width / 8), rows = Math.ceil(depth / 8);
-    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
-      const light = dims(new THREE.PointLight('#ffecd0', 6, 0, 1.5), 0); light.position.set((i + 0.5) * width / cols, WALL_H - 0.35, (j + 0.5) * depth / rows); shell.add(light);
-    }
     // What stands still goes into a few merged meshes; the windows move with the view, so they stay.
     bake(shell, [ceiling]); bake(ceiling);
     // Start-up (lights.js): a row of lamps, counted from the door, stays grey and its glow out until it comes on.
@@ -537,6 +554,7 @@ export function createRoom(scene, renderer) {
     for (const w of [back, front, left, right]) bake(w, [windows]);
   }
 
+  root.add(room.kitchen.group);
   return room;
 }
 

@@ -17,7 +17,7 @@ async function body(req, limit = 64 * 1024) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, budget }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -63,9 +63,22 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         if (!budget) throw fail('Spend budgets are unavailable.', 503);
         const result = await budget(await body(req)); auth.touch(session); json(res, 200, result); return;
       }
+      // Whether a typed folder is there, could be made (see folders.mjs), or neither: for the new agent menu as you type.
+      if (path === '/api/folder' && req.method === 'GET') {
+        if (!folder) throw fail('Starting agents is not available.', 503);
+        json(res, 200, { state: folder(new URL(req.url, origins[0]).searchParams.get('path') || '') }); return;
+      }
       if (path === '/api/spawn' && req.method === 'POST') {
         if (!spawn) throw fail('Starting agents is not available.', 503);
         const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;
+      }
+      // Lost sessions (recovery.mjs): resumed in tmux, or let go.
+      const lostAction = /^\/api\/lost\/(resume|dismiss)$/.exec(path);
+      if (lostAction && req.method === 'POST') {
+        if (!lost) throw fail('Recovery is not available.', 503);
+        const { ids } = await body(req);
+        if (!Array.isArray(ids) || !ids.length || ids.length > 100 || ids.some(id => typeof id !== 'string' || id.length > 200)) throw fail('Choose sessions to resume.', 400);
+        const result = await lost[lostAction[1]]([...new Set(ids)]); auth.touch(session); json(res, 200, result); return;
       }
       // A session's images: the list as JSON, or one image's bytes (its type checked from the bytes).
       const imageRoute = /^\/api\/sessions\/([^/]+)\/images(?:\/([^/]+))?$/.exec(path);
@@ -77,7 +90,15 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         const { type, data } = await messages.image(id, imageId);
         res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Content-Length', data.length); res.setHeader('Content-Security-Policy', "default-src 'none'"); res.end(data); return;
       }
-      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|fire|model|models|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
+      // A session's Markdown files: the list, or one file's text.
+      const documentRoute = /^\/api\/sessions\/([^/]+)\/documents(?:\/([^/]+))?$/.exec(path);
+      if (documentRoute && req.method === 'GET') {
+        if (!messages?.documents) throw fail('Documents are not available.', 503);
+        let id, documentId;
+        try { id = decodeURIComponent(documentRoute[1]); documentId = documentRoute[2] && decodeURIComponent(documentRoute[2]); } catch { throw fail('Invalid session ID.'); }
+        json(res, 200, await (documentId ? messages.document(id, documentId) : messages.documents(id))); return;
+      }
+      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|fire|clear|model|models|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
       if (sessionRoute && req.method === (['history', 'models'].includes(sessionRoute[2]) ? 'GET' : 'POST')) {
         if (!messages) throw fail('Messaging is not available.', 503);
         let id, queuedId;
@@ -89,7 +110,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
           const limit = Math.min(1000, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
           json(res, 200, await messages.history(id, limit), req); return;
         }
-        const result = action === 'messages' ? await messages.send(id, await body(req, uploadBodyLimit)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
+        const result = action === 'messages' ? await messages.send(id, await body(req, uploadBodyLimit)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'clear' ? await messages.clear(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
         auth.touch(session); json(res, 200, result); return;
       }
       const match = /^\/api\/requests\/([a-f0-9-]{36})\/respond$/.exec(path);

@@ -161,7 +161,9 @@ export function createWindows(xs) {
     box(W + 2 * CASING + 0.12, 0.05, DEPTH + 0.1, x, -H / 2 - 0.025, (DEPTH + 0.1) / 2), // sill
     box(0.045, H, 0.04, x, 0, 0.02), // the bar down the middle
   ]));
-  group.add(mesh(frame, toonMaterial('#f3f5f8'), 0.008));
+  // One mesh along the whole wall, so most rays (the pointer's, every hover) would pass its bounds and test every triangle:
+  // nothing here is clicked, and the wall behind stops a ray just the same.
+  const frames = mesh(frame, toonMaterial('#f3f5f8'), 0.008); frames.raycast = () => {}; group.add(frames);
   const glass = new THREE.Mesh(mergeGeometries(xs.map(x => new THREE.PlaneGeometry(W, H).translate(x, Y, FACE + 0.004))), glassMaterial());
   glass.onBeforeRender = () => glass.material.update();
   group.add(glass);

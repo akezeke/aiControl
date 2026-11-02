@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { score, play, newGame, RINGS } from '../client/office/darts.js';
+import { score, play, newGame, finishes, RINGS } from '../client/office/darts.js';
 
 test('a dart scores by segment and ring, clockwise from 20 at the top', () => {
   const at = (r, degrees) => score(r * Math.sin(degrees * Math.PI / 180), r * Math.cos(degrees * Math.PI / 180));
@@ -29,4 +29,17 @@ test('301: three darts a turn, a bust undoes the turn, exactly 0 wins and the ne
   assert.deepEqual([g.left, g.over, g.won], [0, true, true]);
   assert.equal(g.darts, 9);
   g = play(g, T20); assert.deepEqual([g.left, g.darts, g.won], [241, 1, false]);
+});
+
+test('the beds one dart would finish on: singles, doubles and trebles that make it, the 25 and the bull', () => {
+  assert.deepEqual(finishes(40), ['D20']);
+  assert.deepEqual(finishes(18).sort(), ['18', 'D9', 'T6']);
+  assert.deepEqual(finishes(60), ['T20']);
+  assert.deepEqual(finishes(50), ['Bull']);
+  assert.deepEqual(finishes(25), ['25']);
+  assert.deepEqual(finishes(59), []);
+  assert.deepEqual(finishes(61), []);
+  assert.deepEqual(finishes(0), []);
+  // Each one scores just that.
+  for (const left of [1, 7, 20, 21, 36, 45, 50, 57]) for (const label of finishes(left)) assert.equal(label === 'Bull' ? 50 : label === '25' ? 25 : Number(label.slice(/^[DT]/.test(label))) * ({ D: 2, T: 3 }[label[0]] || 1), left);
 });

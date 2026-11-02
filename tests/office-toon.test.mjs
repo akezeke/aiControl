@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { withOutline } from '../client/office/toon.js';
+import { withOutline, highlight, showOutlines } from '../client/office/toon.js';
 
 test('outline hulls stay closed over hard edges', () => {
   const { geometry } = withOutline(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8)));
@@ -16,4 +16,14 @@ test('outline hulls stay closed over hard edges', () => {
   // A rim point pushes out and up, between the side and the cap.
   const rim = [...byPoint].find(([key]) => key.startsWith('0.0000,0.1000,0.1000'))[1];
   assert.ok(rim.y > 0.5 && rim.z > 0.5);
+});
+
+test('outlines can be left to what is hovered', () => {
+  const mesh = withOutline(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2))), hull = mesh.children[0];
+  showOutlines(false);
+  assert.equal(hull.material.visible, false);
+  highlight(mesh, true); assert.equal(hull.material.visible, true);
+  highlight(mesh, false); assert.equal(hull.material.visible, false);
+  showOutlines(true);
+  assert.equal(hull.material.visible, true);
 });

@@ -1,11 +1,14 @@
 // The camera: first person at the boss's eyes, or the overview (Tab, see overview.js).
 // Walls between the camera and the room, and the ceiling, fade out as the overview rises.
 import * as THREE from 'three';
-import { toonMaterial } from './toon.js';
+import { toonMaterial, withOutline } from './toon.js';
 import { canvasTexture } from './furniture.js';
 import { Overview } from './overview.js';
 
-const EASE = 5, FADED = 0.12, RUN_FOV = 6, STRIDE = 1.6; // radians of walk cycle per metre
+const EASE = 5, FADED = 0.12, RUN_FOV = 6, STRIDE = 1.6, LINE = 0.003; // radians of walk cycle per metre; the mug's outline
+// A sip now and then: seconds between (at random in that range), its raise, hold and lower, and how much of a mug it is.
+// The hand comes in to the bottom of the screen and tips the mug till the coffee is at the rim: further the emptier (radians).
+const SIPS = [40, 110], RAISE = 0.35, HOLD = 0.5, LOWER = 0.45, SIP = 0.2, MOUTH = new THREE.Vector3(-0.2, 0.1, 0.3), TILT = [0.45, 1.05];
 
 export class OfficeCamera {
   constructor(camera, scene, player, room, { reducedMotion, container }) {
@@ -20,10 +23,14 @@ export class OfficeCamera {
       g.font = '900 140px system-ui, sans-serif'; g.fillText('#1', w / 2, h * 0.33); g.font = '900 104px system-ui, sans-serif'; g.fillText('BOSS', w / 2, h * 0.7);
     });
     mug.add(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.12, 24, 1, true, Math.PI), toonMaterial('#fff', { map: label })));
+    // Outlined as one closed cup, bottom and rim too, off an unseen lathe of its outside; thinner than the room's, being this close.
+    const cup = [[0, -0.06], [0.05, -0.06], [0.055, 0.06], [0.05, 0.06]].map(([x, y]) => new THREE.Vector2(x, y));
+    mug.add(withOutline(new THREE.Mesh(new THREE.LatheGeometry(cup, 24), new THREE.MeshBasicMaterial({ visible: false })), LINE));
     mug.add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.046, 0.12, 24, 1, true), toonMaterial('#c94538', { side: THREE.BackSide })));
     mug.add(new THREE.Mesh(new THREE.RingGeometry(0.05, 0.055, 24).rotateX(-Math.PI / 2).translate(0, 0.06, 0), red));
     mug.add(new THREE.Mesh(new THREE.CircleGeometry(0.05, 24).rotateX(Math.PI / 2).translate(0, -0.06, 0), red));
-    mug.add(new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.01, 8, 16, Math.PI * 1.2).rotateZ(-Math.PI * 0.6).translate(0.06, 0.005, 0), red));
+    mug.add(new THREE.Mesh(new THREE.CircleGeometry(0.046, 24).rotateX(-Math.PI / 2).translate(0, -0.059, 0), toonMaterial('#c94538'))); // inside, for when it's empty
+    mug.add(withOutline(new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.01, 8, 16, Math.PI * 1.2).rotateZ(-Math.PI * 0.6).translate(0.06, 0.005, 0), red), LINE));
     this.coffee = new THREE.Mesh(new THREE.CircleGeometry(0.048, 24).rotateX(-Math.PI / 2), toonMaterial('#5b3a24')); this.coffee.position.y = 0.04; mug.add(this.coffee);
     // A right fist round the handle: fingers curled over the front and through it, thumb along the top; the arm runs from the wrist off the bottom right.
     mug.add(new THREE.Mesh(new THREE.SphereGeometry(0.038, 14, 10).scale(0.8, 1.15, 1).translate(0.13, -0.002, 0), ink));
@@ -35,8 +42,11 @@ export class OfficeCamera {
     this.mug = mug; this.pour = 0; this.level = 1;
     const arm = new THREE.QuadraticBezierCurve3(wrist, new THREE.Vector3(0.5, -0.32, -0.5), new THREE.Vector3(0.62, -0.7, -0.25));
     this.hands.add(new THREE.Mesh(new THREE.TubeGeometry(arm, 16, 0.02, 8), ink));
+    // The wrist: a ball over the arm's open end, at the point the fist turns about, so they stay joined however far it pours.
+    this.hands.add(new THREE.Mesh(new THREE.SphereGeometry(0.021, 12, 8).translate(wrist.x, wrist.y, wrist.z), ink));
     this.was = { x: 0, z: 0, yaw: 0, pitch: 0 }; this.walk = this.stride = 0; this.sway = new THREE.Vector2();
     this.slosh = new THREE.Vector2(); this.sloshing = new THREE.Vector2(); // the coffee's tilt and how fast it's tilting
+    this.sipping = null; this.nextSip = SIPS[0]; this.sipTilt = 0; this.drunk = 0; // seconds into a sip; till the next; its tilt; what's been drunk (props.js takes it off the level)
     this.from = new THREE.Vector3(); this.look = new THREE.Vector3();
   }
 
@@ -47,15 +57,9 @@ export class OfficeCamera {
   // A game in the secret room takes the view: `pose()` gives { from, look, fov, hands } in world space; null hands it back.
   play(pose) { this.game = !!pose; if (pose) this.pose = pose; }
 
-  update(dt) {
-    this.overhead.update(dt);
-    const instant = this.reducedMotion(), k = instant ? 1 : 1 - Math.exp(-dt * EASE);
-    this.amount += ((this.overview ? 1 : 0) - this.amount) * k;
-    this.focusAmount += ((this.focusPoint ? 1 : 0) - this.focusAmount) * k;
-    if (Math.abs(this.amount - (this.overview ? 1 : 0)) < 0.001) this.amount = this.overview ? 1 : 0;
-    this.gameAmount += ((this.game ? 1 : 0) - this.gameAmount) * k; if (Math.abs(this.gameAmount - (this.game ? 1 : 0)) < 0.001) this.gameAmount = this.game ? 1 : 0;
+  // Where the view is now. What a game moves after `update` has it again from here, or what it follows is drawn a frame ahead of the view.
+  place() {
     const game = this.gameAmount && this.pose();
-
     const p = this.player, eye = p.position, look = new THREE.Vector3(Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch), Math.cos(p.yaw) * Math.cos(p.pitch)).add(eye);
     // Talking: ease the view onto the character's face, a little lower and closer than standing eye level.
     if (this.focusAmount > 0.001 && this.focusPoint) look.lerp(this.focusPoint, this.focusAmount);
@@ -63,11 +67,22 @@ export class OfficeCamera {
     if (game) { this.from.lerp(game.from, this.gameAmount); this.look.lerp(game.look, this.gameAmount); }
     if (this.amount) { const over = this.overhead.pose(); this.from.lerp(over.from, this.amount); this.look.lerp(over.look, this.amount); }
     this.camera.position.copy(this.from); this.camera.lookAt(this.look);
+    return game;
+  }
+
+  update(dt) {
+    const instant = this.reducedMotion(), k = instant ? 1 : 1 - Math.exp(-dt * EASE);
+    this.overhead.update(dt, instant);
+    this.amount += ((this.overview ? 1 : 0) - this.amount) * k;
+    this.focusAmount += ((this.focusPoint ? 1 : 0) - this.focusAmount) * k;
+    if (Math.abs(this.amount - (this.overview ? 1 : 0)) < 0.001) this.amount = this.overview ? 1 : 0;
+    this.gameAmount += ((this.game ? 1 : 0) - this.gameAmount) * k; if (Math.abs(this.gameAmount - (this.game ? 1 : 0)) < 0.001) this.gameAmount = this.game ? 1 : 0;
+    const p = this.player, game = this.place();
     // Running, or flying over to someone, widens the view a little.
     const fov = this.game ? game.fov : this.fov + (p.running && !instant ? RUN_FOV : 0);
     if (Math.abs(fov - this.camera.fov) > 0.01) { this.camera.fov += (fov - this.camera.fov) * k; this.camera.updateProjectionMatrix(); }
-    // While talking, shift the picture left so the character is centred in the part the panel (or the screenshots) leaves open.
-    const panel = document.querySelector('#panel:not([hidden]), .office-shots[open]'), canvas = this.camera.userData.canvas, shift = panel && innerWidth > 640 ? panel.offsetWidth / 2 * this.focusAmount : 0;
+    // While talking, shift the picture left so the character is centred in the part the panel leaves open.
+    const panel = document.querySelector('#panel:not([hidden])'), canvas = this.camera.userData.canvas, shift = panel && innerWidth > 640 ? panel.offsetWidth / 2 * this.focusAmount : 0;
     if (canvas && Math.abs(shift - (this.shift || 0)) > 0.5) {
       this.shift = shift;
       if (shift) this.camera.setViewOffset(canvas.clientWidth, canvas.clientHeight, shift, 0, canvas.clientWidth, canvas.clientHeight); else this.camera.clearViewOffset();
@@ -84,15 +99,30 @@ export class OfficeCamera {
     const p = this.player, was = this.was, step = Math.hypot(p.position.x - was.x, p.position.z - was.z), rate = 1 / Math.max(dt, 0.001), k = 1 - Math.exp(-dt * 8);
     const spin = Math.atan2(Math.sin(p.yaw - was.yaw), Math.cos(p.yaw - was.yaw)) * rate, nod = (p.pitch - was.pitch) * rate;
     Object.assign(was, { x: p.position.x, z: p.position.z, yaw: p.yaw, pitch: p.pitch });
+    // Now and then a sip: up to your mouth at the bottom of the screen, tipped, and back. Not in a game, the overview, a
+    // talk or a pour, running or flying over, with something in your other hand, the mug empty or reduced motion, nor in the few seconds after any of those.
+    const free = !instant && !this.game && !this.gameAmount && !this.amount && !this.focusPoint && this.pour < 0.01 && !p.running && !p.flight && !this.hands.userData.full;
+    let sip = 0, sipping = 0;
+    if (instant) this.sipping = null;
+    if (this.sipping === null) { this.nextSip = free && this.level > 0.05 ? this.nextSip - dt : Math.max(this.nextSip, 3); if (this.nextSip <= 0) { this.sipping = 0; this.sipTilt = TILT[0] + (TILT[1] - TILT[0]) * (1 - this.level); } }
+    else if (!free && this.sipping < RAISE + HOLD) this.sipping = RAISE + HOLD + (this.sipping < RAISE ? LOWER * (1 - this.sipping / RAISE) : 0); // put it down from where it is
+    if (this.sipping !== null) {
+      const t = this.sipping += dt;
+      sip = THREE.MathUtils.smoothstep(t < RAISE + HOLD ? t / RAISE : 1 - (t - RAISE - HOLD) / LOWER, 0, 1);
+      sipping = Math.sin(THREE.MathUtils.clamp((t - RAISE) / HOLD, 0, 1) * Math.PI); // tipped a little further while drinking
+      this.drunk += SIP * Math.max(0, Math.min(t, RAISE + HOLD) - Math.max(t - dt, RAISE)) / HOLD; // drunk over the hold
+      if (t >= RAISE + HOLD + LOWER) { this.sipping = null; this.nextSip = SIPS[0] + Math.random() * (SIPS[1] - SIPS[0]); }
+    }
     // Held out in front, raised and tipped to the left; the coffee hides once it would show through the side.
+    // ponytail: it's the whole hands group that lifts, so what's in your other hand goes up the 12 cm with the mug.
     const tip = this.pour, out = -0.1 * tip, lift = 0.12 * tip;
-    this.grip.rotation.set(-0.25 * tip, 0, 1.15 * tip);
+    this.grip.rotation.set(-0.25 * tip + sip * this.sipTilt + 0.1 * sipping, 0.2 * sip, 1.15 * tip);
     this.coffee.visible = this.level > 0.02 && tip < 0.4; this.coffee.position.y = -0.05 + 0.09 * this.level;
-    if (instant || step > 0.5) { this.hands.position.set(out, lift, out); this.hands.rotation.z = 0; this.coffee.rotation.set(0, 0, 0); this.slosh.set(0, 0); this.sloshing.set(0, 0); return; } // reduced motion, or a jump across the room
+    if (instant || step > 0.5) { this.hands.position.set(out, lift, out).addScaledVector(MOUTH, sip); this.hands.rotation.z = 0; this.coffee.rotation.set(0, 0, 0); this.slosh.set(0, 0); this.sloshing.set(0, 0); return; } // reduced motion, or a jump across the room
     this.walk += (Math.min(1, step * rate / 3) - this.walk) * k; this.stride += step * STRIDE;
     this.sway.x += (THREE.MathUtils.clamp(spin * 0.012, -0.03, 0.03) - this.sway.x) * k; this.sway.y += (THREE.MathUtils.clamp(-nod * 0.01, -0.025, 0.025) - this.sway.y) * k;
     const side = Math.sin(this.stride) * this.walk, dip = (1 - Math.cos(this.stride * 2)) * this.walk;
-    this.hands.position.set(side * 0.012 + this.sway.x + out, -dip * 0.008 + this.sway.y + lift, out); this.hands.rotation.z = this.sway.x * 1.5;
+    this.hands.position.set(side * 0.012 + this.sway.x + out, -dip * 0.008 + this.sway.y + lift, out).addScaledVector(MOUTH, sip); this.hands.rotation.z = this.sway.x * 1.5;
     // Walking pace nearly matches the spring (about 1.8 Hz), which carries the tilt to about one and a half times its aim.
     const s = this.slosh, v = this.sloshing, t = Math.min(dt, 0.05), ax = Math.cos(this.stride * 2) * 0.05 * this.walk - this.sway.y * 3, az = -side * 0.07 - this.sway.x * 4;
     v.x += (130 * (ax - s.x) - 5 * v.x) * t; v.y += (130 * (az - s.y) - 5 * v.y) * t;

@@ -1,0 +1,297 @@
+/* Fantasy's list and panel are the party menu of an old RPG: one rounded face, windows in PS1 pixels (see fantasy/fantasy.css), a small title window stacked on each list, a portrait to a person. Nothing is a button: commands are plain words, statuses are coloured words, and the white hand points at what's selected or asking. */
+:root[data-theme=fantasy] {
+  background: #06231d;
+  body, .shell { background: transparent; }
+  body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(#04201ab8, #04201aec), url('/fantasy/reactor-back.webp') center / cover; }
+  .main-content, .history-viewport { background: none; }
+  font-weight: 700;
+
+  /* The window. */
+  :is(.session-list, .group-title, .usage-accounts, .login-card, .empty, .sidebar, .filter-options, .theme-options, .toast, .integrations, .request-box) { background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; color: var(--text); text-shadow: var(--fy-ink); }
+  :is(.topbar, .chat-header, .message-composer) { background: var(--fy-win); -webkit-backdrop-filter: none; backdrop-filter: none; text-shadow: var(--fy-ink); }
+  .topbar, .chat-header { border-bottom: 2px solid #dcdcd2; box-shadow: 0 2px 0 #000000c8; }
+  /* The line icons as thick as the fight bar's pixel marks, square-ended, with the text's hard shadow; Back is the bar's own chevron. */
+  .icon svg { stroke-width: 2.6; stroke-linecap: square; stroke-linejoin: miter; filter: drop-shadow(1px 1px 0 #000000c8); }
+  :is(.chat-header .back-button, .panel-heading > .quiet-button:first-child) .icon { width: 16px; height: 20px; background: url('/fantasy/back.svg') 0 0 / 100% 100%; }
+  :is(.chat-header .back-button, .panel-heading > .quiet-button:first-child) .icon svg { display: none; }
+  .message-composer { border-top: 2px solid #dcdcd2; box-shadow: 0 -2px 0 #000000c8; }
+  .detail-panel { background: url('/fantasy/dither.svg') 0 0 / 8px 8px, linear-gradient(160deg, #08382c 10%, #08382c 0 20%, #083428 0 30%, #083028 0 40%, #083024 0 50%, #082c24 0 60%, #082820 0 70%, #042820 0 80%, #04241c 0 90%, #04201c 0); border-left: 2px solid #dcdcd2; box-shadow: -2px 0 0 #000000c8, var(--shadow-lg); }
+  @media (max-width: 640px) { .detail-panel { border-left: 0; } }
+  .panel-backdrop { background: #02120e99; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+  /* A command is its word. */
+  :is(.secondary, .quiet-button, .spawn-button, .theme-menu > summary, .filter-menu > summary, .answer-option, .stat, .chat-header select) { background: none; border: 0; border-radius: 0; box-shadow: none; color: var(--text); font-weight: 700; text-shadow: var(--fy-ink); }
+  :is(.secondary, .quiet-button, .spawn-button, .theme-menu > summary, .filter-menu > summary, .answer-option, .stat, .chat-header select):hover:not(:disabled) { background: #ffffff1c; border: 0; color: #fff; }
+  :is(.fire-button, .clear-button).armed, :is(.fire-button, .clear-button).armed:hover:not(:disabled) { background: var(--danger); color: #fff; }
+  .primary { background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; color: #fff; font-weight: 800; text-shadow: var(--fy-ink); }
+  .primary:hover:not(:disabled) { background: var(--fy-win); background-clip: padding-box; border-image-source: url('/fantasy/frame-hi.svg'); color: var(--warn); }
+  :is(.search, .message-form textarea, .composer-row textarea, .request-code, .request-details pre, .login-card input, .deny-reason, .custom-answer input, .access-form input:not([type=checkbox])) { background: #0316108c; background-clip: padding-box; border: 4px solid transparent; border-image: var(--fy-well); border-radius: 0; box-shadow: none; color: var(--text); }
+  .search:focus-within, :is(.login-card input, .deny-reason, .custom-answer input, .access-form input):focus { box-shadow: inset 0 0 0 2px var(--warn); }
+  .composer-row textarea { background: #021511; background-clip: padding-box; border: 4px solid transparent; border-image: var(--fy-well); border-radius: 0; box-shadow: none; font-weight: 600; }
+  .composer-row textarea:focus { border-color: transparent; box-shadow: 0 0 0 2px var(--warn); }
+  .composer-row textarea::placeholder { color: var(--text-3); opacity: .8; }
+  .chip, .subagent-tag, .plan-chip, .mode-chip, .ctx-chip, .compact-chip { padding: 0; background: none; border: 0; color: var(--text-3); font: 700 13px/1.2 var(--font); }
+  .ctx-chip { color: var(--warn); }
+  .branch { font: 700 13px/1.2 var(--font); color: var(--text-3); }
+  .project-tag { background: none; color: var(--accent-2); padding: 0; }
+
+  /* Phones have these commands where the sidebar would be. */
+  .stats { gap: 2px; margin-bottom: 8px; }
+  .stat { min-height: 34px; padding: 4px 8px; gap: 5px; font-size: 15px; color: var(--text-2); }
+  .stat.selected { background: none; color: var(--warn); }
+  .stat.selected .stat-number { color: var(--warn); }
+
+  /* The heading says nothing the sidebar doesn't. */
+  .page-heading { margin-bottom: 2px; justify-content: flex-end; min-height: 0; }
+  .page-heading h1 { display: none; }
+  .status-text.fantasy { color: var(--accent-2); text-shadow: var(--fy-ink); text-transform: none; letter-spacing: 0; }
+
+  /* The gauges: one window, an account to a stretch of it, thin bars and when each resets. */
+  .usage-accounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 2px 26px; padding: 5px 12px; }
+  .usage-accounts > .usage-note { grid-column: 1 / -1; padding: 0; }
+  .usage-account, .usage-account + .usage-account { padding: 0; border: 0; gap: 8px; }
+  .usage-tag { flex: 0 0 auto; color: var(--text-2); font: 700 13px/1 var(--font); }
+  .usage-tag:empty { display: none; }
+  .usage-windows { gap: 12px; }
+  .usage-window, .usage-window.usage-wide { flex: 1 1 96px; min-width: 96px; font: 700 13px/1.15 var(--font); }
+  .usage-label { color: var(--text-2); }
+  .usage-note { color: var(--text-2); font-size: 13px; }
+  .usage-reset { font-size: 13px; color: var(--text-2); }
+  /* Chunky like the windows' own bars: a slot, lit along the top of its fill. */
+  :is(.usage-meter, .plan-meter) { height: 10px; border: 2px solid; border-color: var(--fy-slot); border-radius: 0; background: #0c140e; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-bar { background: #0c140e; border-radius: 0; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-value { background: var(--fy-fill); border-radius: 0; }
+  :is(.usage-meter, .plan-meter)::-moz-progress-bar { background: var(--fy-fill); border-radius: 0; }
+  /* The bar fills as usage climbs: green, yellow once it runs high, red when it's spent. */
+  .usage-meter { --fy-used: var(--fy-fill); }
+  .usage-meter::-webkit-progress-value { background: var(--fy-used); }
+  .usage-meter::-moz-progress-bar { background: var(--fy-used); }
+  .usage-high .usage-meter { --fy-used: linear-gradient(#fff0a0 0 2px, #e0b040 0 calc(100% - 2px), #986818 0); }
+  .usage-full .usage-meter { --fy-used: linear-gradient(#ffb8a0 0 2px, #e04030 0 calc(100% - 2px), #902018 0); }
+  .usage-percent { font-weight: 900; }
+  /* The scene's bar shows the same gauges, already in a window of its own. */
+  .fy-limits .usage-accounts { padding: 0; border: 0; background: none; }
+
+  .search { min-height: 38px; }
+
+  /* A list is a window with a small title window on top of it. Where a project lives and what can be started there come up when it's pointed at. */
+  .project-group { margin-bottom: 14px; }
+  .group-heading { position: relative; z-index: 1; margin: 0 0 -3px; min-height: 0; align-items: flex-end; }
+  .group-title { gap: 0; padding: 0 10px; }
+  .group-title h2 { font: 800 16px/1.2 var(--display); letter-spacing: 0; text-transform: none; color: #fff; }
+  .group-title .icon { display: none; }
+  .group-count { margin-left: 8px; padding: 0; background: none; color: var(--text-2); font: 700 14px/1 var(--display); }
+  .project-path { margin-right: 4px; font: 700 13px/1 var(--font); color: var(--text-2); text-shadow: var(--fy-ink); }
+  .spawn-button { min-height: 24px; padding: 1px 6px; font: 700 13px/1 var(--display); }
+  .session-list { --stack-gap: 0px; --connector: transparent; gap: 0; padding: 7px 0; }
+  .session-list:empty { display: none; }
+
+  /* A session is a line of the party menu. */
+  .session-card { min-height: 64px; padding: 5px 14px 5px 22px; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; background: none; border: 0; border-radius: 0; box-shadow: none; text-shadow: var(--fy-ink); }
+  .session-card:hover { background: #ffffff12; border: 0; box-shadow: none; }
+  .session-card:focus-visible { outline: 2px solid var(--warn); outline-offset: -2px; }
+  .session-card.needs-input { background: none; box-shadow: none; }
+  .session-card:is(:hover, :focus-visible)::after { content: ''; position: absolute; left: -6px; top: 50%; z-index: 1; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
+  .session-card.needs-input .session-title { color: var(--warn); }
+  .session-card[data-status=error] .session-title { color: var(--danger); }
+  .session-card:is([data-status=idle], [data-status=offline]) { :is(.session-title, .message-preview, .session-description) { color: var(--text-3); } .agent-mark { opacity: .6; } }
+  .agent-mark, .session-card.subagent .agent-mark { position: relative; width: 52px; height: 52px; background: #0005 center / cover no-repeat; border: 0; border-radius: 0; text-shadow: var(--fy-ink); }
+  .agent-mark.fy-faced, .session-card.subagent .agent-mark.fy-faced { background-image: var(--fy-face); }
+  .agent-mark.fy-faced > .provider-icon { position: absolute; right: 1px; bottom: 1px; width: 14px; height: 14px; font-size: 14px; filter: drop-shadow(0 0 1px #000); }
+  .session-body { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: baseline; column-gap: 10px; }
+  .session-title { grid-area: 1 / 1; font: 800 18px/1.2 var(--display); letter-spacing: 0; }
+  .session-meta { grid-area: 1 / 2; margin: 0; gap: 9px; flex-wrap: nowrap; overflow: hidden; }
+  .message-preview, .session-description { grid-area: 2 / 1 / 3 / 3; margin-top: 1px; font-size: 14px; font-weight: 500; color: var(--text-2); }
+  .message-preview strong { font-weight: 700; }
+  .needs-input .session-description { color: var(--text); }
+  .session-age { font: 700 13px/1 var(--display); color: var(--text-3); }
+  .session-right { gap: 3px; }
+
+  /* A subagent is a smaller line under whoever called it. */
+  .session-card.subagent { min-height: 42px; padding: 2px 14px 2px 50px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; }
+  .session-card.subagent .agent-mark { width: 32px; height: 32px; }
+  .session-card.subagent .session-title { font-size: 15px; font-weight: 700; }
+  .session-card.subagent .message-preview, .session-card.subagent .session-description { font-size: 13px; }
+  .session-card.subagent::before { content: none; }
+  .subagent-tag:not(.workflow-tag) { display: none; }
+  .session-card.subagent:is(:hover, :focus-visible)::after { left: 16px; margin-top: -8px; }
+
+  /* A status is a coloured word. */
+  .badge { min-width: 0; padding: 0; background: none; border: 0; color: var(--text-3); font: 800 14px/1.2 var(--display); letter-spacing: 0; text-transform: none; text-shadow: var(--fy-ink); }
+  .badge.green { background: none; color: var(--ok); }
+  .badge.amber { background: none; color: var(--warn); }
+  .badge.red { background: none; color: var(--danger); }
+  .badge .dot { display: none; }
+
+  /* The menu's hand points at the selected command. */
+  .sidebar { inset: 6px auto 6px 6px; width: calc(var(--sidebar-w) - 8px); padding: 14px 8px 10px; }
+  .sidebar-label { margin: 14px 8px 2px; font: 700 13px/1 var(--display); letter-spacing: 0; text-transform: none; color: var(--text-3); }
+  .sidebar .nav-item { position: relative; min-height: 34px; padding: 4px 8px 4px 34px; background: none; color: var(--text-2); font: 700 16px/1.1 var(--display); }
+  .sidebar .nav-item:hover { background: #ffffff14; color: #fff; }
+  .sidebar .nav-item.active { background: none; color: #fff; }
+  .sidebar .nav-item.active::before { content: ''; position: absolute; left: -8px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
+  .sidebar .nav-item .icon { display: none; }
+  .nav-count, .nav-item.active .nav-count { padding: 0; background: none; color: var(--text-2); font: 700 15px/1 var(--display); }
+  .sidebar > .top-actions { border-top-color: #ffffff26; }
+
+  /* The world map's corner map: grey lands on a see-through sea, each party a block of dots on its land, the camera's red dot and yellow cone while a fight's open (fantasy/worldmap.js). */
+  .theme-console { display: block; position: relative; margin: 0 0 4px; }
+  .console-lamps, .console-heading, .console-power, .console-vector, .console-sweep, .console-signal { display: none; }
+  .console-screen { position: relative; box-sizing: content-box; width: calc(100% - 4px); aspect-ratio: 1; overflow: hidden; isolation: isolate; border: 2px solid #a8b0a4; background: #021610b8 url('/fantasy/world.svg') 0 0 / 100% 100%; image-rendering: pixelated; box-shadow: 2px 2px 0 #000000c8; }
+  .console-contacts { position: absolute; inset: 0; z-index: 1; }
+  .console-contact { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .console-screen[data-world] .console-contact { left: var(--world-x) !important; top: var(--world-y) !important; }
+  .console-screen:not([data-world]) .console-contact, .console-contact[data-off-world] { display: none; }
+  .console-contact::after { content: ''; position: absolute; left: 1px; top: 1px; width: 6px; height: 6px; background: #eef2ea; box-shadow: 2px 2px 0 #000000c8; }
+  .console-contact[data-status=working]::after { background: var(--ok); }
+  .console-contact:is([data-status=question], [data-status=permission])::after { background: var(--warn); }
+  .console-contact[data-status=error]::after { background: var(--danger); }
+  .console-contact[data-status=offline]::after { background: #6f7a6e; }
+  .console-contact:is(:hover, :focus-visible, [data-tracked]) { z-index: 1; outline: 0; }
+  .console-contact:is(:hover, :focus-visible, [data-tracked])::after { box-shadow: 0 0 0 2px #000000c8, 0 0 0 4px #fff; }
+  .world-look { display: block; position: absolute; z-index: 0; pointer-events: none; }
+  .world-look::before { content: ''; position: absolute; left: 0; top: -14px; width: 34px; height: 28px; background: #ece45c; opacity: .55; clip-path: polygon(0 50%, 100% 0, 100% 100%); transform: rotate(var(--turn)); transform-origin: 0 50%; }
+  .world-look::after { content: ''; position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; background: #e8282c; box-shadow: 2px 2px 0 #000000c8; }
+  .console-readout { position: absolute; left: 4px; right: 6px; bottom: 6px; z-index: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 2px 6px; background: #000000b0; pointer-events: none; text-shadow: var(--fy-ink); }
+  .theme-console:has(.console-contact[data-tracked][data-south]) .console-readout { top: 4px; bottom: auto; }
+  .console-readout[data-status=''] { display: none; }
+  .console-track-label { flex: none; color: var(--text-3); font: 700 12px/1.3 var(--display); }
+  .console-readout[data-status=working] .console-track-label { color: var(--ok); }
+  .console-readout:is([data-status=question], [data-status=permission]) .console-track-label { color: var(--warn); }
+  .console-readout:is([data-status=error], [data-status=offline]) .console-track-label { color: var(--danger); }
+  .console-track-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font: 700 12px/1.3 var(--display); }
+  .console-empty:not([hidden]) { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: #021610b0; color: var(--text-2); font: 700 13px var(--display); text-shadow: var(--fy-ink); }
+  .theme-console[data-disconnected=true] .console-contacts { opacity: .35; }
+  @media (prefers-reduced-motion: no-preference) {
+    .console-contact:is([data-status=question], [data-status=permission])::after { animation: fy-world-blink 1s steps(1) infinite; }
+  }
+
+  .theme-choice { padding-left: 34px; position: relative; font: 700 16px/1.1 var(--display); color: var(--text-2); }
+  .theme-choice:hover { background: #ffffff14; color: #fff; }
+  .theme-choice[aria-pressed=true] { background: none; color: #fff; }
+  .theme-choice[aria-pressed=true]::after { content: none; }
+  .theme-choice[aria-pressed=true]::before { content: ''; position: absolute; left: -6px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
+  /* The crest and a gold wordmark, as on the title screen. */
+  .brand-variant.fantasy .brand-mark { width: 36px; height: 36px; margin: -3px -2px; padding: 0; background: url('/fantasy/mark.svg') center / contain no-repeat; box-shadow: none; filter: drop-shadow(0 2px 0 #0008); }
+  .brand-variant.fantasy .brand-mark i { display: none; }
+  .brand-variant.fantasy .brand-name { overflow: visible; padding: 0 .1em; font: 900 16px/1.1 'Cinzel Decorative', Georgia, serif; letter-spacing: 0; color: #ffd84f; text-shadow: none; filter: drop-shadow(0 1px 0 #2a1404) drop-shadow(0 2px 0 #2a1404); }
+  @supports (background-clip: text) or (-webkit-background-clip: text) { .brand-variant.fantasy .brand-name { color: transparent; background: var(--fy-gold); -webkit-background-clip: text; background-clip: text; } }
+
+  /* A message is a dialogue window, the speaker's name on a tab across its top edge. */
+  .history-content { padding-top: 24px; }
+  .recent-message:not(.tool, .notice) { position: relative; padding: 10px 11px 7px; background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; color: var(--text); font-weight: 500; text-shadow: var(--fy-ink); }
+  .history-content > .recent-message:not(.tool, .notice, :first-child) { margin-top: 24px; }
+  .recent-message:not(.tool, .notice) > .message-meta { position: absolute; top: -20px; left: 4px; justify-content: flex-start; gap: 9px; max-width: calc(100% - 8px); margin: 0; padding: 0 7px; background: var(--fy-tab); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: none; font: 700 13px/1.25 var(--display); color: var(--text-3); white-space: nowrap; }
+  .recent-message:not(.tool, .notice) > .message-meta strong { overflow: hidden; text-overflow: ellipsis; color: var(--warn); font-weight: 800; }
+  /* What you said is the other side of the conversation: the same window at dusk, its tab on the right. */
+  .recent-message.user { --accent: #9ccfff; --accent-2: #9ccfff; --panel-2: #ffffff1c; --sunken: #050d24b0; --line: #ffffff33; background: url('/fantasy/dither.svg') 0 0 / 8px 8px, linear-gradient(120deg, #2c58a4 6.25%, #2c549c 0 12.5%, #285098 0 18.75%, #244890 0 25%, #244488 0 31.25%, #204080 0 37.5%, #1c3c78 0 43.75%, #1c3874 0 50%, #18346c 0 56.25%, #183064 0 62.5%, #142c5c 0 68.75%, #142858 0 75%, #102450 0 81.25%, #102048 0 87.5%, #0c1c44 0 93.75%, #0c183c 0); background-clip: padding-box; }
+  .recent-message.user > .message-meta { left: auto; right: 4px; background: #102858; background-clip: padding-box; }
+  .recent-message.tool { border-left-color: var(--text-3); }
+  .tool-call { color: var(--text-2); }
+
+  /* A request is a dialogue with choices: the hand picks one. */
+  .request-box { border-image-source: url('/fantasy/frame-gold.svg'); }
+  .request-box > .eyebrow { display: none; }
+  .answer-option { position: relative; min-height: 36px; margin: 0; padding: 4px 8px 4px 46px; font-weight: 700; }
+  .answer-option input { position: absolute; opacity: 0; pointer-events: none; }
+  .answer-option:has(input:checked) { background: none; border: 0; box-shadow: none; color: var(--warn); }
+  .answer-option:has(input:checked) span span { color: var(--text-2); }
+  .answer-option:is(:hover, :has(input:checked, input:focus-visible))::before { content: ''; position: absolute; left: 2px; top: 50%; width: 42px; height: 24px; margin-top: -12px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
+  .empty { border-style: solid; }
+  .integrations { padding: 5px 10px; }
+}
+/* A project's path shows when pointed at, and not at all on touch. Its new-agent buttons always show. */
+@media (hover: none) {
+  :root[data-theme=fantasy] .project-path { display: none; }
+}
+@media (hover: hover) {
+  :root[data-theme=fantasy] .project-path { opacity: 0; transition: opacity .1s; }
+  :root[data-theme=fantasy] .project-group:is(:hover, :focus-within) .project-path { opacity: 1; }
+}
+/* The rail and the phone have no room for the hand's gutter. */
+@media (max-width: 900px) {
+  :root[data-theme=fantasy] .theme-console { display: none; }
+  :root[data-theme=fantasy] .sidebar .nav-item { padding-left: 8px; justify-content: center; }
+  :root[data-theme=fantasy] .sidebar .nav-item .icon { display: block; }
+  :root[data-theme=fantasy] .sidebar .nav-item.active::before { left: -3px; width: 21px; height: 12px; margin-top: -6px; }
+  :root[data-theme=fantasy] .sidebar { padding-inline: 4px; }
+}
+@media (max-width: 640px) {
+  :root[data-theme=fantasy] .session-card { min-height: 58px; padding-inline: 16px 10px; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 9px; }
+  :root[data-theme=fantasy] .agent-mark { width: 44px; height: 44px; }
+  :root[data-theme=fantasy] .session-card.subagent { padding-left: 34px; grid-template-columns: 28px minmax(0, 1fr) auto; }
+  :root[data-theme=fantasy] .session-card.subagent .agent-mark { width: 28px; height: 28px; }
+  :root[data-theme=fantasy] .session-card:is(:hover, :focus-visible)::after { left: -6px; }
+  :root[data-theme=fantasy] .session-title { font-size: 16px; }
+  :root[data-theme=fantasy] .branch { display: none; }
+  :root[data-theme=fantasy] .usage-accounts { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+
+/* The title screen: the party squaring up to a wyvern (baked by fantasy-title.html), the crest and a gold wordmark over the canopy,
+   the PIN in a window with the hand pointing at it. Portrait screens get a still shot over the party's shoulders with the canopy left clear. */
+:root[data-theme=fantasy] {
+  .login-screen { isolation: isolate; overflow: hidden; align-content: center; background: #0b1a17; }
+  .login-screen::before { content: ''; position: absolute; inset: 0; z-index: -1; background: radial-gradient(60% 34% at 50% 30%, #04201ab3, #0000), radial-gradient(120% 90% at 50% 45%, #0000 55%, #020d0bcc), linear-gradient(#0000 70%, #04201a99), url('/fantasy/title.webp') center 62% / cover; }
+  .login-screen::after { content: ''; position: absolute; inset: 0 0 -360px; z-index: -1; pointer-events: none; opacity: .7; background-size: 280px 360px; background-image: radial-gradient(circle at 12% 18%, #e8ffb4 0 1.5px, #0000 2.5px), radial-gradient(circle at 58% 64%, #c8f8a0 0 1px, #0000 2px), radial-gradient(circle at 83% 31%, #fff4c4 0 1.5px, #0000 2.5px), radial-gradient(circle at 37% 88%, #c8f8a0 0 1px, #0000 2px), radial-gradient(circle at 71% 9%, #e8ffb4 0 1px, #0000 2px); }
+  .login-card { width: min(100%, 560px); padding: 0; gap: clamp(28px, 8vh, 64px); background: none; border: 0; box-shadow: none; }
+  .login-symbol { display: none; }
+  .login-card .brand-variant.fantasy { flex-direction: column; gap: clamp(6px, 1.4vh, 12px); }
+  .login-card .brand-variant.fantasy .brand-mark { margin: 0; width: clamp(64px, 15vw, 116px); height: clamp(64px, 15vw, 116px); filter: drop-shadow(0 4px 0 #0009) drop-shadow(0 0 18px #ffc73855); }
+  .login-card .brand-variant.fantasy .brand-name { font-size: clamp(30px, 8.4vw, 68px); line-height: 1.05; filter: drop-shadow(0 1px 0 #3a1c04) drop-shadow(0 3px 0 #2a1404) drop-shadow(0 6px 14px #000c); }
+  .login-card .brand-variant.fantasy::after { content: 'AI Control'; font: 800 clamp(11px, 1.6vw, 14px)/1 var(--display); letter-spacing: .42em; text-indent: .42em; text-transform: uppercase; color: #e4e3cb; text-shadow: 0 2px 0 #000b, 0 0 10px #000; }
+  @supports (background-clip: text) or (-webkit-background-clip: text) {
+    .login-card .brand-variant.fantasy .brand-name { color: transparent; -webkit-text-stroke: 1px #6a3a08; background: linear-gradient(100deg, #0000 42%, #fffbe0d0 50%, #0000 58%) -200% 0 / 200% 100% no-repeat, var(--fy-gold); -webkit-background-clip: text; background-clip: text; }
+  }
+  .login-form { position: relative; width: min(100%, 320px); align-self: center; gap: 8px; padding: 9px 11px 9px 47px; background: var(--fy-win); background-clip: padding-box; border: 6px solid transparent; border-image: var(--fy-frame); border-radius: 0; box-shadow: 0 10px 30px #000a; }
+  .login-form::before { content: ''; position: absolute; left: 7px; top: 18px; width: 42px; height: 24px; background: url('/fantasy/hand.svg') 0 0 / 100% 100%; }
+  .login-form input { min-height: 42px; }
+  .login-form .primary { margin-top: 0; min-height: 38px; }
+  .login-form .form-error:empty { display: none; }
+  @media (max-aspect-ratio: 4/5) {
+    .login-screen { align-content: start; }
+    .login-screen::before { background: radial-gradient(90% 30% at 50% 18%, #04201ab3, #0000), linear-gradient(#0000 75%, #04201a99), url('/fantasy/title-portrait.webp') center 40% / cover; }
+    .login-card { gap: clamp(18px, 4vh, 40px); }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .login-screen::before { animation: fy-title-drift 40s ease-in-out infinite alternate; }
+    .login-screen::after { animation: fy-motes 24s linear infinite; }
+    .login-card .brand-variant.fantasy { animation: fy-title-in .6s cubic-bezier(.2, .8, .2, 1) both; }
+    .login-card .brand-variant.fantasy .brand-mark { animation: fy-gem-glint .6s ease-out .45s; }
+    .login-card .brand-variant.fantasy .brand-name { animation: fy-title-sheen 7s ease-in-out 1s infinite; }
+    .login-form { animation: fy-window-open .2s ease-out .35s both; transform-origin: top; }
+  }
+}
+/* Scrollbars are the windows' stone edge on their dark ground. Forced colours keep the system's. */
+@media (forced-colors: none) {
+  :root[data-theme=fantasy] {
+    &, * { scrollbar-color: #b9bab0 #04201a; }
+    @supports not (scrollbar-color: red blue) {
+      ::-webkit-scrollbar { width: 10px; height: 10px; background: #04201a; }
+      ::-webkit-scrollbar-thumb { border: 2px solid #04201a; border-radius: 0; background: #b9bab0; }
+      ::-webkit-scrollbar-thumb:hover { background: #f4f2ea; }
+      ::-webkit-scrollbar-corner { background: #04201a; }
+    }
+  }
+}
+/* The map's camera mark lives in the console every theme shares; only Fantasy shows it. */
+.world-look { display: none; }
+@keyframes fy-world-blink { 50% { opacity: .15; } }
+@keyframes fy-title-drift { to { transform: scale(1.07); } }
+@keyframes fy-motes { to { transform: translateY(-360px); } }
+@keyframes fy-title-in { from { opacity: 0; transform: scale(1.12); filter: blur(4px); } }
+@keyframes fy-title-sheen { 0%, 70% { background-position: -200% 0, 0 0; } 100% { background-position: 200% 0, 0 0; } }
+@keyframes fy-window-open { from { transform: scaleY(.1); opacity: 0; } }
+
+/* The boot: black, a gem assembling from four facets, its name, and a fade into whatever is underneath. */
+.fy-boot { position: fixed; inset: 0; z-index: 1000; display: grid; place-content: center; justify-items: center; gap: 22px; background: #000; animation: fy-boot-out .35s ease-in 1.95s forwards; cursor: pointer; }
+.fy-boot p { margin: 0; color: #f6f1e4; font: 700 22px/1 var(--display, sans-serif); letter-spacing: .32em; text-indent: .32em; opacity: 0; animation: fy-boot-name .4s ease-out .95s forwards; }
+.fy-gem { position: relative; width: 112px; height: 112px; filter: drop-shadow(0 0 0 #fff0); animation: fy-gem-glint .5s ease-out .85s; }
+.fy-gem i { position: absolute; inset: 0; opacity: 0; animation: fy-facet .55s cubic-bezier(.2, .8, .2, 1) .15s forwards; }
+.fy-gem i:nth-child(1) { background: #ffc738; clip-path: polygon(50% 0, 100% 50%, 50% 50%); --from: 34px, -34px; }
+.fy-gem i:nth-child(2) { background: #ff7a3d; clip-path: polygon(100% 50%, 50% 100%, 50% 50%); --from: 34px, 34px; animation-delay: .25s; }
+.fy-gem i:nth-child(3) { background: #3fb56a; clip-path: polygon(50% 100%, 0 50%, 50% 50%); --from: -34px, 34px; animation-delay: .35s; }
+.fy-gem i:nth-child(4) { background: #56c2a6; clip-path: polygon(0 50%, 50% 0, 50% 50%); --from: -34px, -34px; animation-delay: .45s; }
+@keyframes fy-facet { from { opacity: 0; transform: translate(var(--from)); } to { opacity: 1; transform: none; } }
+@keyframes fy-gem-glint { 40% { filter: brightness(1.7) drop-shadow(0 0 22px #fff8); } }
+@keyframes fy-boot-name { to { opacity: 1; } }
+@keyframes fy-boot-out { to { opacity: 0; } }

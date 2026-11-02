@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutOffice, MAX_SUBAGENTS } from '../client/office/layout.js';
+import { layoutOffice, MAX_SUBAGENTS, COFFEE_X, kitchenDoor, KITCHEN_DOOR_W } from '../client/office/layout.js';
 
 const s = (id, project, extra = {}) => ({ id, project, cwd: `/p/${project}`, status: 'idle', ...extra });
 
@@ -50,6 +50,18 @@ test('subagents sit on the parent desk with overflow', () => {
   assert.equal(desk.overflow, 2);
   assert.equal(layoutOffice([s('p', 'x'), ...kids]).desks.size, 1);
 });
+test('a finished helper sits a minute, walks out, then is gone; helpers keep their seats', () => {
+  const now = 1e7, kid = (id, idle) => s(id, 'x', { parentId: 'p', status: idle === undefined ? 'working' : 'idle', updatedAt: now - (idle ?? 0) });
+  const at = (kids, previous, when = now) => layoutOffice([s('p', 'x'), ...kids], previous, when);
+  const first = at([kid('a'), kid('b'), kid('c', 30_000)]);
+  assert.deepEqual(first.desks.get('p').subagents, ['a', 'b', 'c']);
+  assert.deepEqual(first.desks.get('p').leaving, []);
+  const later = at([kid('b'), kid('c', 70_000), kid('a', 10_000)], first);
+  assert.deepEqual(later.desks.get('p').subagents, ['a', 'b', 'c'], 'same seats, whatever order they come in');
+  assert.deepEqual(later.desks.get('p').leaving, ['c']);
+  assert.deepEqual(at([kid('b'), kid('c', 95_000), kid('a', 10_000)], later).desks.get('p').subagents, ['a', 'b'], 'gone once it has had time to walk out');
+  assert.deepEqual(at([kid('a'), kid('d', 70_000)]).desks.get('p').subagents, ['a'], 'one already done when first seen never sits down');
+});
 test('orphan subagents are dropped', () => {
   assert.equal(layoutOffice([s('k', 'x', { parentId: 'gone' })]).desks.size, 0);
 });
@@ -91,3 +103,48 @@ test('a pod knows the folder to start another agent in, from someone still there
   assert.equal(pod.width, 1.6, 'no spare desk: two sit at one pair');
   assert.equal(layoutOffice([{ id: 'a', project: 'x', status: 'idle' }]).pods[0].cwd, undefined, 'nowhere to start one without a folder');
 });
+
+test('the coffee corner fits by the door wall, and the kitchen door clears the whiteboard and the counter', () => {
+  assert.ok(COFFEE_X - 1.03 >= 0);
+  for (let width = 8; width <= 40; width += 0.25) {
+    assert.ok(COFFEE_X + 0.6 <= width / 2 - 2, `width ${width}`); // the mug shelf, left of the waiting board
+    assert.ok(COFFEE_X + 1.3 + 0.17 <= width / 2 - 0.75 - 0.1, `width ${width}`); // the bin, left of the extinguisher
+  }
+  for (let depth = 8; depth <= 40; depth += 0.25) {
+    const door = kitchenDoor(depth);
+    assert.equal(door, depth - 1.5);
+    assert.ok(door - KITCHEN_DOOR_W / 2 >= depth / 2 + 1.55, `depth ${depth}`); // the whiteboard's frame
+    assert.ok(depth - 3.05 + 0.17 <= door - KITCHEN_DOOR_W / 2); // the water cooler
+    assert.ok(depth - 0.32 - 0.35 >= door + KITCHEN_DOOR_W / 2); // the counter's front
+  }
+});
+test('a newcomer takes the oldest reserved free slot, not the lowest free one', () => {
+  const l = layoutOffice([s('n', 'p')], null, 1, new Map([['/p/p', [5, 3]]]));
+  assert.equal(l.desks.get('n').slot, 5);
+});
+test('a reserved slot already taken is skipped', () => {
+  const first = layoutOffice([s('a', 'p')], null, 1);
+  assert.equal(layoutOffice([s('a', 'p'), s('n', 'p')], first, 2, new Map([['/p/p', [0, 4]]])).desks.get('n').slot, 4);
+});
+test('a reserved slot goes to the newcomer even while someone who has left still holds it', () => {
+  const first = layoutOffice([s('a', 'p'), s('b', 'p')], null, 1), left = layoutOffice([s('b', 'p')], first, 2), slot = first.desks.get('a').slot;
+  const next = layoutOffice([s('b', 'p'), s('n', 'p')], left, 3, new Map([['/p/p', [slot]]]));
+  assert.equal(next.desks.get('n').slot, slot);
+  assert.equal(next.desks.has('a'), false, 'the one who left is off the floor');
+  assert.equal(next.desks.get('b').slot, first.desks.get('b').slot);
+});
+test('a reservation clears nobody before its agent has come', () => {
+  const first = layoutOffice([s('a', 'p')], null, 1), left = layoutOffice([], first, 2), waiting = layoutOffice([], left, 3, new Map([['/p/p', [0]]]));
+  assert.equal(waiting.desks.has('a'), true);
+  assert.equal(waiting.pods.length, 1, 'the project keeps its place');
+});
+test('a pod still knows its folder while its last session walks out', () => {
+  const first = layoutOffice([s('a', 'x')], null, 1), left = layoutOffice([], first, 2);
+  assert.equal(left.pods[0].cwd, '/p/x');
+  assert.equal(layoutOffice([], left, 3).pods[0].cwd, '/p/x');
+});
+test('reservations move nobody already seated', () => {
+  const first = layoutOffice([s('a', 'p'), s('b', 'p')], null, 1), next = layoutOffice([s('a', 'p'), s('b', 'p')], first, 2, new Map([['/p/p', [0]]]));
+  assert.equal(next.desks.get('a').slot, first.desks.get('a').slot); assert.equal(next.desks.get('b').slot, first.desks.get('b').slot);
+});
+test('no reservation means the same seats as before', () => assert.equal(layoutOffice([s('a', 'p')], null, 1).desks.get('a').slot, 0));

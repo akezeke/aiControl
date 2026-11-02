@@ -1,5 +1,5 @@
-// The office goose: it waddles about between the desks, honks, makes off with things (props.js) and won't have the boss near
-// it. Come close and it charges, wings out, and nips; hit it with anything, click it or take back what it took, and it chases
+// The office goose: it waddles about between the desks, honks, makes off with things (props.js), creeps up on whoever's asleep
+// at their desk to honk them awake, and won't have the boss near it. Come close and it charges, wings out, and nips; hit it with anything, click it or take back what it took, and it chases
 // you for longer. Its ways round the furniture come from path.js. With reduced motion it stands still and a click just honks.
 import * as THREE from 'three';
 import { piece } from './furniture.js';
@@ -10,8 +10,8 @@ export const GOOSE = 'goose'; // its id for the bubbles and props.js's hits
 const WADDLE = 0.75, HAUL = 0.95, CHASE = 2.6, STRIDE = 0.07; // m/s (you walk at 4); metres per radian of a leg's swing
 const NEAR = 1.3, NIP = 0.55, NECK = 0.95, SHOVE = 0.35; // metres
 const SHORT = 2.5, LONG = 6, CALM = 8, REPLAN = 0.5; // seconds: a chase for coming close, and for anything worse; then it leaves you be; how often a chase looks for you again
-const HONKS = [20, 40], THEFTS = [40, 90], LOITER = [2, 6]; // seconds
-const LINES = ['HONK!', 'Honk!', 'HONK HONK!'], IDLE = ['look', 'peck', 'preen'];
+const HONKS = [20, 40], THEFTS = [40, 90], PRANKS = [45, 120], LOITER = [2, 6]; // seconds
+const LINES = ['HONK!', 'Honk!', 'HONK HONK!'], WOKEN = ['Wha—?!', "I'm up! I'm up!", 'Huh?!', 'Not again…'], IDLE = ['look', 'peck', 'preen'];
 const WHITE = '#f7f5ef', ORANGE = '#ff9f1c', INK = '#1b1a1f';
 // The shoulder the head is placed from; where the neck starts, deep in the chest so it grows out of the body at any angle; the
 // beak's tip on the head.
@@ -70,12 +70,12 @@ function bendNeck(tube, { lean, turn, len, bend, bow }) {
 }
 
 // `walkable()`: path.js's grid of the room as it is now; `busy()`: you're in the overview or off to someone, so it lets you be;
-// `say(icon, text)`: its speech bubble.
-export function createGoose(scene, { props, player, walkable, bounds, busy, reducedMotion, say }) {
+// `say(icon, text)`: its speech bubble; `sleepers()`: [{ id, at }] of who's asleep and their seat; `wake(id, line)`: one jumps.
+export function createGoose(scene, { props, player, walkable, bounds, busy, reducedMotion, say, sleepers, wake }) {
   const { root, body, neck, head, jaw, wings, legs } = model(); root.visible = false; scene.add(root);
   const at = root.position, pose = { ...REST }, aim = { ...REST }, dir = new THREE.Vector3(), local = new THREE.Vector3(), tip = new THREE.Vector3(), above = new THREE.Vector3();
-  let t = 0, yaw = 0, phase = 0, stepping = 0, mode = 'loiter', idle = 'look', side = 1, until = 0, path = null, loot = null, mine = false, last = null; // mine: it's had it in its beak; last: what it took last time
-  let chaseUntil = 0, replanAt = 0, calmUntil = 0, honkUntil = 0, honkIn = rand(HONKS), stealIn = rand(THEFTS);
+  let t = 0, yaw = 0, phase = 0, stepping = 0, mode = 'loiter', idle = 'look', side = 1, until = 0, path = null, loot = null, mine = false, last = null, victim = null; // mine: it's had it in its beak; last: what it took last time
+  let chaseUntil = 0, replanAt = 0, calmUntil = 0, honkUntil = 0, honkIn = rand(HONKS), stealIn = rand(THEFTS), prankIn = rand(PRANKS);
 
   const honk = (icon = '🪿') => { honkUntil = t + 0.6; say(icon, pick(LINES)); };
   const loiter = (seconds = rand(LOITER)) => { mode = 'loiter'; path = null; until = t + seconds; idle = pick(IDLE); side = Math.random() < 0.5 ? 1 : -1; };
@@ -94,6 +94,14 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     for (const b of props.loose().filter(b => b !== last).sort(() => Math.random() - 0.5).slice(0, 4)) {
       const stand = nearestOpen(grid, b.pos);
       if (stand && reach(stand, b.pos) && go(stand, 'fetch')) { loot = last = b; return; }
+    }
+  };
+  // Someone asleep it can stand beside (the open spot nearest their seat), from a few tries.
+  const prank = () => {
+    const grid = walkable();
+    for (const s of sleepers().sort(() => Math.random() - 0.5).slice(0, 3)) {
+      const stand = nearestOpen(grid, s.at);
+      if (stand && flat(stand, s.at) < 1.2 && go(stand, 'sneak')) { victim = s; return; }
     }
   };
   const drop = () => { if (loot?.carried) props.drop(loot); loot = null; mine = false; };
@@ -119,7 +127,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     const you = player.position;
     if (loot?.held) { const taken = mine; drop(); if (taken) provoke(LONG, '💢'); else loiter(); } // you got there first, or took it back
     if (mode !== 'chase' && t > calmUntil && flat(you, at) < NEAR && !busy()) provoke(SHORT);
-    if (mode === 'loiter' || mode === 'walk') { honkIn -= dt; stealIn -= dt; }
+    if (mode === 'loiter' || mode === 'walk') { honkIn -= dt; stealIn -= dt; prankIn -= dt; }
     if (honkIn < 0) { honkIn = rand(HONKS); honk(); }
     if (mode === 'chase') {
       if (busy() || t > chaseUntil) { calmUntil = t + 2; loiter(1); return; }
@@ -137,8 +145,14 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       else if (t > until && !go(spot(3), 'haul')) { mode = 'drop'; until = t + 0.6; } // nowhere to take it: down it goes here
     } else if (mode === 'haul') { if (follow(HAUL, dt)) { mode = 'drop'; until = t + 0.6; } }
     else if (mode === 'drop') { if (t > until) { drop(); honk(); loiter(); } }
-    else if (t > until) {
+    else if (mode === 'sneak') { if (follow(WADDLE * 0.6, dt)) { mode = 'aim'; until = t + 0.8; } }
+    // A moment lining up on them, then the honk, if they're still asleep.
+    else if (mode === 'aim') {
+      face(victim.at, dt);
+      if (t > until) { if (sleepers().some(s => s.id === victim.id)) { honk(); wake(victim.id, pick(WOKEN)); } victim = null; loiter(); }
+    } else if (t > until) {
       if (stealIn < 0) { stealIn = rand(THEFTS); steal(); }
+      else if (prankIn < 0) { prankIn = rand(PRANKS); prank(); }
       if (mode === 'loiter' && !go(spot(1), 'walk')) loiter(1);
     }
   }
@@ -154,6 +168,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       Object.assign(aim, { lean: Math.acos(THREE.MathUtils.clamp(local.y / d, -1, 1)), turn: Math.atan2(local.x, local.z), len: THREE.MathUtils.clamp(d - 0.13, 0.25, NECK), bend: 0.06, pitch: Math.atan2(-local.y, Math.hypot(local.x, local.z)) });
     } else if (mode === 'drop') Object.assign(aim, { lean: 1.7, len: 0.3, bend: 0, bow: -0.3, pitch: 0.7 });
     else if (loot?.carried) Object.assign(aim, { lean: 0.55, pitch: 0.25 });
+    else if (mode === 'sneak' || mode === 'aim') Object.assign(aim, { lean: 1.05, len: 0.38, bend: 0.1, pitch: -0.05 }); // creeping, neck out low
     else if (mode === 'walk' || mode === 'fetch') aim.lean = 0.3 + Math.sin(phase * 2) * 0.08; // bobbing along
     else if (idle === 'look') { aim.turn = Math.sin(t * 0.8 + side) * 0.35; aim.look = Math.sin(t * 0.8 + side) * 0.6; }
     else if (idle === 'peck') { const peck = Math.sin(t * 1.3 + side) > 0 ? Math.max(0, Math.sin(t * 11)) ** 3 : 0; Object.assign(aim, { lean: 1.95 + 0.4 * peck, len: 0.42, bend: 0.05, bow: -0.35, pitch: 1 }); }

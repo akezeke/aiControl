@@ -261,8 +261,10 @@ test('a parked Claude session is idle, whatever its registration last said', asy
   const { writeFile } = await import('node:fs/promises');
   await writeFile(join(dir, '789.json'), JSON.stringify({ pid: 789, procStart: 'live', sessionId: 'parked', cwd: '/home/c/project', status: 'busy', parkedJobId: 'job' }));
   const adapter = new ClaudeAdapter(new RequestStore(), join(dir, 'unused.sock'), { sessionsDir: dir, alive: async () => true });
+  adapter.hooks.set('parked', { status: 'working', updatedAt: 0 });
   await adapter.refresh();
   assert.equal(adapter.list()[0].status, 'idle');
+  assert.equal(adapter.list()[0].parked, true);
 });
 
 test('Tailscale address validation refuses public, LAN and wildcard interfaces', () => {
@@ -324,10 +326,11 @@ test('an idle session whose last reply asks something needs you, like a request 
     { id: 'c', status: 'idle', parentId: 'a', messages: asking },
     { id: 'd', status: 'idle', messages: asking },
     { id: 'e', status: 'idle', messages: [{ role: 'assistant', text: 'Done.' }] },
+    { id: 'f', status: 'idle', parked: true, messages: asking },
   ];
   const request = { id: 'r', sessionId: 'd', kind: 'permission', provider: 'codex', createdAt: 1 };
   const merged = Object.fromEntries(mergeSessions(sessions, [request]).map(s => [s.id, [s.status, s.asks || '']]));
-  assert.deepEqual(merged, { a: ['question', 'Shall I commit it?'], b: ['working', ''], c: ['idle', ''], d: ['permission', ''], e: ['idle', ''] });
+  assert.deepEqual(merged, { a: ['question', 'Shall I commit it?'], b: ['working', ''], c: ['idle', ''], d: ['permission', ''], e: ['idle', ''], f: ['idle', ''] });
 });
 test('a request for a session not listed yet shows a connecting session', () => {
   const [session] = mergeSessions([], [{ id: 'r', sessionId: 'codex:x', kind: 'question', provider: 'codex', createdAt: 5 }]);
