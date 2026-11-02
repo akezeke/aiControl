@@ -5,7 +5,7 @@
 
 :root[data-theme=heroes] {
   --gold: #b39758;
-  --stone: linear-gradient(110deg, #14234420, #080f2366), url('/heroes-stone.webp') 0 0 / 512px;
+  --stone: linear-gradient(110deg, #14234420, #080f2366), url('/heroes-stone.webp') 0 0 / 128px 128px round border-box;
   /* Frames and scrolls are pre-sized so the corner flourish is shown at its own pixel size (slice = display width). */
   --f24: url('/heroes-frame-24.webp') 24 / 24px / 2px round; --f32: url('/heroes-frame-32.webp') 32 / 32px / 3px round; --f36: url('/heroes-frame-36.webp') 36 / 36px / 4px round;
   --f40: url('/heroes-frame-40.webp') 40 / 40px / 4px round; --f48: url('/heroes-frame-48.webp') 48 / 48px / 5px round; --f64: url('/heroes-frame-64.webp') 64 / 64px / 6px round;
@@ -32,11 +32,11 @@
 
   /* A narrow castle panel. Never transform the sidebar: its menu uses fixed positioning. */
   .sidebar { padding: 14px 9px 15px; background: var(--stone); border: 7px solid transparent; border-image: var(--f48); box-shadow: 4px 0 0 #0a1020, 8px 0 16px #0007; }
-  .sidebar .brand { justify-content: center; gap: 9px; margin: 0 0 9px; padding-bottom: 18px; background: url('/heroes-flourish.svg') center bottom / 160px 24px no-repeat; }
+  .sidebar .brand { justify-content: center; gap: 9px; margin: 0 0 9px; padding-bottom: 22px; background: url('/heroes-flourish.svg') center bottom / 160px 13px no-repeat; }
   .sidebar .brand-variant.heroes { flex-direction: column; gap: 2px; }
   .sidebar .brand-mark { width: 38px; height: 48px; }
   .sidebar .brand-name { font-size: 28px; letter-spacing: .1em; }
-  .sidebar-label { margin: 10px 7px 5px; padding-top: 8px; color: #dcc486; font: 700 11px/1.4 var(--display); letter-spacing: .14em; text-shadow: 1px 1px #000; background: url('/heroes-flourish.svg') right top / 95px 14px no-repeat; }
+  .sidebar-label { margin: 6px 7px 3px; padding-top: 19px; color: #dcc486; font: 700 11px/1.4 var(--display); letter-spacing: .14em; text-shadow: 1px 1px #000; background: url('/heroes-flourish.svg') center top / 160px 13px no-repeat; }
   .main-nav, .project-nav { gap: 4px; }
   .nav-item { border: 1px solid transparent; min-height: 36px; padding: 7px 9px; }
   .nav-item:hover { border-color: #7c8ca4; background: #2b4369; }
@@ -155,7 +155,7 @@
     --line: #bbaa7c; --line-2: #978253;
     --accent: #345378; --accent-soft: #cbd5d0; --ok: #345b27; --ok-soft: #d4dfb4; --danger: #9b322e; --danger-soft: #f0c5ab;
     padding-inline: max(22px, env(safe-area-inset-left)) max(22px, env(safe-area-inset-right));
-    background: linear-gradient(#07102170, #07102170), url('/heroes-stone.webp') 0 0 / 512px;
+    background: linear-gradient(#07102170, #07102170), url('/heroes-stone.webp') 0 0 / 128px 128px round border-box;
     color: var(--text);
   }
   .history-content { padding-block: 12px 20px; }
@@ -168,7 +168,7 @@
   .message-text pre, .request-code, .request-details pre { padding: 10px 16px; border: 8px solid transparent; border-image: var(--sink); border-radius: 0; }
   .message-text pre { background: #ddc79c; }
   .message-text blockquote { padding-left: 20px; border: 0; background: url('/heroes-binding.svg') left top / 8px 22px repeat-y; }
-  .message-text hr { height: 18px; border: 0; background: url('/heroes-flourish.svg') center / 144px 22px no-repeat; }
+  .message-text hr { height: 13px; margin: 14px 0; border: 0; background: url('/heroes-flourish.svg') center / 160px 13px no-repeat; }
   .history-empty, .history-content > .recent-message.notice { --text-3: #c3c9ce; --danger: #ffaaa0; }
   .recent-message.tool { padding-left: 18px; border: 0; background: url('/heroes-binding.svg') left top / 7px 19px repeat-y; box-shadow: none; }
   .recent-message.tool .tool-call { color: #c9c9b8; }
@@ -181,7 +181,7 @@
   .tool-run > .recent-message.tool { margin: 0 8px; padding-left: 15px; }
   .history-shot { padding: 5px; border: 6px solid transparent; border-image: var(--rim); border-radius: 0; background: #101b32; box-shadow: none; }
   .history-latest.quiet-button { border-radius: 0; color: #ffe6a2; }
-  .chat-requests, .message-composer { padding-top: 15px; border: 0; background: url('/heroes-flourish.svg') center top / 160px 20px no-repeat, var(--stone); }
+  .chat-requests, .message-composer { padding-top: 20px; border: 0; background: url('/heroes-flourish.svg') center top / 160px 13px no-repeat, var(--stone); }
   .message-form .composer-row textarea { min-height: 90px; padding: 16px 28px; color-scheme: light; color: #30291e; caret-color: #345378; background: var(--paper); background-clip: padding-box; border: 5px solid transparent; border-image: var(--scroll40); box-shadow: none; }
   .message-form textarea::placeholder { color: #6c5d42; }
   .composer-row { gap: 9px; align-items: center; }
@@ -202,7 +202,7 @@
 
   .login-screen { isolation: isolate; background: transparent; }
   .login-card { width: min(100%, 400px); gap: 22px; padding: 36px; border: 9px solid transparent; border-image: var(--f64); border-radius: 0; background: var(--stone); box-shadow: 5px 7px #0008, 0 16px 50px #0008; }
-  .login-display { display: flex; flex-direction: column; align-items: center; gap: 14px; align-self: stretch; padding: 8px 0 24px; background: url('/heroes-flourish.svg') center bottom / 200px 30px no-repeat; }
+  .login-display { display: flex; flex-direction: column; align-items: center; gap: 14px; align-self: stretch; padding: 8px 0 22px; background: url('/heroes-flourish.svg') center bottom / 160px 13px no-repeat; }
   .login-card .brand-mark { display: none; }
   .login-card .brand-name { font-size: 32px; }
   .login-symbol { order: -1; width: 64px; height: 80px; border-radius: 0; background: url('/heroes-theme.webp') center / contain no-repeat; image-rendering: pixelated; }

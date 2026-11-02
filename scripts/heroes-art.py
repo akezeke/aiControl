@@ -3,7 +3,7 @@ Run: python3 scripts/heroes-art.py   (needs Pillow and numpy; writes client/publ
 - heroes-frame-<S>.webp: the gold-and-sapphire frame with its corner flourish S pixels wide (border-image-slice: S).
 - heroes-scroll-<S>.webp: the illuminated parchment, likewise (slice S, fill).
 - heroes-button / heroes-card / heroes-sink: generated gold borders resampled so the band is the CSS border width; sink also has a -lit twin for focus.
-- heroes-stone: the generated blue slab tile, made seamless (2 CSS px per drawn pixel)."""
+- heroes-stone: one generated blue slab, seam to seam, repeated by CSS with `round`."""
 import numpy as np
 from pathlib import Path
 from PIL import Image, ImageFilter
@@ -41,13 +41,7 @@ band("button", "heroes-button.webp", band_px=66, inset=16, corner=130, widths=(6
 band('card', 'heroes-card.webp', band_px=63, inset=24, corner=170, widths=(12,))
 band('sink', 'heroes-sink.webp', band_px=89, inset=0, corner=110, widths=(8,), lit=True)
 
-def seamless(a, f):
-    """Cross-fades the wrapped edge so the picture tiles without a seam; shrinks each axis by f pixels."""
-    for axis in (1, 0):
-        a = np.moveaxis(a, axis, 0); n = a.shape[0] - f
-        t = (np.arange(f) / f).reshape(-1, *([1] * (a.ndim - 1)))
-        a = np.concatenate([a[n:n + f] * (1 - t) + a[:f] * t, a[f:n]]); a = np.moveaxis(a, 0, axis)
-    return a
-
-stone = np.array(Image.open(src / 'heroes-stone.webp').convert('RGB'), float)
-Image.fromarray(seamless(stone, 48).round().astype(np.uint8)).resize((512, 512), Image.Resampling.LANCZOS).save(pub / 'heroes-stone.webp', quality=92, method=6)
+# The source is a 4 x 4 grid of slabs (313.5 px each, 1254 px in all). One slab, cut from seam centre to seam centre, tiles exactly;
+# CSS then repeats it with `round` from the border box, so a whole number of slabs always fits and the seams meet the frame.
+stone = Image.open(src / 'heroes-stone.webp').convert('RGB')
+stone.resize((128, 128), Image.Resampling.LANCZOS, box=(313.5, 313.5, 627, 627)).save(pub / 'heroes-stone.webp', quality=95, method=6)
