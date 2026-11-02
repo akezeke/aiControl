@@ -1,7 +1,7 @@
 import { open, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
-export const messageLimit = 20;
+export const messageLimit = 40;
 const agentMessageLimit = 30;
 const textLimit = 12_000;
 const historyCap = 150;
@@ -247,17 +247,18 @@ export class TranscriptReader {
         const cached = this.cache.get(path);
         if (cached?.key === key && !older) return cached.result;
         // Bound reads even for multi-gigabyte sessions; seek backwards until enough visible text is found.
-        let size = Math.min(stat.size, 256 * 1024), messages = [], lines = [];
+        let size = Math.min(stat.size, 256 * 1024), messages = [], lines = [], trimmed = false;
         do {
           const buffer = Buffer.alloc(size);
           await handle.read(buffer, 0, size, stat.size - size);
           lines = buffer.toString('utf8').split('\n');
-          messages = claudeMessages(lines, sessionId, this.visibleIds.get(sessionId), { agent, all: !!older });
-          if (older) messages = agent ? messages.slice(-limit) : recentMessages(messages, limit);
+          const all = claudeMessages(lines, sessionId, this.visibleIds.get(sessionId), { agent, all: true });
+          messages = agent ? all.slice(-limit) : recentMessages(all, limit);
+          trimmed = messages.length < all.length;
           if (messages.filter(item => !item.tool).length >= limit || size >= stat.size || size >= maxBytes) break;
           size = Math.min(size * 2, stat.size, maxBytes);
         } while (true);
-        if (older) return { messages, more: size < stat.size || messages.filter(item => !item.tool).length >= limit };
+        if (older) return { messages, more: size < stat.size || trimmed };
         let titles = cached && cached.size <= stat.size ? cached.titles : {};
         if (agent) {
           // Pin the task (the first user message) even after it scrolls out of the recent window.
@@ -270,7 +271,7 @@ export class TranscriptReader {
             const task = claudeMessages(lines, sessionId, new Set(), { agent: true, all: true }).find(item => item.role === 'user');
             if (task && !messages.some(item => item.id === task.id)) messages = [task, ...messages.slice(1 - limit)];
           }
-          const result = { messages, messagesState: messages.length ? 'ready' : 'empty', activity: agentActivity(lines), modifiedAt: stat.mtimeMs };
+          const result = { messages, historyMore: size < stat.size || trimmed, messagesState: messages.length ? 'ready' : 'empty', activity: agentActivity(lines), modifiedAt: stat.mtimeMs };
           this.cache.set(path, { key, result });
           if (this.cache.size > 100) this.cache.delete(this.cache.keys().next().value);
           return result;
@@ -281,7 +282,7 @@ export class TranscriptReader {
           titles = { ...claudeTitles(head.toString('utf8').split('\n'), sessionId), ...titles };
         }
         titles = claudeTitles(lines, sessionId, titles);
-        const result = { messages, messagesState: messages.length ? 'ready' : 'empty', ...titles, ...claudeMeta(lines, sessionId), step: claudeStep(lines), modifiedAt: stat.mtimeMs };
+        const result = { messages, historyMore: size < stat.size || trimmed, messagesState: messages.length ? 'ready' : 'empty', ...titles, ...claudeMeta(lines, sessionId), step: claudeStep(lines), modifiedAt: stat.mtimeMs };
         this.cache.set(path, { key, result, titles, size: stat.size });
         if (this.cache.size > 100) this.cache.delete(this.cache.keys().next().value);
         return result;

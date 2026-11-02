@@ -231,7 +231,8 @@ export class CodexAdapter {
       }
       cursor = page.nextCursor; more = !!cursor; if (!cursor) break;
     }
-    return { messages: recentMessages(messages.reverse(), limit), more };
+    const all = messages.reverse(), recent = recentMessages(all, limit);
+    return { messages: recent, more: more || recent.length < all.length };
   }
   async refreshMessages(threadId) {
     const session = this.sessions.get(threadId);
@@ -239,7 +240,7 @@ export class CodexAdapter {
     try {
       const result = await this.readMessages(threadId);
       if (!result) return;
-      session.messages = result.messages; session.messagesState = result.messages.length ? 'ready' : 'empty';
+      session.messages = result.messages; session.historyMore = result.more; session.messagesState = result.messages.length ? 'ready' : 'empty';
     } catch { session.messagesState = session.messages.length ? 'stale' : 'unavailable'; }
   }
   async history(threadId, limit) {

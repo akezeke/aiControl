@@ -1,4 +1,5 @@
 import { fail } from './requests.mjs';
+import { openCodeMessages } from './opencode-data.mjs';
 
 const array = value => { if (!Array.isArray(value)) throw fail('OpenCode returned an unsupported response. Update OpenCode and reconnect.', 503); return value; };
 const infoV2 = (info, version) => ({ ...info, directory: info.location?.directory, version });
@@ -124,6 +125,28 @@ export class OpenCodeAPI {
       seen.add(cursor);
     } while (cursor);
     return messagesV2(rows.reverse());
+  }
+  // Fetch by visible conversation messages rather than raw assistant/tool records.
+  async history(id, directory, limit) {
+    const maxRows = Math.max(2000, limit * 10);
+    let rows = [], more = false;
+    if (!this.v2) {
+      rows = await this.messages(id, directory, maxRows + 1);
+      more = rows.length > maxRows;
+      if (more) rows = rows.slice(-maxRows);
+    } else {
+      let cursor, count = 0; const seen = new Set();
+      do {
+        const page = await this.client.request(`/api/session/${id}/message`, { query: { limit: 100, ...cursor ? { cursor } : { order: 'desc' } } });
+        const data = array(page.data); rows.push(...data); cursor = page.cursor?.next;
+        count += openCodeMessages(messagesV2(data), Infinity).filter(message => !message.tool).length;
+        if (cursor && seen.has(cursor)) throw fail('OpenCode returned an invalid history cursor.', 503);
+        seen.add(cursor);
+      } while (cursor && count <= limit && rows.length < maxRows);
+      more = !!cursor; rows = messagesV2(rows.reverse());
+    }
+    const all = openCodeMessages(rows, Infinity), messages = openCodeMessages(rows, limit);
+    return { rows, messages, more: more || messages.length < all.length };
   }
   send(id, directory, text, settings) {
     const model = settings?.model && this.modelRef(settings.model, settings.effort);

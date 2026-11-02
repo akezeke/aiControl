@@ -10,7 +10,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Answer permissions and questions, send messages, stop turns and start agents. Nothing is auto-approved.
 - Switch models and supported effort levels from session headers; remember choices for new sessions.
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
-- Chat history with Markdown, diffs, tool calls and screenshots.
+- Chat history with Markdown, diffs, tool calls, screenshots and older messages on demand.
 - Account usage limits, notifications and sounds when a session needs you.
 - OpenCode spend HUDs, daily cost charts, token mix and editable weekly budgets.
 - Light, dark and themed interfaces, including a walkable 3D Office.

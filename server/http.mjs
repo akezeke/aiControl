@@ -85,7 +85,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         if (action === 'models') { if (!messages.models) throw fail('Model selection is unavailable.', 503); json(res, 200, { models: await messages.models(id) }, req); return; }
         if (action === 'history') {
           // Reading older messages is not activity; the 3-second poll isn't either.
-          const limit = Math.min(200, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
+          const limit = Math.min(1000, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
           json(res, 200, await messages.history(id, limit), req); return;
         }
         const result = action === 'messages' ? await messages.send(id, await body(req)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);

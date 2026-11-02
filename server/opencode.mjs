@@ -1,5 +1,6 @@
 import { fail, slashCommand } from './requests.mjs';
-import { openCodeSession, openCodeMessages, usageRecords, usagePeriods, weeklyUsage, tokenUsage } from './opencode-data.mjs';
+import { openCodeSession, usageRecords, usagePeriods, weeklyUsage, tokenUsage } from './opencode-data.mjs';
+import { messageLimit } from './messages.mjs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -143,9 +144,10 @@ export class OpenCodeAdapter {
       let session = prior;
       try {
         if (readUsage || (!info.time?.archived && changed)) {
-          const messages = await this.api.messages(nativeId(info.id), info.directory, readUsage ? undefined : 30);
+          const history = readUsage ? { rows: await this.api.messages(nativeId(info.id), info.directory) } : await this.api.history(nativeId(info.id), info.directory, messageLimit);
+          const messages = history.rows;
           this.controller.signal.throwIfAborted();
-          session = openCodeSession(info, messages, prior);
+          session = openCodeSession(info, messages, prior, history.more);
           if (readUsage) {
             const records = usageRecords(messages); this.usage.set(info.id, { records, updated: info.time?.updated, at: this.now() });
             if (!Number.isFinite(info.cost)) {
@@ -213,8 +215,8 @@ export class OpenCodeAdapter {
     return session;
   }
   async history(id, limit = 40) {
-    const session = this.require(id), rows = await this.api.messages(id, session.cwd, limit + 1);
-    return { messages: openCodeMessages(rows, limit), more: rows.length > limit };
+    const session = this.require(id), history = await this.api.history(id, session.cwd, limit);
+    return { messages: history.messages, more: history.more };
   }
   async modelsFor(cwd) {
     const cached = this.modelCatalogs.get(cwd);

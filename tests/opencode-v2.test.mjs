@@ -101,6 +101,24 @@ test('V2 follows session and message cursors for complete usage, keeping history
   await adapter.refresh(); assert.equal(adapter.usageSnapshot().status, 'partial');
 });
 
+test('tool-heavy V2 history fetches older conversation and exposes earlier messages', async t => {
+  const { adapter, state, calls } = fixture(t);
+  const tool = id => ({ id, type: 'assistant', time: { created: now }, content: [{ id: `tool_${id}`, type: 'tool', name: 'shell', state: { status: 'completed', input: { command: 'test' } } }] });
+  state.now += 40 * 86400000; // History polling without a full monthly usage refresh.
+  state.pages = {
+    first: { data: Array.from({ length: 100 }, (_, i) => tool(`new_${i}`)), cursor: { next: 'older' } },
+    older: { data: [...Array.from({ length: 120 }, (_, i) => tool(`old_${i}`)), { id: 'prompt', type: 'user', time: { created: now - 1 }, text: 'Original request' }], cursor: {} },
+  };
+  await adapter.refresh();
+  assert.equal(adapter.list()[0].historyMore, true);
+  assert.equal(adapter.list()[0].messages.length, 200);
+  const older = await adapter.history('ses_first', 60);
+  assert.equal(older.messages[0].text, 'Original request');
+  assert.equal(older.messages.filter(message => message.tool).length, 220);
+  assert.equal(older.more, false);
+  assert.ok(calls.filter(call => call.path.endsWith('/message') && call.query.get('cursor') === 'older').length >= 2);
+});
+
 test('V2 permissions are checked before replying once or rejecting, with the original scope', async t => {
   const { adapter, state, store, calls } = fixture(t);
   state.permissions = [{ id: 'perm_ask', sessionID: 'ses_first', action: 'shell', resources: ['npm test'], metadata: { command: 'npm test' } }];

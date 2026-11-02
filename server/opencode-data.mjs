@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { recentMessages, planSteps } from './messages.mjs';
+import { recentMessages, planSteps, messageLimit } from './messages.mjs';
 
 const number = value => Number.isFinite(value) && value >= 0 ? value : 0;
 export const tokenUsage = tokens => ({ input: number(tokens?.input), output: number(tokens?.output), reasoning: number(tokens?.reasoning), cacheRead: number(tokens?.cache?.read), cacheWrite: number(tokens?.cache?.write) });
@@ -39,7 +39,7 @@ export function weeklyUsage(records, now = Date.now()) {
   return { ...total, from: monday.getTime(), resetsAt, incomplete: days.some(day => day.incomplete), days };
 }
 
-export function openCodeMessages(rows, limit = 20) {
+export function openCodeMessages(rows, limit = messageLimit) {
   const messages = [];
   for (const { info, parts = [] } of rows) {
     if (!info || !['user', 'assistant'].includes(info.role)) continue;
@@ -61,7 +61,7 @@ export function openCodeMessages(rows, limit = 20) {
   return recentMessages(messages, limit);
 }
 
-export function openCodeSession(info, rows = [], previous = {}) {
+export function openCodeSession(info, rows = [], previous = {}, more = false) {
   const assistant = rows.findLast(row => row.info?.role === 'assistant')?.info;
   const user = rows.findLast(row => row.info?.role === 'user')?.info;
   const provider = info.model?.providerID || assistant?.providerID || user?.model?.providerID;
@@ -72,7 +72,7 @@ export function openCodeSession(info, rows = [], previous = {}) {
     cwd: info.directory, project: basename(info.directory || '') || 'OpenCode', parentId: info.parentID ? `opencode:${info.parentID}` : null,
     model: [provider, model].filter(Boolean).join('/'), version: info.version, updatedAt: info.time?.updated || 0,
     effort: info.model?.variant || assistant?.model?.variant || '',
-    status: previous.status || 'idle', messages, messagesState: messages.length ? 'ready' : 'empty',
+    status: previous.status || 'idle', messages, historyMore: more || messages.length < openCodeMessages(rows, Infinity).length, messagesState: messages.length ? 'ready' : 'empty',
     ...(usage ? { context: { used: usage.input + usage.output + usage.cacheRead + usage.cacheWrite } } : {}),
     ...(info.tokens ? { tokens: tokenUsage(info.tokens) } : {}),
     ...(Number.isFinite(info.cost) ? { cost: { usd: info.cost, estimated: true, added: info.summary?.additions || 0, removed: info.summary?.deletions || 0 } } : {}),

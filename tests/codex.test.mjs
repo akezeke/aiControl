@@ -110,7 +110,7 @@ test('large Codex tool results do not disconnect the dashboard or leak into its 
 });
 
 test('smaller history pages still find the most recent messages across tool results', async t => {
-  const items = Array.from({ length: 100 }, (_, index) => ({ item: index % 4 === 0
+  const items = Array.from({ length: 200 }, (_, index) => ({ item: index % 4 === 0
     ? { type: 'agentMessage', id: `reply-${index}`, text: `Reply ${index}` }
     : { type: 'commandExecution', id: `tool-${index}`, aggregatedOutput: 'Tool output' } }));
   const { adapter, server } = await connected(t, { items });
@@ -155,11 +155,11 @@ test('Codex history and completed image tools populate the gallery without putti
 test('loading older Codex history also makes its image tools available', async t => {
   const data = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
   const { adapter } = await connected(t, { items: [
-    ...Array.from({ length: 30 }, (_, i) => ({ completedAtMs: 100 - i, item: { id: `message-${i}`, type: 'agentMessage', text: `Reply ${i}` } })),
+    ...Array.from({ length: 50 }, (_, i) => ({ completedAtMs: 100 - i, item: { id: `message-${i}`, type: 'agentMessage', text: `Reply ${i}` } })),
     { completedAtMs: 1, item: { id: 'old-image', type: 'mcpToolCall', result: { content: [{ type: 'image', data }] } } },
   ] });
   assert.deepEqual((await adapter.imageList('live-thread')).images, []);
-  await adapter.history('live-thread', 40);
+  await adapter.history('live-thread', 80);
   const { images } = await adapter.imageList('live-thread');
   assert.equal(images.length, 1);
   assert.equal(images[0].at, 1);

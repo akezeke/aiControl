@@ -803,7 +803,7 @@ function renderRecentMessages(session, savedPosition) {
   }
   const flow = region.historyScroll;
   const extra = older.get(session.id), messages = mergeHistory(extra?.messages, session.messages || []), images = sessionShots(session);
-  const moreAvailable = extra ? extra.more : (session.messages || []).filter(m => !m.tool).length >= 20;
+  const moreAvailable = extra ? extra.more : session.historyMore || (session.messages || []).filter(m => !m.tool).length >= 40;
   const signature = JSON.stringify([messages, images, session.messagesState, moreAvailable, !!extra?.loading]);
   if (region.dataset.signature === signature) { if (savedPosition) flow.restore(savedPosition); return; }
   const saved = savedPosition || flow.capture();
@@ -886,11 +886,11 @@ function mergeHistory(earlier = [], recent) {
   return [...(cut >= 0 ? earlier.slice(0, cut) : earlier.filter(message => !ids.has(message.id))), ...recent];
 }
 async function loadOlder(id) {
-  const current = older.get(id), limit = Math.min(200, (current?.limit || 20) + 40);
+  const current = older.get(id), limit = Math.min(1000, (current?.limit || 40) + 40);
   older.set(id, { messages: [], more: true, ...current, loading: true }); renderPanel();
   try {
     const result = await api(`sessions/${encodeURIComponent(id)}/history?limit=${limit}`);
-    older.set(id, { limit, messages: result.messages, more: result.more && limit < 200 });
+    older.set(id, { limit, messages: result.messages, more: result.more && limit < 1000 });
     // Codex discovers images as history pages load, even when the session itself has not changed.
     const images = shots.get(id); if (images) { images.changed = null; images.fetched = 0; }
   }
