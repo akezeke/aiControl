@@ -2,7 +2,8 @@
 Run: python3 scripts/heroes-art.py   (needs Pillow and numpy; writes client/public/heroes-*.webp)
 - heroes-frame-<S>.webp: the gold-and-sapphire frame with its corner flourish S pixels wide (border-image-slice: S).
 - heroes-scroll-<S>.webp: the illuminated parchment, likewise (slice S, fill).
-- heroes-bevel / heroes-socket: small raised and recessed gold bevels drawn in code at 2 CSS px per pixel."""
+- heroes-button / heroes-card / heroes-sink: generated gold borders resampled so the band is the CSS border width; sink also has a -lit twin for focus.
+- heroes-stone: the generated blue slab tile, made seamless (2 CSS px per drawn pixel)."""
 import numpy as np
 from pathlib import Path
 from PIL import Image, ImageFilter
@@ -19,19 +20,34 @@ frame = Image.open(src / 'heroes-ornate-frame.webp'); scroll = Image.open(src / 
 for s in (24, 32, 36, 40, 48, 64): fit(frame, .34, s, 110).save(pub / f'heroes-frame-{s}.webp', lossless=True, method=6)
 for s in (24, 32, 40): fit(scroll, .24, s, 90).save(pub / f'heroes-scroll-{s}.webp', lossless=True, method=6)
 
-h = lambda v: tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
-K, GH, G, GM, GD, N1, N2 = (h(v) for v in ('#0b0805', '#f6dc8c', '#d3a843', '#a98030', '#5a3f16', '#0b1631', '#18284a'))
+def band(name, source, band_px, inset, corner, widths, lit=False):
+    """Writes heroes-<name>-<w>.webp so the border band is w CSS px wide; prints the border-image to use.
+    band_px / inset / corner are measured in the source: band thickness, its distance from the canvas edge (corner spikes), corner extent."""
+    im = Image.open(src / source).convert('RGBA')
+    for w in widths:
+        f = w / band_px; img = fit_scale(im, f)
+        img.save(pub / f'heroes-{name}-{w}.webp', lossless=True, method=6)
+        c, o = round(corner * f), round(inset * f)
+        print(f'{name} {w}: border {w}px; border-image: url(/heroes-{name}-{w}.webp) {c} / {c}px / {o}px round')
+        if lit:  # the same frame brighter, for a focused field
+            px = np.array(img).astype(float); px[..., :3] = np.clip(px[..., :3] * 1.45 + 18, 0, 255)
+            Image.fromarray(px.astype(np.uint8)).save(pub / f'heroes-{name}-{w}-lit.webp', lossless=True, method=6)
 
-def bevel(size, rows):
-    """rows[d] = (lit side colour, shaded side colour); the centre stays transparent. Corners are mitred."""
-    px = np.zeros((size, size, 4), np.uint8)
-    for y in range(size):
-        for x in range(size):
-            d, edge = min((x, 0), (y, 1), (size - 1 - x, 2), (size - 1 - y, 3))
-            if d < len(rows): px[y, x] = (*rows[d][0 if edge < 2 else 1], 255)
-    return Image.fromarray(px)
+def fit_scale(im, f):
+    size = (round(im.width * f), round(im.height * f))
+    return im.convert('RGBa').resize(size, Image.Resampling.LANCZOS).convert('RGBA').filter(ImageFilter.UnsharpMask(radius=.7, percent=90, threshold=0))
 
-# Raised: black rim, bright gold lit edge / deep gold shaded edge, a navy inner shadow. 12px, slice 3.
-bevel(12, [(K, K), (GH, GM), (GD, GD)]).save(pub / 'heroes-bevel.webp', lossless=True)
-# Recessed: the same turned over, for text fields.
-bevel(12, [(K, K), (GD, G), (N1, N2)]).save(pub / 'heroes-socket.webp', lossless=True)
+band("button", "heroes-button.webp", band_px=66, inset=16, corner=130, widths=(6,))
+band('card', 'heroes-card.webp', band_px=63, inset=24, corner=170, widths=(12,))
+band('sink', 'heroes-sink.webp', band_px=89, inset=0, corner=110, widths=(8,), lit=True)
+
+def seamless(a, f):
+    """Cross-fades the wrapped edge so the picture tiles without a seam; shrinks each axis by f pixels."""
+    for axis in (1, 0):
+        a = np.moveaxis(a, axis, 0); n = a.shape[0] - f
+        t = (np.arange(f) / f).reshape(-1, *([1] * (a.ndim - 1)))
+        a = np.concatenate([a[n:n + f] * (1 - t) + a[:f] * t, a[f:n]]); a = np.moveaxis(a, 0, axis)
+    return a
+
+stone = np.array(Image.open(src / 'heroes-stone.webp').convert('RGB'), float)
+Image.fromarray(seamless(stone, 48).round().astype(np.uint8)).resize((512, 512), Image.Resampling.LANCZOS).save(pub / 'heroes-stone.webp', quality=92, method=6)

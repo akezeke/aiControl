@@ -3,7 +3,7 @@ Run: python3 scripts/diablo-art.py   (needs Pillow and numpy; reads docs/art/src
 - diablo-panel / diablo-button: the generated iron-and-bronze borders, resampled so the band is the CSS border width.
   Each source has its band inset from the canvas edge (spikes in the corners), hence border-image-outset.
 - diablo-stone: the generated dungeon wall made seamless and sized to tile at 2 CSS px per drawn pixel.
-- diablo-socket (recessed field) and diablo-rule(-vertical) (divider) are drawn in code at 2 CSS px per pixel."""
+- diablo-socket (recessed field, and a -lit twin for focus) and diablo-rule(-vertical) (divider) are drawn in code at 2 CSS px per pixel."""
 import numpy as np
 from pathlib import Path
 from PIL import Image, ImageFilter
@@ -51,6 +51,8 @@ def bevel(size, rows):
     return Image.fromarray(px)
 
 bevel(16, [(K, K), (SH, LT), (I, SL), (I, ST)]).save(out / 'diablo-socket.webp', lossless=True)
+# The same field with the rim lit like an ember, for focus.
+bevel(16, [(K, K), (hexrgb('#f0b469'), hexrgb('#c8692f')), (hexrgb('#4a1d10'), hexrgb('#5b2615')), (I, ST)]).save(out / 'diablo-socket-lit.webp', lossless=True)
 
 rule = Image.new('RGBA', (8, 4), (0, 0, 0, 0))
 for x in range(8):

@@ -19,6 +19,8 @@
   /* Borders are sized to their CSS width by scripts/diablo-art.py; the windows' ornate frame is shown at its drawn scale (256px slice at 64px = 1px per pixel). */
   --bevel: url('/diablo-button-8.webp') 12 / 12px / 0 round;
   --socket: url('/diablo-socket.webp') 4 / 8px / 0 round;
+  --socket-lit: url('/diablo-socket-lit.webp') 4 / 8px / 0 round;
+  --ember: inset 0 3px 10px #000, inset 0 0 16px #8a281a55, 0 0 12px #c0391c66;
   --card: url('/diablo-button-10.webp') 15 / 15px / 0 round;
   --panel-s: url('/diablo-panel-8.webp') 16 / 16px / 4px round;
   --panel: url('/diablo-panel-12.webp') 24 / 24px / 6px round;
@@ -88,7 +90,7 @@
   .usage-stale .usage-orb, .usage-expired .usage-orb { opacity: .65; }
   .search { position: relative; min-height: 46px; padding: 0 36px 0 10px; border: 8px solid transparent; border-image: var(--socket); background: linear-gradient(#090706, #19120e); box-shadow: inset 0 3px 10px #000, 0 2px #000; }
   .search::after { content: ''; position: absolute; right: 5px; top: calc(50% - 14px); width: 28px; height: 28px; background: url('/diablo-portrait.webp') center / contain no-repeat; image-rendering: pixelated; pointer-events: none; }
-  .search:focus-within { box-shadow: inset 0 3px 10px #000, 0 0 0 1px #cb7950, 0 0 14px #a925174d; }
+  .search:focus-within { border-image: var(--socket-lit); box-shadow: var(--ember); }
   .search input, .search input:focus { min-height: 30px; padding: 5px 0; border: 0; border-image: none; outline: none; background: none; box-shadow: none; }
   .group-heading { position: relative; padding: 10px 8px 10px 36px; margin: 12px 0 6px; border: 0; background: url('/diablo-rule.webp') center top / auto 8px repeat-x, url('/diablo-rule.webp') center bottom / auto 8px repeat-x, url('/diablo-gore.webp') right top / 180px auto no-repeat, linear-gradient(90deg, #382b20, #17120d 75%); }
   .group-heading::before { content: ''; position: absolute; left: -5px; top: 50%; width: 42px; height: 42px; transform: translateY(-50%); background: url('/diablo-portrait.webp') center / contain no-repeat; pointer-events: none; image-rendering: pixelated; }
@@ -173,7 +175,10 @@
     min-height: 46px; padding: 9px 36px 9px 12px; border: 8px solid transparent; border-image: var(--socket); border-radius: 0;
     background: url('/diablo-portrait.webp') right 6px bottom 8px / 25px 25px no-repeat, linear-gradient(#090706, #19120e); color: var(--text); box-shadow: inset 0 3px 10px #000, 0 2px #000;
   }
-  :is(.login-form, .access-form, .custom-answer) input:not([type=checkbox]):focus, .deny-reason:focus, .message-form textarea:focus { outline: 1px solid #cb7950; outline-offset: 1px; box-shadow: inset 0 3px 10px #000, 0 0 14px #a925174d; }
+  :is(.login-form, .access-form, .custom-answer) input:not([type=checkbox]):focus, .deny-reason:focus, .message-form textarea:focus { outline: none; border-image: var(--socket-lit); box-shadow: var(--ember); }
+  /* Buttons and cards: an ember-lit edge, not a browser ring. */
+  :is(a, button, summary, select, [tabindex], .session-card, .nav-item):focus-visible { outline: 2px solid #e39a4a; outline-offset: 1px; box-shadow: 0 0 0 1px #000, 0 0 12px #c0391c99; }
+  .answer-option:has(input:focus-visible) { outline: 2px solid #e39a4a; outline-offset: 1px; box-shadow: 0 0 12px #c0391c88; }
   .login-form input { text-align: center; letter-spacing: .12em; min-height: 48px; }
   .login-form input::placeholder { font-size: 13px; letter-spacing: .04em; }
   .access-console { display: block; padding: 18px; }
@@ -208,6 +213,7 @@
     .brand-variant.diablo .brand-mark { animation: diablo-gaze 3.6s steps(1, end) infinite; }
     .status-line::before { animation: diablo-gem 2.4s steps(1, end) infinite; }
     .console-contact[data-status=working]::before { animation: diablo-contact 1.2s steps(1, end) infinite; }
+    :is(a, button, summary, select, [tabindex], .nav-item):focus-visible { animation: diablo-ember 1.1s steps(1, end) infinite; }
     /* Effects pause while composing; no moving decoration near the caret. */
     &:has(:is(textarea, input):focus) :is(.orb-liquid, .brand-variant.diablo .brand-mark),
     &:has(:is(textarea, input):focus) :is(.main-screen, .main-content, .session-card, .orb-liquid)::after,
@@ -234,6 +240,7 @@
 @keyframes diablo-gaze { 0%, 100% { filter: none; } 46%, 54% { filter: drop-shadow(0 0 3px #d4301c); } 50% { filter: drop-shadow(0 0 5px #ff5a2a); } }
 @keyframes diablo-gem { 50% { box-shadow: 0 0 0 2px #391710, 0 0 12px #e0552fcc; } }
 @keyframes diablo-contact { 50% { opacity: .3; } }
+@keyframes diablo-ember { 50% { outline-color: #b4502a; box-shadow: 0 0 0 1px #000, 0 0 6px #8a281a88; } }
 @keyframes diablo-gore-drips {
   0% { background-position: 117px 59px, 157px -20px, 214px -20px, 288px -20px, 315px -20px; animation-timing-function: steps(8); }
   16% { background-position: 117px 119px, 157px -20px, 214px -20px, 288px -20px, 315px -20px; animation-timing-function: step-end; }
