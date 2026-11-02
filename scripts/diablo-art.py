@@ -1,6 +1,6 @@
 """Sizes the Sanctuary UI art for where it is shown, so the browser never has to shrink it.
 Run: python3 scripts/diablo-art.py   (needs Pillow and numpy; reads docs/art/src, writes client/public/diablo-*.webp)
-- diablo-panel / diablo-button: the generated iron-and-bronze borders, resampled so the band is the CSS border width.
+- diablo-panel / diablo-button: the generated iron-and-bronze borders, resampled so the band is the CSS border width (button also has a -lit twin for hover).
   Each source has its band inset from the canvas edge (spikes in the corners), hence border-image-outset.
 - diablo-stone: the generated dungeon wall made seamless and sized to tile at 2 CSS px per drawn pixel.
 - diablo-socket (recessed field, and a -lit twin for focus) and diablo-rule(-vertical) (divider) are drawn in code at 2 CSS px per pixel."""
@@ -21,6 +21,9 @@ def frame(name, source, crop, band, inset, corner, widths):
     for w in widths:
         f = w / band; img = resample(im, f)
         img.save(out / f'diablo-{name}-{w}.webp', lossless=True, method=6)
+        if name == 'button':  # a warmer, brighter twin for hover
+            px = np.array(img).astype(float); px[..., :3] = np.clip(px[..., :3] * np.array([1.5, 1.2, .95]) + np.array([22, 0, 0]), 0, 255)
+            Image.fromarray(px.astype(np.uint8)).save(out / f'diablo-{name}-{w}-lit.webp', lossless=True, method=6)
         print(f'{name} {w}: border {w}px; border-image: url(/diablo-{name}-{w}.webp) {round(corner * f)} / {round(corner * f)}px / {round(inset * f)}px round; size {img.size}')
 
 frame('panel', 'diablo-panel.webp', (0, 0, 1254, 1254), band=98, inset=47, corner=200, widths=(8, 12, 16))

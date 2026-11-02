@@ -22,6 +22,9 @@
   --socket-lit: url('/diablo-socket-lit.webp') 4 / 8px / 0 round;
   --ember: inset 0 3px 10px #000, inset 0 0 16px #8a281a55, 0 0 12px #c0391c66;
   --card: url('/diablo-button-10.webp') 15 / 15px / 0 round;
+  --sparks: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='251' height='58' shape-rendering='crispEdges'><rect x='118' y='38' width='2' height='2' fill='%23ffb35a'/><rect x='118' y='36' width='2' height='2' fill='%23ffc070'/><rect x='50' y='36' width='2' height='2' fill='%23ffb35a'/><rect x='164' y='42' width='2' height='2' fill='%23ffc070'/><rect x='28' y='32' width='2' height='2' fill='%23ffb35a'/><rect x='40' y='8' width='2' height='2' fill='%23ffc070'/></svg>") 0 0 / 251px 58px, url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='173' height='87' shape-rendering='crispEdges'><rect x='156' y='54' width='2' height='2' fill='%23e0652d'/><rect x='160' y='24' width='2' height='2' fill='%23ff8a3d'/><rect x='138' y='12' width='2' height='2' fill='%23ff8a3d'/><rect x='12' y='28' width='2' height='2' fill='%23ff8a3d'/><rect x='156' y='6' width='2' height='2' fill='%23e0652d'/></svg>") 0 0 / 173px 87px;
+  --card-lit: url('/diablo-button-10-lit.webp') 15 / 15px / 0 round;
+  --bevel-lit: url('/diablo-button-8-lit.webp') 12 / 12px / 0 round;
   --panel-s: url('/diablo-panel-8.webp') 16 / 16px / 4px round;
   --panel: url('/diablo-panel-12.webp') 24 / 24px / 6px round;
   --panel-l: url('/diablo-panel-16.webp') 33 / 33px / 8px round;
@@ -43,7 +46,7 @@
   .sidebar-label::after { content: ''; flex: 1; height: 7px; border-block: 1px solid #655440; background: linear-gradient(#110d0a, #6b1510); }
   .main-nav, .project-nav { gap: 4px; }
   .nav-item { position: relative; min-height: 40px; padding: 4px 7px; border: 8px solid transparent; border-image: var(--bevel); background: linear-gradient(#302820, #14100c); box-shadow: var(--shadow); }
-  .nav-item:hover { border-color: #90764f; background: linear-gradient(#433321, #241a10); }
+  .nav-item:hover { border-image: var(--bevel-lit); background: linear-gradient(#433321, #241a10); box-shadow: var(--shadow), 0 0 10px #b8331a55; }
   .nav-item.active { background: url('/diablo-gore.webp') top right / 140px auto no-repeat, linear-gradient(90deg, #6a1712, #290e0b); color: #ffe2ae; box-shadow: inset 0 0 0 1px #bf4e30, inset 0 0 16px #d6351326; text-shadow: 0 1px #000; }
   .nav-item.active .icon { background: url('/diablo-skull.svg') center / contain no-repeat; width: 22px; height: 22px; image-rendering: pixelated; }
   .nav-item.active .icon svg { visibility: hidden; }
@@ -96,10 +99,12 @@
   .group-heading::before { content: ''; position: absolute; left: -5px; top: 50%; width: 42px; height: 42px; transform: translateY(-50%); background: url('/diablo-portrait.webp') center / contain no-repeat; pointer-events: none; image-rendering: pixelated; }
   .group-title h2 { color: var(--accent-2); font-size: 15px; letter-spacing: .03em; }
   .session-card { padding: 8px 12px; background: linear-gradient(90deg, #28221a, #17130f); border: 10px solid transparent; border-image: var(--card); box-shadow: var(--shadow); transition: background-color .12s, box-shadow .12s; }
-  .session-card:is(:hover, :focus-visible) { background: url('/diablo-gore.webp') right top / 260px auto no-repeat, linear-gradient(90deg, #641b15, #28100d); box-shadow: inset 0 0 0 1px #bd5130, inset 0 0 22px #d12c1726, 0 0 10px #951a1026; outline: 1px solid #d4b06e; outline-offset: 1px; }
+  /* Pointing at a card lights it from within: the frame turns to hot bronze, an ember glows at the left edge and the title catches fire. */
+  .session-card:is(:hover, :focus-visible) { border-image: var(--card-lit); background: var(--sparks), radial-gradient(ellipse 55% 130% at 0 50%, #ff8a3d38, transparent 70%), url('/diablo-gore.webp') right top / 260px auto no-repeat, linear-gradient(90deg, #641b15, #28100d); box-shadow: inset 0 0 18px #d12c1744, 0 0 0 1px #000, 0 0 16px #b8331a77; outline: none; }
+  .session-card:is(:hover, :focus-visible) .session-title { color: #fff0cf; text-shadow: 0 1px #000, 0 0 9px #e0652d99; }
   .session-card:is(:hover, :focus-visible) .agent-mark .provider-icon { filter: drop-shadow(0 0 3px #c42c1b); }
   .session-card.needs-input { background: url('/diablo-gore.webp') right top / 280px auto no-repeat, linear-gradient(90deg, #3f1b14, #1b110d); box-shadow: inset 3px 0 #a23823, var(--shadow); }
-  .session-card.needs-input:is(:hover, :focus-visible) { background: url('/diablo-gore.webp') right top / 280px auto no-repeat, linear-gradient(90deg, #702219, #33120e); }
+  .session-card.needs-input:is(:hover, :focus-visible) { background: var(--sparks), radial-gradient(ellipse 55% 130% at 0 50%, #ff8a3d3d, transparent 70%), url('/diablo-gore.webp') right top / 280px auto no-repeat, linear-gradient(90deg, #702219, #33120e); }
   .session-card.subagent { background: #14120f; }
   .session-card.subagent::before { border-radius: 0; border-color: #725838; }
   .session-title { color: #e8d5ad; font: 20px/1.05 var(--pixel); }
@@ -212,6 +217,8 @@
     .orb-liquid::after { content: ''; position: absolute; left: 28%; bottom: 0; width: 2px; height: 2px; background: var(--orb-light); box-shadow: 16px -10px 0 var(--orb-light), -6px -22px 0 var(--orb-light); animation: diablo-bubbles 4s steps(14) infinite; }
     .brand-variant.diablo .brand-mark { animation: diablo-gaze 3.6s steps(1, end) infinite; }
     .status-line::before { animation: diablo-gem 2.4s steps(1, end) infinite; }
+    /* Embers drift up the lit card. */
+    .session-card:is(:hover, :focus-visible) { animation: diablo-sparks 3.4s steps(29) infinite; }
     .console-contact[data-status=working]::before { animation: diablo-contact 1.2s steps(1, end) infinite; }
     :is(a, button, summary, select, [tabindex], .nav-item):focus-visible { animation: diablo-ember 1.1s steps(1, end) infinite; }
     /* Effects pause while composing; no moving decoration near the caret. */
@@ -239,6 +246,7 @@
 @keyframes diablo-bubbles { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: .85; } 100% { transform: translateY(-58px); opacity: 0; } }
 @keyframes diablo-gaze { 0%, 100% { filter: none; } 46%, 54% { filter: drop-shadow(0 0 3px #d4301c); } 50% { filter: drop-shadow(0 0 5px #ff5a2a); } }
 @keyframes diablo-gem { 50% { box-shadow: 0 0 0 2px #391710, 0 0 12px #e0552fcc; } }
+@keyframes diablo-sparks { from { background-position: 0 0, 0 0, 0 0, right top, 0 0; } to { background-position: 0 -58px, 0 -87px, 0 0, right top, 0 0; } }
 @keyframes diablo-contact { 50% { opacity: .3; } }
 @keyframes diablo-ember { 50% { outline-color: #b4502a; box-shadow: 0 0 0 1px #000, 0 0 6px #8a281a88; } }
 @keyframes diablo-gore-drips {
