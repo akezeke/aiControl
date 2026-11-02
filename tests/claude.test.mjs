@@ -88,3 +88,15 @@ test('a question answered in the terminal disappears here even though its input 
   assert.equal(store.list().length, 0);
   assert.deepEqual(waiting.output, [{}]);
 });
+
+test('a hang-up is a closed window, unless the tmux server it ran in went down with it', () => {
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock', { sessionsDir: '/does-not-exist' });
+  const servers = new Set([10]);
+  adapter.running = pid => servers.has(pid);
+  adapter.ended('plain', 'other', '', 0);
+  adapter.ended('window', 'other', '/tmp/tmux-1000/default,10,0', 0);
+  adapter.ended('server', 'other', '/tmp/tmux-1000/default,20,0', 0);
+  adapter.ended('exit', 'prompt_input_exit', '/tmp/tmux-1000/default,20,0', 0);
+  assert.deepEqual(['plain', 'window', 'server', 'exit', 'unknown'].map(id => adapter.ending(id, 1000)), ['closed', '', '', 'prompt_input_exit', '']);
+  assert.deepEqual(['window', 'server'].map(id => adapter.ending(id, 5000)), ['closed', 'other']);
+});

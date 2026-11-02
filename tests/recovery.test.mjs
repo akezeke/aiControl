@@ -8,7 +8,7 @@ import { PromptHistory } from '../server/prompt-history.mjs';
 
 const claude = (id, extra = {}) => ({ id: `claude:${id}`, nativeId: id, provider: 'claude', title: `Task ${id}`, cwd: '/work/app', project: 'app', account: '', status: 'working', pid: 100, permissionMode: 'auto', updatedAt: 1,
   messages: [{ role: 'user', text: 'fix the  login\nbug' }, { role: 'assistant', text: 'Looking at auth.js' }, { role: 'assistant', text: 'Read · auth.js', tool: true }], ...extra });
-const codex = (id, extra = {}) => ({ id: `codex:${id}`, nativeId: id, provider: 'codex', title: 'Codex task', cwd: '/work/app', project: 'app', status: 'idle', messages: [], ...extra });
+const codex = (id, extra = {}) => ({ id: `codex:${id}`, nativeId: id, provider: 'codex', title: 'Codex task', cwd: '/work/app', project: 'app', status: 'idle', messages: [{ role: 'user', text: 'tidy the docs' }], ...extra });
 const file = () => join(mkdtempSync(join(tmpdir(), 'recovery-')), 'recovery.json');
 
 test('a session that vanishes without a goodbye is lost after the grace period, with what it was doing', () => {
@@ -62,10 +62,19 @@ test('the prompt history keeps each session\'s last typed prompt as the log grow
 
 test('a session that ends on purpose, or clears into a new one, is not lost', () => {
   const recovery = new Recovery(null);
-  recovery.update([claude('a'), claude('b', { pid: 200 }), claude('c', { pid: 300 }), claude('d', { pid: 400 })], { now: 0 });
-  const endings = { a: 'prompt_input_exit', b: 'fired', d: 'other' };
+  recovery.update([claude('a'), claude('b', { pid: 200 }), claude('c', { pid: 300 }), claude('d', { pid: 400 }), claude('e', { pid: 500 }), claude('f', { pid: 600 })], { now: 0 });
+  const endings = { a: 'prompt_input_exit', b: 'fired', d: 'other', e: 'closed', f: 'resume' };
   recovery.update([claude('c2', { pid: 300 })], { now: GRACE_MS, ended: entry => endings[entry.nativeId] });
   assert.deepEqual(recovery.lost(GRACE_MS).map(entry => entry.id), ['claude:d']);
+});
+
+test('a session that never got a prompt has nothing to lose', () => {
+  const path = file();
+  writeFileSync(path, JSON.stringify([{ id: 'claude:old', nativeId: 'old', provider: 'claude', title: '', cwd: '/work/app', prompt: '', reply: '', seenAt: 0, lostAt: 1 }]));
+  const recovery = new Recovery(path);
+  recovery.update([claude('a', { messages: [] }), codex('t', { messages: [] })], { now: 0 });
+  recovery.update([], { now: GRACE_MS });
+  assert.deepEqual(recovery.lost(GRACE_MS), []);
 });
 
 test('subagents and offline-only sessions are not tracked', () => {
