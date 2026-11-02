@@ -113,3 +113,14 @@ test('the ground carries the pylons and paints their wires, in every view', () =
     assert.ok(differ > 40, `${differ} wire pixels in view ${view}`);
   }
 });
+
+test('an OpenCode session is fed by its own plant, on the north line beside Codex\'s', () => {
+  const withOpenCode = [...providers, { name: 'OpenCode', connected: true }], all = [...sessions, { id: 's5', provider: 'opencode' }];
+  const layout5 = { ...layout, desks: new Map([...desks, ['s5', { podKey: 'b', slot: 1, sessionId: 's5' }]]) };
+  const city = cityPlan(layout5, {}, null, withOpenCode, all, ['', 'work']), route = powerRoutes(city, all).find(item => item.id === 's5');
+  assert.equal(route.plant, 'opencode');
+  const plant = city.plants.find(item => item.key === 'opencode'), { poles, feeds } = powerLines(city);
+  assert.deepEqual(route.points[0], [plant.x, plant.z]);
+  assert.equal(feeds.length, city.plants.length, 'every plant has a feed');
+  assert.ok(poles.every((pole, i) => poles.findIndex(other => other.x === pole.x && other.z === pole.z) === i), 'no two poles share a place');
+});

@@ -2,7 +2,7 @@ import './usage.css';
 import { usageWindowView, usageUpdatedText, costPeriodView } from './usage-presentation.js';
 import { renderPower } from './theme-console.js';
 import { providerIcon } from './provider-icons.js';
-import { renderSpend } from './spend.js';
+import { renderSpend, renderSpendRow } from './spend.js';
 
 const node = (tag, className, text) => {
   const element = document.createElement(tag); element.className = className;
@@ -11,7 +11,7 @@ const node = (tag, className, text) => {
 };
 
 // Each account's gauges; the list's header and Fantasy's scene bar both show these.
-export function usageAccounts(accounts, { now = Date.now(), disconnected = false, editBudget } = {}) {
+export function usageAccounts(accounts, { now = Date.now(), disconnected = false, editBudget, compact = false } = {}) {
   const rows = node('div', 'usage-accounts');
   // With several Claude accounts every row gets a label column, empty for the default one, so meters stay aligned.
   const labelled = accounts?.some(account => account.label);
@@ -32,7 +32,7 @@ export function usageAccounts(accounts, { now = Date.now(), disconnected = false
     row.append(mark);
     if (labelled) { const tag = node('span', 'usage-tag', account.label || ''); tag.title = account.name; row.append(tag); }
     const windows = node('div', 'usage-windows');
-    if (account.provider === 'opencode' && account.periods?.length) windows.append(renderSpend(account, { editBudget, now }));
+    if (account.provider === 'opencode' && account.periods?.length) windows.append((compact ? renderSpendRow : renderSpend)(account, { editBudget, now }));
     for (const period of account.provider === 'opencode' ? [] : account.periods || []) {
       const view = costPeriodView(period), cell = node('div', 'usage-cost');
       cell.title = view.detail; cell.setAttribute('aria-label', `${view.detail}: ${view.cost}${stale ? ', last known' : ''}`);

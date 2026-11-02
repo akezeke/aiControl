@@ -26,6 +26,21 @@ test('the whiteboard writes how long until each usage window resets', () => {
   assert.ok(written.includes('resets 4d 0h'), written.join());
 });
 
+test('the whiteboard writes OpenCode\'s spend: its budget with a bar, or only its spend without one', () => {
+  const now = Date.now(), account = budget => ({ provider: 'opencode', name: 'OpenCode', windows: [], periods: [{ id: 'today', usd: 2 }], week: { usd: 17.42 }, budget: { mode: 'weekly', ...budget, spent: 17.42, resetsAt: now + 2 * 86_400_000 } });
+  const draw = budget => {
+    const written = [], g = new Proxy({ strokes: 0 }, { get: (target, key) => key === 'fillText' ? text => written.push(text) : key === 'measureText' ? text => ({ width: text.length }) : key === 'strokeRect' ? () => { target.strokes++; } : key in target ? target[key] : () => {}, set: (target, key, value) => { target[key] = value; return true; } });
+    drawWhiteboard({ g, width: 1024, height: 512 }, [account(budget)], [], '', now);
+    return { written, bars: g.strokes };
+  };
+  const budgeted = draw({ usd: 25 }), bare = draw({});
+  assert.deepEqual(budgeted.written.filter(text => text !== 'Usage'), ['OpenCode', 'wk', '70%', '≈$7.58 left']);
+  assert.equal(budgeted.bars, 1);
+  assert.deepEqual(bare.written.filter(text => text !== 'Usage'), ['OpenCode', 'wk', '≈$17.42', 'this week']);
+  assert.equal(bare.bars, 0);
+  assert.deepEqual(draw({ usd: 10 }).written.slice(-2), ['174%', 'over budget']);
+});
+
 // A canvas that keeps what's written on it.
 const pad = () => {
   const written = [], g = new Proxy({ strokes: 0 }, { get: (target, key) => key === 'fillText' ? text => written.push(text) : key === 'measureText' ? text => ({ width: text.length }) : key === 'stroke' ? () => { target.strokes++; } : key in target ? target[key] : () => {}, set: (target, key, value) => { target[key] = value; return true; } });

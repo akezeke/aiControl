@@ -71,7 +71,8 @@ export function cityPlan(layout, towers = {}, previous = null, providers = [], s
   // An agent that isn't set up here has no plant. One that was, or that has sessions in the city, stays when it drops: dark, which is why they are.
   // One plant per account, since each has its own limits, spread around where a lone one stands.
   const claudes = accounts.map((account, i) => ({ provider: 'claude', account, key: account ? `claude:${account}` : 'claude', name: account ? `Claude · ${account}` : 'Claude Code', x: -PLANT, z: D * .62 + (i - (accounts.length - 1) / 2) * PLANT_GAP, connected: connected('Claude Code') }));
-  const plants = [...claudes, { provider: 'codex', key: 'codex', name: 'Codex', x: W * .62, z: -PLANT, connected: connected('Codex') }]
+  // OpenCode's stands beside Codex's on the same north line, one plant gap along, where a budget fills and empties like fuel.
+  const plants = [...claudes, { provider: 'codex', key: 'codex', name: 'Codex', x: W * .62, z: -PLANT, connected: connected('Codex') }, { provider: 'opencode', key: 'opencode', name: 'OpenCode', x: W * .62 - PLANT_GAP, z: -PLANT, connected: connected('OpenCode') }]
     .filter(plant => plant.connected || sessions.some(session => session.provider === plant.provider) || previous?.plants.some(was => was.key === plant.key));
   const roads = { xs: [...xs.slice(0, -1).map(x => x - ROAD - WALK), W - ROAD - WALK], zs: Array.from({ length: rows + 1 }, (_, i) => zAt(i) - ROAD - WALK) };
   return { hoods, buildings, roads, parcels, parks, plants, bounds: { w: W, d: D }, widths };

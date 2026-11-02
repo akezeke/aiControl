@@ -1,5 +1,5 @@
 // What a building shows for its session, and how it comes and goes. Pure.
-import { usageWindowView } from '../usage-presentation.js';
+import { usageWindowView, spendView } from '../usage-presentation.js';
 import { officeStatus } from '../office/status.js';
 
 export const RISE_MS = 1000, PUFF_MS = 500, STEP_MS = 125;
@@ -19,6 +19,13 @@ export function citySignal(session, { connected = true, now = Date.now() } = {})
 // What a plant is for: each agent's fuel. The limit closest to running out, and when it comes back. Limits whose reset has passed are awaiting a refresh, so they say nothing.
 export function plantTag(plant, usage = [], now = Date.now(), low = 80) {
   if (plant.connected === false) return { text: `${plant.name} offline`, title: `${plant.name} is not connected`, high: false };
+  // OpenCode has no limits to run out of: its fuel is the budget, or only what's spent so far when there's none.
+  if (plant.provider === 'opencode') {
+    const spend = spendView(usage.find(account => account.provider === 'opencode'), now);
+    if (!spend) return { text: plant.name, title: plant.name, high: false };
+    const high = spend.near || spend.over;
+    return { text: spend.limit ? `${plant.name} ${Math.round(spend.usedPercent)}%\n${spend.over ? 'over budget' : `${spend.money(spend.left)} left`}` : `${plant.name} ${spend.money(spend.spent)}\nthis ${spend.unit}`, title: spend.detail, high, ...spend.limit && { meter: spend.usedPercent } };
+  }
   const limits = usage.filter(account => account.provider === plant.provider && (plant.account === undefined || (account.label || '') === plant.account)).flatMap(account => account.windows || []).map(window => [window, usageWindowView(window, now)]).filter(([, view]) => !view.expired);
   if (!limits.length) return { text: plant.name, title: plant.name, high: false };
   const [worst, view] = limits.reduce((a, b) => b[0].usedPercent > a[0].usedPercent ? b : a), percent = worst.usedPercent, high = percent >= low, resets = view.resetShortText === '—' ? '' : `\nresets ${view.resetShortText}`;

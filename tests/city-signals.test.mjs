@@ -110,3 +110,15 @@ test('without power a working session is dark too, and does not claim to be work
   const away = sig({ status: 'working' }, { connected: false });
   assert.deepEqual([away.asleep, away.mood], [true, 'asleep']);
 });
+
+test('the OpenCode plant\'s tag is its budget, or its spend with none', () => {
+  const plant = { provider: 'opencode', name: 'OpenCode', connected: true }, account = budget => ({ provider: 'opencode', periods: [{ id: 'today', usd: 1 }], week: { usd: 17.42 }, budget: { mode: 'weekly', ...budget, spent: 17.42, resetsAt: NOW + 86_400_000 } });
+  assert.deepEqual(plantTag(plant, [], NOW), { text: 'OpenCode', title: 'OpenCode', high: false });
+  assert.deepEqual(plantTag(plant, [{ provider: 'opencode', periods: [] }], NOW), { text: 'OpenCode', title: 'OpenCode', high: false });
+  const ok = plantTag(plant, [account({ usd: 25 })], NOW), near = plantTag(plant, [account({ usd: 20 })], NOW), over = plantTag(plant, [account({ usd: 10 })], NOW), bare = plantTag(plant, [account({})], NOW);
+  assert.deepEqual([ok.text, ok.high, Math.round(ok.meter)], ['OpenCode 70%\n≈$7.58 left', false, 70]);
+  assert.deepEqual([near.high, over.high, over.text], [true, true, 'OpenCode 174%\nover budget']);
+  assert.deepEqual([bare.text, bare.high, bare.meter], ['OpenCode ≈$17.42\nthis week', false, undefined]);
+  assert.match(ok.title, /Budget resets in/);
+  assert.deepEqual(plantTag({ ...plant, connected: false }, [account({ usd: 25 })], NOW), { text: 'OpenCode offline', title: 'OpenCode is not connected', high: false });
+});

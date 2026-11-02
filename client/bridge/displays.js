@@ -1,7 +1,7 @@
 // What's drawn on the ship's displays: tiles, signs, alcoves. Canvases come from the room.
 // Signals: red needs you, teal is working, pale blue is idle, orange is near a limit. Decoration uses the palette's other hues.
 import { monitorLines } from '../office/status.js';
-import { usageWindowView } from '../usage-presentation.js';
+import { usageWindowView, spendView } from '../usage-presentation.js';
 import { rectCorners } from './brackets.js';
 import { SIGNALS } from './palettes.js';
 import { signalOf, stationSignals } from './ship.js';
@@ -134,6 +134,20 @@ function big(g, weight, size, text, width) {
   if (wide > width) g.font = font(weight, Math.floor(size * width / wide));
 }
 // All of them if they fit; the fullest if they don't.
+// OpenCode's spend, as a row under the limits: what's been spent, and against a budget if one is set. It reads like a limit but isn't one,
+// so it never trips the ship's limit alert or the crystals, and its colour only warns.
+export function spendRows(usage = [], now = Date.now()) {
+  return usage.flatMap(account => {
+    const view = spendView(account, now);
+    if (!view) return [];
+    const dollar = usd => dollars(usd).toUpperCase();
+    return [{
+      name: `${glyph(account.provider)} OPENCODE`, window: view.label.toUpperCase(), spend: true, used: view.usedPercent ?? 0, bar: view.limit != null, near: view.near || view.over, full: view.over, label: 'spend',
+      percent: view.limit ? `${Math.round(view.usedPercent)}%` : dollar(view.spent),
+      left: view.limit ? view.over ? `OVER BY ${dollar(view.spent - view.limit)}` : `${dollar(view.left)} LEFT · ${view.resetShort.toUpperCase()}` : view.today != null ? `TODAY ${dollar(view.today)}` : '',
+    }];
+  });
+}
 export const visibleLimits = (rows, max) => rows.length > max ? [...rows].sort((a, b) => b.used - a.used).slice(0, max) : rows;
 // Each account once, with its windows under it. A window it already has means another account of the same name.
 export function limitGroups(rows) {
@@ -163,7 +177,7 @@ function drawShipLeft(g, w, h, d) {
       const after = pad + g.measureText(row.window).width + 18;
       g.fillStyle = color; g.textAlign = 'right'; g.fillText(row.percent, w - pad, y + 42 * s); const room = w - pad - g.measureText(row.percent).width - 18 - after; g.textAlign = 'left';
       g.fillStyle = DIM; g.font = font(400, 38 * s); g.fillText(fit(g, row.left, room), after, y + 42 * s);
-      cells(g, pad, y + 54 * s, w - 2 * pad, 22 * s, row.used / 100, color);
+      if (row.bar !== false) cells(g, pad, y + 54 * s, w - 2 * pad, 22 * s, row.used / 100, color);
       y += 92 * s;
     }
     y += 8 * s;
@@ -288,6 +302,7 @@ export function createDisplays(room) {
         const view = usageWindowView({ label: limit.window, usedPercent: limit.usedPercent, resetsAt: limit.resetsAt }, now);
         return { name: `${glyph(limit.provider)} ${(limit.label || limit.provider || '').toUpperCase()}`, window: view.shortLabel.toUpperCase(), percent: `${Math.round(limit.usedPercent)}%`, used: view.expired ? 0 : limit.usedPercent, left: view.resetIn.toUpperCase(), near: limit.near, full: limit.full, label: limit.window };
       });
+      const spend = spendRows(usage, now);
       const worst = [...limitRows].sort((a, b) => b.used - a.used), full = worst.find(row => row.full);
       // Subagents share their parent's bill, so only main sessions count.
       const spent = main.filter(session => session.cost?.usd != null).sort((a, b) => b.cost.usd - a.cost.usd);
@@ -296,7 +311,7 @@ export function createDisplays(room) {
         mode: state.mode, warp: state.warp, waiting: state.waiting, offline: state.offline, left: state.left, right: state.right, rightName: state.rightName, machine: machine || '', clock: clock(now),
         engineLine: state.offline ? 'RECONNECTING' : state.mode === 'limit' ? full ? `RESETS IN ${full.left}` : '' : state.warp ? `${state.warp} ON DUTY` : `SHIP TIME ${clock(now)}`,
         limitLine: full ? `${full.name} ${full.label.toUpperCase()} LIMIT REACHED · RESETS IN ${full.left}` : '',
-        limitRows: visibleLimits(limitRows, MAX_LIMIT_ROWS), overflow,
+        limitRows: [...visibleLimits(limitRows, MAX_LIMIT_ROWS), ...spend], overflow,
         total: spent.reduce((sum, session) => sum + session.cost.usd, 0), credits: spent.slice(0, MAX_SPENDERS).map(session => [stationName(session), session.cost.usd]),
         comm, crystals: worst.slice(0, room.crystals.length),
         signals: stationSignals(stations, sessions, state.offline),

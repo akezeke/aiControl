@@ -1,5 +1,5 @@
 import './spend.css';
-import { costPeriodView } from './usage-presentation.js';
+import { costPeriodView, spendView } from './usage-presentation.js';
 import { spendArt } from './spend-art.js';
 const node = (tag, className, text) => { const el = document.createElement(tag); el.className = className; if (text != null) el.textContent = text; return el; };
 const money = value => costPeriodView({ usd: value }).cost;
@@ -51,6 +51,21 @@ export function renderSpend(account, { editBudget, now = Date.now() } = {}) {
   mix.setAttribute('aria-label', mix.title); mix.append(rail, legend);
   if (total) mix.append(node('span', 'spend-cache', `${Math.round((week.cacheRead + week.cacheWrite) / total * 100)}% cache`));
   panel.append(mix); return panel;
+}
+
+// The same spend as one gauge in a row of limits, for a bar with no room for the panel: the budget used, what's spent, and when it resets.
+export function renderSpendRow(account, { editBudget, now = Date.now() } = {}) {
+  const view = spendView(account, now), tone = view.over ? ' usage-full' : view.near ? ' usage-high' : '';
+  const row = node('button', `usage-window spend-row${view.limit ? '' : ' spend-bare'}${tone}`); row.type = 'button'; row.disabled = !editBudget;
+  row.title = `${view.detail}${editBudget ? '\nClick to edit the budget' : ''}`;
+  row.setAttribute('aria-label', `OpenCode ${view.text}${view.over ? ', over budget' : ''}${view.partial ? ', some costs unavailable' : ''}${editBudget ? '. Edit budget.' : ''}`);
+  const label = node('span', 'usage-label', view.unit === 'month' ? 'mo' : 'wk');
+  const meter = node('progress', 'usage-meter'); meter.max = 100; meter.value = Math.min(100, view.usedPercent ?? 0); meter.hidden = view.limit == null;
+  meter.setAttribute('aria-hidden', 'true');
+  row.append(label, meter, node('strong', 'usage-percent', view.money(view.spent)));
+  if (view.limit) row.append(node('span', 'usage-reset', view.resetShort));
+  row.onclick = () => editBudget?.(account);
+  return row;
 }
 
 export function budgetDialog(account, save) {

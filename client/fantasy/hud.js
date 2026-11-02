@@ -215,14 +215,14 @@ export function createHud(box, actions) {
     },
     setLone(lone) { back.hidden = !focused || lone; },
     refresh(data) { if (data && focused) refreshParty(data); },
-    status({ error, waiting, usage }) {
+    status({ error, waiting, usage, editBudget }) {
       conn.hidden = !error;
       next.hidden = !waiting; put(next, waiting ? `⚠ ${waiting}` : '');
       // The list's own gauges (usage.js), so the scene's bar and the list's header read the same.
       const key = JSON.stringify([usage, !!error, Math.floor(Date.now() / 60_000)]);
       if (key === limitsKey) return;
       limitsKey = key;
-      limits.replaceChildren(...usage ? [usageAccounts(usage, { disconnected: !!error })] : []);
+      limits.replaceChildren(...usage ? [usageAccounts(usage, { disconnected: !!error, compact: true, editBudget })] : []);
     },
     // A summon or big spell keeps the banner until it ends; small attacks don't talk over it.
     banner(name, line, seconds, big, final) {

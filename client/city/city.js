@@ -7,7 +7,7 @@ import { createCard, createMenu } from '../scene-ui.js';
 import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
 import { bareCells, groundCells, paintGround, paintHood, paintLotShade, timeOfDay, WIRE_SAG } from './ground.js';
-import { buildTower, annex, boat, duck, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant, PYLON_ARM, PYLON_REACH } from './generator.js';
+import { buildTower, annex, boat, duck, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant, tankPlant, PYLON_ARM, PYLON_REACH } from './generator.js';
 import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
 import { citySignal, plantTag, Lifecycle } from './signals.js';
@@ -37,9 +37,9 @@ const PLUME = [6, 10, 14, 18], PLUME_LIFT = 3, PUFF = [14, 22, 30, 36];
 // A session the server won't let go of comes back rather than leaving a lot that looks empty and isn't.
 const FIRED_MS = VACANT_MS + 10_000;
 const BOAT_SAILS = ['#e83b3b', '#0eaf9b', '#f9c22b'];
-const POWER = { claude: '#e83b3b', codex: '#0eaf9b' }, POWER_HEAD = '#fbff86', POWER_DOTS = 6;
+const POWER = { claude: '#e83b3b', codex: '#0eaf9b', opencode: '#9a7bff' }, POWER_HEAD = '#fbff86', POWER_DOTS = 6;
 const BIRD_DAY = '#2e222f', BIRD_NIGHT = '#c7dcd0', BIRD_LIFT = 46, CLOUD_INK = 'rgba(46, 34, 47, .16)', cloudSprites = new Map();
-const PLANTS = { claude: [coolingPlant, '#e83b3b'], codex: [stackPlant, '#0eaf9b'] };
+const PLANTS = { claude: [coolingPlant, '#e83b3b'], codex: [stackPlant, '#0eaf9b'], opencode: [tankPlant, '#9a7bff'] };
 // The intro: how long it may spend baking in one frame while the card hides the city, how soon a crane follows the power, and the trail behind a spark on the wires.
 const BOOT_BAKE_MS = 12, BOOT_CRANE_MS = 250, WIRE_SPARK = '#f9c22b';
 

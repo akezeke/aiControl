@@ -199,6 +199,15 @@ export function coolingPlant(stripe, steam = true, lit = steam, phase = 0) {
   for (const x of [-7, 7]) { for (let y = 0; y < 24; y++) { const a = y / 23, r = 6.6 - 3 * Math.sin(a * Math.PI * .72); S.cyl(x, y + 1, 0, r, 1, y > 16 && y < 21 ? st : c); } S.cyl(x, 25, 0, 3, 1, hex('#2b3040')); if (steam) puffs(S, x, 28, 0, x + 40, phase); }
   return S.bake();
 }
+// Three fuel tanks on a pipe rack for OpenCode's spend, which fills and empties like fuel rather than running out.
+export function tankPlant(stripe, steam = true, lit = steam, phase = 0) {
+  const S = new Stack(36, 26, 40), g = hex('#a9b1b6'), st = hex(stripe), band = lit ? glow(stripe) : st;
+  S.box(0, 0, 0, 30, 1, 20, hex('#9babb2'));
+  S.box(0, 1, -8, 26, 1, 2, hex('#3a4046'));
+  for (const x of [-9, 0, 9]) { for (let y = 1; y < 14; y++) S.cyl(x, y, 1, 4.2, 1, y > 6 && y < 10 ? band : y % 4 === 0 ? mul(g, .85) : g); S.cyl(x, 14, 1, 3, 1, st); }
+  if (steam) puffs(S, 9, 17, 1, 120, phase);
+  return S.bake();
+}
 // A turbine hall and two striped stacks for the Codex limit.
 export function stackPlant(stripe, steam = true, lit = steam, phase = 0) {
   const S = new Stack(36, 26, 54), g = hex('#9aa0b4'), st = hex(stripe), band = lit ? glow(stripe) : st;

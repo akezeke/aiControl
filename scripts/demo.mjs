@@ -30,6 +30,9 @@ function claude(id, project, title, status, minutes, messages, extra = {}) {
 function codex(id, project, title, status, minutes, messages, extra = {}) {
   return { id: `codex:${id}`, nativeId: id, provider: 'codex', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'gpt-5.5-codex', effort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh'], detail: '', control: true, messaging: { send: true, queue: true, images: true, interrupt: true, effort: true }, messages, messagesState: 'ready', queuedMessages: [], queueAvailable: true, queueError: '', ...extra };
 }
+function opencode(id, project, title, status, minutes, messages, extra = {}) {
+  return { id: `opencode:${id}`, nativeId: id, provider: 'opencode', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'anthropic/claude-sonnet-5', version: '2.2.5', effort: 'medium', efforts: ['low', 'medium', 'high'], detail: '', control: true, messaging: { send: true, interrupt: true, images: true, model: true, effort: true, fire: true }, messages, messagesState: 'ready', ...extra };
+}
 function subagent(parent, agentId, title, kind, status, minutes, messages) {
   return { ...parent, id: `${parent.id}:${agentId}`, nativeId: agentId, parentId: parent.id, title, status, updatedAt: ago(minutes), model: kind, control: false, messaging: { send: false, queue: false }, messages, branch: undefined, plan: undefined, permissionMode: undefined, context: undefined, effort: undefined, cost: undefined, lastTurnMs: undefined };
 }
@@ -81,21 +84,40 @@ const sessions = [
     msg('user', 'Shell startup takes 1.2 s. Make it faster.', 640),
     msg('assistant', 'Startup is down to **180 ms**: `nvm` now loads lazily and completions are cached.', 600),
   ], { permissionMode: 'bypassPermissions', context: { used: 40_000 } }),
+  opencode('ses_0a1b2c3d4e5f6a7b8c9d0e1f', 'recipe-api', 'Cache the ingredient lookups', 'working', 1, [
+    msg('user', 'Cache the ingredient lookups in memory for ten minutes.', 9),
+    tool('Edit · src/lookup.ts', 2),
+    msg('assistant', 'Lookups are cached with a ten-minute TTL; running the tests now.', 1),
+  ], { branch: 'cache-lookups', context: { used: 88_000 }, cost: { usd: 0.84, estimated: true, added: 41, removed: 9 }, plan: steps(1, 'Add a cache', 'Expire entries', 'Tests') }),
+  opencode('ses_1b2c3d4e5f6a7b8c9d0e1f2a', 'home-lab', 'Draft the backup script', 'idle', 55, [
+    msg('user', 'Write a restic backup script for the NAS.', 70),
+    msg('assistant', 'The script backs up `/srv` nightly and prunes to 7 daily, 4 weekly snapshots.', 55),
+  ], { context: { used: 31_000 }, cost: { usd: 0.37, estimated: true, added: 64, removed: 0 } }),
 ];
 
 const store = new RequestStore();
-const pending = view => store.add(view, async () => {}, view.sessionId);
+// With --calm nobody is waiting on an answer, for screenshots of a quiet day.
+const pending = view => { if (!process.argv.includes('--calm')) store.add(view, async () => {}, view.sessionId); };
 pending(claudeRequest({ hook_event_name: 'PermissionRequest', session_id: weather.nativeId, tool_name: 'Bash', tool_input: { command: 'npm test -- sensors', description: 'Run the sensor tests' } }).view);
 pending(codexRequest({ method: 'item/commandExecution/requestApproval', params: { threadId: sessions[4].nativeId, itemId: 'i1', reason: 'Apply the migration that adds the pagination index', command: 'pnpm prisma migrate dev --name recipes_cursor_index', cwd: sessions[4].cwd } }).view);
 pending(claudeRequest({ hook_event_name: 'PermissionRequest', session_id: sessions[6].nativeId, tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: 'Which style should winter use?', header: 'Winter', multiSelect: false, options: [{ label: 'Frosted pastels', description: 'Soft blue and lilac with white highlights' }, { label: 'Deep evergreen', description: 'Dark greens with snow caps' }, { label: 'Monochrome', description: 'Greys only, like a snowy photo' }] }] } }).view);
 
 pending(claudeRequest({ hook_event_name: 'PermissionRequest', session_id: sessions[8].nativeId, tool_name: 'Edit', tool_input: { file_path: `${home}/dotfiles/.zshrc`, old_string: 'source $NVM_DIR/nvm.sh\ncompinit', new_string: 'nvm() { unset -f nvm; source $NVM_DIR/nvm.sh; nvm "$@"; }\ncompinit -C' },
   permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'Edit', ruleContent: '~/code/dotfiles/**' }], behavior: 'allow', destination: 'session' }] }).view);
+// A budget week that began four days ago, so the chart has days in it whichever day the demo runs.
+const weekStart = (() => { const d = new Date(now); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 4).getTime(); })();
 const usageWindow = (id, label, usedPercent, resetMinutes, scope = '') => ({ id, label, scope, usedPercent, resetsAt: now + resetMinutes * min });
 const usage = [
   { provider: 'codex', name: 'Codex', windows: [usageWindow('codex:primary', '5-hour', 38, 134), usageWindow('codex:secondary', 'Weekly', 21, 4 * 1440)], updatedAt: now, status: 'ready', detail: '' },
   { provider: 'claude', name: 'Claude Code', windows: [usageWindow('five_hour', '5-hour', 64, 71), usageWindow('seven_day', 'Weekly', 47, 2 * 1440)], updatedAt: now, status: 'ready', detail: '' },
   { provider: 'claude', label: 'work', name: 'Claude Code · work', windows: [usageWindow('five_hour', '5-hour', 22, 188), usageWindow('seven_day', 'Weekly', 31, 5 * 1440)], updatedAt: now, status: 'ready', detail: '' },
+  {
+    provider: 'opencode', name: 'OpenCode', windows: [], updatedAt: now, status: 'ready', detail: 'OpenCode estimates for recorded sessions.', estimated: true,
+    periods: [{ id: 'today', label: 'Today', usd: 2.41, input: 412_000, output: 61_000, cacheRead: 1_900_000, cacheWrite: 180_000 }, { id: 'month', label: 'Month', usd: 38.7, input: 6_100_000, output: 902_000, cacheRead: 31_000_000, cacheWrite: 2_800_000 }],
+    week: { usd: 17.42, input: 2_900_000, output: 410_000, cacheRead: 14_000_000, cacheWrite: 1_300_000, from: weekStart, resetsAt: weekStart + 7 * 1440 * min,
+      days: [3.1, 4.6, 2.9, 4.41, 2.41, 0, 0].map((usd, i) => ({ at: weekStart + i * 1440 * min, usd, input: usd * 160_000, output: usd * 24_000, cacheRead: usd * 800_000, cacheWrite: usd * 70_000, incomplete: false })) },
+    budget: { mode: 'weekly', usd: 25, day: 7, from: weekStart, resetsAt: weekStart + 7 * 1440 * min, spent: 17.42 },
+  },
 ];
 // Same merge as server/main.mjs: a pending request sets the session status.
 const seats = new OfficeSeats(), towers = new CityTowers(), battlefields = new Battlefields();
@@ -107,8 +129,8 @@ const snapshot = () => {
     towers: towers.update(sessions),
     battlefields: battlefields.update(sessions),
     lost,
-    usage, features: { messaging: true, steering: true, claudeMessaging: true }, updatedAt: Date.now(), machine: 'demo', claudeAccounts: ['', 'work'],
-    providers: [{ name: 'Codex', connected: true, detail: 'Demo data' }, { name: 'Claude Code', connected: true, detail: 'Demo data' }],
+    usage, features: { messaging: true, steering: true, claudeMessaging: true, opencode: true }, updatedAt: Date.now(), machine: 'demo', claudeAccounts: ['', 'work'],
+    providers: [{ name: 'Codex', connected: true, detail: 'Demo data' }, { name: 'Claude Code', connected: true, detail: 'Demo data' }, { name: 'OpenCode', connected: true, detail: 'Demo data' }],
   };
 };
 // Screenshots the sessions "looked at": the weather app and the garden's tiles (scripts/demo-shots), two from subagents.
@@ -203,6 +225,6 @@ const authFile = join(await mkdtemp(join(tmpdir(), 'ai-control-demo-')), 'auth.j
 await savePassword(authFile, pin);
 const origins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
 const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: ['127.0.0.1', 'localhost'] } });
-const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder, lost: recovery }));
+const server = createServer(createHandler({ auth: new Auth(authFile, { secure: false }), store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder, lost: recovery, budget: async value => { const { budget } = usage.find(account => account.provider === 'opencode'); Object.assign(budget, value); return budget; } }));
 server.listen(port, '127.0.0.1', () => console.log(`AI Control demo: ${origins[0]}  PIN ${pin}  (Ctrl-C stops)`));
 process.once('SIGINT', () => { server.closeAllConnections(); server.close(); vite.close().finally(() => process.exit(0)); });

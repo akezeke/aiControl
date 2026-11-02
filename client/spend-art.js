@@ -67,6 +67,32 @@ export function spendArt() {
     <path d="m32 27 5 3m45 1 5-4M55 17l5 3m27 24 5 2M34 47l6-1" stroke="#fff2a0" stroke-width="3"/>
     <path d="m43 20-4 4m28 0 5-3m-48 16 5 1m34 17 5-3m29-15 3 3" stroke="#70d6dc" stroke-width="3"/>
     <path d="m48 54 4 2m23-38 3 3" stroke="#724d9a" stroke-width="3"/>
+  </g>
+  <g class="spend-art bridge">
+    <ellipse cx="60" cy="86" rx="40" ry="6" fill="#050818" opacity=".7"/>
+    <path d="M60 6 88 34 76 76H44L32 34Z" fill="#7e45f2" stroke="#e4d4ff" stroke-width="2"/>
+    <path d="M60 6 76 76H60Z" fill="#bb92ff" opacity=".75"/><path d="M60 6 32 34h28Z" fill="#d7bcff" opacity=".8"/>
+    <path d="M32 34h56M46 34l14 42 14-42" stroke="#f1e7ff" stroke-width="1.5" opacity=".7"/>
+    <path d="M24 78h72l8 10H16Z" fill="#232b66" stroke="#6577e6" stroke-width="2"/><path d="M30 83h60" stroke="#ff4fd1" stroke-width="2"/>
+    <path d="M18 24l6 6m78-6-6 6M12 52h8m80 0h8" stroke="#49e6d6" stroke-width="2"/>
+  </g>
+  <g class="spend-art city" shape-rendering="crispEdges">
+    <ellipse cx="60" cy="86" rx="46" ry="6" fill="#000" opacity=".4"/>
+    <path d="M17 66q0-36 43-36t43 36Z" fill="#ff8a1f" stroke="#26180a" stroke-width="4"/>
+    <path d="M53 31h14v35H53Z" fill="#ffb55e"/><path d="M26 56q5-15 20-19" stroke="#ffdaa6" stroke-width="4"/>
+    <path d="M9 66h102v11H9Z" fill="#e66d0e" stroke="#26180a" stroke-width="4"/><path d="M14 72h92" stroke="#ffb15a" stroke-width="2"/>
+    <path d="M10 85h100" stroke="#9aa0a4" stroke-width="5"/><path d="M14 85h8m14 0h8m14 0h8m14 0h8m14 0h8" stroke="#2a2d30" stroke-width="5"/>
+    <rect x="54" y="42" width="12" height="12" fill="#26180a"/><path d="M57 51v-6h6" stroke="#ffd36a" stroke-width="2"/>
+  </g>
+  <g class="spend-art fantasy" shape-rendering="crispEdges">
+    <ellipse cx="60" cy="86" rx="46" ry="7" fill="#020a08" opacity=".65"/>
+    <path d="M20 46h80v36H20Z" fill="#7b4a22" stroke="#1a100a" stroke-width="4"/>
+    <path d="M20 46V36q0-22 40-22t40 22v10Z" fill="#a96b2d" stroke="#1a100a" stroke-width="4"/>
+    <path d="M22 56h76M22 68h76M26 26q8-8 18-10" stroke="#3b2412" stroke-width="2"/>
+    <path d="M30 18v62M90 18v62" stroke="#f0c04a" stroke-width="6"/><path d="M20 46h80" stroke="#f0c04a" stroke-width="5"/>
+    <rect x="50" y="42" width="20" height="18" fill="#f7d86c" stroke="#6a4a14" stroke-width="2"/><path d="M60 47v7" stroke="#2a1a0a" stroke-width="3"/>
+    <ellipse cx="14" cy="82" rx="11" ry="4" fill="#f2c94c" stroke="#7a5a14" stroke-width="2"/><ellipse cx="108" cy="80" rx="9" ry="3.5" fill="#f2c94c" stroke="#7a5a14" stroke-width="2"/>
+    <path d="m96 8 2 6 6 2-6 2-2 6-2-6-6-2 6-2Z" fill="#fff0ae"/>
   </g></svg>`;
   return node;
 }

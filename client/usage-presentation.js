@@ -40,3 +40,20 @@ export function costPeriodView(period) {
   const count = value => (Number.isFinite(value) ? value : 0).toLocaleString();
   return { cost, detail: `${period.label}: OpenCode estimated cost · ${count(period.input)} input · ${count(period.output)} output · ${count(period.cacheRead)} cache read · ${count(period.cacheWrite)} cache write tokens` };
 }
+
+// OpenCode has no limit windows, only what's been spent, and against a budget if one is set. The budget is a gauge, not a limit:
+// reaching it stops nothing, so themes show it as a reserve and never as a hard stop. Null when there's nothing to show.
+export function spendView(account, now = Date.now()) {
+  if (account?.provider !== 'opencode' || !account.periods?.length) return null;
+  const cycle = account.budget, unit = cycle?.mode === 'monthly' ? 'month' : 'week', limit = cycle?.usd > 0 ? cycle.usd : null;
+  const spent = cycle?.spent ?? account.week?.usd ?? 0, today = account.periods.find(period => period.id === 'today')?.usd ?? null;
+  const resetsAt = cycle?.resetsAt ?? account.week?.resetsAt, reset = usageWindowView({ label: 'Budget', usedPercent: 0, resetsAt }, now);
+  const usedPercent = limit ? spent / limit * 100 : null, money = usd => costPeriodView({ usd }).cost;
+  return {
+    unit, label: unit === 'month' ? 'Month' : 'Week', spent, limit, today, usedPercent, resetIn: reset.resetIn, resetShort: reset.resetShortText,
+    left: limit ? Math.max(0, limit - spent) : null, over: limit != null && spent > limit, near: limit != null && spent <= limit && usedPercent >= 80,
+    partial: account.status === 'partial' || !!account.week?.incomplete, money,
+    text: limit ? `${money(spent)} of $${limit.toLocaleString()} this ${unit}` : `${money(spent)} this ${unit}`,
+    detail: [`OpenCode spend`, today != null ? `Today ${money(today)}` : '', `This ${unit} ${money(spent)}${limit ? ` of $${limit.toLocaleString()}` : ''}`, reset.resetText !== 'Reset time unavailable' ? reset.resetText.replace('Resets', 'Budget resets') : '', 'Recorded estimates; a budget tracks spending, it does not stop it.'].filter(Boolean).join('\n'),
+  };
+}

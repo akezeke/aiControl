@@ -229,7 +229,7 @@ export function mountFantasy(container, hooks = {}) {
     const data = zoomed && [...fights.values()].includes(zoomed) ? zoomed.data : null;
     hud.refresh(data); measure();
     const waiting = latest ? latest.sessions.filter(session => ['permission', 'question'].includes(session.status)).length : 0;
-    hud.status({ error: frozen, waiting, usage: last?.usage });
+    hud.status({ error: frozen, waiting, usage: last?.usage, editBudget: hooks.editBudget });
   }
   const matches = (data, test) => data.members.some(member => test(member.session) || member.minions.some(minion => test(minion.session)));
   function apply() {

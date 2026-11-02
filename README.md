@@ -12,7 +12,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
 - Chat history with Markdown, diffs, tool calls, screenshots, older messages on demand and the Markdown files a session writes.
 - Account usage limits, notifications and sounds when a session needs you.
-- OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets.
+- OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets, in every theme: a Bridge console row, a Metropolis plant, a Fantasy treasury and a line on the Office whiteboard.
 - Sessions lost to a crash, a killed tmux or a shutdown come back with their last prompt and reply, to resume in a click.
 - Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting.
 - A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
@@ -43,7 +43,7 @@ On macOS, the Tailscale app is detected automatically. Claude usage uses its exi
 
 ![OpenCode icons for every theme](docs/screenshots/opencode-icons.webp)
 
-[Heroes spend HUD](docs/screenshots/heroes-spend.webp) · [Session controls](docs/screenshots/heroes-session-header.webp)
+Spend HUDs: [Heroes](docs/screenshots/heroes-spend.webp) · [Bridge](docs/screenshots/bridge-list.webp) · [Metropolis](docs/screenshots/city-list.webp) · [Fantasy Battle](docs/screenshots/fantasy-list.webp) · [Session controls](docs/screenshots/heroes-session-header.webp)
 
 Install [OpenCode 2](https://dev.opencode.ai/v2/docs/), connect your provider with `/connect`, then choose its model with `/models`. Adding an Anthropic key does not switch away from OpenCode's free model. Connect AI Control to the shared background service:
 
@@ -92,7 +92,7 @@ The Bridge theme is an original design and is not affiliated with any franchise.
 
 | Metropolis | Metropolis on a phone | Metropolis list |
 | --- | --- | --- |
-| ![Metropolis](docs/screenshots/city-overview.webp) | ![Metropolis on a phone](docs/screenshots/city-phone.webp) | ![Metropolis session list](docs/screenshots/city-list.webp) |
+| ![Metropolis, with a power plant per agent](docs/screenshots/city-overview.webp) | ![Metropolis on a phone](docs/screenshots/city-phone.webp) | ![Metropolis session list](docs/screenshots/city-list.webp) |
 
 | Fantasy Battle | A fight | On a phone |
 | --- | --- | --- |

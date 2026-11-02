@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentFacts, agentLayout, fitText, shotUnder, stationName, limitGroups, visibleLimits, wrapLines } from '../client/bridge/displays.js';
+import { agentFacts, agentLayout, fitText, shotUnder, stationName, limitGroups, visibleLimits, spendRows, wrapLines } from '../client/bridge/displays.js';
 import { SIGNALS } from '../client/bridge/palettes.js';
 
 const measure = text => [...text].length * 10;
@@ -116,4 +116,17 @@ test('an account stays together when the fullest limits were picked out of order
   const rows = [{ name: 'MAX', window: 'W' }, { name: 'PRO', window: '5H' }, { name: 'MAX', window: '5H' }];
   assert.deepEqual(limitGroups(rows).map(group => group.name), ['MAX', 'PRO']);
   assert.equal(limitGroups(rows)[0].rows.length, 2);
+});
+
+test('OpenCode spend is a row of its own that never reads as a hard limit', () => {
+  const now = Date.UTC(2026, 10, 4, 12), account = (budget, spent) => ({ provider: 'opencode', periods: [{ id: 'today', usd: 2.41 }], week: { usd: spent }, budget: { mode: 'weekly', ...budget, spent, resetsAt: now + 3 * 86_400_000 } });
+  assert.deepEqual(spendRows([{ provider: 'claude', windows: [] }, { provider: 'opencode', periods: [] }], now), []);
+  const [budgeted] = spendRows([account({ usd: 25 }, 17.42)], now);
+  assert.deepEqual([budgeted.window, budgeted.percent, budgeted.bar, budgeted.near, budgeted.full], ['WEEK', '70%', true, false, false]);
+  assert.match(budgeted.left, /^\$7\.58 LEFT · 3D$/);
+  const [near] = spendRows([account({ usd: 20 }, 17)], now), [over] = spendRows([account({ usd: 10 }, 12.5)], now);
+  assert.deepEqual([near.near, near.full, over.near, over.full], [true, false, true, true]);
+  assert.match(over.left, /^OVER BY \$2\.50/);
+  const [bare] = spendRows([account({}, 4)], now);
+  assert.deepEqual([bare.percent, bare.bar, bare.left], ['$4.00', false, 'TODAY $2.41']);
 });

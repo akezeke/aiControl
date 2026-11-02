@@ -101,3 +101,11 @@ test('the painted ground is all palette, in every view', () => {
   const p = plan([s('a', 'x'), s('b', 'y')]), g = groundCells(p);
   for (const v of views) { const q = paintGround(g, v); for (let i = 0; i < q.rgba.length; i += 4) if (q.rgba[i + 3]) assert.ok(inPalette(q.rgba[i], q.rgba[i + 1], q.rgba[i + 2])); }
 });
+test('OpenCode has a plant beside Codex\'s when it is set up, and none when it is not', () => {
+  const session = { ...s('a', 'x'), provider: 'opencode' }, layout = layoutOffice([session], null, 1), providers = [...both(true, true), { name: 'OpenCode', connected: true }];
+  const [codex, opencode] = ['codex', 'opencode'].map(provider => cityPlan(layout, {}, null, providers, [session]).plants.find(q => q.provider === provider));
+  assert.deepEqual([opencode.name, opencode.key, opencode.z, opencode.connected], ['OpenCode', 'opencode', codex.z, true]);
+  assert.ok(Math.abs(opencode.x - codex.x) >= 90, 'far enough apart that neither stands on the other');
+  assert.deepEqual(plantsOf([s('a', 'x')], both(true, true)), ['claude', 'codex']);
+  assert.deepEqual(cityPlan(layout, {}, null, both(false, false), [session]).plants.map(q => [q.provider, q.connected]), [['opencode', false]]);
+});

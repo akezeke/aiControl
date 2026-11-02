@@ -2,7 +2,7 @@
 // a sticky note per waiting session, the machine's name on the door, and a sign on the coffee machine while usage is used up.
 // Each is a canvas texture redrawn only when what it shows changes. And the kitchen's: Trickshot's clipboard and score board.
 import * as THREE from 'three';
-import { usageWindowView } from '../usage-presentation.js';
+import { usageWindowView, spendView } from '../usage-presentation.js';
 import { PLACES, aimAt, bestText, capital, challenges, dayKey, itemName, num, randomShot } from './daily.js';
 import { SPOTS, ZONES } from './kitchen-plan.js';
 import { MONDAY } from './levels.js';
@@ -34,6 +34,17 @@ function fit(g, text, width) {
   return `${text}…`;
 }
 
+// What an account writes on the board: a row per limit window, or for OpenCode one row for its spend against the budget (no bar without one).
+function boardRows(account, now) {
+  const spend = spendView(account, now);
+  if (spend) {
+    const word = spend.unit === 'month' ? 'mo' : 'wk', tone = spend.over ? 'usage-full' : spend.near ? 'usage-high' : '';
+    return [{ bare: spend.limit == null, view: { shortLabel: word, barPercent: Math.min(100, spend.usedPercent ?? 0), tone, pace: null, percentText: spend.limit ? `${Math.round(spend.usedPercent)}%` : spend.money(spend.spent) },
+      note: spend.limit ? spend.over ? 'over budget' : `${spend.money(spend.left)} left` : `this ${spend.unit}` }];
+  }
+  return account.windows.slice(0, 2).map(window => { const view = usageWindowView(window, now); return { view, note: view.expired ? 'reset due' : view.resetIn === '—' ? '' : `resets ${view.resetIn}` }; });
+}
+
 export function drawWhiteboard({ g, width: w, height: h }, usage, providers, error, now) {
   g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h);
   g.lineCap = 'round'; g.lineJoin = 'round';
@@ -50,7 +61,7 @@ export function drawWhiteboard({ g, width: w, height: h }, usage, providers, err
     g.fillStyle = INK.red; g.font = `36px ${SHARPIE}`; g.fillText(`${provider.name} offline`, 40, y - 34);
     g.fillStyle = INK.black; g.font = `26px ${SHARPIE}`; g.fillText(fit(g, String(provider.detail || '').replace(/^[^:]*disconnected:\s*/i, ''), w - 80), 40, y);
   });
-  const accounts = (usage || []).filter(account => account.windows?.length), space = h - 120 - offline.length * 76;
+  const accounts = (usage || []).filter(account => account.windows?.length || spendView(account, now)), space = h - 120 - offline.length * 76;
   if (!accounts.length) { g.fillStyle = INK.black; g.font = `36px ${SHARPIE}`; g.fillText('no usage data yet', 40, 160); return; }
   // Two accounts fill the board; more (e.g. several Claude accounts) write smaller.
   const k = Math.min(1, space / (accounts.length * 182));
@@ -58,18 +69,20 @@ export function drawWhiteboard({ g, width: w, height: h }, usage, providers, err
   accounts.forEach((account, a) => {
     g.fillStyle = INK.black; g.font = `${46 * k}px ${SHARPIE}`; g.fillText(account.name || account.provider, 40, y);
     y += 58 * k;
-    for (const window of account.windows.slice(0, 2)) {
-      const view = usageWindowView(window, now), x = 120, barW = w - x - 400, filled = barW * view.barPercent / 100;
+    for (const { view, note, bare } of boardRows(account, now)) {
+      const x = 120, barW = w - x - 400, filled = barW * view.barPercent / 100;
       g.fillStyle = INK.black; g.font = `${36 * k}px ${SHARPIE}`; g.fillText(view.shortLabel, x - 66, y);
-      // Bar: an outline with a hatched fill, red once it's high.
+      // Bar: an outline with a hatched fill, red once it's high. OpenCode with no budget has nothing to fill, so it only writes its spend.
       const color = view.tone ? INK.red : INK.green;
-      g.strokeStyle = INK.black; g.lineWidth = 4; g.strokeRect(x, y - 30 * k, barW, 36 * k);
-      g.save(); g.beginPath(); g.rect(x, y - 30 * k, filled, 36 * k); g.clip(); g.strokeStyle = color; g.lineWidth = 6;
-      for (let i = -36; i < filled + 36; i += 13) scribble(g, x + i, y + 6 * k, x + i + 28, y - 30 * k, i + a);
-      g.restore();
-      g.fillStyle = color; g.font = `${40 * k}px ${SHARPIE}`; g.fillText(view.percentText, x + barW + 14, y + 4 * k);
+      if (!bare) {
+        g.strokeStyle = INK.black; g.lineWidth = 4; g.strokeRect(x, y - 30 * k, barW, 36 * k);
+        g.save(); g.beginPath(); g.rect(x, y - 30 * k, filled, 36 * k); g.clip(); g.strokeStyle = color; g.lineWidth = 6;
+        for (let i = -36; i < filled + 36; i += 13) scribble(g, x + i, y + 6 * k, x + i + 28, y - 30 * k, i + a);
+        g.restore();
+      }
+      g.fillStyle = color; g.font = `${40 * k}px ${SHARPIE}`; g.fillText(view.percentText, bare ? x : x + barW + 14, y + 4 * k);
       // How long until this window resets, when that's known.
-      g.fillStyle = INK.blue; g.font = `${30 * k}px ${SHARPIE}`; g.fillText(view.expired ? 'reset due' : view.resetIn === '—' ? '' : `resets ${view.resetIn}`, x + barW + 136, y + 2 * k);
+      g.fillStyle = INK.blue; g.font = `${30 * k}px ${SHARPIE}`; g.fillText(note, bare ? x + 190 : x + barW + 136, y + 2 * k);
       if (view.pace > 100) slow = true;
       y += 52 * k;
     }

@@ -177,8 +177,9 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .status-line.flash { color: var(--warn); }
 .console-power { display: none; }
 /* Back from a scene theme's list to its scene. */
-.quiet-button.office-button { display: none; }
-:root[data-scene-list]:not([data-scene-fallback]) .quiet-button.office-button { display: inline-flex; }
+.quiet-button:is(.office-button, .scene-switch) { display: none; }
+:root[data-scene-list]:not([data-scene-fallback]) .quiet-button:is(.office-button, .scene-switch) { display: inline-flex; }
+.quiet-button.scene-switch { flex: none; min-height: 40px; }
 /* A scene takes the page; here rather than with the scene so the list doesn't show while its code loads. */
 :root[data-scene]:not([data-scene-fallback], [data-scene-list]) .main-content { max-width: none; padding: 0; height: 100dvh; }
 :root[data-scene]:not([data-scene-fallback], [data-scene-list]) .main-content > :not(.scene) { display: none; }

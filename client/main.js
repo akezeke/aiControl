@@ -286,7 +286,9 @@ function showWorkspace() {
   for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code'], ['opencode', 'OpenCode']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
-  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); toolbar.append(searchBox, menu, newAgentMenu()); main.append(toolbar);
+  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); // The scene themes' way back, where the eye is while looking for a session; the small one in the sidebar footer is easy to miss.
+  const sceneSwitch = button('Scene', 'quiet-button scene-switch', () => setSceneList(false), 'office'); sceneSwitch.title = 'Back to the scene';
+  toolbar.append(sceneSwitch, searchBox, menu, newAgentMenu()); main.append(toolbar);
   const create = button('New OpenCode session', 'tab new-session-button', () => { menu.open = false; newOpenCodeSession(); }, 'plus');
   tabs.append(create);
   const lost = el('section', 'lost'); lost.id = 'lost'; lost.hidden = true; lost.setAttribute('aria-label', 'Lost sessions'); main.append(lost);
@@ -362,8 +364,11 @@ function syncScene() {
   const root = document.documentElement, main = document.querySelector('.main-content'), look = root.dataset.theme, entry = sceneFor(look);
   root.toggleAttribute('data-scene-list', !!entry && sceneList);
   if (failedLook !== look) { failedLook = null; root.removeAttribute('data-scene-fallback'); }
-  const back = document.querySelector('.office-button');
-  if (back && entry && back.dataset.look !== look) { back.dataset.look = look; back.title = `Back to the ${entry.name.toLowerCase()}`; back.lastElementChild.textContent = entry.name; back.firstElementChild.replaceWith(icon(look)); }
+  for (const back of document.querySelectorAll('.office-button, .scene-switch')) {
+    if (!entry || back.dataset.look === look) continue;
+    back.dataset.look = look; back.title = `Back to the ${entry.name.toLowerCase()}`; back.firstElementChild.replaceWith(icon(look));
+    if (back.classList.contains('office-button')) back.lastElementChild.textContent = entry.name;
+  }
   const action = sceneAction(sceneLook, main && entry ? look : null, sceneList);
   if (action === 'unmount' || action === 'swap') closeScene();
   if (action === 'unmount' || action === 'none') { document.querySelector('.main-content > .scene')?.remove(); return; }
@@ -379,12 +384,13 @@ function syncScene() {
   const box = el('div', 'scene'); box.id = look; main.append(box);
   try {
     sceneLook = look;
-    scene = module.mount(box, { mapScreen: () => document.querySelector('#theme-console .console-screen'), openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, selected: () => state.selected, describe: sessionFacts, spawn: spawnAgent, showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
+    scene = module.mount(box, { mapScreen: () => document.querySelector('#theme-console .console-screen'), openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, selected: () => state.selected, describe: sessionFacts, spawn: spawnAgent, editBudget, showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
     if (state.snapshot) scene.update(state.snapshot, { error: state.error });
     scene.pick(picked(), false); scene.outlines?.(outlined);
   } catch (error) { console.error(error); closeScene(); fallBack(`${entry.name} could not start; showing the list`); }
 }
 
+const editBudget = account => budgetDialog(account, async budget => { await api('usage/opencode/budget', budget); toast('Budget saved'); await refresh(); });
 function renderData() {
   document.querySelector('.new-session-dialog')?.updateConnection?.();
   if (!state.snapshot || !document.querySelector('#groups')) {
@@ -408,7 +414,7 @@ function renderData() {
   const error = document.querySelector('#error'); error.hidden = !state.error; error.textContent = state.error ? `${state.error} Showing the last received status. Actions are disabled until reconnected.` : '';
   document.querySelector('#machine').textContent = state.snapshot.machine;
   const usage = document.querySelector('#usage'), usageSignature = JSON.stringify([state.snapshot.usage, !!state.error, Math.floor(Date.now() / 60_000)]);
-  if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error, editBudget: account => budgetDialog(account, async budget => { await api('usage/opencode/budget', budget); toast('Budget saved'); await refresh(); }) }); }
+  if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error, editBudget }); }
   renderLost(document.querySelector('#lost'), state.snapshot.lost || []);
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;

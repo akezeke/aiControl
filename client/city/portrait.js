@@ -73,7 +73,7 @@ export function dressList(root, snapshot, { error = false, reduced = false, sele
     const session = byId.get(card.dataset.sessionId), mark = card.querySelector('.agent-mark');
     if (!session || !mark) continue;
     put(mark, session);
-    mark.title = `${lookFor(session.parentId || session.id, towers).name} · ${session.provider === 'codex' ? 'Codex' : 'Claude Code'}`;
+    mark.title = `${lookFor(session.parentId || session.id, towers).name} · ${{ codex: 'Codex', opencode: 'OpenCode' }[session.provider] || 'Claude Code'}`;
   }
   const header = root.querySelector('.chat-header'), open = selected && byId.get(selected);
   if (header && open) put(header, open);

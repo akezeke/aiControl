@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { UsagePoller, usageRefreshMs, codexUsageWindows, claudeUsageWindows, claudeUsageReader } from '../server/usage.mjs';
-import { usageWindowView, usageUpdatedText } from '../client/usage-presentation.js';
+import { usageWindowView, usageUpdatedText, spendView } from '../client/usage-presentation.js';
 
 const now = Date.parse('2026-10-27T12:00:00Z');
 const window = { id: 'primary', label: '5-hour', scope: '', usedPercent: 25, resetsAt: now + 2 * 60 * 60_000 };
@@ -151,4 +151,21 @@ test('usage pace projects the current rate to the reset, once the window is unde
   assert.equal(usageWindowView({ label: '5-hour', usedPercent: 40, resetsAt: now + 3 * hour }, now).pace, 100);
   assert.equal(usageWindowView({ label: 'Weekly', usedPercent: 50, resetsAt: now + 3.5 * 24 * hour }, now).paceText, 'On pace for 100% by reset');
   assert.equal(usageWindowView({ label: '5-hour', usedPercent: 5, resetsAt: now + 4.9 * hour }, now).pace, null);
+});
+
+test('OpenCode spend reads as a budget gauge when there is one and a plain total when not', () => {
+  const now = Date.UTC(2026, 10, 4, 12), account = (budget, extra = {}) => ({ provider: 'opencode', status: 'ready', periods: [{ id: 'today', usd: 2.41 }, { id: 'month', usd: 38.7 }], week: { usd: 17.42 }, budget: { mode: 'weekly', ...budget, spent: 17.42, resetsAt: now + 3 * 86_400_000 }, ...extra });
+  assert.equal(spendView({ provider: 'claude', periods: [{ id: 'today', usd: 1 }] }, now), null);
+  assert.equal(spendView({ provider: 'opencode', periods: [] }, now), null);
+  assert.equal(spendView(undefined, now), null);
+  const ok = spendView(account({ usd: 25 }), now);
+  assert.deepEqual([ok.unit, ok.label, ok.limit, ok.today, Math.round(ok.usedPercent), ok.near, ok.over, ok.resetShort], ['week', 'Week', 25, 2.41, 70, false, false, '3d']);
+  assert.equal(ok.money(ok.left), '≈$7.58');
+  assert.equal(ok.text, '≈$17.42 of $25 this week');
+  assert.match(ok.detail, /Today ≈\$2\.41\nThis week ≈\$17\.42 of \$25\nBudget resets in 3d 0h/);
+  assert.deepEqual([spendView(account({ usd: 20 }), now).near, spendView(account({ usd: 17.42 }), now).near, spendView(account({ usd: 17.42 }), now).over, spendView(account({ usd: 10 }), now).over, spendView(account({ usd: 10 }), now).near], [true, true, false, true, false]);
+  const bare = spendView(account({}), now);
+  assert.deepEqual([bare.limit, bare.usedPercent, bare.left, bare.over, bare.near, bare.text], [null, null, null, false, false, '≈$17.42 this week']);
+  assert.equal(spendView(account({ mode: 'monthly', usd: 100, day: 7 }), now).unit, 'month');
+  assert.equal(spendView(account({ usd: 25 }, { status: 'partial' }), now).partial, true);
 });
