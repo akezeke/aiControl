@@ -56,11 +56,11 @@ export function spendArt() {
   </g>
   <g class="spend-art city" shape-rendering="crispEdges">
     <ellipse cx="60" cy="86" rx="46" ry="6" fill="#000" opacity=".4"/>
-    <path d="M17 66q0-36 43-36t43 36Z" fill="#ff8a1f" stroke="#26180a" stroke-width="4"/>
-    <path d="M53 31h14v35H53Z" fill="#ffb55e"/><path d="M26 56q5-15 20-19" stroke="#ffdaa6" stroke-width="4"/>
-    <path d="M9 66h102v11H9Z" fill="#e66d0e" stroke="#26180a" stroke-width="4"/><path d="M14 72h92" stroke="#ffb15a" stroke-width="2"/>
-    <path d="M10 85h100" stroke="#9aa0a4" stroke-width="5"/><path d="M14 85h8m14 0h8m14 0h8m14 0h8m14 0h8" stroke="#2a2d30" stroke-width="5"/>
-    <rect x="54" y="42" width="12" height="12" fill="#26180a"/><path d="M57 51v-6h6" stroke="#ffd36a" stroke-width="2"/>
+    <path d="M24 38h72v-6h-8v-6h-8v-6H40v6h-8v6h-8Z" fill="#165a4c" stroke="#2e222f" stroke-width="4"/><path d="M42 24h36M34 30h8m36 0h8" stroke="#239063" stroke-width="2"/>
+    <rect x="55" y="27" width="10" height="6" fill="#8ff8e2"/>
+    <path d="M18 38h84v10H18Z" fill="#fbf5ef" stroke="#2e222f" stroke-width="4"/>
+    <path d="M24 48h10v26H24ZM43 48h10v26H43ZM67 48h10v26H67ZM86 48h10v26H86Z" fill="#fbf5ef" stroke="#2e222f" stroke-width="3"/><path d="M31 50v22m19-22v22m24-22v22m19-22v22" stroke="#c7dcd0" stroke-width="2"/>
+    <path d="M12 74h96v10H12Z" fill="#c7dcd0" stroke="#2e222f" stroke-width="4"/><path d="M16 80h88" stroke="#9babb2" stroke-width="2"/>
   </g>
   <g class="spend-art fantasy" shape-rendering="crispEdges">
     <ellipse cx="60" cy="86" rx="46" ry="7" fill="#020a08" opacity=".65"/>

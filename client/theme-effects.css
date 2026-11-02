@@ -772,12 +772,12 @@
   :is(.usage-meter, .plan-meter)::-webkit-progress-value { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
   :is(.usage-meter, .plan-meter)::-moz-progress-bar { border-radius: 0; background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); }
   .stat { border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-clip: padding-box; box-shadow: var(--px-raised); }
-  .stat.selected { background-color: var(--hi-vis); color: var(--ink); box-shadow: inset 2px 2px 0 #fbb954, inset -2px -2px 0 #cd683d; }
+  .stat.selected { background-color: #fff; color: var(--ink); box-shadow: inset -2px -2px 0 var(--paper-edge); }
   .session-card:is(:hover, :focus-visible) { border-image-source: var(--px-accent); }
   .session-card.needs-input { border-image-source: var(--px-warn); }
   .session-card[data-status=error] { border-image-source: var(--px-red); }
   :is(.badge, .chip, .ctx-chip, .compact-chip, .doc-chip, .mode-chip, .plan-chip, .project-tag, .subagent-tag, .workflow-tag, .nav-count, .group-count) { clip-path: var(--px-notch); }
-  scrollbar-color: #6f787a #2c3032;
+  scrollbar-color: #0b8a8f #0a525a;
   .toast { background: var(--panel); color: var(--text); }
   .shot-viewer::backdrop { background: #2e222fd9; }
 }

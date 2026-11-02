@@ -108,29 +108,30 @@
 }
 
 :root[data-theme=city] {
-  /* A building site's materials, not a colour scheme: concrete, steel plate, red primer, a street sign's green and hi-vis orange. Yellow is left to whatever needs you. */
+  /* The planning office's drawings, in the map's palette: blueprint in the sea's teal with its lines in aqua, the map's street-sign green, and paper for what's written. Yellow and hazard tape are left to whatever needs you. */
   color-scheme: dark;
   --display: 'Silkscreen', ui-monospace, monospace;
-  --bg: #4d4a44; --panel: #454c4e; --panel-2: #565e60; --sunken: #2c3032;
+  --bg: #0b5e65; --panel: #0a525a; --panel-2: #0b5e65; --sunken: #313638;
   --text: #ffffff; --text-2: #d9e2dc; --text-3: #c7dcd0;
   --line: #2e222f; --line-2: #2e222f;
-  --accent: #ffac78; --accent-2: #ffffff; --accent-ink: #2e222f; --accent-soft: #565e60;
+  --accent: #8ff8e2; --accent-2: #ffffff; --accent-ink: #2e222f; --accent-soft: #0b8a8f;
   --ok: #91db69; --ok-soft: #165a4c; --warn: #f9c22b; --warn-soft: #4c3e24; --warn-line: #f79617; --danger: #f68181; --danger-soft: #2e222f;
   --codex: #ffffff; --claude: #f57d4a; --claude-soft: #2e222f;
   --radius: 0; --radius-sm: 0;
   --shadow: 2px 2px 0 #2e222f;
   --shadow-lg: 4px 4px 0 #2e222f;
   --focus: #ffffff;
-  --asphalt: #2c3032; --concrete: #c7dcd0; --kerb: #9babb2; --sign: #165a4c; --sign-lit: #239063; --paper: #fbf5ef; --ink: #2e222f; --hi-vis: #fb6b1d;
-  --rivet: url('/city-rivet.svg'); --barrier: url('/city-barrier.svg'); --barrier-edge: linear-gradient(var(--ink) 0 0);
+  --land: #4b7058; --plan-line: #0eaf9b; --plan-faint: #0b8a8f; --sign: #165a4c; --sign-lit: #239063; --sign-shade: #0d3d33; --paper: #fbf5ef; --paper-edge: #c7dcd0; --ink: #2e222f;
   /* A 2 px edge with its corner pixel missing, as a border image so it can take a colour; and the same corners cut out of anything that has no border. */
   --px-line: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%232e222f'/%3E%3C/svg%3E");
   --px-accent: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%23ffffff'/%3E%3C/svg%3E");
   --px-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%23f9c22b'/%3E%3C/svg%3E");
   --px-warn-line: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%23f79617'/%3E%3C/svg%3E");
   --px-red: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%23e83b3b'/%3E%3C/svg%3E");
+  --px-plan: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%230eaf9b'/%3E%3C/svg%3E");
+  --px-plan-faint: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='3' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z' fill='%230b8a8f'/%3E%3C/svg%3E");
   --px-notch: polygon(0 2px, 2px 2px, 2px 0, calc(100% - 2px) 0, calc(100% - 2px) 2px, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 2px calc(100% - 2px), 0 calc(100% - 2px));
-  --px-raised: inset 2px 2px 0 #6f787a, inset -2px -2px 0 #33383a;
+  --px-raised: inset 2px 2px 0 #0b8a8f, inset -2px -2px 0 #0d3d33;
   --px-sunk: inset 2px 2px 0 #2e222f;
 }
 
