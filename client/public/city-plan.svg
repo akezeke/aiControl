@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="768" height="768" viewBox="0 0 768 768" shape-rendering="crispEdges" fill="none" stroke="#8ff8e2" stroke-width="2" opacity=".13">
+  <!-- Massing: a block with a tower set back on it, in the map's 2:1 isometric. -->
+  <path d="M200 120l80 40-80 40-80-40zM120 160v100l80 40 80-40V160M200 200v100M200 60l40 20-40 20-40-20zM160 80v60l40 20 40-20V80M200 100v60"/>
+  <!-- Elevation, with its width dimensioned above it. -->
+  <path d="M480 150h150v180H480zM440 330h250M480 128h150M480 120v16M630 120v16M474 134l12-12M624 134l12-12"/>
+  <path d="M496 166h16v14h-16zM528 166h16v14h-16zM564 166h16v14h-16zM596 166h16v14h-16zM496 202h16v14h-16zM528 202h16v14h-16zM564 202h16v14h-16zM596 202h16v14h-16zM496 238h16v14h-16zM528 238h16v14h-16zM564 238h16v14h-16zM596 238h16v14h-16zM496 274h16v14h-16zM596 274h16v14h-16zM540 290h28v40h-28z"/>
+  <!-- North point. -->
+  <circle cx="120" cy="560" r="36"/><path d="M120 516l12 56-12-10-12 10z"/><path d="M120 516l12 56-12-10z" fill="#8ff8e2"/>
+  <!-- Section mark. -->
+  <path d="M332 470h136"/><circle cx="400" cy="470" r="20"/><path d="M468 470l-12-8v16z" fill="#8ff8e2"/>
+  <!-- A roundabout and its roads, in plan. -->
+  <circle cx="600" cy="580" r="60"/><circle cx="600" cy="580" r="28"/><path d="M590 640v100M610 640v100M660 570h90M660 590h90M540 570h-60M540 590h-60"/>
+  <!-- A lot's boundary, chain-dashed, and the scale bar. -->
+  <path d="M250 380h120v170H250z" stroke-dasharray="14 6 2 6"/>
+  <path d="M300 700h160v8H300zM380 700v8M340 700v8M420 700v8"/><path d="M300 700h40v8h-40zM380 700h40v8h-40z" fill="#8ff8e2"/>
+</svg>

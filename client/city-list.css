@@ -4,9 +4,8 @@
   .city-portrait { display: block; width: var(--w); height: var(--h); overflow: hidden; flex: none; pointer-events: none; }
   .city-portrait canvas { display: block; height: 100%; image-rendering: pixelated; }
 
-  /* The ground: blueprint, in the sea's teal, on a drafting grid. */
-  .main-content, .history-viewport { background: var(--bg) url('/city-grid.svg') 0 0 / 64px 64px; }
-  body, .shell { background-color: var(--bg); }
+  /* The ground: blueprint in the sea's teal, a drafting grid with the city's drawings faint on it, and the scene's cloud shadows drifting over. On the page itself, so it runs past the centred column. */
+  body, .history-viewport { --plan: url('/city-clouds.svg') 0 0 / 1024px 512px, url('/city-plan.svg') 0 0 / 768px 768px, url('/city-grid.svg') 0 0 / 64px 64px; background: var(--plan), var(--bg); }
   .topbar { background: var(--panel); border-bottom: 2px solid var(--ink); }
 
   /* Plain text on the sea is a map label: pixel type, outlined in ink. What's counted goes on a tag, as the map's accounts do. */
@@ -100,14 +99,15 @@
   .chat-header .agent-mark > .provider-icon { position: absolute; right: -2px; bottom: -2px; z-index: 1; width: 14px; height: 14px; box-shadow: 0 0 0 2px var(--ink); background-color: var(--ink); }
   .chat-header .panel-title { font-family: var(--font); font-weight: 700; font-size: 17px; text-shadow: 2px 2px 0 var(--ink); }
 
-  /* What's said, in the map's speech bubbles: a paper memo from the agent, a street sign for you. */
-  .recent-message:not(.tool, .notice) { position: relative; --text: #2e222f; --text-2: #374e4a; --text-3: #547e64; --panel-2: #e3e6dc; --line-2: #9babb2; --accent: #165a4c; --sunken: #2e222f; border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-color: var(--paper); background-clip: padding-box; color: var(--text); box-shadow: inset 0 -2px 0 var(--paper-edge); }
-  .recent-message.user:not(.tool, .notice) { --text: #fff; --text-2: #d9e2dc; --text-3: #c7dcd0; --panel-2: var(--sign-shade); --line-2: #239063; --accent: #8ff8e2; background-color: var(--sign); box-shadow: inset 2px 2px 0 var(--sign-lit), inset -2px -2px 0 var(--sign-shade); }
-  .recent-message:not(.tool, .notice)::before, .recent-message:not(.tool, .notice)::after { content: ''; position: absolute; top: 100%; left: 12px; width: 10px; height: 6px; margin-top: 2px; pointer-events: none; }
-  .recent-message:not(.tool, .notice)::before { background: var(--ink); clip-path: polygon(0 0, 10px 0, 10px 2px, 8px 2px, 8px 4px, 6px 4px, 6px 6px, 4px 6px, 4px 4px, 2px 4px, 2px 2px, 0 2px); }
-  .recent-message:not(.tool, .notice)::after { background: var(--paper); clip-path: polygon(2px 0, 8px 0, 8px 2px, 6px 2px, 6px 4px, 4px 4px, 4px 2px, 2px 2px); }
-  .recent-message.user:not(.tool, .notice)::before, .recent-message.user:not(.tool, .notice)::after { left: auto; right: 12px; }
-  .recent-message.user:not(.tool, .notice)::after { background: var(--sign); }
+  /* What's said is on the drawing: the agent's replies are notes drawn on the plan with a leader out to the side, and yours a paper brief taped on top. */
+  .recent-message:not(.tool, .notice) { position: relative; --text: #fff; --text-2: #d9e2dc; --text-3: #c7dcd0; --panel-2: #0b5e65; --line-2: var(--plan-faint); --accent: #8ff8e2; --sunken: #313638; margin-left: 14px; border: 2px solid transparent; border-image: var(--px-plan) 1 / 2px; background-color: var(--panel); background-clip: padding-box; color: var(--text); box-shadow: none; }
+  .recent-message:not(.tool, .notice)::before { content: ''; position: absolute; top: 10px; left: -16px; width: 14px; height: 6px; background: linear-gradient(var(--plan-line) 0 0) 0 0 / 6px 6px no-repeat, linear-gradient(var(--plan-line) 0 0) 0 2px / 100% 2px no-repeat; pointer-events: none; }
+  .recent-message:not(.tool, .notice) .message-meta { margin-bottom: 6px; padding-bottom: 4px; border-bottom: 2px solid var(--plan-faint); }
+  .recent-message:not(.tool, .notice) .message-meta strong { font: 400 8px/1.5 var(--display); color: var(--accent); }
+  .recent-message.user:not(.tool, .notice) { --text: #2e222f; --text-2: #374e4a; --text-3: #547e64; --panel-2: #e3e6dc; --line-2: #9babb2; --accent: #165a4c; --sunken: #2e222f; margin-left: 32px; border-image-source: var(--px-line); background-color: var(--paper); box-shadow: inset 0 -2px 0 var(--paper-edge); }
+  .recent-message.user:not(.tool, .notice) .message-meta { border-bottom-color: var(--paper-edge); }
+  /* A strip of drafting tape across its top edge, the ends torn in steps. */
+  .recent-message.user:not(.tool, .notice)::before { top: -7px; left: 50%; width: 44px; height: 12px; margin-left: -22px; background: var(--paper-edge); opacity: .85; clip-path: polygon(0 0, 100% 0, 100% 4px, calc(100% - 2px) 4px, calc(100% - 2px) 8px, 100% 8px, 100% 100%, 0 100%, 0 8px, 2px 8px, 2px 4px, 0 4px); }
   .recent-message:not(.tool, .notice) { margin-bottom: 8px; }
   .recent-message:not(.tool, .notice) pre { --text: #fff; color: #fff; }
   .recent-message:not(.tool, .notice) pre code { color: #fff; }
@@ -136,9 +136,27 @@
     .console-contact:is([data-status=question], [data-status=permission])::after { animation: city-contact 1s steps(1) infinite; }
     .console-contact[data-status=working]::after { animation: city-lamp 1.6s steps(1) infinite; }
     .session-card[data-status=working] .agent-mark { animation: city-site 1.6s steps(8) infinite; }
+    /* Cloud shadows cross the plan as they cross the map, a pixel at a time. */
+    &:is([data-scene-list], [data-scene-fallback]) body, .history-viewport { animation: city-clouds 480s steps(512) infinite; }
+    /* The tape crawls, like a barrier's lamps. */
+    .session-card.needs-input::after { animation: city-tape 1.6s steps(8) infinite; }
+    .request-box { animation: city-permit 1.6s steps(8) infinite; }
+    /* A survey line passes over whatever's being built, then rests. */
+    .session-card[data-status=working] { background-image: linear-gradient(90deg, #8ff8e200 0 40px, #8ff8e214 40px 72px, #8ff8e22e 72px 94px, var(--accent) 94px 96px); background-size: 96px 100%; background-repeat: no-repeat; background-position: -96px 0; animation: city-survey 4s steps(48) infinite; animation-delay: var(--since-load, 0s); }
+    /* The page's dimension line is drawn out once, when the page opens. */
+    .page-heading { animation: city-measure .5s steps(16) both; }
+    /* Now and then a gull crosses the list, behind the sidebar and over everything else. */
+    &:is([data-scene-list], [data-scene-fallback]) .main-content::after { content: ''; position: fixed; z-index: 3; left: 0; top: 22vh; width: 36px; height: 12px; background: url('/city-gull.svg') 0 0 / 72px 12px; pointer-events: none; animation: city-flap .5s steps(2) infinite, city-gull 52s linear 6s infinite both; }
   }
 }
 @keyframes city-beats { to { transform: translateX(-100%); } }
 @keyframes city-contact { 50% { background: #fff; } }
 @keyframes city-lamp { 50% { opacity: .35; } }
 @keyframes city-site { to { background-position: 16px 100%, 0 0; } }
+@keyframes city-clouds { to { background-position: 1024px 512px, 0 0, 0 0; } }
+@keyframes city-tape { to { background-position: 16px 0; } }
+@keyframes city-permit { to { background-position: 16px 0, -16px 100%; } }
+@keyframes city-survey { 70%, 100% { background-position: calc(100% + 96px) 0; } }
+@keyframes city-measure { from { background-size: 0 2px, 2px 10px, 2px 0; } 99% { background-size: 100% 2px, 2px 10px, 2px 0; } }
+@keyframes city-flap { to { background-position: -72px 0; } }
+@keyframes city-gull { from { transform: translate(-48px, 0); } 22%, to { transform: translate(calc(100vw + 48px), -8vh); } }
