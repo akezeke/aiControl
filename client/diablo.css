@@ -16,12 +16,12 @@
   --shadow: inset 1px 1px #a28e6220, inset -1px -1px #0009, 0 2px 0 #0008;
   --shadow-lg: 0 0 0 2px #090706, 0 0 0 3px #6c5637, 0 18px 50px #000d;
   --stone: linear-gradient(#100e0c66, #08060599), url('/diablo-stone.svg');
+  --drip: linear-gradient(#4a0b0c, #8c1416 55%, #d4302a 55%);
   --carved: inset 0 0 0 1px #100c08, inset 0 0 0 3px #74604755, inset 0 0 0 4px #100c08;
   ::selection { background: #8f211b; color: #fff0d3; }
   :is(.main-screen, .sidebar, .session-card, .nav-item, .usage-account, .theme-console, .primary, .quiet-button, .secondary, .request-box, .answer-option, .login-card) { image-rendering: pixelated; }
 
   .shell, .login-screen { isolation: isolate; background: transparent; }
-  :is(.shell, .login-screen)::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(#0b07052b, #0b07054d), url('/diablo-bg.webp') center / cover no-repeat; image-rendering: pixelated; }
   .brand-variant.diablo { display: flex; gap: 8px; }
   .brand-variant.diablo .brand-mark { width: 38px; height: 38px; padding: 0; border-radius: 0; background: url('/diablo-portrait.webp') center / contain no-repeat; box-shadow: none; image-rendering: pixelated; }
   .brand-variant.diablo .brand-name { font: 700 20px/1 var(--display); font-variant: small-caps; letter-spacing: .04em; color: var(--accent-2); text-shadow: 0 2px #000, 0 -1px #8d492f; }
@@ -186,13 +186,58 @@
   :root[data-theme=diablo] {
     .main-screen::after { content: ''; position: absolute; right: -9px; top: 48px; width: 3px; height: 3px; background: #d07939; box-shadow: 0 23px #9d3d22, -5px 13px #cb873a, 2px 38px #71301a; pointer-events: none; animation: diablo-embers 4s steps(8) infinite; }
     .usage-orb::before { animation: diablo-glass 6s steps(4) infinite; }
+    /* Blood drips from the strip across the top of the slab and from cards that want attention (or are
+       being pointed at). Drips live behind the content: the slab and the cards isolate their own layers. */
+    .main-screen { isolation: isolate; }
+    .main-content::after { content: ''; position: absolute; z-index: -1; top: 0; right: 0; width: 384px; height: 160px; pointer-events: none; background: var(--drip) -20px -20px / 3px 9px no-repeat, var(--drip) -20px -20px / 3px 9px no-repeat, var(--drip) -20px -20px / 3px 9px no-repeat, var(--drip) -20px -20px / 3px 9px no-repeat, var(--drip) -20px -20px / 3px 9px no-repeat; animation: diablo-gore-drips 11s infinite; }
+    .session-card:is(.needs-input, [data-status=error], :hover, :focus-visible) { isolation: isolate; }
+    .session-card:is(.needs-input, [data-status=error], :hover, :focus-visible)::after { content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none; background: var(--drip) 14% -16px / 3px 9px no-repeat, var(--drip) 47% -16px / 3px 9px no-repeat, var(--drip) 83% -16px / 3px 9px no-repeat; animation: diablo-card-drips 7s infinite; animation-delay: var(--since-load, 0s); }
+    .session-card:not(.needs-input, [data-status=error]):is(:hover, :focus-visible)::after { animation-duration: 4.5s; background-size: 3px 9px, 0 0, 0 0; }
+    /* The orbs' liquid rocks gently and bubbles rise through it. */
+    .orb-liquid { overflow: hidden; animation: diablo-slosh 2.4s steps(3) infinite; }
+    .orb-liquid::after { content: ''; position: absolute; left: 28%; bottom: 0; width: 2px; height: 2px; background: var(--orb-light); box-shadow: 16px -10px 0 var(--orb-light), -6px -22px 0 var(--orb-light); animation: diablo-bubbles 4s steps(14) infinite; }
+    .brand-variant.diablo .brand-mark { animation: diablo-gaze 3.6s steps(1, end) infinite; }
+    .status-line::before { animation: diablo-gem 2.4s steps(1, end) infinite; }
+    .console-contact[data-status=working]::before { animation: diablo-contact 1.2s steps(1, end) infinite; }
     /* Effects pause while composing; no moving decoration near the caret. */
-    &:has(:is(textarea, input):focus) .main-screen::after,
-    &:has(:is(textarea, input):focus) .usage-orb::before { animation-play-state: paused; }
+    &:has(:is(textarea, input):focus) :is(.orb-liquid, .brand-variant.diablo .brand-mark),
+    &:has(:is(textarea, input):focus) :is(.main-screen, .main-content, .session-card, .orb-liquid)::after,
+    &:has(:is(textarea, input):focus) .usage-orb::before,
+    &:has(:is(textarea, input):focus) .status-line::before { animation-play-state: paused; }
   }
 }
 @keyframes diablo-embers { 0% { opacity: 0; transform: translateY(14px); } 25%, 60% { opacity: .7; } 100% { opacity: 0; transform: translateY(-20px); } }
 @keyframes diablo-glass { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
+@keyframes diablo-card-drips {
+  0% { background-position: 14% -16px, 47% -16px, 83% -16px; animation-timing-function: steps(12); }
+  22% { background-position: 14% 100%, 47% -16px, 83% -16px; animation-timing-function: step-end; }
+  33% { background-position: 14% -16px, 47% -16px, 83% -16px; animation-timing-function: steps(12); }
+  55% { background-position: 14% -16px, 47% 100%, 83% -16px; animation-timing-function: step-end; }
+  66% { background-position: 14% -16px, 47% -16px, 83% -16px; animation-timing-function: steps(12); }
+  88% { background-position: 14% -16px, 47% -16px, 83% 100%; animation-timing-function: step-end; }
+  100% { background-position: 14% -16px, 47% -16px, 83% -16px; }
+}
+@keyframes diablo-slosh {
+  0%, 100% { clip-path: inset(calc((1 - var(--remaining, 0)) * 100%) 0 0); }
+  50% { clip-path: inset(calc((1 - var(--remaining, 0)) * 100% + 2px) 0 0); }
+}
+@keyframes diablo-bubbles { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: .85; } 100% { transform: translateY(-58px); opacity: 0; } }
+@keyframes diablo-gaze { 0%, 100% { filter: none; } 46%, 54% { filter: drop-shadow(0 0 3px #d4301c); } 50% { filter: drop-shadow(0 0 5px #ff5a2a); } }
+@keyframes diablo-gem { 50% { box-shadow: 0 0 0 2px #391710, 0 0 12px #e0552fcc; } }
+@keyframes diablo-contact { 50% { opacity: .3; } }
+@keyframes diablo-gore-drips {
+  0% { background-position: 117px 59px, 157px -20px, 214px -20px, 288px -20px, 315px -20px; animation-timing-function: steps(8); }
+  16% { background-position: 117px 119px, 157px -20px, 214px -20px, 288px -20px, 315px -20px; animation-timing-function: step-end; }
+  20% { background-position: 117px -20px, 157px 57px, 214px -20px, 288px -20px, 315px -20px; animation-timing-function: steps(8); }
+  36% { background-position: 117px -20px, 157px 117px, 214px -20px, 288px -20px, 315px -20px; animation-timing-function: step-end; }
+  40% { background-position: 117px -20px, 157px -20px, 214px 53px, 288px -20px, 315px -20px; animation-timing-function: steps(8); }
+  56% { background-position: 117px -20px, 157px -20px, 214px 113px, 288px -20px, 315px -20px; animation-timing-function: step-end; }
+  60% { background-position: 117px -20px, 157px -20px, 214px -20px, 288px 88px, 315px -20px; animation-timing-function: steps(8); }
+  76% { background-position: 117px -20px, 157px -20px, 214px -20px, 288px 148px, 315px -20px; animation-timing-function: step-end; }
+  80% { background-position: 117px -20px, 157px -20px, 214px -20px, 288px -20px, 315px 53px; animation-timing-function: steps(8); }
+  96% { background-position: 117px -20px, 157px -20px, 214px -20px, 288px -20px, 315px 113px; animation-timing-function: step-end; }
+  100% { background-position: 117px 59px, 157px -20px, 214px -20px, 288px -20px, 315px -20px; }
+}
 
 @media (max-width: 1100px) and (min-width: 901px) {
   :root[data-theme=diablo] {

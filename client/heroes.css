@@ -17,7 +17,6 @@
   .brand-variant.heroes .brand-mark i { display: none; }
   .brand-variant.heroes .brand-name { font: 700 24px/1 var(--display); font-variant: small-caps; letter-spacing: .07em; color: #ffe5a1; text-shadow: 2px 2px #080e22; }
   .status-text.heroes { display: block; }
-  .shell::before, .login-screen::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(90deg, #07102466, #07102422 65%, #07102408), url('/heroes-bg.webp') center / cover no-repeat; image-rendering: pixelated; }
   .shell::after { content: ''; position: fixed; inset: 0; z-index: 6; pointer-events: none; border: 3px solid; border-color: #e3bf72 #615032 #372b20 #a88b4c; box-shadow: inset 0 0 0 1px #101321; }
   .main-content { max-width: 1060px; margin-inline: 0; padding: 22px 28px 32px; }
   .page-heading { align-items: center; min-height: 62px; margin-bottom: 12px; }
@@ -216,11 +215,40 @@
 @keyframes heroes-flag { 50% { clip-path: polygon(0 0, 76% 0, 76% 20%, 100% 20%, 100% 80%, 76% 80%, 76% 100%, 0 100%); } }
 @keyframes heroes-spark { 0%, 65%, 100% { opacity: .35; } 75%, 90% { opacity: 1; } }
 @keyframes heroes-contact { 50% { background-color: #ffeb9d99; } }
+@keyframes heroes-gem {
+  0%, 58%, 80%, 100% { opacity: 0; box-shadow: none; }
+  60%, 72% { opacity: 1; box-shadow: none; }
+  64% { opacity: 1; box-shadow: 0 -2px #fff6c8, 0 2px #fff6c8, -2px 0 #fff6c8, 2px 0 #fff6c8; }
+  68% { opacity: 1; box-shadow: 0 -4px #fff6c8, 0 4px #fff6c8, -4px 0 #fff6c8, 4px 0 #fff6c8; }
+}
+@keyframes heroes-glint { 0% { background-position: -70px 0, var(--sprite); } 45%, 100% { background-position: 120px 0, var(--sprite); } }
+@keyframes heroes-beat { 50% { opacity: .3; } }
+@keyframes heroes-alert { 0%, 100% { box-shadow: inset 0 0 0 4px #534c31, 2px 3px #0008; } 50% { box-shadow: inset 0 0 0 4px #8d7b3a, 2px 3px #0008; } }
+@keyframes heroes-cloud { from { translate: -48px 0; } to { translate: 260px 0; } }
 @media (prefers-reduced-motion: no-preference) {
   :root[data-theme=heroes] {
     .console-contact[data-status=working]::after { animation: heroes-flag 1.5s steps(1, end) infinite; }
     .console-contact.blip { animation: heroes-contact .6s steps(2, end) 2; }
     .session-card.needs-input .agent-mark::after { content: ''; position: absolute; top: 0; right: 0; width: 3px; height: 3px; background: #fff1bd; box-shadow: 0 -3px #fff1bd, 0 3px #fff1bd, -3px 0 #fff1bd, 3px 0 #fff1bd; pointer-events: none; animation: heroes-spark 3s steps(1, end) infinite; animation-delay: var(--since-load, 0s); }
+
+    /* Portraits: a jewel catches the light, and a working hero's armour glints. Cards are rebuilt on every
+       poll, so these run on the page clock (--since-load) and carry on instead of restarting. */
+    .agent-mark { --gem-x: 61%; --gem-y: 17%; --sprite: left center; }
+    .agent-mark.claude { --gem-x: 27%; --gem-y: 64%; --sprite: right center; }
+    .agent-mark.opencode { --gem-x: 50%; --gem-y: 80%; --sprite: center; }
+    .session-card:not(.needs-input) .agent-mark::after, .brand-variant.heroes .brand-mark::after { content: ''; position: absolute; left: var(--gem-x); top: var(--gem-y); width: 2px; height: 2px; margin: -1px 0 0 -1px; background: #fff6c8; opacity: 0; pointer-events: none; animation: heroes-gem 5s steps(1, end) infinite; animation-delay: var(--since-load, 0s); }
+    .agent-mark.claude::after { animation-duration: 6s; }
+    .agent-mark.opencode::after { animation-duration: 7s; }
+    .brand-variant.heroes .brand-mark { --gem-x: 51%; --gem-y: 22%; position: relative; }
+    .session-card[data-status=working] .agent-mark { background: linear-gradient(105deg, #0000 40%, #fff5 40% 46%, #fff9 46% 52%, #fff5 52% 58%, #0000 58%) -70px 0 / 70px 100% no-repeat, url('/heroes-portraits.webp') var(--sprite) / 200% 100% no-repeat; animation: heroes-glint 2.8s steps(12) infinite; animation-delay: var(--since-load, 0s); }
+    .session-card[data-status=working] .agent-mark.opencode { background: linear-gradient(105deg, #0000 40%, #fff5 40% 46%, #fff9 46% 52%, #fff5 52% 58%, #0000 58%) -70px 0 / 70px 100% no-repeat, url('/heroes-opencode-portrait.webp') center / cover no-repeat; }
+    .session-card[data-status=working] .badge .dot { animation: heroes-beat 1.2s steps(1, end) infinite; }
+    .session-card.needs-input { animation: heroes-alert 2s steps(1, end) infinite; animation-delay: var(--since-load, 0s); }
+
+    /* Shadows of clouds cross the map, a block at a time. */
+    .console-contacts { z-index: 1; }
+    .console-screen::before, .console-screen::after { content: ''; position: absolute; left: 0; top: 0; width: 40px; height: 12px; pointer-events: none; --shade: #0a183c3d; background: linear-gradient(var(--shade) 0 0) 8px 0 / 16px 4px no-repeat, linear-gradient(var(--shade) 0 0) 0 4px / 36px 4px no-repeat, linear-gradient(var(--shade) 0 0) 4px 8px / 24px 4px no-repeat; animation: heroes-cloud 46s steps(77) infinite; }
+    .console-screen::after { top: 66px; width: 28px; animation-duration: 34s; animation-delay: -17s; background-size: 12px 4px, 28px 4px, 16px 4px; background-position: 6px 0, 0 4px, 4px 8px; }
   }
 }
 @media (prefers-reduced-motion: reduce) { .heroes-boot { display: none; } }
@@ -245,7 +273,6 @@
 }
 @media (max-width: 640px) {
   :root[data-theme=heroes] {
-    .shell::before, .login-screen::before { background-position: 78% center; }
     .shell::after { border-width: 2px; }
     .topbar { background: var(--stone); border-bottom: 4px ridge #b99c5e; backdrop-filter: none; }
     .topbar > .brand .brand-mark { height: 35px; }

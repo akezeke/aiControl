@@ -1,0 +1,10 @@
+/* Wallpaper for the themes whose picture is animated (client/backdrop). The canvas holds the moving parts;
+   the shading above it keeps the interface readable and is the same for still and moving pictures. */
+#pixel-backdrop { display: none; position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: no-repeat center / cover; image-rendering: pixelated; }
+#pixel-backdrop canvas { position: absolute; image-rendering: pixelated; }
+#pixel-backdrop::after { content: ''; position: absolute; inset: 0; }
+:root[data-theme=heroes] #pixel-backdrop { display: block; background-image: url('/heroes-bg.webp'); }
+:root[data-theme=heroes] #pixel-backdrop::after { background: linear-gradient(90deg, #07102466, #07102422 65%, #07102408); }
+:root[data-theme=diablo] #pixel-backdrop { display: block; background-image: url('/diablo-bg.webp'); }
+:root[data-theme=diablo] #pixel-backdrop::after { background: linear-gradient(#0b07052b, #0b07054d); }
+@media (max-width: 640px) { :root[data-theme=heroes] #pixel-backdrop { background-position: 78% center; } }

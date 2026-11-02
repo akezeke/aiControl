@@ -14,7 +14,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Account usage limits, notifications and sounds when a session needs you.
 - OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets, in every theme: a Bridge console row, a Metropolis plant, a Fantasy treasury and a line on the Office whiteboard.
 - Sessions lost to a crash, a killed tmux or a shutdown come back with their last prompt and reply, to resume in a click.
-- Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting.
+- Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting. Heroes and Sanctuary have animated pixel wallpapers: waving flags and waterfalls, guttering candles and dripping blood.
 - A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
 - Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.
 - Trickshot in the Office's kitchen: land a paper ball or mug in its target or hit a fruit with a rubber ball or plate, with six levels, three daily shots and a score board.

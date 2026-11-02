@@ -1,5 +1,6 @@
 import { setAlienAmbienceEnabled } from './alien-ambience.js';
 import { sceneFor } from './scenes.js';
+import { setBackdrop } from './backdrop/pixel-backdrop.js';
 import { askForBoot } from './city/boot-ask.js';
 
 // `look` picks the CSS theme; Orbit's `scheme` is fixed, or follows the system when absent.
@@ -33,6 +34,7 @@ export function applyTheme(id) {
   root.dataset.theme = look; root.dataset.themeChoice = theme.id;
   root.toggleAttribute('data-scene', !!sceneFor(look));
   setAlienAmbienceEnabled(look === 'alien');
+  setBackdrop(look);
   const scheme = () => {
     const dark = theme.scheme ? theme.scheme === 'dark' : !!theme.dark && !!systemDark?.matches;
     root.dataset.scheme = dark ? 'dark' : 'light';
