@@ -1,9 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import { CodexImages } from './codex-images.mjs';
 
-// OpenCode supplies image bytes as data URLs in typed file parts. Older versions may
+// OpenCode supplies image bytes as data URLs, or as inline base64, in typed file parts. Older versions may
 // report only the successful Read input, so retain that local path as a fallback.
 function source(file) {
+  // V2 keeps prompt attachments as inline base64.
+  if (typeof file?.data === 'string' && /^image\//i.test(file.mime || '') && file.data.length > 16) return { url: `data:${file.mime};base64,${file.data}` };
   const uri = file?.uri || file?.url;
   if (typeof uri !== 'string' || !/^image\//i.test(file.mime || '')) return null;
   if (/^data:image\/[\w.+-]+;base64,/i.test(uri)) return { url: uri };

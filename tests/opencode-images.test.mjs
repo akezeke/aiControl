@@ -27,6 +27,13 @@ test('OpenCode previews the exact inline image returned by a successful read and
   assert.deepEqual(await images.list('other'), []); assert.equal(await images.get('other', list[0].id), null);
 });
 
+test('OpenCode previews an image sent from the dashboard, which V2 stores as inline base64', async () => {
+  const images = new OpenCodeImages(), rows = messagesV2([{ id: 'prompt', type: 'user', time: { created: 1 }, text: 'Look', files: [{ data: png.toString('base64'), mime: 'image/png', source: { type: 'inline' }, name: 'image.png' }] }]);
+  images.rememberRows('one', rows, '/work');
+  const [image] = await images.list('one'); assert.equal(image.tool, false);
+  assert.deepEqual(await images.get('one', image.id), { type: 'image/png', data: png });
+});
+
 test('OpenCode uses safe local read fallbacks and ignores untrusted text, URLs, failures and non-images', async t => {
   const dir = await mkdtemp(join(tmpdir(), 'opencode-images-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'screen.png'); await writeFile(path, png); await writeFile(join(dir, 'bad.png'), '<svg/>');
