@@ -15,6 +15,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets, in every theme: a Bridge console row, a Metropolis plant, a Fantasy treasury and a line on the Office whiteboard.
 - Sessions lost to a crash, a killed tmux or a shutdown come back with their last prompt and reply, to resume in a click.
 - Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting. Heroes and Sanctuary have animated pixel wallpapers: waving flags and waterfalls, guttering candles and dripping blood.
+- Brick Knights: a toy castle built live in 3D, one scene where every wall, tray, button and meter is real brick geometry on one grid and each label is printed on its brick, so they scroll, press and arrive together. A dragon crosses the keep, minifigures mark sessions and the castle gate opens at start-up.
 - A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
 - Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.
 - Trickshot in the Office's kitchen: land a paper ball or mug in its target or hit a fruit with a rubber ball or plate, with six levels, three daily shots and a score board.
@@ -114,6 +115,8 @@ Codex connects through its local app-server socket. Claude sessions and history 
 
 ## License
 
-A hobby project provided as is under [MIT](LICENSE), without warranty. Use at your own risk, including approvals and messages sent to agents. Not affiliated with OpenAI, Anthropic, or the owners of *Alien* or *Command & Conquer*.
+A hobby project provided as is under [MIT](LICENSE), without warranty. Use at your own risk, including approvals and messages sent to agents. Not affiliated with OpenAI, Anthropic, the LEGO Group, or the owners of *Alien* or *Command & Conquer*.
+
+LEGO is a trademark of the LEGO Group, which does not sponsor or endorse this project; Brick Knights is an original design in the style of toy castle bricks.
 
 Includes [Marked](client/vendor/marked/LICENSE.md) (MIT) and fonts under the [SIL Open Font License](client/public/fonts/OFL.txt) and the [Apache License](client/public/fonts/APACHE-2.0.txt).

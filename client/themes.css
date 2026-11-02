@@ -90,6 +90,25 @@
   --focus: #ffdf8b;
 }
 
+/* BRICKS: a castle built from real bricks. Parchment faces on frames of stone, timber and worn gold; dark ink for text. Sizes live in bricks.css. */
+:root[data-theme=bricks] {
+  color-scheme: light;
+  --font: 'Nunito', system-ui, sans-serif;
+  --display: 'Fredoka', 'Nunito', system-ui, sans-serif;
+  --crest: 'Cinzel Decorative', 'Fredoka', serif;
+  --bg: #2a2d33; --panel: #e8dfc6; --panel-2: #ddd2b2; --sunken: #d3c7a4;
+  --text: #1f2430; --text-2: #3a4050; --text-3: #565c6b;
+  --line: #b7a97f; --line-2: #8a7d58;
+  --accent: #1f3f6e; --accent-2: #142c52; --accent-ink: #fff; --accent-soft: #d6dce8;
+  --ok: #24562f; --ok-soft: #cddcb4; --warn: #6b4410; --warn-soft: #ecd9a0; --warn-line: #a98233; --danger: #7e1a16; --danger-soft: #e8c4bc;
+  --codex: #1f3f6e; --claude: #8f3a14; --claude-soft: #ecd0b8;
+  --radius: 0px; --radius-sm: 0px;
+  --shadow: 0 3px 3px #0008;
+  --shadow-lg: 0 6px 0 #14161a, 0 18px 40px #000a;
+  --focus: #d9b45a;
+  --ink: #1f2430; --gold: #aa7f2e;
+}
+
 /* OFFICE: paper pinned to a corkboard, inked like the scene's speech bubbles. */
 /* BRIDGE: the fallbacks and the signals; bridge-list.css repaints the rest in the room's chosen colours. */
 :root[data-theme=bridge] {

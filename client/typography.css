@@ -11,3 +11,4 @@
 @font-face { font-family: 'Nunito'; src: url('/fonts/nunito-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
 @font-face { font-family: 'Nunito'; src: url('/fonts/nunito-800.woff2') format('woff2'); font-weight: 800; font-display: swap; }
 @font-face { font-family: 'Cinzel Decorative'; src: url('/fonts/cinzel-decorative-900.woff2') format('woff2'); font-weight: 900; font-display: swap; }
+@font-face { font-family: 'Fredoka'; src: url('/fonts/fredoka.woff2') format('woff2'); font-weight: 300 700; font-display: swap; }

@@ -50,6 +50,8 @@ const sounds = {
   // An original, quiet dungeon bell; enabled only through the existing Sound control.
   diablo: kind => { const notes = kind === 'input' ? [146.83, 155.56] : [146.83, 220]; notes.forEach((note, i) => { tone(note, i * .22, 1.1, 'triangle', .055); tone(note * 3, i * .22, .65, 'sine', .018); }); },
   // A short, original lute-like arpeggio. As with every theme, sound stays opt-in.
+  // A castle horn: a drum thump, then a brassy call when someone needs you (two rising notes) or a short fanfare when they're done.
+  bricks: kind => { tone(70, 0, .25, 'sine', .12); (kind === 'input' ? [329.63, 440] : [392, 523.25, 659.25]).forEach((note, i) => { tone(note, .12 + i * .17, .3, 'sawtooth', .035); tone(note * 2, .12 + i * .17, .22, 'square', .012); }); },
   heroes: kind => { const notes = kind === 'input' ? [392, 493.88, 587.33, 783.99] : [523.25, 659.25, 783.99]; notes.forEach((note, i) => { tone(note, i * .11, .48, 'triangle', .065); tone(note * 2, i * .11, .16, 'sine', .015); }); },
 };
 export function playSound(kind) {

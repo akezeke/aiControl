@@ -29,7 +29,7 @@
 .spend-emblem { display: block; flex: 0 0 78px; height: 76px; filter: drop-shadow(0 3px 3px #0002); }
 .spend-emblem svg { display: block; width: 100%; height: 100%; }
 .spend-art { display: none; }
-:root[data-theme=modern] .spend-art.modern, :root[data-theme=alien] .spend-art.alien, :root[data-theme=command] .spend-art.command, :root[data-theme=heroes] .spend-art.heroes, :root[data-theme=diablo] .spend-art.diablo, :root[data-theme=office] .spend-art.office, :root[data-theme=simpsons] .spend-art.simpsons, :root[data-theme=bridge] .spend-art.bridge, :root[data-theme=city] .spend-art.city, :root[data-theme=fantasy] .spend-art.fantasy { display: block; }
+:root[data-theme=modern] .spend-art.modern, :root[data-theme=alien] .spend-art.alien, :root[data-theme=command] .spend-art.command, :root[data-theme=heroes] .spend-art.heroes, :root[data-theme=bricks] .spend-art.bricks, :root[data-theme=diablo] .spend-art.diablo, :root[data-theme=office] .spend-art.office, :root[data-theme=simpsons] .spend-art.simpsons, :root[data-theme=bridge] .spend-art.bridge, :root[data-theme=city] .spend-art.city, :root[data-theme=fantasy] .spend-art.fantasy { display: block; }
 .spend-balance { display: grid; gap: 2px; }
 .spend-balance strong { font-size: 23px; line-height: 1.2; letter-spacing: -.025em; }
 .spend-limit { color: var(--text-3); font-size: 10px; white-space: nowrap; }

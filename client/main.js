@@ -6,6 +6,7 @@ import './theme-access.css';
 import './simpsons.css';
 import './diablo.css';
 import './heroes.css';
+import './bricks.css';
 import './backdrop.css';
 import './city-list.css';
 import './fantasy-list.css';
@@ -198,7 +199,7 @@ function alertsMenu() {
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
 wearColours(paletteFor(savedColour()));
-const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle' };
+const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle', bricks: 'Brick Knights' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {
@@ -642,10 +643,6 @@ function renderSessionHeader(header, session) {
   const heading = el('div', 'agent-heading'), title = el('h2', 'panel-title', session.title); title.title = session.title;
   const byline = el('div', 'agent-byline'); byline.append(el('span', 'agent-provider', providerName(session.provider)), el('span', 'agent-project', [session.account, session.project].filter(Boolean).join(' · '))); byline.title = [providerName(session.provider), session.account, session.cwd].filter(Boolean).join(' · ');
   heading.append(title, byline); identity.append(portrait, heading); header.append(identity);
-  if (session.messaging?.model || session.messaging?.effort) header.append(agentSettings(session, { api, disabled: !!state.error,
-    changed: (result, kind) => { if (!state.csrf) return; pendingEffort.delete(session.id); toast(result.warning || `${kind === 'model' ? 'Model' : 'Effort'} saved${result.pending ? ' · from your next message here' : ''}`); panelSignature = ''; refresh(); },
-    failed: error => toast(error.message),
-  }));
   const metadata = el('details', 'chat-info'); metadata.open = expanded;
   const effort = pendingEffort.get(session.id) || session.effort, percent = contextPercent(session.context);
   const summary = el('summary'); summary.append(el('span', 'details-label', 'Details'));
@@ -655,6 +652,10 @@ function renderSessionHeader(header, session) {
   if (compacting(session)) summary.append(chip('compacting', 'compact-chip', 'Compacting context'));
   if (session.context?.used) summary.append(chip(percent != null ? `${percent}%` : tokens(session.context.used), `ctx-chip${percent >= 80 ? ' high' : ''}`, 'Context used'));
   metadata.append(summary);
+  if (session.messaging?.model || session.messaging?.effort) metadata.append(agentSettings(session, { api, disabled: !!state.error,
+    changed: (result, kind) => { if (!state.csrf) return; pendingEffort.delete(session.id); toast(result.warning || `${kind === 'model' ? 'Model' : 'Effort'} saved${result.pending ? ' · from your next message here' : ''}`); panelSignature = ''; refresh(); },
+    failed: error => toast(error.message),
+  }));
   const goal = session.goal, cost = session.cost;
   const rows = [['Folder', session.cwd], ['Account', session.account], ['Model', session.model || 'Not reported'], ['Effort', effort && `${effort}${session.effortPending ? ' · from your next message' : ''}`], ['Mode', session.permissionMode],
     ['Context', session.context?.used && `${tokens(session.context.used)}${session.context.window ? ` of ${tokens(session.context.window)} (${percent}%)` : ''}`], ['Branch', session.branch],

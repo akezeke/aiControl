@@ -2,6 +2,8 @@ import { setAlienAmbienceEnabled } from './alien-ambience.js';
 import { sceneFor } from './scenes.js';
 import { setBackdrop } from './backdrop/pixel-backdrop.js';
 import { askForBoot } from './city/boot-ask.js';
+import { setBrickSky } from './backdrop/brick-sky.js';
+import { setBrickUi } from './bricks3d/mount.js';
 
 // `look` picks the CSS theme; Orbit's `scheme` is fixed, or follows the system when absent.
 export const themes = [
@@ -21,6 +23,8 @@ export const themes = [
   { id: 'city', scheme: 'dark', name: 'Metropolis', color: '#4d4a44' },
   // Each project a battle, each session a party member: polygons on painted backgrounds, windows in canopy green.
   { id: 'fantasy', scheme: 'dark', name: 'Fantasy Battle', color: '#123b33' },
+  // Glossy toy bricks under a bright sky: the sidebar is a wall, each session a brick, each status a colour.
+  { id: 'bricks', scheme: 'light', name: 'Brick Knights', color: '#2f8fe4' },
 ];
 const storageKey = 'ai-control-theme';
 export function hasSavedTheme() { try { return themes.some(theme => theme.id === localStorage.getItem(storageKey)); } catch { return true; } }
@@ -35,6 +39,8 @@ export function applyTheme(id) {
   root.toggleAttribute('data-scene', !!sceneFor(look));
   setAlienAmbienceEnabled(look === 'alien');
   setBackdrop(look);
+  setBrickSky(look === 'bricks');
+  setBrickUi(look === 'bricks');
   const scheme = () => {
     const dark = theme.scheme ? theme.scheme === 'dark' : !!theme.dark && !!systemDark?.matches;
     root.dataset.scheme = dark ? 'dark' : 'light';
@@ -52,7 +58,7 @@ const bootLines = ['INTERFACE 2037 ............ READY', 'MU/TH/UR 6000 MAINFRAME
 // EVA's start: riveted blast doors with the emblem split across the seam slide apart.
 export function bootSequence(force = false) {
   const theme = document.documentElement.dataset.theme;
-  const previousOverlays = document.querySelectorAll('.boot, .eva-boot, .heroes-boot, .fy-boot');
+  const previousOverlays = document.querySelectorAll('.boot, .eva-boot, .heroes-boot, .fy-boot, .lb-boot');
   // Metropolis has no overlay: it builds the real city, once the scene has one to build.
   if (theme === 'city') {
     previousOverlays.forEach(overlay => overlay.remove());
@@ -61,10 +67,10 @@ export function bootSequence(force = false) {
     askForBoot(document.documentElement, performance.now());
     return;
   }
-  if (!['alien', 'command', 'heroes', 'fantasy'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) { previousOverlays.forEach(overlay => overlay.remove()); return; }
+  if (!['alien', 'command', 'heroes', 'fantasy', 'bricks'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) { previousOverlays.forEach(overlay => overlay.remove()); return; }
   try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
   previousOverlays.forEach(overlay => overlay.remove());
-  const overlay = document.createElement('div'); overlay.className = { alien: 'boot', command: 'eva-boot', heroes: 'heroes-boot', fantasy: 'fy-boot' }[theme]; overlay.setAttribute('aria-hidden', 'true');
+  const overlay = document.createElement('div'); overlay.className = { alien: 'boot', command: 'eva-boot', heroes: 'heroes-boot', fantasy: 'fy-boot', bricks: 'lb-boot' }[theme]; overlay.setAttribute('aria-hidden', 'true');
   if (theme === 'alien') bootLines.forEach((line, i) => { const p = document.createElement('p'); p.textContent = line; p.style.setProperty('--i', i); overlay.append(p); });
   else if (theme === 'command') {
     for (const side of ['left', 'right']) { const door = document.createElement('div'); door.className = `eva-door ${side}`; overlay.append(door); }
@@ -76,6 +82,8 @@ export function bootSequence(force = false) {
     const name = document.createElement('p'); name.textContent = 'AI Control'; overlay.append(gem, name);
     document.addEventListener('keydown', () => overlay.remove(), { once: true });
   }
+  // The castle gate: two doors close the screen, then swing open on their hinges. CSS times it.
+  else if (theme === 'bricks') for (const side of ['left', 'right']) { const door = document.createElement('div'); door.className = `lb-door ${side}`; overlay.append(door); }
   else { const crest = document.createElement('div'); crest.className = 'heroes-seal'; overlay.append(crest); }
   overlay.onclick = () => overlay.remove();
   // Pseudo-element animations (EVA's seam flash) also report the overlay as target; wait for its own exit.
