@@ -28,6 +28,10 @@ function fixture(t, options = {}) {
     if (path === '/api/permission/request') return json({ data: state.permissions });
     if (path === '/api/form') return json({ data: state.forms });
     if (path.endsWith('/reply')) { state.permissions = []; state.forms = []; return new Response(null, { status: 204 }); }
+    if (path.endsWith('/message') && state.paged) {
+      const from = Number(url.searchParams.get('cursor') || 0), to = from + Number(url.searchParams.get('limit'));
+      return json({ data: state.messages.slice(from, to), cursor: { next: to < state.messages.length ? String(to) : null } });
+    }
     if (path.endsWith('/message')) return json(state.pages?.[url.searchParams.get('cursor') || 'first'] || { data: state.messages, cursor: {} });
     if (path.endsWith('/prompt')) { if (state.sendError) throw new Error('ambiguous'); return json({ data: { id: 'msg_input' } }); }
     if (path.endsWith('/interrupt')) { state.active = {}; return json({ interrupted: true }); }
@@ -111,6 +115,17 @@ test('V2 follows session and message cursors for complete usage, keeping history
   for (const call of calls.filter(call => call.query.has('cursor'))) assert.equal(call.query.has('order'), false);
   state.pages.messages_next.cursor.next = 'messages_next'; state.now += 61000; state.sessionPages.first.data[0].time.updated++;
   await adapter.refresh(); assert.equal(adapter.usageSnapshot().status, 'partial');
+});
+
+test('V2 shrinks message pages that exceed the size cap so a screenshot-heavy session still updates', async t => {
+  const { adapter, state, calls } = fixture(t), shot = 'x'.repeat(4 * 1024 * 1024);
+  state.paged = true;
+  state.messages = Array.from({ length: 12 }, (_, i) => ({ ...assistant(`msg_${i}`), content: [{ type: 'text', text: `Reply ${i}` }, { id: 'shot', type: 'tool', name: 'read', state: { status: 'completed', input: {}, content: shot } }] }));
+  await adapter.refresh();
+  assert.equal(adapter.list()[0].messagesState, 'ready'); assert.equal(adapter.list()[0].messages.filter(m => !m.tool).length, 12);
+  assert.equal(adapter.usageSnapshot().periods[0].usd, 3); assert.equal(adapter.usageSnapshot().status, 'ready');
+  const limits = calls.filter(call => call.path.endsWith('/message')).map(call => call.query.get('limit'));
+  assert.ok(limits.includes('200') && limits.includes('6'));
 });
 
 test('tool-heavy V2 history fetches older conversation and exposes earlier messages', async t => {

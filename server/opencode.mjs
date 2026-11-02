@@ -49,7 +49,7 @@ export class OpenCodeClient {
       const decoder = new TextDecoder();
       for await (const chunk of response.body) {
         size += chunk.byteLength;
-        if (size > 32 * 1024 * 1024) throw fail('OpenCode history is too large to read. Usage may be incomplete.', 503);
+        if (size > 32 * 1024 * 1024) throw Object.assign(fail('OpenCode history is too large to read. Usage may be incomplete.', 503), { tooLarge: true });
         raw += decoder.decode(chunk, { stream: true });
       }
       return JSON.parse(raw + decoder.decode());
@@ -148,12 +148,15 @@ export class OpenCodeAdapter {
       let session = prior;
       try {
         if (readUsage || (!info.time?.archived && changed)) {
-          const history = readUsage ? { rows: await this.api.messages(nativeId(info.id), info.directory) } : await this.api.history(nativeId(info.id), info.directory, messageLimit);
+          // If the full read fails, the transcript must still update; usage stays incomplete.
+          let complete = null;
+          if (readUsage) try { complete = await this.api.messages(nativeId(info.id), info.directory); } catch { incomplete ||= monthly; }
+          const history = complete ? { rows: complete } : await this.api.history(nativeId(info.id), info.directory, messageLimit);
           const messages = history.rows;
           this.controller.signal.throwIfAborted();
           if (!info.time?.archived) this.images.rememberRows(info.id, messages, info.directory);
           session = openCodeSession(info, messages, prior, history.more);
-          if (readUsage) {
+          if (complete) {
             const records = usageRecords(messages); this.usage.set(info.id, { records, updated: info.time?.updated, at: this.now() });
             if (!Number.isFinite(info.cost)) {
               const total = records.reduce((sum, r) => sum + (r.usd || 0), 0);
