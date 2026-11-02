@@ -14,6 +14,7 @@ const assistant = (id = 'msg_reply', at = now, cost = .25) => ({ info: { id, ses
   { id: `${id}_text`, type: 'text', text: 'Done.' }, { id: `${id}_step`, type: 'step-finish', cost, tokens },
 ] });
 
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 function fixture(t) {
   const store = new RequestStore(), calls = [], state = { sessions: [session()], messages: [assistant()], status: {}, permissions: [], questions: [], offline: false, now };
   const fetcher = async (url, options) => {
@@ -122,9 +123,14 @@ test('message submissions deduplicate success and ambiguous failures, and stop u
   assert.equal(result[0].status, 'sent'); assert.equal(calls.filter(call => call.path.endsWith('/prompt_async')).length, 1);
   assert.deepEqual(calls.find(call => call.path.endsWith('/prompt_async')).body, { parts: [{ type: 'text', text: 'Implement it' }] });
   await assert.rejects(adapter.sendMessage('ses_first', { ...body, text: 'Different' }), /already used/);
+  assert.equal(adapter.list()[0].messaging.images, true);
+  const shot = { name: 'shot.png', data: png.toString('base64') };
+  await adapter.sendMessage('ses_first', { ...body, clientMessageId: 'with-image', text: '', images: [shot] });
+  assert.deepEqual(calls.findLast(call => call.path.endsWith('/prompt_async')).body, { parts: [{ type: 'file', mime: 'image/png', url: `data:image/png;base64,${shot.data}`, filename: 'shot.png' }] });
+  await assert.rejects(adapter.sendMessage('ses_first', { ...body, clientMessageId: 'with-image', text: '', images: [{ data: Buffer.concat([png, Buffer.from([0])]).toString('base64'), name: 'shot.png' }] }), /already used/);
   state.sendError = true;
   for (let i = 0; i < 2; i++) await assert.rejects(adapter.sendMessage('ses_first', { ...body, clientMessageId: 'ambiguous' }), /did not confirm/);
-  assert.equal(calls.filter(call => call.path.endsWith('/prompt_async')).length, 2);
+  assert.equal(calls.filter(call => call.path.endsWith('/prompt_async')).length, 3);
   for (const text of ['/clear', '', 12]) await assert.rejects(adapter.sendMessage('ses_first', { ...body, text }));
   await adapter.interrupt('ses_first'); assert.ok(calls.some(call => call.path === '/session/ses_first/abort'));
   const created = await adapter.spawn('/work/new'); assert.equal(created.sessionId, 'opencode:ses_created');

@@ -18,6 +18,7 @@ import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects } from './session-order.js';
 import { messagingUnavailableReason } from './messaging-status.js';
 import { ComposerInput, followKeyboard } from './composer-input.js';
+import { attachment, imageFiles, maxImages, releaseImages } from './composer-images.js';
 import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown } from './message-markdown.js';
 import { renderUsage } from './usage.js';
@@ -98,6 +99,7 @@ const icons = {
   sound: '<path d="M4 9.5v5h3.5L12 18V6L7.5 9.5H4Z"/><path d="M15.5 9a4 4 0 0 1 0 6m2.5-8.5a7.5 7.5 0 0 1 0 11"/>',
   next: '<path d="m6 5 7 7-7 7m7-14 7 7-7 7"/>',
   exit: '<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m5-12 4 4-4 4m4-4H9"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m4 18 5-5 4 4 3-3 4 4"/>',
   office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
@@ -658,13 +660,31 @@ function renderComposer(session) {
   const region = document.querySelector('#message-composer'); if (!region) return;
   region.currentSession = session;
   let draft = messageDrafts.get(session.id);
-  if (!draft) { draft = { text: '', busy: false, error: '' }; messageDrafts.set(session.id, draft); }
+  if (!draft) { draft = { text: '', images: [], busy: false, error: '' }; messageDrafts.set(session.id, draft); }
   if (!region.querySelector('form')) {
     const queue = el('div', 'message-queue');
     const form = el('form', 'message-form');
     const input = el('textarea'); input.rows = 2; input.maxLength = 12_000; input.setAttribute('aria-label', `Message ${providerName(session.provider)}`); input.placeholder = `Message ${providerName(session.provider)}…`;
     const row = el('div', 'composer-row');
-    const submit = el('button', 'primary', 'Send'); submit.type = 'submit'; row.append(input, submit);
+    const submit = el('button', 'primary', 'Send'); submit.type = 'submit';
+    const attach = button('', 'quiet-button composer-attach', () => files.click(), 'image'); attach.title = 'Attach images'; attach.setAttribute('aria-label', 'Attach images');
+    const files = el('input'); files.type = 'file'; files.accept = 'image/*'; files.multiple = true; files.hidden = true;
+    const previews = el('div', 'composer-images');
+    row.append(input, attach, submit);
+    // Pasted, picked or dropped; large images are shrunk first, and each one shows above the input until sent.
+    const add = async list => {
+      const picked = imageFiles(list); if (!picked.length || draft.busy) return;
+      if (!region.currentSession.messaging?.images) { draft.error = `This session cannot take images.${region.currentSession.provider === 'claude' ? ' Run Claude in tmux to send them.' : ''}`; update(); return; }
+      const room = maxImages - draft.images.length; draft.error = '';
+      try { for (const file of picked.slice(0, room)) { const image = await attachment(file); if (draft.images.length < maxImages) draft.images.push(image); else releaseImages([image]); } }
+      catch (error) { draft.error = error.message; }
+      if (picked.length > room) draft.error ||= `Up to ${maxImages} images.`;
+      update();
+    };
+    files.onchange = () => { add(files.files); files.value = ''; };
+    input.addEventListener('paste', event => { const pasted = imageFiles(event.clipboardData?.files); if (pasted.length) { event.preventDefault(); add(pasted); } });
+    form.addEventListener('dragover', event => { if ([...event.dataTransfer?.types || []].includes('Files')) event.preventDefault(); });
+    form.addEventListener('drop', event => { if (imageFiles(event.dataTransfer?.files).length) { event.preventDefault(); add(event.dataTransfer.files); } });
     const feedback = el('p', 'composer-feedback'); feedback.setAttribute('role', 'status');
     const draftInput = region.draftInput = new ComposerInput(input, draft, () => update());
     input.onkeydown = event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } };
@@ -673,14 +693,15 @@ function renderComposer(session) {
       if (draftInput.composing) return;
       draftInput.flush();
       const current = state.snapshot?.sessions.find(item => item.id === session.id);
-      if (!current || draft.busy || !draft.text.trim() || state.error) return;
+      if (!current || draft.busy || !(draft.text.trim() || draft.images.length) || state.error) return;
       const mode = 'send';
       if (!current.messaging?.send || messagingUnavailableReason(current, state.snapshot)) return;
-      if (!draft.submission || draft.submission.text !== draft.text || draft.submission.mode !== mode) draft.submission = { text: draft.text, mode, clientMessageId: uuid() };
+      const images = draft.images.map(({ name, data }) => ({ name, data }));
+      if (!draft.submission || draft.submission.text !== draft.text || draft.submission.mode !== mode || draft.submission.images.length !== images.length || draft.submission.images.some((image, i) => image.data !== images[i].data)) draft.submission = { text: draft.text, mode, clientMessageId: uuid(), images };
       draft.busy = true; draft.error = ''; update();
       try {
         const result = await api(`sessions/${encodeURIComponent(session.id)}/messages`, draft.submission);
-        draft.text = ''; draft.revision = (draft.revision || 0) + 1; draft.submission = null;
+        draft.text = ''; draft.revision = (draft.revision || 0) + 1; draft.submission = null; releaseImages(draft.images); draft.images = [];
         if (result.status === 'cleared' && result.session && state.snapshot) {
           state.snapshot.sessions = [...state.snapshot.sessions.filter(item => item.id !== result.session.id), result.session];
           if (state.selected === session.id) navigation.open(result.sessionId, { replace: true });
@@ -691,7 +712,7 @@ function renderComposer(session) {
       } catch (error) { draft.error = error.message; }
       finally { draft.busy = false; update(); if (state.selected === session.id) document.querySelector('#message-composer')?.updateComposer?.(); }
     };
-    form.append(row, feedback); region.append(queue, form);
+    form.append(previews, row, files, feedback); region.append(queue, form);
     function update() {
       const current = region.currentSession;
       const unavailable = messagingUnavailableReason(current, state.snapshot);
@@ -702,7 +723,21 @@ function renderComposer(session) {
       setProperty(row, 'hidden', !visible);
       // Connection changes affect Send, not the user's ability to keep drafting.
       setProperty(input, 'readOnly', draft.busy);
-      setProperty(submit, 'disabled', draft.busy || !draftInput.hasText || !available || !!state.error);
+      setProperty(submit, 'disabled', draft.busy || !(draftInput.hasText || draft.images.length) || !available || !!state.error);
+      setProperty(attach, 'hidden', !current.messaging?.images);
+      setProperty(attach, 'disabled', draft.busy || draft.images.length >= maxImages);
+      const shown = draft.images.map(image => image.id).join();
+      if (previews.dataset.shown !== shown) {
+        previews.dataset.shown = shown; previews.replaceChildren();
+        for (const image of draft.images) {
+          const item = el('figure', 'composer-image'), thumb = el('img'), remove = el('button', 'composer-image-remove'); thumb.src = image.url; thumb.alt = image.name; item.title = `${image.name} · ${Math.max(1, Math.round(image.size / 1024))} KB`;
+          remove.type = 'button'; remove.title = 'Remove'; remove.setAttribute('aria-label', `Remove ${image.name}`); remove.append(icon('close'));
+          remove.onclick = () => { if (draft.busy) return; draft.images = draft.images.filter(item => item !== image); releaseImages([image]); draft.error = ''; update(); input.focus(); };
+          item.append(thumb, remove); previews.append(item);
+        }
+      }
+      setProperty(previews, 'hidden', !draft.images.length);
+      for (const remove of previews.querySelectorAll('button')) setProperty(remove, 'disabled', draft.busy);
       setProperty(submit, 'textContent', draft.busy ? 'Sending…' : 'Send');
       setProperty(feedback, 'className', `composer-feedback ${draft.error ? 'form-error' : ''}`);
       setProperty(feedback, 'textContent', draft.error || unavailable);

@@ -1,5 +1,6 @@
 import { gzipSync } from 'node:zlib';
 import { fail } from './requests.mjs';
+import { uploadBodyLimit } from './uploads.mjs';
 
 function json(res, status, value, req) {
   res.statusCode = status; res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -9,11 +10,11 @@ function json(res, status, value, req) {
   if (!req || !/\bgzip\b/.test(req.headers['accept-encoding'] || '')) { res.end(text); return; }
   res.setHeader('Content-Encoding', 'gzip'); res.setHeader('Vary', 'Accept-Encoding'); res.end(gzipSync(text));
 }
-async function body(req) {
+async function body(req, limit = 64 * 1024) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw fail('Expected JSON.', 415);
-  let raw = '';
-  for await (const chunk of req) { raw += chunk; if (Buffer.byteLength(raw) > 64 * 1024) throw fail('Request is too large.', 413); }
-  try { return JSON.parse(raw); } catch { throw fail('Invalid JSON.'); }
+  const chunks = []; let size = 0;
+  for await (const chunk of req) { const part = Buffer.from(chunk); size += part.length; if (size > limit) throw fail('Request is too large.', 413); chunks.push(part); }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail('Invalid JSON.'); }
 }
 
 export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, budget }) {
@@ -88,7 +89,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
           const limit = Math.min(1000, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
           json(res, 200, await messages.history(id, limit), req); return;
         }
-        const result = action === 'messages' ? await messages.send(id, await body(req)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
+        const result = action === 'messages' ? await messages.send(id, await body(req, uploadBodyLimit)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
         auth.touch(session); json(res, 200, result); return;
       }
       const match = /^\/api\/requests\/([a-f0-9-]{36})\/respond$/.exec(path);

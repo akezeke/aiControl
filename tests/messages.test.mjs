@@ -20,7 +20,7 @@ test('recent Claude messages include visible text only, bounded to the limit', (
   assert.equal(codexMessage({ item: { type: 'reasoning', content: ['private'] } }), null);
   // Tool calls are one line each; their output never reaches the dashboard.
   assert.equal(JSON.stringify(codexMessage({ item: { type: 'commandExecution', id: 'c', aggregatedOutput: 'output' } })).includes('output'), false);
-  assert.equal(codexMessage({ item: { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'Visible' }, { type: 'image', url: 'private' }] } }).text, 'Visible');
+  assert.equal(codexMessage({ item: { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'Visible' }, { type: 'image', url: 'private' }] } }).text, '[image] Visible');
 });
 
 test('Claude harness rows are notices, not user prompts', () => {

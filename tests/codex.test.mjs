@@ -248,6 +248,21 @@ test('sending to idle Codex preserves settings, deduplicates retries and refuses
   await assert.rejects(adapter.sendMessage('live-thread', message('x'.repeat(12_001))), /12,000/);
 });
 
+test('images go to Codex inline, alone or with text, and a retry must carry the same images', async t => {
+  const { adapter, server } = await connected(t, { status: 'idle' });
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64').toString('base64');
+  const body = { ...message('What is this?'), images: [{ name: 'shot.png', data: png }] };
+  await adapter.sendMessage('live-thread', body);
+  assert.deepEqual(server.messages.find(entry => entry.method === 'turn/start').params.input, [{ type: 'text', text: 'What is this?', text_elements: [] }, { type: 'image', url: `data:image/png;base64,${png}` }]);
+  await adapter.sendMessage('live-thread', body); assert.equal(server.turns.length, 1);
+  await assert.rejects(adapter.sendMessage('live-thread', { ...body, images: [] }), error => error.status === 409);
+  await assert.rejects(adapter.sendMessage('live-thread', { ...message(''), images: [{ data: Buffer.from('<svg/>').toString('base64') }] }), /PNG, JPEG, GIF or WebP/);
+  await assert.rejects(adapter.sendMessage('live-thread', message('')), /Enter a message/);
+  assert.equal(adapter.list()[0].messaging.images, true);
+  await adapter.sendMessage('live-thread', { ...message(''), images: [{ data: png }] });
+  assert.deepEqual(server.messages.filter(entry => ['turn/start', 'turn/steer'].includes(entry.method)).at(-1).params.input, [{ type: 'image', url: `data:image/png;base64,${png}` }]);
+});
+
 test('busy Codex queues in order, starts after idle, and supports removing queued messages', async t => {
   const { adapter, server } = await connected(t, { status: 'active' });
   const first = message('Do this next', 'queue');

@@ -342,6 +342,16 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .composer-row { display: flex; align-items: flex-end; gap: 8px; }
 .composer-row textarea { flex: 1; min-width: 0; max-height: 160px; resize: vertical; }
 .composer-row .primary { flex: none; min-height: 44px; }
+.composer-row .composer-attach { flex: none; width: 44px; min-height: 44px; padding: 0; }
+.composer-row .composer-attach > span:not(.icon) { display: none; }
+.composer-images { display: flex; gap: 10px; margin-bottom: 6px; padding: 8px 8px 0 0; overflow-x: auto; }
+.composer-image { position: relative; flex: none; width: 64px; height: 64px; margin: 0; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--sunken); }
+.composer-image img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.composer-image-remove { position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-2); border-radius: 50%; background: var(--panel); color: var(--text-2); box-shadow: var(--shadow); }
+.composer-image-remove::after { content: ""; position: absolute; inset: -10px; }
+.composer-image-remove .icon { width: 12px; height: 12px; }
+.composer-image-remove:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+.composer-images[hidden], .composer-attach[hidden] { display: none; }
 .composer-feedback { margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--text-3); }
 .composer-feedback.form-error { color: var(--danger); }
 .composer-feedback:empty, .message-queue:empty { display: none; }

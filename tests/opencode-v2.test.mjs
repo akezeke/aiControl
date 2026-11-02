@@ -173,10 +173,13 @@ test('V2 creates sessions in the chosen folder, deduplicates prompts and interru
   await Promise.all([adapter.sendMessage('ses_created', body), adapter.sendMessage('ses_created', body)]);
   assert.deepEqual(calls.find(call => call.path.endsWith('/prompt')).body, { text: 'Build it' });
   assert.equal(calls.filter(call => call.path.endsWith('/prompt')).length, 1);
+  const data = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64').toString('base64');
+  await adapter.sendMessage('ses_created', { clientMessageId: 'test:image', text: 'Look', images: [{ name: 'shot.png', data }] });
+  assert.deepEqual(calls.findLast(call => call.path.endsWith('/prompt')).body, { text: 'Look', files: [{ uri: `data:image/png;base64,${data}`, name: 'shot.png' }] });
   state.sendError = true;
   await assert.rejects(adapter.sendMessage('ses_created', { ...body, clientMessageId: 'test:2' }));
   await assert.rejects(adapter.sendMessage('ses_created', { ...body, clientMessageId: 'test:2' }));
-  assert.equal(calls.filter(call => call.path.endsWith('/prompt')).length, 2);
+  assert.equal(calls.filter(call => call.path.endsWith('/prompt')).length, 3);
   await adapter.interrupt('ses_created'); assert.ok(calls.some(call => call.path === '/api/session/ses_created/interrupt'));
 });
 

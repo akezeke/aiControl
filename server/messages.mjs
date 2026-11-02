@@ -34,7 +34,7 @@ export function codexMessage(entry) {
   const failed = ['failed', 'declined'].includes(item.status) || (item.exitCode != null && item.exitCode !== 0) || item.success === false || !!item.error;
   switch (item.type) {
     case 'agentMessage': case 'plan': return message(item.id, 'assistant', item.text || '', time);
-    case 'userMessage': return message(item.id, 'user', textContent(item.content), time);
+    case 'userMessage': { const images = Array.isArray(item.content) ? item.content.filter(part => part?.type === 'image' || part?.type === 'localImage').length : 0; return message(item.id, 'user', (images ? `[image${images > 1 ? ` ×${images}` : ''}] ` : '') + textContent(item.content), time); }
     case 'exitedReviewMode': return message(item.id, 'assistant', item.review || 'Review finished', time);
     case 'enteredReviewMode': return notice(item.id, 'Review started', time);
     case 'contextCompaction': return notice(item.id, 'Context compacted', time);

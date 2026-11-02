@@ -6,6 +6,7 @@ import { codexMessage, messageLimit, recentMessages, textContent, planSteps } fr
 import { UsagePoller, codexUsageWindows } from './usage.mjs';
 import { CodexImages } from './codex-images.mjs';
 import { fireCodex } from './codex-fire.mjs';
+import { uploadedImages, uploadDigest } from './uploads.mjs';
 
 export const codexSocketPath = () => join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'app-server-control', 'app-server-control.sock');
 export function connectCodexSocket(path, connectionOptions = {}) {
@@ -287,19 +288,20 @@ export class CodexAdapter {
   }
   async sendMessage(threadId, body) {
     this.requireMessaging(threadId);
-    if (typeof body?.text !== 'string' || !body.text.trim() || body.text.length > 12_000) throw fail('Enter a message of 1–12,000 characters.');
+    const images = uploadedImages(body?.images);
+    if (typeof body?.text !== 'string' || !(body.text.trim() || images.length) || body.text.length > 12_000) throw fail('Enter a message of 1–12,000 characters.');
     if (!['send', 'queue'].includes(body.mode) || !/^[a-f0-9-]{36}$/i.test(body.clientMessageId || '')) throw fail('Invalid message submission.');
     const command = slashCommand(body.text);
     const clear = command.toLowerCase() === '/clear';
-    if (clear && (body.text.trim().toLowerCase() !== '/clear' || body.mode !== 'send')) throw fail('Send /clear by itself; it cannot be queued.');
+    if (clear && (body.text.trim().toLowerCase() !== '/clear' || body.mode !== 'send' || images.length)) throw fail('Send /clear by itself; it cannot be queued.');
     if (command && !clear) throw fail(`${command} only works in Codex’s own terminal; from here it would be sent to Codex as a message.`);
-    const key = `${threadId}:${body.clientMessageId}`, fingerprint = JSON.stringify([body.mode, body.text]);
+    const key = `${threadId}:${body.clientMessageId}`, fingerprint = JSON.stringify([body.mode, body.text, uploadDigest(images)]);
     const previous = this.submissions.get(key);
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw fail('This message ID was already used.', 409);
       return previous.promise;
     }
-    const promise = clear ? this.clearChat(threadId) : this.deliverMessage(threadId, body);
+    const promise = clear ? this.clearChat(threadId) : this.deliverMessage(threadId, body, images);
     this.submissions.set(key, { fingerprint, promise });
     promise.catch(error => { if (error.status !== 504) this.submissions.delete(key); });
     if (this.submissions.size > 1000) this.submissions.delete(this.submissions.keys().next().value);
@@ -353,8 +355,8 @@ export class CodexAdapter {
       throw error;
     } finally { this.sendingMessages.delete(threadId); }
   }
-  async deliverMessage(threadId, body) {
-    const input = [{ type: 'text', text: body.text, text_elements: [] }];
+  async deliverMessage(threadId, body, images = []) {
+    const input = [...body.text.trim() ? [{ type: 'text', text: body.text, text_elements: [] }] : [], ...images.map(image => ({ type: 'image', url: image.url }))];
     const clientUserMessageId = `ai-control:${body.clientMessageId}`;
     let submitted = false, locked = false;
     try {
@@ -541,7 +543,7 @@ export class CodexAdapter {
   list() {
     return [...this.sessions.values()].map(({ nextEffort, ...session }) => {
       const send = this.connected && (this.joined.has(session.nativeId) || this.fresh.has(session.nativeId));
-      return { ...session, ...(nextEffort ? { effortPending: true } : {}), messaging: { send, model: send, fire: send && !session.parentId, queue: send && this.joined.has(session.nativeId) && session.queueAvailable, interrupt: send && this.joined.has(session.nativeId), effort: send && session.efforts.length > 0 } };
+      return { ...session, ...(nextEffort ? { effortPending: true } : {}), messaging: { send, images: send, model: send, fire: send && !session.parentId, queue: send && this.joined.has(session.nativeId) && session.queueAvailable, interrupt: send && this.joined.has(session.nativeId), effort: send && session.efforts.length > 0 } };
     });
   }
   stop() { this.stopped = true; clearTimeout(this.retry); clearInterval(this.timer); this.connection?.close(); }

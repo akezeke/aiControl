@@ -1,11 +1,13 @@
 import { connect } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { lstat, realpath } from 'node:fs/promises';
-import { dirname, basename, normalize } from 'node:path';
+import { lstat, mkdir, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, basename, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fail, slashCommand } from './requests.mjs';
 import { parentPid, listProcesses } from './processes.mjs';
+import { dataDir } from './config.mjs';
+import { extensions, uploadedImages, uploadDigest } from './uploads.mjs';
 
 const runTmux = (args, input) => new Promise((resolve, reject) => {
   const child = execFile('tmux', args, { timeout: 3000 }, (error, stdout) => error ? reject(error) : resolve(stdout));
@@ -82,8 +84,8 @@ export class ClaudeMessaging {
   submissions = new Map();
   sockets = new Set();
   typing = Promise.resolve();
-  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), platform = process.platform, timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000, exitMs = 15_000, processes = listProcesses, signal = (pid, name) => process.kill(pid, name) } = {}) {
-    Object.assign(this, { alive, openSocket, stat, canonical, uid, platform, timeoutMs, tmux, parent, pollMs, settleMs, exitMs, processes, signal });
+  constructor({ alive, openSocket = connect, stat = lstat, canonical = realpath, uid = process.getuid?.(), platform = process.platform, timeoutMs = 5000, tmux = runTmux, parent = parentPid, pollMs = 100, settleMs = 3000, exitMs = 15_000, processes = listProcesses, signal = (pid, name) => process.kill(pid, name), uploadDir = join(dataDir, 'uploads'), keepUploadMs = 60_000 } = {}) {
+    Object.assign(this, { uploadDir, keepUploadMs, alive, openSocket, stat, canonical, uid, platform, timeoutMs, tmux, parent, pollMs, settleMs, exitMs, processes, signal });
   }
   async available(record) {
     if (tmuxPaneId(record)) return 'tmux';
@@ -115,17 +117,18 @@ export class ClaudeMessaging {
     return null;
   }
   async send(record, body) {
-    if (typeof body?.text !== 'string' || !body.text.trim() || body.text.length > 12_000) throw fail('Enter a message of 1–12,000 characters.');
+    const images = uploadedImages(body?.images);
+    if (typeof body?.text !== 'string' || !(body.text.trim() || images.length) || body.text.length > 12_000) throw fail('Enter a message of 1–12,000 characters.');
     if (body.mode !== 'send' || !/^[a-f0-9-]{36}$/i.test(body.clientMessageId || '')) throw fail('Invalid message submission.');
     const key = `${record.sessionId}:${body.clientMessageId}`;
     const previous = this.submissions.get(key);
     if (previous) {
-      if (previous.text !== body.text) throw fail('This message ID was already used.', 409);
+      if (previous.text !== body.text || previous.digest !== uploadDigest(images)) throw fail('This message ID was already used.', 409);
       return previous.promise;
     }
     if (this.submissions.size >= 1000) this.submissions.delete(this.submissions.keys().next().value);
-    const entry = { text: body.text };
-    entry.promise = this.deliver(record, body).catch(error => {
+    const entry = { text: body.text, digest: uploadDigest(images) };
+    entry.promise = this.deliver(record, body, images).catch(error => {
       // Retry only when nothing reached Claude.
       if (error.status !== 504) this.submissions.delete(key);
       throw error;
@@ -133,12 +136,13 @@ export class ClaudeMessaging {
     this.submissions.set(key, entry);
     return entry.promise;
   }
-  async deliver(record, body) {
+  async deliver(record, body, images = []) {
     if (tmuxPaneId(record)) {
       const pane = await this.readyPane(record, false);
-      if (pane) return this.type(pane, body);
+      if (pane) return this.type(pane, body, images);
     } else if (!await this.alive(record.pid, record.procStart)) throw fail('Claude is no longer running. Refresh before sending.', 409);
     if (!await this.inboxAvailable(record)) throw fail('Claude has no tmux pane or inbox to receive messages.', 409);
+    if (images.length) throw fail('Images can only be sent to Claude running in tmux.', 409);
     // The inbox delivers text as a message from another session, so a /command would not run.
     const command = slashCommand(body.text);
     if (command) throw fail(`${command} only works typed into Claude’s terminal; run Claude in tmux to send it from here.`, 409);
@@ -239,16 +243,50 @@ export class ClaudeMessaging {
     this.typing = result.catch(() => {});
     return result;
   }
-  type(pane, body) {
+  // Claude takes a pasted path to an image file as an attachment ([Image #1]), so each image is written to a file
+  // there and its path pasted before the text. Files linger briefly, in case Claude reads one late, then go.
+  async saveImages(images, id) {
+    if (!images.length) return [];
+    await mkdir(this.uploadDir, { recursive: true, mode: 0o700 });
+    const old = Date.now() - 3_600_000;
+    for (const name of await readdir(this.uploadDir).catch(() => [])) if ((await stat(join(this.uploadDir, name)).catch(() => null))?.mtimeMs < old) await rm(join(this.uploadDir, name), { force: true });
+    const files = images.map((image, index) => join(this.uploadDir, `${id}-${index + 1}.${extensions[image.type]}`));
+    try { await Promise.all(files.map((file, index) => writeFile(file, images[index].bytes, { mode: 0o600 }))); }
+    catch { await this.dropImages(files, 0); throw fail('Could not save the images for Claude.', 503); }
+    return files;
+  }
+  dropImages(files, delay = this.keepUploadMs) {
+    if (!files.length) return Promise.resolve();
+    const remove = () => Promise.all(files.map(file => rm(file, { force: true }))).catch(() => {});
+    if (delay > 0) { setTimeout(remove, delay).unref?.(); return Promise.resolve(); }
+    return remove();
+  }
+  type(pane, body, images = []) {
     // Strip control characters so text cannot end the bracketed paste or send keys.
     const text = body.text.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
     const run = async () => {
       if (body.requireEmpty && await this.inputText(pane) !== '') throw fail('Clear the draft in Claude’s terminal before changing its settings.', 409);
-      await this.paste(pane, text, body.clientMessageId);
+      const files = await this.saveImages(images, body.clientMessageId);
+      try {
+        const chips = async () => (await this.inputText(pane))?.match(/\[Image #\d+\]/g)?.length ?? 0;
+        const [before, drafted] = files.length ? [await chips(), await this.inputText(pane) !== ''] : [0, true];
+        try {
+          for (const [index, file] of files.entries()) {
+            await this.paste(pane, file, `${body.clientMessageId}-${index}`);
+            if (!await this.until(async () => await chips() > before + index, this.settleMs)) throw fail('Claude did not take an image. Check its terminal and try again.', 503);
+          }
+        } catch (error) {
+          // Leave no half-built message behind, unless the prompt already held someone's draft.
+          if (!drafted) await this.tmux(['send-keys', '-t', pane, 'C-u']).catch(() => {});
+          throw error;
+        }
+        if (text.trim() || !files.length) await this.paste(pane, files.length ? ` ${text}` : text, body.clientMessageId);
+      } catch (error) { await this.dropImages(files, 0); throw error; }
+      this.dropImages(files);
       // A busy or long session can take a while to take in a paste, and an early Enter hits an empty
       // prompt. So wait until the text shows in the input line, press Enter, and press again only
       // while our own text is still visibly there (so a retry can never confirm a dialog).
-      const snippet = text.split('\n').find(line => line.trim())?.trim().replace(/\s+/g, ' ').slice(0, 20) || '';
+      const snippet = text.split('\n').find(line => line.trim())?.trim().replace(/\s+/g, ' ').slice(0, 20) || (images.length ? '[Image #' : '');
       // The prompt box itself, not a ❯ row of the agent picker that can sit below it.
       const inInput = async () => {
         const line = (await this.inputText(pane))?.replace(/\s+/g, ' ') ?? '';

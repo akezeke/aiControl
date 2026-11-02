@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { OpenCodeAPI } from './opencode-api.mjs';
 import { fireOpenCode } from './opencode-fire.mjs';
 import { OpenCodeImages } from './opencode-images.mjs';
+import { uploadedImages, uploadDigest } from './uploads.mjs';
 
 export function openCodeConfig(value) {
   if (value?.service === true) return { service: true };
@@ -95,7 +96,7 @@ export class OpenCodeAdapter {
     this.requestKeys.clear();
     for (const session of this.sessions.values()) { session.status = 'offline'; session.control = false; session.messaging = { send: false, interrupt: false }; }
   }
-  list() { return [...this.sessions.values()].map(session => ({ ...session, ...this.chosenSettings.get(session.nativeId), messaging: { ...session.messaging, model: this.connected, effort: this.connected, fire: this.connected && this.api.v2 && !session.parentId } })); }
+  list() { return [...this.sessions.values()].map(session => ({ ...session, ...this.chosenSettings.get(session.nativeId), messaging: { ...session.messaging, images: this.connected, model: this.connected, effort: this.connected, fire: this.connected && this.api.v2 && !session.parentId } })); }
   fire(id) { return fireOpenCode(this, id); }
   refresh() {
     if (!this.config || this.controller.signal.aborted) return Promise.resolve();
@@ -260,18 +261,18 @@ export class OpenCodeAdapter {
   }
   async sendMessage(id, body) {
     if (this.firing.has(id)) throw fail('This session is being archived.', 409);
-    const session = this.require(id), text = typeof body?.text === 'string' ? body.text.trim() : '';
-    if (typeof text !== 'string' || !text || text.length > 12_000) throw fail('Enter a message of up to 12,000 characters.');
+    const session = this.require(id), text = typeof body?.text === 'string' ? body.text.trim() : '', images = uploadedImages(body?.images);
+    if (typeof text !== 'string' || !(text || images.length) || text.length > 12_000) throw fail('Enter a message of up to 12,000 characters.');
     if (slashCommand(text)) throw fail('Use OpenCode’s terminal for slash commands.');
     if (typeof body.clientMessageId !== 'string' || !/^[\w:-]{1,120}$/.test(body.clientMessageId)) throw fail('Invalid message ID.');
-    const key = `${id}:${body.clientMessageId}`, existing = this.submissions.get(key);
-    if (existing) { if (existing.text !== text) throw fail('This message ID was already used.'); return existing.promise; }
+    const key = `${id}:${body.clientMessageId}`, existing = this.submissions.get(key), digest = uploadDigest(images);
+    if (existing) { if (existing.text !== text || existing.digest !== digest) throw fail('This message ID was already used.'); return existing.promise; }
     if (this.sending.has(id)) throw fail('A message is being sent. Wait for it to finish.', 409);
     // Retain ambiguous failures as well as successes: a timed-out POST must never be resent automatically.
     this.sending.add(id);
-    const promise = this.api.send(id, session.cwd, text, this.chosenSettings.get(id))
+    const promise = this.api.send(id, session.cwd, text, this.chosenSettings.get(id), images)
       .then(() => { session.status = 'working'; return { status: 'sent' }; }).finally(() => this.sending.delete(id));
-    this.submissions.set(key, { text, promise });
+    this.submissions.set(key, { text, digest, promise });
     if (this.submissions.size > 1000) this.submissions.delete(this.submissions.keys().next().value);
     return promise;
   }

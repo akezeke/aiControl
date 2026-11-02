@@ -148,10 +148,11 @@ export class OpenCodeAPI {
     const all = openCodeMessages(rows, Infinity), messages = openCodeMessages(rows, limit);
     return { rows, messages, more: more || messages.length < all.length };
   }
-  send(id, directory, text, settings) {
+  send(id, directory, text, settings, images = []) {
     const model = settings?.model && this.modelRef(settings.model, settings.effort);
     return this.client.request(this.v2 ? `/api/session/${id}/prompt` : `/session/${id}/prompt_async`,
-      { method: 'POST', body: this.v2 ? { text } : { parts: [{ type: 'text', text }], ...model ? { model: { providerID: model.providerID, modelID: model.id }, ...(model.variant ? { variant: model.variant } : {}) } : {} }, ...!this.v2 ? { directory } : {} });
+      { method: 'POST', body: this.v2 ? { text, ...images.length ? { files: images.map(image => ({ uri: image.url, name: image.name })) } : {} }
+        : { parts: [...text ? [{ type: 'text', text }] : [], ...images.map(image => ({ type: 'file', mime: image.type, url: image.url, filename: image.name }))], ...model ? { model: { providerID: model.providerID, modelID: model.id }, ...(model.variant ? { variant: model.variant } : {}) } : {} }, ...!this.v2 ? { directory } : {} });
   }
   interrupt(id, directory) { return this.client.request(this.v2 ? `/api/session/${id}/interrupt` : `/session/${id}/abort`, { method: 'POST', ...!this.v2 ? { directory } : {} }); }
   async create(directory, settings = {}) {

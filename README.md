@@ -7,7 +7,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 ## Features
 
 - Sessions grouped by project, with status, subagents, context and progress.
-- Answer permissions and questions, send messages, stop turns and start agents. Nothing is auto-approved.
+- Answer permissions and questions, send messages with pasted or picked images (Claude needs tmux), stop turns and start agents. Nothing is auto-approved.
 - Switch models and supported effort levels from session headers; remember choices for new sessions.
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
 - Chat history with Markdown, diffs, tool calls, screenshots and older messages on demand.
