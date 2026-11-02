@@ -1,0 +1,97 @@
+Brick Knights artwork. Raster images were generated with Codex's built-in imagegen tool (codex exec, one image per run) and saved as WebP;
+the brick pieces the interface is built from are live geometry (client/bricks3d), so they sit on one exact grid.
+
+Assets (client/public unless noted), all sized by scripts/bricks-art.py from docs/art/src:
+bricks-bg.webp               bg2 prompt below, then edited once (bg4) to add a stone pier for the drawbridge to dock on
+bricks-theme.webp            emblem2
+providers/bricks-{codex,claude,opencode}.webp   icons2 (2 x 2 atlas, three used)
+bricks-portraits.webp        portraits2 (2 x 2 atlas)
+bricks-dragon.webp           dragon2
+spend-bricks.webp            chest
+bricks-fig-{ranger,herald,knight,dragon}.webp   figs (cut apart)
+bricks-torch.webp, bricks-banner.webp           torch, banner
+bricks-gate-{left,right}.webp                   gate2, split down the seam
+
+The bricks the interface is built from are not images. client/bricks3d builds them live in three.js (bevelled boxes with lathe-turned studs, real proportions:
+stud pitch 8 mm, brick 9.6 mm, plate 3.2 mm, drawn at 2.5 px per mm), and paints each element's text, icons and portraits onto the brick face as a texture.
+"LEGO" is a trademark of the LEGO Group, which does not sponsor or endorse this project; the theme is an original design in the style of toy castle bricks.
+
+Final prompts (the image tool is given the text unchanged; "Use case"/"Asset type" lines are its own conventions):
+
+[bg2]
+Use case: stylized-concept
+Asset type: wide landscape background for a dashboard theme, 1536x1024.
+Primary request: a photorealistic macro toy photograph of a grim medieval castle diorama built entirely from plastic building bricks in the style of classic LEGO Castle sets, visible studs on every top surface, in a MUTED, SERIOUS, medieval palette: weathered dark bluish-grey and light bluish-grey stone bricks, dark tan, reddish-brown timber, a few dark-blue and dark-red banners with worn gold lions, dark green trees, olive-green and dark-green baseplate hills. No bright primary colours, no saturated blue sky, nothing cheerful or childish.
+Scene: a tall stone keep with crenellated towers and a lowered wooden drawbridge on the right third of the frame, torches glowing warm orange in the walls, a few minifigure knights in grey armour on the ramparts, a river of dark teal translucent plates, rocky grey hills with pine trees in the distance, late-evening overcast sky in slate grey and dusty amber with heavy brick-built storm clouds, soft low sun glow behind the towers. Shallow depth of field, cinematic moody lighting, strong atmosphere.
+Composition: the left two thirds are calm, low-detail dark green baseplate hills, mist and sky so interface panels can sit on top; strongest detail and tallest towers on the right third. No text, no logos, no watermark, no UI.
+
+[bg4, an edit of the bg2 result]
+Use case: precise-object-edit
+Edit the attached image (ref.png). Keep EVERYTHING exactly as it is - same castle, sky, clouds, mist, mountains, trees, lighting, colours, framing, resolution and photographic style - except for one change at the river in the lower right:
+
+The lowered wooden drawbridge in front of the castle gate ends in the middle of the river and touches nothing. Do NOT lengthen or extend the wooden drawbridge and do NOT add any wooden planks anywhere. Keep the drawbridge exactly the length it is now.
+
+Instead, build a solid STONE landing pier made of weathered grey plastic building bricks (dark and light bluish-grey bricks, visible studs on top, stacked brick courses, a crenellated or flat stone top) that rises out of the water on the far (left-hand) side of the drawbridge's free end. It starts at the left riverbank and juts out a good way into the river as a stone quay / pier with its sides standing in the water, ending right where the drawbridge's free end comes down, so that the end of the drawbridge rests ON the stone pier top, at the same height, with a visible clean seat. The pier is the thing the drawbridge docks to, like the fixed stone abutment of a drawbridge crossing; the water continues to flow around its front and sides. Same lighting, warm torch glow, reflections in the water, and shallow depth of field as the rest of the image, so it looks like it was always part of the diorama.
+
+Do not change anything else. No text, no logos, no watermark.
+
+[emblem2]
+Use case: stylized-concept
+Asset type: transparent square UI theme emblem, 1024x1024, recognizable at 32px.
+Primary request: a heraldic knight's crest built entirely from glossy plastic toy building bricks in the style of classic LEGO Castle sets, in a MUTED, serious medieval palette. A kite-shaped deep navy-blue shield made of stacked bricks with visible round studs along its top edge, a thick aged gold brick rim, a bold worn-gold lion rampant (rearing, one animal only, correct anatomy, facing left) formed from gold bricks and tiles, and a small aged-gold crown brick on top. Photorealistic studio product render: shiny injection-moulded plastic, soft specular highlights, crisp seams between bricks, slightly rounded edges. Bold compact silhouette that reads clearly at small UI size; lion large and simple. Colours: dark navy, antique gold; no bright primaries.
+Single isolated crest, centred, 10 percent margin on every side, truly transparent background (real alpha, no checkerboard, no backdrop), no cast shadow. No text, no letters, no logos, no watermark.
+
+[icons2]
+Use case: stylized-concept
+Asset type: production UI icon sprite atlas, 1024x1024 transparent PNG. Exactly 4 isolated icons in a regular 2 by 2 grid, each cell exactly 512x512, each icon centred and filling about 80 percent of its cell with generous transparent margin. No visible grid, no captions, no text.
+Style: every icon is a photorealistic LEGO-style round printed tile (a chunky circular disc of matte plastic with a slightly raised rim), in a MUTED, SERIOUS, medieval palette: dark and weathered colours, with the symbol printed as antique tarnished metal (aged silver or worn gold), like heraldry on an old shield boss. Studio product-render look, soft specular highlights, readable at 24px. No bright or saturated colours, nothing cheerful or childish. No shadows outside the icon.
+Atlas, left to right, top to bottom:
+1 (top-left) CODEX: deep navy-blue disc with a bold aged-silver six-fold interwoven knot (six loops forming a rounded hexagonal knot, thick strokes).
+2 (top-right) CLAUDE: dark crimson-red disc with a bold worn-gold many-rayed sunburst asterisk (12 thick tapered rays).
+3 (bottom-left) OPENCODE: dark forest-green disc with a very bold aged-silver upright squared letter-O shaped frame (thick rectangular outer frame, tall rectangular aperture, short solid rectangular block at the bottom of the aperture).
+4 (bottom-right) a charcoal-grey disc with a worn-gold five-point star.
+Constraints: no letters or wordmarks, no extra icons, no connectors, true transparent background around each disc.
+
+[portraits2]
+Use case: stylized-concept
+Asset type: four square character portrait sprites in a 2 by 2 grid, 1024x1024 total, each portrait exactly 512x512, flush, NO gaps, NO frames, NO borders, NO text. Every portrait is fully opaque and fills its square edge to edge.
+Subject: head-and-shoulders close-ups of classic LEGO-style castle minifigures (glossy yellow cylindrical head with a simple printed serious-to-friendly face) in medieval armour and clothing, photorealistic macro product photograph, shiny moulded plastic, shallow depth of field. Palette is MUTED and medieval: every backdrop is the same front face of dark bluish-grey stone bricks lit by warm orange torchlight from one side, so the four portraits feel like one set. No bright primary colours, nothing childish.
+1 (top-left): a lion knight: silver-grey helmet with raised visor and a deep navy-blue plume, navy torso with a worn gold lion.
+2 (top-right): a dragon knight: dark-grey helmet with a dark-red dragon crest, dark crimson torso with a black-and-gold dragon.
+3 (bottom-left): a forest ranger: dark-green hood with a small brown feather, brown leather tunic and quiver strap.
+4 (bottom-right): an old king: tarnished gold crown, grey-brown beard, dark-red robe with cream ermine collar.
+The subject fills the frame so each portrait reads clearly at 48px. No logos, no letters, no watermark.
+
+[dragon2]
+Use case: stylized-concept
+Asset type: a single flying creature sprite, 1536x1024, truly transparent background (real alpha, no checkerboard, no backdrop, no cast shadow).
+Subject: a menacing medieval dragon built from glossy plastic building bricks in the style of a classic LEGO Castle dragon, side view, flying to the RIGHT, wings spread wide with dark-red translucent membrane panels, long segmented tail trailing left, charcoal black and dark bluish-grey body with dark-red horns and spines, muted tan belly plates, visible studs. Photorealistic product render, soft studio light, glossy plastic highlights. Muted serious palette, no bright colours. Centred with 6 percent margin, filling the width. No text, no logos, no watermark.
+
+[chest]
+Use case: stylized-concept
+Asset type: one transparent square UI icon, 1024x1024, treasure hoard, recognizable at 64px.
+Subject: a treasure chest built from glossy plastic building bricks in the style of a classic LEGO Castle set: brown brick chest with a gold-banded lid, lid open, overflowing with round gold coin tiles and a few translucent red, blue and green gem studs, a couple of coins spilling in front. Shiny molded plastic with soft specular highlights, studs visible on the lid, product-render look, bold simple silhouette. Centred, 10 percent margin on every side, truly transparent background (real alpha, no checkerboard), no cast shadow outside the object. No text, no logos, no watermark.
+
+[figs]
+Use case: product-render
+Asset type: sprite sheet of four full-body minifigures, 1536x1024, truly transparent background (real alpha, no checkerboard, no backdrop, no cast shadow).
+Subject: four classic LEGO-style castle knight minifigures (glossy yellow cylindrical heads with simple printed smiles, plastic claw hands, blocky legs), photorealistic 3D product render, soft top-left studio light, glossy plastic highlights, standing upright facing the camera, evenly spaced in one row, all exactly the same scale (each about 300 px wide and 800 px tall), clear transparent gaps, none touching or cut off.
+Left to right: (1) a forest ranger in a green hood with a feather and a small bow, green and brown clothing; (2) a gold-and-blue royal herald knight in gold armour with a tall gold plume, raising one hand and holding a small cream scroll; (3) a silver-grey lion knight with a royal-blue plume, blue torso with a gold lion, holding a blue kite shield at rest; (4) a red dragon knight with a red dragon-crest helmet, red torso, holding a short sword and a red shield.
+No text, no logos, no watermark.
+
+[torch]
+Use case: product-render
+Asset type: one transparent object sprite, 1024x1024, truly transparent background (real alpha, no checkerboard, no backdrop).
+Subject: a castle wall torch built from glossy plastic building bricks in the style of classic LEGO Castle sets: a dark grey brick bracket and a black torch holder, topped with one translucent orange and translucent yellow moulded flame piece that glows warmly; front view, centred, vertical composition, photorealistic 3D product render, soft studio light, glossy plastic highlights, a soft warm glow on the bricks near the flame only. 12 percent transparent margin. No text, no logos, no watermark.
+
+[banner]
+Use case: product-render
+Asset type: one transparent object sprite, 1024x1536 portrait, truly transparent background (real alpha, no checkerboard, no backdrop).
+Subject: a hanging heraldic castle banner built from glossy plastic building bricks and tiles in the style of classic LEGO Castle sets: a golden pole across the top with two gold end studs, a royal-blue swallow-tail pennant with a bold gold lion rampant made of gold tiles, thin gold border, small gold hanging cords; front view, perfectly vertical and symmetric, photorealistic 3D product render, glossy plastic, soft top-left studio light, subtle ambient occlusion. Centred, 8 percent margin. No text, no letters, no logos, no watermark.
+
+[gate2]
+Use case: product-render
+Asset type: wide background image, 1536x1024, fully opaque, no transparency.
+Subject: front view, straight-on, of a massive closed double castle gate built entirely from glossy plastic building bricks in the style of classic LEGO Castle sets, filling the whole frame edge to edge. Two tall dark-brown plank doors made of reddish-brown brick planks meet at a thin vertical seam exactly at the centre of the image. Iron-grey bands and hinges with round rivet studs on each door, an arched frame of light grey stone bricks around the doors, grey brick wall at the left and right edges.
+Emblem: exactly ONE single golden lion rampant made of gold bricks and tiles, drawn in classic heraldic PROFILE facing LEFT, one animal only with four correct limbs (two raised front paws, two hind legs standing), a gold crown on its head, mounted in the centre of the doors so the seam passes down through the middle of its body. It must NOT be mirrored, NOT duplicated and NOT symmetric: a single lion, anatomically correct, readable at a glance.
+Photorealistic 3D product render, soft studio lighting, crisp plastic detail. No text, no letters, no logos, no people.

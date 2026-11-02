@@ -29,7 +29,7 @@ function formV2(form) {
 }
 
 export class OpenCodeAPI {
-  constructor(client) { this.client = client; }
+  constructor(client) { this.client = client; this.pageLimits = new Map(); }
   async detect() {
     if (this.version) return;
     try {
@@ -112,11 +112,19 @@ export class OpenCodeAPI {
     path = this.v2 ? `/api/session/${request.sessionID}/${kind === 'question' ? 'form' : 'permission'}/${request.id}/reply` : `/${kind}/${request.id}/reply`;
     return this.client.request(path, { method: 'POST', body, ...!this.v2 ? { directory } : {} });
   }
+  // Screenshot-heavy turns can push one page past the client's size cap; shrink that session's pages and retry.
+  async messagePage(id, limit, cursor) {
+    for (;;) {
+      const size = Math.min(limit, this.pageLimits.get(id) ?? limit);
+      try { return await this.client.request(`/api/session/${id}/message`, { query: { limit: size, ...cursor ? { cursor } : { order: 'desc' } } }); }
+      catch (error) { if (!error.tooLarge || size <= 1) throw error; this.pageLimits.set(id, size >> 1); }
+    }
+  }
   async messages(id, directory, limit) {
     if (!this.v2) return array(await this.client.request(`/session/${id}/message`, { directory, query: limit ? { limit } : {} }));
     const rows = [], seen = new Set(); let cursor;
     do {
-      const page = await this.client.request(`/api/session/${id}/message`, { query: { limit: limit || 200, ...cursor ? { cursor } : { order: 'desc' } } });
+      const page = await this.messagePage(id, limit || 200, cursor);
       rows.push(...array(page.data));
       cursor = page.cursor?.next;
       if (limit) break;
@@ -137,7 +145,7 @@ export class OpenCodeAPI {
     } else {
       let cursor, count = 0; const seen = new Set();
       do {
-        const page = await this.client.request(`/api/session/${id}/message`, { query: { limit: 100, ...cursor ? { cursor } : { order: 'desc' } } });
+        const page = await this.messagePage(id, 100, cursor);
         const data = array(page.data); rows.push(...data); cursor = page.cursor?.next;
         count += openCodeMessages(messagesV2(data), Infinity).filter(message => !message.tool).length;
         if (cursor && seen.has(cursor)) throw fail('OpenCode returned an invalid history cursor.', 503);

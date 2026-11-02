@@ -10,6 +10,7 @@ export function spendArt() {
     <circle cx="85" cy="66" r="14" fill="#aca8fa"/><circle cx="85" cy="66" r="9" stroke="#eeeaff"/>
     <path d="M85 59v14m4-11c-5-5-12 1-4 4s1 8-4 3" stroke="#fff" stroke-width="1.5"/>
   </g>
+  <g class="spend-art bricks"><image href="/spend-bricks.webp" width="120" height="96" preserveAspectRatio="xMidYMid meet"/></g>
   <g class="spend-art heroes"><image href="/spend-heroes.webp" width="120" height="96" preserveAspectRatio="xMidYMid meet"/></g>
   <g class="spend-art command">
     <path d="m9 73 40-17 61 17-40 17Z" fill="#1a2714" stroke="#718151"/>

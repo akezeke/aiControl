@@ -12,5 +12,6 @@ client/public/spend-{heroes,diablo}.webp — scripts/spend-art.py (rendered, no 
 client/public/diablo-gore.webp — diablo-blood.txt
 client/public/providers/{orbit-light,orbit-dark,alien,command,diablo,heroes,office,simpsons}-{codex,claude}.webp — provider-icons.txt
 client/public/heroes-theme.webp — heroes-theme.txt
+client/public/bricks-*, providers/bricks-*, spend-bricks.webp — bricks.txt (Codex imagegen; the bricks themselves are live geometry in client/bricks3d)
 
 Sanctuary retains the internal theme ID "diablo" so saved selections continue to work.

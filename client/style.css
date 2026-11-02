@@ -201,6 +201,9 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .search .icon { width: 16px; height: 16px; }
 .search input { flex: 1; min-width: 0; padding: 8px 0; border: 0; outline: 0; background: none; color: var(--text); font-size: 14px; }
+.folded.quiet-button { flex: none; gap: 0; cursor: pointer; }
+.folded.quiet-button .icon { width: 16px; height: 16px; }
+.folded.quiet-button input { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 .project-group { margin-bottom: 18px; }
 .group-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; margin: 0 2px 8px; }
 .group-title { display: flex; align-items: center; gap: 8px; min-width: 0; }

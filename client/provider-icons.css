@@ -5,6 +5,7 @@
 :root[data-theme=command] { --codex-art: url('/providers/command-codex.webp'); --claude-art: url('/providers/command-claude.webp'); --opencode-art: url('/providers/command-opencode.webp'); }
 :root[data-theme=diablo] { --codex-art: url('/providers/diablo-codex.webp'); --claude-art: url('/providers/diablo-claude.webp'); --opencode-art: url('/providers/diablo-opencode.webp'); }
 :root[data-theme=heroes] { --codex-art: url('/providers/heroes-codex.webp'); --claude-art: url('/providers/heroes-claude.webp'); --opencode-art: url('/providers/heroes-opencode.webp'); }
+:root[data-theme=bricks] { --codex-art: url('/providers/bricks-codex.webp'); --claude-art: url('/providers/bricks-claude.webp'); --opencode-art: url('/providers/bricks-opencode.webp'); }
 :root[data-theme=office] { --codex-art: url('/providers/office-codex.webp'); --claude-art: url('/providers/office-claude.webp'); --opencode-art: url('/providers/office-opencode.webp'); }
 :root[data-theme=simpsons] { --codex-art: url('/providers/simpsons-codex.webp'); --claude-art: url('/providers/simpsons-claude.webp'); --opencode-art: url('/providers/simpsons-opencode.webp'); }
 .provider-icon { display: inline-block; flex: none; width: 24px; height: 24px; vertical-align: middle; background: var(--codex-art) center / contain no-repeat; }

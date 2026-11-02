@@ -35,11 +35,12 @@ export function summary(sessions) {
     simpsons: waiting ? `${waiting} need${waiting === 1 ? 's' : ''} you · ${working} working` : working ? `${working} working · Doughnuts later` : 'All quiet in Springfield',
     diablo: waiting ? `${waiting} need your counsel · ${working} questing` : working ? `${working} questing` : 'A moment of peace',
     heroes: waiting ? `${waiting} awaiting orders · ${working} on a quest` : working ? `${working} on a quest` : 'The realm is at peace',
+    bricks: waiting ? `${waiting} await${waiting === 1 ? 's' : ''} your orders · ${working} on a quest` : working ? `${working} on a quest` : 'The keep is quiet',
   };
 }
 const flashes = {
-  ready: title => ({ modern: `Done · ${title}`, bridge: `DONE · ${title}`, city: `DONE · ${title}`, fantasy: `VICTORY · ${title}`, alien: `TASK COMPLETE · ${title}`, command: `Unit ready · ${title}`, simpsons: `Woo-hoo! Done · ${title}`, heroes: `Quest complete · ${title}`, diablo: `Quest complete · ${title}` }),
-  input: title => ({ modern: `Needs you · ${title}`, bridge: `WAITING · ${title}`, city: `WAITING · ${title}`, fantasy: `READY · ${title}`, alien: `INPUT REQUIRED · ${title}`, command: `Orders required · ${title}`, simpsons: `Needs you · ${title}`, heroes: `Orders required · ${title}`, diablo: `Your counsel is needed · ${title}` }),
+  ready: title => ({ modern: `Done · ${title}`, bridge: `DONE · ${title}`, city: `DONE · ${title}`, fantasy: `VICTORY · ${title}`, alien: `TASK COMPLETE · ${title}`, command: `Unit ready · ${title}`, simpsons: `Woo-hoo! Done · ${title}`, heroes: `Quest complete · ${title}`, diablo: `Quest complete · ${title}`, bricks: `Quest complete · ${title}` }),
+  input: title => ({ modern: `Needs you · ${title}`, bridge: `WAITING · ${title}`, city: `WAITING · ${title}`, fantasy: `READY · ${title}`, alien: `INPUT REQUIRED · ${title}`, command: `Orders required · ${title}`, simpsons: `Needs you · ${title}`, heroes: `Orders required · ${title}`, diablo: `Your counsel is needed · ${title}`, bricks: `Orders, my lord · ${title}` }),
 };
 function setLine(line, texts, flash) {
   const key = JSON.stringify(texts);
