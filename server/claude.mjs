@@ -1,5 +1,5 @@
 import { createServer } from 'node:net';
-import { readFile, readdir, chmod, unlink, lstat, stat, open } from 'node:fs/promises';
+import { access, readFile, readdir, chmod, unlink, lstat, stat, open } from 'node:fs/promises';
 import { join, basename, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -202,7 +202,7 @@ export class ClaudeAdapter {
         if (e.hook_event_name === 'PreCompact') { state.compacting = e.trigger === 'manual' ? 'manual' : 'auto'; state.detail = 'Compacting context'; }
         if (e.hook_event_name === 'SessionStart') state.status = e.source !== 'compact' || previous?.compacting === 'manual' ? 'idle' : previous?.compacting ? 'working' : previous?.status || 'working';
         if (e.hook_event_name === 'Notification') { state.status = { permission_prompt: 'permission', idle_prompt: 'idle', elicitation_dialog: 'question' }[e.notification_type] || previous?.status || 'unknown'; state.detail = e.message || ''; }
-        if (e.hook_event_name === 'SessionEnd') { this.ended(e.session_id, e.reason); this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
+        if (e.hook_event_name === 'SessionEnd') { this.ended(e.session_id, e.reason, envelope.tmux); this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
         const request = claudeRequest(e);
         if (request) state.status = request.view.kind;
         this.hooks.set(e.session_id, state);
@@ -295,12 +295,27 @@ export class ClaudeAdapter {
     return result;
   }
   // How a session said it ended (SessionEnd's reason, or 'fired'), for recovery.mjs to tell a goodbye from a crash. Kept a while.
-  ended(sessionId, reason) {
-    const now = Date.now();
+  // `tmux` is the TMUX of the terminal it ran in, if any.
+  ended(sessionId, reason, tmux = '', now = Date.now()) {
     for (const [id, { at }] of this.endings) if (now - at > 600_000) this.endings.delete(id);
-    if (sessionId) this.endings.set(sessionId, { reason: String(reason || 'other'), at: now });
+    const server = Number(String(tmux || '').split(',')[1]);
+    if (sessionId) this.endings.set(sessionId, { reason: String(reason || 'other'), at: now, server: Number.isSafeInteger(server) && server > 1 ? server : 0 });
   }
-  ending(sessionId) { return this.endings.get(sessionId)?.reason || ''; }
+  // A hang-up ('other') is its terminal or tmux window being closed, unless the tmux server went down with it. A killed
+  // server takes a moment to exit, so that waits a few seconds; until then it's undecided ('').
+  ending(sessionId, now = Date.now()) {
+    const ending = this.endings.get(sessionId);
+    if (ending?.reason !== 'other') return ending?.reason || '';
+    if (!ending.server) return 'closed';
+    return now - ending.at < 3000 ? '' : this.running(ending.server) ? 'closed' : 'other';
+  }
+  running(pid) { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } }
+  // Whether the account kept a transcript of this session, which `claude --resume` needs. It's under the folder the
+  // session started in, which a later cd doesn't change, so every project folder is looked in.
+  async kept(sessionId, account) {
+    const folders = await readdir(account.projectsDir).catch(() => []);
+    return (await Promise.all(folders.map(folder => access(join(account.projectsDir, folder, `${sessionId}.jsonl`)).then(() => true, () => false)))).includes(true);
+  }
   // /clear starts a new session in the same process, whose registration takes on the new id a second or so later.
   // The panel moves to that id, so it comes back only once it's listed.
   async clear(sessionId) {

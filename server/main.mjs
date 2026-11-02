@@ -122,8 +122,10 @@ export async function startServer({ host, hostname, tls = null }) {
         try {
           if (!existsSync(entry.cwd)) throw fail('Its folder is gone.', 409);
           const account = entry.provider === 'claude' ? claude.accountFor(entry.cwd, entry.account) : null;
+          if (account && !await claude.kept(entry.nativeId, account)) { recovery.dismiss([id]); throw fail('Nothing was saved to resume.', 410); }
           const started = await spawnAgent(entry.cwd, entry.provider, { configDir: account?.label ? account.dir : '', args: resumeArgs(entry) });
-          launches.watch({ ...started, provider: entry.provider, cwd: entry.cwd, account: account?.label || '' });
+          // Claude resumes under the same id, so the session shows as starting at once, and a trust question reaches the dashboard.
+          launches.watch({ ...started, provider: entry.provider, cwd: entry.cwd, account: account?.label || '', sessionId: account ? entry.nativeId : undefined });
           recovery.resumed(id); resumed.push(id);
         } catch (e) { failed.push({ id, error: e.status ? e.message : 'Could not open a tmux window.' }); }
       }

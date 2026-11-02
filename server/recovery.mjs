@@ -11,8 +11,9 @@ export const GRACE_MS = 20_000;
 export const KEEP_MS = 72 * 3600_000;
 // A resume that isn't live by then is offered again.
 export const RESUME_MS = 120_000;
-// How a Claude session says it ended on purpose (SessionEnd's reason); `fired` is the dashboard's own.
-const CLEAN = new Set(['clear', 'logout', 'prompt_input_exit', 'fired']);
+// How a Claude session says it ended on purpose (SessionEnd's reason, or /resume into another); `fired` is the dashboard's
+// own, `closed` a terminal or tmux window closed under it (claude.mjs).
+const CLEAN = new Set(['clear', 'resume', 'logout', 'prompt_input_exit', 'fired', 'closed']);
 // `claude --permission-mode` choices; 'default' needs no flag.
 const MODES = new Set(['acceptEdits', 'auto', 'bypassPermissions', 'manual', 'dontAsk', 'plan']);
 const TEXT = 600;
@@ -55,7 +56,8 @@ export class Recovery {
     }
     for (const [id, entry] of this.#entries) {
       if (live.has(id)) continue;
-      if (now - entry.seenAt > KEEP_MS) { this.#entries.delete(id); continue; }
+      // Nothing said, nothing to lose: Claude doesn't even keep a transcript to resume until the first prompt.
+      if (now - entry.seenAt > KEEP_MS || !(entry.prompt || entry.reply)) { this.#entries.delete(id); continue; }
       if (entry.lostAt) continue;
       // Ended on purpose, or /cleared into a new session in the same process (not after a restart: pids come round again).
       if (CLEAN.has(ended(entry)) || (!entry.earlier && entry.pid && pids.has(`${entry.provider}:${entry.pid}`))) { this.#entries.delete(id); continue; }

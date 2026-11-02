@@ -13,7 +13,9 @@ try {
   const { pid, procStart } = await claudeProcess(process.ppid);
   const socket = connect(hookSocket);
   const connectionTimeout = setTimeout(() => { socket.destroy(); finish(); }, 1500);
-  socket.once('connect', () => { clearTimeout(connectionTimeout); socket.write(JSON.stringify({ event, pid, procStart }) + '\n'); });
+  // A goodbye names the tmux server it ran in (TMUX is "socket,pid,index"), so a closed window can be told from a killed server.
+  const tmux = event?.hook_event_name === 'SessionEnd' && process.env.TMUX ? { tmux: process.env.TMUX } : {};
+  socket.once('connect', () => { clearTimeout(connectionTimeout); socket.write(JSON.stringify({ event, pid, procStart, ...tmux }) + '\n'); });
   let response = '';
   socket.on('data', chunk => {
     response += chunk;
