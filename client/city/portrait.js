@@ -75,8 +75,8 @@ export function dressList(root, snapshot, { error = false, reduced = false, sele
     put(mark, session);
     mark.title = `${lookFor(session.parentId || session.id, towers).name} · ${{ codex: 'Codex', opencode: 'OpenCode' }[session.provider] || 'Claude Code'}`;
   }
-  const header = root.querySelector('.chat-header'), open = selected && byId.get(selected);
-  if (header && open) put(header, open);
+  const mark = root.querySelector('.chat-header .agent-identity .agent-mark'), open = selected && byId.get(selected);
+  if (mark && open) put(mark, open);
   const mapped = root.querySelector('.console-screen');
   if (!mapped) return;
   // With the scene up the map is the scene's, turned and lit as it is. Without one the list draws it, so it's the same map.

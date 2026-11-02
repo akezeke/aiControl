@@ -85,10 +85,14 @@
 
   /* The panel: the session's own tower at the kerb of its street. */
   .detail-panel { border-left: 2px solid var(--ink); }
-  .chat-header { grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: 'back portrait title actions' '. . info info'; padding-bottom: 18px; background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, url('/city-skyline.svg') 0 calc(100% - 8px) / 640px 56px repeat-x, var(--bg); box-shadow: 0 2px 0 var(--ink); position: relative; z-index: 1; }
-  .chat-header > .city-portrait { grid-area: portrait; align-self: end; margin-bottom: -8px; max-height: 64px; }
+  .chat-header { padding-bottom: 18px; background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, url('/city-skyline.svg') 0 calc(100% - 8px) / 640px 56px repeat-x, var(--bg); box-shadow: 0 2px 0 var(--ink); position: relative; z-index: 1; }
+  /* Its tower stands in the header's mark, on the same bay as in the list, with the agent's tile at the corner. */
+  .chat-header .agent-identity .agent-mark { display: flex; align-items: flex-end; justify-content: center; width: 46px; height: 54px; overflow: visible; border: 0; background: linear-gradient(#565e60 0 0) 0 100% / 100% 5px no-repeat, var(--asphalt); box-shadow: inset 2px 2px 0 var(--ink); }
+  .chat-header .agent-mark .city-portrait { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); max-width: 46px; max-height: 64px; }
+  .chat-header .agent-mark > .provider-icon { position: absolute; right: -2px; bottom: -2px; z-index: 1; width: 14px; height: 14px; box-shadow: 0 0 0 2px var(--ink); background-color: var(--ink); }
   /* On a plate of its own: the site behind it runs right through this line. */
   .chat-header .chat-info { justify-self: start; max-width: 100%; padding: 1px 6px; background: var(--asphalt); color: var(--text-2); }
+  .chat-header .plan-info { justify-self: start; max-width: 100%; padding: 1px 6px; background: var(--asphalt); }
   .chat-header .panel-title { font-family: var(--font); font-weight: 700; font-size: 17px; text-shadow: 2px 2px 0 var(--ink); }
 
   /* What's said, in the map's speech bubbles: paper for the agent, a street sign for you. */
