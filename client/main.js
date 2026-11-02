@@ -14,6 +14,7 @@ import './bridge-list.css';
 import './provider-icons.css';
 import './agent-header.css';
 import './lost.css';
+import './feed.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
@@ -22,6 +23,7 @@ import { placeShots } from './history-shots.js';
 import { ImagePanZoom } from './image-pan-zoom.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects } from './session-order.js';
+import { feedGroups, feedNow } from './feed.js';
 import { messagingUnavailableReason } from './messaging-status.js';
 import { ComposerInput, followKeyboard } from './composer-input.js';
 import { attachment, imageFiles, maxImages, releaseImages } from './composer-images.js';
@@ -58,7 +60,7 @@ function sessionList(cache, session, kind) {
       const items = result[kind] || [];
       if (JSON.stringify(items) === JSON.stringify(entry.items)) return;
       entry.items = items;
-      if (state.selected === session.id && state.snapshot) renderPanel();
+      if (state.snapshot && state.selected === session.id) renderPanel(); else if (state.snapshot && state.selected === 'feed') renderFeed();
     }, () => {});
   }
   return entry.items;
@@ -77,7 +79,7 @@ const seenKey = 'ai-control-seen';
 const seen = (() => { try { return new Map(JSON.parse(localStorage.getItem(seenKey) || '[]')); } catch { return new Map(); } })();
 if (!seen.has('*')) seen.set('*', Date.now());
 function markSeen(id) {
-  if (!id || id === 'access') return;
+  if (!id || id === 'access' || id === 'feed') return;
   seen.set(id, Date.now());
   try { localStorage.setItem(seenKey, JSON.stringify([...seen].sort((a, b) => b[1] - a[1]).slice(0, 300))); } catch { /* per tab only */ }
 }
@@ -93,7 +95,7 @@ const navigation = new PanelNavigation(window, id => {
   if (!state.csrf) return;
   if (!id) { hidePanel(); return; }
   state.selected = id; panelSignature = '';
-  if (id === 'access') renderAccessPanel(); else if (state.snapshot) renderPanel();
+  if (id === 'access') renderAccessPanel(); else if (id === 'feed') renderFeed(); else if (state.snapshot) renderPanel();
 });
 let poll, touching = 0, activityTimer, panelSignature = '', loading = false, clearing = false;
 const statuses = { working: ['Working', 'green'], idle: ['Idle', 'gray'], permission: ['Permission', 'amber'], question: ['Question', 'amber'], offline: ['Offline', 'gray'], error: ['Error', 'red'], unknown: ['Unknown', 'gray'] };
@@ -126,6 +128,8 @@ const icons = {
   bridge: '<path d="M12 2c1.500 1.800 2.300 4.200 2.600 7l.4 2.500 5 4V12m0 3.500.9 5-6.400-1.500-.5 2.500h-4l-.5-2.500-6.400 1.500.9-5V12m0 3.500 5-4 .4-2.500c.3-2.800 1.100-5.200 2.600-7M12 6.500v2.500"/>',
   city: '<path d="M3 21h18M7 21V3M3 6h17M7 3 3 6m4-3 13 3M17 6v3m-2 0h4v3h-4zM12 21v-6h8v6"/>',
   fantasy: '<path d="M14.500 17.500 3 6V3h3l11.500 11.500M13 19l6-6m-3 3 4 4m-1 1 2-2M9.500 17.500 21 6V3h-3L6.500 14.500M11 19l-6-6m3 3-4 4m1 1-2-2"/>',
+  agents: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 7v10m0-5h10"/>',
+  live: '<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7m7 0a5 5 0 0 0 0-7M5.6 5.6a9 9 0 0 0 0 12.8m12.8 0a9 9 0 0 0 0-12.8"/>',
   office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
@@ -268,11 +272,12 @@ function showWorkspace() {
   const aside = el('aside', 'sidebar'); aside.append(brand());
   const console = el('div', 'theme-console'); console.id = 'theme-console'; aside.append(console, el('div', 'sidebar-label', 'WORKSPACE'));
   const nav = el('nav', 'main-nav'); nav.setAttribute('aria-label', 'Workspace'); nav.id = 'navigation'; aside.append(nav);
+  const feed = button('Live feed', 'nav-item feed-nav', openFeed, 'live'); feed.title = 'Every session on one timeline (f)'; feed.append(el('span', 'nav-count')); aside.append(feed);
   aside.append(el('div', 'sidebar-label project-label', 'PROJECTS'), el('nav', 'project-nav')); aside.lastChild.id = 'projects'; aside.lastChild.setAttribute('aria-label', 'Projects');
   shell.append(aside);
   const content = el('div', 'workspace');
   const topbar = el('header', 'topbar');
-  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; const officeButton = button('Office', 'quiet-button office-button', () => setSceneList(false), 'office'); officeButton.title = 'Back to the office'; topActions.append(live, officeButton, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
+  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; const feedButton = button('Feed', 'quiet-button feed-button', openFeed, 'live'); feedButton.title = 'Live feed (f)'; const officeButton = button('Office', 'quiet-button office-button', () => setSceneList(false), 'office'); officeButton.title = 'Back to the office'; topActions.append(live, officeButton, feedButton, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
   // Desktop has no top bar: its controls sit at the bottom of the sidebar.
   const wide = matchMedia('(min-width: 641px)'), placeActions = () => (wide.matches ? aside : topbar).append(topActions);
   wide.onchange = placeActions; placeActions();
@@ -288,7 +293,7 @@ function showWorkspace() {
   for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code'], ['opencode', 'OpenCode']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
-  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); // The scene themes' way back, where the eye is while looking for a session; the small one in the sidebar footer is easy to miss.
+  const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting · f live feed'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search); menu.append(tabs); // The scene themes' way back, where the eye is while looking for a session; the small one in the sidebar footer is easy to miss.
   const sceneSwitch = button('Scene', 'quiet-button scene-switch', () => setSceneList(false), 'office'); sceneSwitch.title = 'Back to the scene';
   toolbar.append(sceneSwitch, searchBox, menu, newAgentMenu()); main.append(toolbar);
   const create = button('New OpenCode session', 'tab new-session-button', () => { menu.open = false; newOpenCodeSession(); }, 'plus');
@@ -409,7 +414,7 @@ function renderData() {
   // The overview is covered and inert while a panel is open. Render it once
   // when returning, instead of rebuilding every card behind the chat.
   if (state.selected) {
-    if (state.selected !== 'access') renderPanel();
+    if (state.selected === 'feed') renderFeed(); else if (state.selected !== 'access') renderPanel();
     return;
   }
   const connection = document.querySelector('#connection'); connection.className = `live-label ${state.error ? 'disconnected' : ''}`; connection.textContent = state.error ? 'Connection lost' : 'Live updates'; connection.title = connection.textContent;
@@ -425,6 +430,7 @@ function renderData() {
   syncList(document.querySelector('#navigation'), [['all', 'All sessions', 'grid', sessions.length], ['attention', 'Needs you', 'bell', count], ['working', 'Working', 'activity', working], ['idle', 'Idle', 'moon', idle]]
     .map(([value, label, glyph, number]) => [value, [value, label, glyph, number, state.filter === value && !state.project]]),
     ([value, label, glyph, number, active]) => { const b = button(label, `nav-item ${active ? 'active' : ''}`, setFilter(value), glyph); b.append(el('span', 'nav-count', number)); return b; });
+  setProperty(document.querySelector('.feed-nav .nav-count'), 'textContent', working || '');
   const projects = new Map(); for (const session of sessions) { const key = session.cwd || session.project; if (!projects.has(key)) projects.set(key, { name: session.project, sessions: [] }); projects.get(key).sessions.push(session); }
   syncList(document.querySelector('#projects'), projects.size ? [...projects].sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([key, project]) => [key, [key, project.name, state.project === key, project.sessions.filter(needsInput).length]]) : [['none', null]],
     data => {
@@ -586,7 +592,7 @@ function flipFrom(root, before) {
 let previousFocus;
 function openPanel(id) { previousFocus = document.activeElement; navigation.open(id); document.querySelector('#panel button')?.focus(); }
 function closePanel() { navigation.close(); }
-function hidePanel() { scene?.panelClosed(); const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; const open = !panel.hidden; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData();
+function hidePanel() { scene?.panelClosed(); const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; const open = !panel.hidden; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; delete panel.dataset.view; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData();
   // Closing twice (the call, then the history step it takes) mustn't pull focus back from whatever the first close handed it to.
   if (!open) return;
   const focus = previousFocus?.isConnected ? previousFocus : [...document.querySelectorAll('.session-card[data-session-id]')].find(b => b.dataset.sessionId === closedId); focus?.focus({ preventScroll: true }); }
@@ -599,7 +605,7 @@ function renderPanel() {
     disposeHistory(); disposeComposer(); panelSignature = '';
     if (panel.dataset.sessionId) { markSeen(panel.dataset.sessionId); older.delete(panel.dataset.sessionId); }
     markSeen(session.id);
-    panel.replaceChildren(); panel.dataset.sessionId = session.id; panel.classList.add('chat-panel'); revealPanel();
+    panel.replaceChildren(); panel.dataset.sessionId = session.id; delete panel.dataset.view; panel.classList.remove('feed-panel'); panel.classList.add('chat-panel'); revealPanel();
     const header = el('header', 'chat-header');
     const recent = el('section', 'recent-messages'); recent.id = 'recent-messages';
     const requests = el('div', 'chat-requests'); requests.setAttribute('aria-label', 'Pending questions and permissions');
@@ -627,7 +633,7 @@ function renderPanel() {
 
 // Triage: the next session waiting for you, in overview order.
 function nextWaiting(currentId) { return (state.snapshot?.sessions || []).filter(s => needsInput(s) && s.id !== currentId).sort(compareSessions)[0]; }
-function openNext() { const next = nextWaiting(state.selected); if (!next) return; if (state.selected) navigation.open(next.id, { replace: true }); else openPanel(next.id); }
+function openNext() { const next = nextWaiting(state.selected); if (!next) return; if (state.selected && state.selected !== 'feed') navigation.open(next.id, { replace: true }); else openPanel(next.id); }
 function renderSessionHeader(header, session) {
   const expanded = !!header.querySelector('.chat-info')?.open, planOpen = !!header.querySelector('.plan-info')?.open;
   header.replaceChildren();
@@ -978,6 +984,111 @@ function renderRecentMessages(session, savedPosition) {
   linkDocuments(content, documents, session.cwd, doc => showDocument(session, doc.id));
   flow.restore(saved);
 }
+// The live feed (feed.js) in the panel, beside the list or scene: who's busy or waiting along the top, then every
+// session's latest work on one timeline that follows the newest. A session's name opens it; Back returns here.
+const feedKey = 'ai-control-feed';
+const feedPrefs = (() => { const fallback = { subagents: true, tools: true }; try { return { ...fallback, ...JSON.parse(localStorage.getItem(feedKey) || '{}') }; } catch { return fallback; } })();
+// Screenshot lists are fetched only for sessions active lately; the rest show what was already fetched.
+const feedShots = session => session.status === 'working' || needsInput(session) || Date.now() - (session.lastActivityAt || 0) < 3 * 3600_000 ? sessionShots(session) : shots.get(session.id)?.items || [];
+function openFeed() {
+  if (state.selected === 'feed') { closePanel(); return; }
+  if (state.selected) navigation.open('feed', { replace: true }); else { previousFocus = document.activeElement; navigation.open('feed'); }
+}
+function renderFeed() {
+  const panel = document.querySelector('#panel'); if (!panel || !state.snapshot) return;
+  if (panel.dataset.view !== 'feed') {
+    disposeHistory(); disposeComposer(); panelSignature = '';
+    if (panel.dataset.sessionId) { markSeen(panel.dataset.sessionId); older.delete(panel.dataset.sessionId); }
+    panel.replaceChildren(); panel.dataset.sessionId = ''; panel.dataset.view = 'feed'; panel.classList.add('chat-panel', 'feed-panel'); revealPanel();
+    const header = el('header', 'chat-header feed-header'), head = el('div', 'panel-heading'), actions = el('div', 'panel-heading-actions');
+    for (const [key, label, title, glyph] of [['subagents', 'Subagents', 'Show subagents', 'agents'], ['tools', 'Tools', 'Show tool calls', 'terminal']]) {
+      const toggle = button(label, 'quiet-button feed-toggle', () => {
+        feedPrefs[key] = !feedPrefs[key]; toggle.setAttribute('aria-pressed', String(feedPrefs[key]));
+        try { localStorage.setItem(feedKey, JSON.stringify(feedPrefs)); } catch { /* per tab only */ }
+        renderFeed();
+      }, glyph);
+      toggle.title = title; toggle.setAttribute('aria-pressed', String(feedPrefs[key])); actions.append(toggle);
+    }
+    actions.append(themeMenu());
+    const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions';
+    head.append(back, actions);
+    const title = el('h2', 'panel-title'); title.append(icon('live'), el('span', '', 'Live feed'));
+    header.append(head, title);
+    const now = el('nav', 'feed-now'); now.setAttribute('aria-label', 'Busy and waiting');
+    const recent = el('section', 'recent-messages'); recent.id = 'recent-messages';
+    panel.append(header, now, recent);
+    back.focus({ preventScroll: true });
+  }
+  const sessions = state.snapshot.sessions, now = panel.querySelector('.feed-now');
+  const busy = feedNow(sessions, { subagents: feedPrefs.subagents, unread });
+  syncList(now, busy.map(session => [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, project: session.project, detail: cardDetail(session), plan: planProgress(session), sub: !!session.parentId, unread: unread(session) }]), feedNowItem);
+  now.hidden = !busy.length;
+  for (const item of now.children) item.title = `${item.dataset.label} · ${stateAge(sessions.find(s => s.id === item.dataset.key))}`;
+  renderFeedTimeline(panel.querySelector('#recent-messages'), feedGroups(sessions, feedShots, feedPrefs));
+  dressTheme();
+}
+function feedNowItem(session) {
+  const item = el('button', `feed-now-item${session.unread ? ' unread' : ''}`); item.type = 'button'; item.dataset.status = session.status;
+  item.dataset.label = [session.title, session.project, session.detail].join(' · '); item.onclick = () => openPanel(session.id);
+  const mark = el('span', `agent-mark ${session.provider}`); mark.append(providerIcon(session.provider));
+  const text = el('span', 'feed-now-text'), title = el('strong', '', session.title);
+  if (session.sub) title.prepend(el('span', 'subagent-tag', 'Sub'));
+  text.append(title, el('span', 'feed-now-detail', session.detail));
+  item.append(el('i', 'dot'), mark, text);
+  if (session.plan) item.append(chip(`${session.plan[0]}/${session.plan[1]}`, 'plan-chip', 'Plan steps done'));
+  return item;
+}
+function renderFeedTimeline(region, groups) {
+  if (!region.historyScroll) {
+    const viewport = el('div', 'history-viewport'); viewport.tabIndex = 0; viewport.setAttribute('role', 'region'); viewport.setAttribute('aria-label', 'Live feed');
+    viewport.append(el('div', 'history-content'));
+    const latest = button('Latest', 'history-latest quiet-button', null, 'down'); latest.hidden = true;
+    region.replaceChildren(viewport, latest); region.historyScroll = new HistoryScroll(viewport, latest);
+  }
+  const flow = region.historyScroll, content = region.querySelector('.history-content');
+  const signature = JSON.stringify([groups.map(group => [group.key, group.session.title, group.session.status, group.entries]), feedPrefs]);
+  if (region.dataset.signature !== signature) {
+    region.dataset.signature = signature;
+    const saved = flow.capture(), existing = new Map([...content.children].map(node => [node.dataset.messageId, node]));
+    const empty = () => { const note = el('p', 'muted history-empty', 'Nothing yet.'); note.dataset.messageId = 'empty'; return note; };
+    const nodes = groups.length ? groups.map(group => feedGroup(group, existing.get(group.key))) : [existing.get('empty') || empty()];
+    for (const node of [...content.children]) if (!nodes.includes(node)) node.remove();
+    nodes.forEach((node, index) => { if (content.children[index] !== node) content.insertBefore(node, content.children[index] || null); });
+    flow.restore(saved);
+  }
+  for (const group of groups) {
+    const time = [...content.children].find(node => node.dataset.messageId === group.key)?.querySelector('.feed-head time');
+    if (time) setProperty(time, 'textContent', age(group.at));
+  }
+}
+// One session's run of items: its name, then its messages, tool calls and screenshots as in its own panel. Unchanged ones stay mounted.
+function feedGroup({ session, key, entries, at }, node) {
+  const headSignature = JSON.stringify([session.title, session.project, session.status, session.provider, session.parentId, session.model]);
+  if (!node) {
+    node = el('section', 'feed-group'); node.dataset.messageId = key;
+    node.append(el('button', 'feed-head'), el('div', 'feed-entries'));
+  }
+  const head = node.firstChild;
+  if (head.dataset.signature !== headSignature) {
+    head.dataset.signature = headSignature; head.type = 'button'; head.onclick = () => openPanel(session.id); head.title = `Open ${session.title}`;
+    const mark = el('span', `agent-mark ${session.provider}`); mark.append(providerIcon(session.provider)); mark.title = providerName(session.provider);
+    const name = el('strong', 'feed-name', session.title);
+    if (session.parentId) name.prepend(el('span', `subagent-tag${session.agentKind === 'workflow' ? ' workflow-tag' : ''}`, session.agentKind === 'workflow' ? 'Workflow' : 'Subagent'));
+    const time = el('time'); time.dateTime = new Date(at).toISOString();
+    head.replaceChildren(mark, name, el('span', 'feed-project', session.project), badge(session.status), time, icon('arrow'));
+    node.dataset.status = session.status;
+  }
+  const box = node.lastChild, existing = new Map([...box.children].map(child => [child.dataset.entryId, child])), children = [];
+  for (const entry of entries) {
+    const id = entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id, previous = existing.get(id), signature = JSON.stringify(entry);
+    if (previous?.dataset.signature === signature) { children.push(previous); continue; }
+    const child = entry.shots ? shotStrip(session.id, entry) : Array.isArray(entry) ? entry.length > 1 ? toolRun(entry, !!previous?.open) : toolLine(entry[0]) : messageNode(entry, session, previous);
+    child.dataset.entryId = id; child.dataset.signature = signature; children.push(child);
+  }
+  for (const child of [...box.children]) if (!children.includes(child)) child.remove();
+  children.forEach((child, index) => { if (box.children[index] !== child) box.insertBefore(child, box.children[index] || null); });
+  return node;
+}
 function docStrip(session, group) {
   const strip = el('div', 'history-docs');
   for (const doc of group) {
@@ -1124,8 +1235,8 @@ function renderAccessPanel() {
   disposeHistory();
   disposeComposer();
   const panel = revealPanel(); panel.replaceChildren();
-  panel.classList.remove('chat-panel');
-  panel.dataset.sessionId = '';
+  panel.classList.remove('chat-panel', 'feed-panel');
+  panel.dataset.sessionId = ''; delete panel.dataset.view;
   const head = el('div', 'panel-heading'); head.append(button('Back to sessions', 'quiet-button', closePanel, 'back'), el('span', 'eyebrow', 'WORKSPACE ACCESS')); panel.append(head);
   const access = el('div', 'access-console');
   access.append(el('h2', 'panel-title', 'Choose a PIN or password'), el('p', 'muted access-copy', 'Use a 4–8 digit PIN or a password with at least 8 characters.')); panel.append(access);
@@ -1350,6 +1461,7 @@ document.addEventListener('keydown', event => {
 document.addEventListener('keydown', event => {
   if (!state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open], #new-agent-menu[open]')) return;
   if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); if (scene && !state.selected) scene.talkTo(nextWaiting().id); else openNext(); return; }
+  if (event.key === 'f') { event.preventDefault(); openFeed(); return; }
   if (state.selected) return;
   if (event.key === '/') { event.preventDefault(); document.querySelector('.search input')?.focus(); return; }
   if (event.key !== 'j' && event.key !== 'k') return;

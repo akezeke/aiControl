@@ -19,7 +19,8 @@ export const PAGE = {
 export const PANEL = {
   ...SHARED, name: 'panel', fixed: '', scrollers: ['.history-viewport', '.chat-requests'], windowScroll: false,
   walls: '', plains: '.history-viewport', strips: '.recent-message.tool',
-  trays: '.chat-header, .recent-message:not(.tool, .notice), .message-composer, .request-box, .setting-field',
+  trays: '.chat-header, .feed-now, .recent-message:not(.tool, .notice), .message-composer, .request-box, .setting-field',
+  blocks: `${BLOCKS}, .feed-now-item, .feed-head`,
   free: '.recent-message.notice, .history-empty, .chat-idle',
   skip: () => false,
 };

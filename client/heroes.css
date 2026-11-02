@@ -169,7 +169,7 @@
   .message-text pre { background: #ddc79c; }
   .message-text blockquote { padding-left: 20px; border: 0; background: url('/heroes-binding.svg') left top / 8px 22px repeat-y; }
   .message-text hr { height: 13px; margin: 14px 0; border: 0; background: url('/heroes-flourish.svg') center / 160px 13px no-repeat; }
-  .history-empty, .history-content > .recent-message.notice { --text-3: #c3c9ce; --danger: #ffaaa0; }
+  .history-empty, .history-content > .recent-message.notice, .feed-entries > .recent-message.notice { --text-3: #c3c9ce; --danger: #ffaaa0; }
   .recent-message.tool { padding-left: 18px; border: 0; background: url('/heroes-binding.svg') left top / 7px 19px repeat-y; box-shadow: none; }
   .recent-message.tool .tool-call { color: #c9c9b8; }
   .recent-message.tool .tool-call::before { color: #ecd38d; }
