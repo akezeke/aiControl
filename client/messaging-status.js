@@ -1,5 +1,6 @@
 export function messagingUnavailableReason(session, snapshot) {
   if (session.parentId) return '';
+  if (session.starting) return session.detail || 'Starting…';
   if (session.provider === 'opencode') return session.messaging?.send ? '' : 'OpenCode is disconnected. Check its server and connection in npm run setup.';
   if (session.provider === 'claude') {
     if (!snapshot?.features?.claudeMessaging) return 'Restart AI Control with npm restart to enable Claude messaging, then refresh this page.';

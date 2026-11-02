@@ -223,7 +223,7 @@ test('a new Codex takes its update prompt’s Update now and starts again; a sta
   const update = run(['Update available · 0.164.0 → 0.165.0\n› 1. Update now (runs `npm install -g @openai/codex`)\n  2. Skip', 'Updating Codex…\n🎉 Update ran successfully! Please restart Codex.\n$ ', '› Ask Codex to do anything']);
   assert.equal(await updateCodex('%9', { tmux: update.tmux, pollMs: 1 }), true);
   assert.deepEqual(update.calls, [['Enter'], ['codex', 'Enter']]);
-  for (const screen of ['› Ask Codex to do anything', '› 1. Trust and continue\n  2. Quit', 'Update available\n  1. Update now\n› 2. Skip']) {
+  for (const screen of ['› Ask Codex to do anything', '› 1. Trust and continue\n  2. Quit', 'Do you trust the contents of this directory?\n› 1. Yes, continue\n  2. No, quit\n  Press enter to continue', 'Update available\n  1. Update now\n› 2. Skip']) {
     const other = run([screen]);
     assert.equal(await updateCodex('%9', { tmux: other.tmux, pollMs: 1, startMs: 20 }), false);
     assert.deepEqual(other.calls, []);
@@ -247,6 +247,10 @@ test('new agents open in the tmux session working in the project, never the serv
   const saved = run('work\t/w/app\n');
   await spawnAgent('/w/app', 'claude', { tmux: saved.tmux, model: 'opus', effort: 'high' });
   assert.equal(saved.calls[2][3], "claude --model 'opus' --effort 'high'");
+  const chosen = run('work\t/w/app\n');
+  await spawnAgent('/w/app', 'claude', { tmux: chosen.tmux, sessionId: '11111111-2222-3333-4444-555555555555' });
+  assert.equal(chosen.calls[2][3], 'claude --session-id 11111111-2222-3333-4444-555555555555');
+  await assert.rejects(spawnAgent('/w/app', 'claude', { tmux: chosen.tmux, sessionId: 'x; exit' }), /Invalid/);
   const open = run('work\t/w/app\n');
   await spawnAgent('/w/app', 'opencode', { tmux: open.tmux, sessionId: 'ses_created' });
   assert.equal(open.calls[1][0], 'new-window'); assert.match(open.calls[2][3], /opencode-terminal\.mjs' 'ses_created'$/);

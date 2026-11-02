@@ -27,3 +27,8 @@ test('Claude messaging distinguishes an old backend, missing inbox and connected
   assert.match(messagingUnavailableReason(session, snapshot), /tmux/);
   assert.equal(messagingUnavailableReason({ ...session, messaging: { send: true } }, snapshot), '');
 });
+
+test('a session still starting in tmux says so instead of asking for tmux', () => {
+  const snapshot = { features: { messaging: true, claudeMessaging: true } };
+  for (const provider of ['claude', 'codex']) assert.equal(messagingUnavailableReason({ provider, starting: true, detail: 'Starting in tmux src:1', messaging: { send: false } }, snapshot), 'Starting in tmux src:1');
+});

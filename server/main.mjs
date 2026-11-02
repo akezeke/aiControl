@@ -4,6 +4,7 @@ import { appendFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostname as machineName } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
 import { RequestStore, mergeSessions } from './requests.mjs';
@@ -14,6 +15,7 @@ import { UsagePoller, claudeUsageReader } from './usage.mjs';
 import { createHandler } from './http.mjs';
 import { fail } from './requests.mjs';
 import { spawnAgent } from './claude-messaging.mjs';
+import { Launches } from './launches.mjs';
 import { AgentDefaults } from './agent-defaults.mjs';
 import { SpendBudget } from './spend-budget.mjs';
 import { agentFolder, folderState } from './folders.mjs';
@@ -35,6 +37,7 @@ export async function startServer({ host, hostname, tls = null }) {
   const codex = new CodexAdapter(store);
   const accounts = claudeAccounts();
   const claude = new ClaudeAdapter(store, hookSocket, { accounts });
+  const launches = new Launches(store, { registered: id => claude.list().some(session => session.id === id) });
   const opencode = new OpenCodeAdapter(store, readSettings().opencode);
   const defaults = new AgentDefaults();
   const spendBudget = await new SpendBudget().load();
@@ -54,7 +57,8 @@ export async function startServer({ host, hostname, tls = null }) {
     recovery.update([...codex.list(), ...claude.list()], { ended: entry => entry.provider === 'claude' ? claude.ending(entry.nativeId) : '', typed: session => session.provider === 'claude' ? prompts.get(session.nativeId) : '' });
   };
   const snapshot = () => {
-    const sessions = mergeSessions([...codex.list(), ...claude.list(), ...opencode.list()], store.list());
+    const live = [...codex.list(), ...claude.list(), ...opencode.list()];
+    const sessions = mergeSessions([...live, ...launches.list().filter(launch => !live.some(session => session.id === launch.id))], store.list());
     return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
   };
   const messageTarget = id => {
@@ -102,9 +106,11 @@ export async function startServer({ host, hostname, tls = null }) {
       try { return { ...created, ...await spawnAgent(cwd, provider, { sessionId: created.sessionId.slice(9) }) }; }
       catch { return { ...created, warning: 'Session created, but its tmux terminal could not open.' }; }
     }
-    const account = provider === 'claude' ? claude.accountFor(cwd, label) : null;
+    const account = provider === 'claude' ? claude.accountFor(cwd, label) : null, sessionId = provider === 'claude' ? randomUUID() : undefined;
     seats.reserve(cwd, slot);
-    return spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '', ...await defaults.read(provider, account?.label) }).catch(e => { seats.release(cwd, slot); throw e; });
+    const started = await spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '', ...await defaults.read(provider, account?.label), sessionId }).catch(e => { seats.release(cwd, slot); throw e; });
+    launches.watch({ ...started, provider, cwd, account: account?.label || '', sessionId });
+    return started;
   };
   // One at a time, so two in a new folder don't both make its tmux session. Each in its own account and permission mode.
   const lost = {
@@ -116,7 +122,8 @@ export async function startServer({ host, hostname, tls = null }) {
         try {
           if (!existsSync(entry.cwd)) throw fail('Its folder is gone.', 409);
           const account = entry.provider === 'claude' ? claude.accountFor(entry.cwd, entry.account) : null;
-          await spawnAgent(entry.cwd, entry.provider, { configDir: account?.label ? account.dir : '', args: resumeArgs(entry) });
+          const started = await spawnAgent(entry.cwd, entry.provider, { configDir: account?.label ? account.dir : '', args: resumeArgs(entry) });
+          launches.watch({ ...started, provider: entry.provider, cwd: entry.cwd, account: account?.label || '' });
           recovery.resumed(id); resumed.push(id);
         } catch (e) { failed.push({ id, error: e.status ? e.message : 'Could not open a tmux window.' }); }
       }
@@ -146,7 +153,7 @@ export async function startServer({ host, hostname, tls = null }) {
   async function close() {
     if (closing) return; closing = true;
     auth.persist(loginsFile);
-    clearInterval(recovering); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
+    clearInterval(recovering); launches.stop(); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
     await closeServers();
     await unlink(join(dataDir, 'server.json')).catch(() => {});
   }
