@@ -241,16 +241,17 @@ void main() {
   gl_FragColor = vec4(vC, a);
 }`;
 
-// Display glass: two lines of the canvas behind a dot-matrix screen, tinted by line (canvas text is a white mask), kept below
-// the bloom threshold so it stays crisp. The glass lies flat, so the text is sheared back by the slant perspective gives
-// the glass where it is on screen (uShear), and reads upright. Dots show only once they're big enough to read as dots.
+// Display glass: the canvas behind a dot-matrix screen, the name tinted apart from what it's doing below uSplit (canvas text
+// is a white mask), kept below the bloom threshold so it stays crisp. The glass lies flat, so the text is sheared back by the
+// slant perspective gives the glass where it is on screen (uShear), and reads upright. Dots show only once they're big
+// enough to read as dots.
 const DISP_FRAG = /* glsl */`
-uniform sampler2D uTex; uniform vec3 uC1, uC2; uniform vec2 uView, uSize; uniform float uOn, uShear;
+uniform sampler2D uTex; uniform vec3 uC1, uC2; uniform vec2 uView, uSize; uniform float uOn, uShear, uSplit;
 varying vec2 vUv;
 void main() {
-  float second = step(vUv.y, .5), lv = fract(vUv.y * 2.);
+  float second = step(vUv.y, uSplit);
   float u = (vUv.x + uShear * (vUv.y - .5)) * uView.x;
-  vec2 tuv = vec2(u, mix(.5 + lv * .5, lv * .5, second));
+  vec2 tuv = vec2(u, vUv.y);
   // Minified, thin strokes average out to grey: gain them back by how far the canvas is shrunk.
   float a = clamp(texture2D(uTex, tuv).r * clamp(length(fwidth(tuv * uSize)) * .9, 1., 3.5), 0., 1.) * step(u, 1.);
   vec2 px = tuv * uSize, cell = fract(px / 2.) - .5;
@@ -366,7 +367,34 @@ void main() {
   gl_FragColor = vec4(uCol * (1. - vUv.y) * (.35 + s * .9), 1.);
 }`;
 
-let boardCanvas = null, envCache = null;
+// The board's solder-mask zones and its fade into the dark, baked once into a texture (an RG pair a texel per half unit, the
+// same on every build) instead of per pixel per frame. P is board x, z: the texture covers the 260-unit board plane.
+const ZONE_FRAG = noise => /* glsl */`
+varying vec2 vUv;
+${noise}
+void main() {
+  vec2 P = vec2(vUv.x - .5, .5 - vUv.y) * 260.;
+  gl_FragColor = vec4(smoothstep(-.4, .4, snoise(vec3(P * .045, 1.7))), 1. - smoothstep(26., 68., length(P - vec2(0., 1.5))), 0., 1.);
+}`;
+
+// Kept across builds (the look is rebuilt whenever sessions come or go, and a new build is drawn before the old one goes):
+// the copper texture, the reflections and the zone bake, the last two per renderer. userData.keep: disposeTree skips them.
+let boardTex = null;
+const zoneBakes = new WeakMap(), envBakes = new WeakMap();
+function zoneTexture(THREE, kit, renderer) {
+  let rt = zoneBakes.get(renderer);
+  if (rt) return rt.texture;
+  rt = new THREE.WebGLRenderTarget(512, 512, { depthBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+  rt.texture.userData.keep = true;
+  const bake = new THREE.Scene(), quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }', fragmentShader: ZONE_FRAG(kit.NOISE_GLSL), depthTest: false, depthWrite: false }));
+  quad.frustumCulled = false; bake.add(quad);
+  const prev = renderer.getRenderTarget();
+  renderer.setRenderTarget(rt); renderer.render(bake, new THREE.Camera()); renderer.setRenderTarget(prev);
+  quad.geometry.dispose(); quad.material.dispose();
+  zoneBakes.set(renderer, rt);
+  return rt.texture;
+}
 
 export default {
   id: 'synthetic',
@@ -411,12 +439,13 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const bg = C('#020608');
     scene.background = bg; renderer.setClearColor(bg, 1);
     // The look is rebuilt whenever sessions come or go; the reflections are generated once per renderer and kept.
-    if (envCache?.renderer !== renderer) {
+    let env = envBakes.get(renderer);
+    if (!env) {
       const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment();
-      envCache = { renderer, texture: pmrem.fromScene(room, .04).texture };
+      env = pmrem.fromScene(room, .04).texture; env.userData.keep = true; envBakes.set(renderer, env);
       room.dispose(); pmrem.dispose();
     }
-    scene.environment = envCache.texture; scene.environmentIntensity = .4;
+    scene.environment = env; scene.environmentIntensity = .4;
     root.add(new THREE.HemisphereLight('#7fdcff', '#020407', .4));
     const key = new THREE.DirectionalLight('#dff6ff', 1.1); key.position.set(-10, 24, 14); root.add(key, key.target);
 
@@ -426,25 +455,27 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const toolCol = Object.fromEntries(Object.entries(TOOL).map(([k, v]) => [k, C(v)]));
     const palC = Object.fromEntries(Object.entries(PAL).map(([k, v]) => [k, C(v)]));
 
-    // ── Board: a dark solder mask over a tiled copper layout (r traces, g pads and vias, b silkscreen), drawn once per page ──
-    if (!boardCanvas) { boardCanvas = document.createElement('canvas'); boardCanvas.width = boardCanvas.height = 2048; drawBoard(boardCanvas.getContext('2d'), 2048, kit.rng(1337)); }
-    const boardTex = new THREE.CanvasTexture(boardCanvas);
-    boardTex.colorSpace = THREE.NoColorSpace; boardTex.wrapS = boardTex.wrapT = THREE.RepeatWrapping; boardTex.anisotropy = 8;
+    // ── Board: a dark solder mask over a tiled copper layout (r traces, g pads and vias, b silkscreen), drawn and uploaded once
+    // per page; its zones and fade come from the bake ──
+    if (!boardTex) {
+      const c = document.createElement('canvas'); c.width = c.height = 2048; drawBoard(c.getContext('2d'), 2048, kit.rng(1337));
+      boardTex = new THREE.CanvasTexture(c);
+      boardTex.colorSpace = THREE.NoColorSpace; boardTex.wrapS = boardTex.wrapT = THREE.RepeatWrapping; boardTex.anisotropy = 8; boardTex.userData.keep = true;
+    }
     const ripU = Array.from({ length: 6 }, () => new THREE.Vector4()), ripC = Array.from({ length: 6 }, () => new THREE.Color()), ripW = new Array(6).fill(1);
-    const boardU = { uTex: { value: boardTex }, uTile: { value: TILE }, uRip: { value: ripU }, uRipC: { value: ripC }, uRipW: { value: ripW }, uYou: { value: new THREE.Vector2() },
-      uHome: { value: new THREE.Vector2(0, 1.5) }, uCore: { value: C(CYAN) } };
+    const boardU = { uTex: { value: boardTex }, uZone: { value: zoneTexture(THREE, kit, renderer) }, uTile: { value: TILE }, uRip: { value: ripU }, uRipC: { value: ripC }, uRipW: { value: ripW },
+      uYou: { value: new THREE.Vector2() }, uCore: { value: C(CYAN) } };
     const board = new THREE.Mesh(new THREE.PlaneGeometry(260, 260).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
       uniforms: boardU,
       vertexShader: 'varying vec2 vP; void main(){ vec4 w = modelMatrix * vec4(position, 1.); vP = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }',
       fragmentShader: /* glsl */`
-        uniform sampler2D uTex; uniform float uTile; uniform vec4 uRip[6]; uniform vec3 uRipC[6]; uniform float uRipW[6]; uniform vec2 uYou, uHome; uniform vec3 uCore;
+        uniform sampler2D uTex, uZone; uniform float uTile; uniform vec4 uRip[6]; uniform vec3 uRipC[6]; uniform float uRipW[6]; uniform vec2 uYou; uniform vec3 uCore;
         varying vec2 vP;
-        ${kit.NOISE_GLSL}
         float grid(vec2 p, float s) { vec2 q = p / s, g = abs(fract(q - .5) - .5) / max(fwidth(q), vec2(1e-5)); return 1. - min(min(g.x, g.y), 1.); }
         void main() {
           vec4 t = texture2D(uTex, vP / uTile), t2 = texture2D(uTex, vP.yx / (uTile * 1.43) + .37);
-          float zone = smoothstep(-.4, .4, snoise(vec3(vP * .045, 1.7)));
-          float fade = 1. - smoothstep(26., 68., length(vP - uHome));
+          vec2 zf = texture2D(uZone, vec2(vP.x / 260. + .5, .5 - vP.y / 260.)).rg;
+          float zone = zf.x, fade = zf.y;
           float tr = clamp(t.r * mix(.3, 1., zone) + t2.r * .22, 0., 1.), pad = t.g * mix(.35, 1., zone), silk = t.b * zone;
           float fw = length(fwidth(vP)), g1 = grid(vP, 1.) * (1. - smoothstep(.06, .2, fw)), g5 = grid(vP, 5.) * (1. - smoothstep(.3, 1., fw));
           vec3 col = vec3(.004, .009, .012);
@@ -473,10 +504,10 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       if (n.kind === 'you') continue;
       const parent = n.kind === 'project' ? world.you : n.parent, bus = n.kind === 'project';
       const dx = parent.rest.x - n.rest.x, dz = parent.rest.z - n.rest.z;
-      const link = { n, parent, bus, xFirst: (Math.abs(dx) >= Math.abs(dz)) !== bus, lane: 0, cmax: bus ? 3.4 : 1.6, P: v4(THREE), M: v4(THREE), traces: [], mid: null };
+      const link = { n, parent, bus, xFirst: (Math.abs(dx) >= Math.abs(dz)) !== bus, lane: 0, cmax: bus ? 3.4 : 1.6, P: v4(THREE), M: v4(THREE), traces: [], mid: null, ax: Infinity, az: 0, bx: 0, bz: 0, cx: 0, cz: 0, cr: 0 };
       if (bus) { const side = (link.xFirst ? 'z' : 'x') + Math.sign(link.xFirst ? dz : dx); if (!sides.has(side)) sides.set(side, []); sides.get(side).push(link); }
       const w = bus ? .06 : n.kind === 'session' ? .09 : .06;
-      for (const o of bus ? [-.28, 0, .28] : [0]) { const tr = { link, o, w, base: traces.length * 8, q: v4(THREE), cum: new Float32Array(4), len: 0 }; traces.push(tr); link.traces.push(tr); }
+      for (const o of bus ? [-.28, 0, .28] : [0]) { const tr = { link, o, w, base: traces.length * 8, idx: traces.length, q: v4(THREE), cum: new Float32Array(4), len: 0, cw: -1, g: -1, f: -1, via: false }; traces.push(tr); link.traces.push(tr); }
       link.mid = link.traces[(link.traces.length - 1) >> 1];
       links.push(link);
     }
@@ -502,8 +533,9 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       for (let i = 0; i < 3; i++) segs.push([P0[i].x, P0[i].z, P0[i + 1].x, P0[i + 1].z, hw]);
     }
     const order = { project: 0, session: 1, sub: 2 };
-    const chips = world.nodes.filter(n => n.kind !== 'you').map((n, i) => ({ n, i, d: design(n, kit.rng(n.seed)), bootAt: 0, flash: 0, x: NaN, y: 0, z: 0, sc: -1, top: 0, busy: 0, col: new THREE.Color(), T: new THREE.Matrix4() }));
-    for (const v of chips) { const [fx, fz] = v.d.foot; blockers.push([v.n.rest.x - fx, v.n.rest.z - fz, v.n.rest.x + fx, v.n.rest.z + fz]); }
+    const chips = world.nodes.filter(n => n.kind !== 'you').map((n, i) => ({ n, i, d: design(n, kit.rng(n.seed)), bootAt: 0, flash: 0, x: Infinity, y: 0, z: 0, sc: -1, top: 0, busy: 0, S: 0,
+      col: new THREE.Color(), T: new THREE.Matrix4(), moved: true, callK: 0, callU: 0, callIn: 0, shotOn: false }));
+    for (const v of chips) { const [fx, fz] = v.d.foot; v.S = Math.max(fx, fz); blockers.push([v.n.rest.x - fx, v.n.rest.z - fz, v.n.rest.x + fx, v.n.rest.z + fz]); }
     // The cards take the largest size at which no chip or trace crosses the corners they'd fill.
     const corners = sc => [-1, 1].flatMap(sx => [-1, 1].map(sz => [you.rest.x + Math.min(sx * GAP, sx * (GAP + CARD_W * sc)), you.rest.z + Math.min(sz * GAP, sz * (GAP + CARD_DMAX * sc)), you.rest.x + Math.max(sx * GAP, sx * (GAP + CARD_W * sc)), you.rest.z + Math.max(sz * GAP, sz * (GAP + CARD_DMAX * sc))]));
     const cardScale = SCALES.find(sc => corners(sc).every(a => !blockers.some(b => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1]) && !segs.some(sg => segBox(sg, a)))) ?? SCALES[SCALES.length - 1];
@@ -534,7 +566,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
           const run = [0, 1, 2].map(i => [P1[i].x, P1[i].z, P1[i + 1].x, P1[i + 1].z, .16]);
           if (run.some(sg => blockers.some(b => b !== own && segBox(sg, b)) || (!over && segs.some(t => segsCross(sg, t, own))))) continue;
           blockers.push(rect); segs.push(...run);
-          return { x, z, hp, xFirst: !xFacing, header: xFacing ? [Math.sign(-x), 0] : [0, Math.sign(-z)] };
+          return { x, z, hp, xFirst: !xFacing, header: xFacing ? [Math.sign(-x), 0] : [0, Math.sign(-z)], rect, run };
         }
       }
       return null;
@@ -552,11 +584,46 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
         continue;
       }
       const spec = DISPLAYS[n.kind], m = mount(v, spec.w / 2 + .26, spec.h / 2 + .26, [.3, 1, 1.8]);
-      if (m) { d.disp = { ...m, ...spec }; display(d, m, spec); }
+      if (m) d.disp = { ...m, ...spec, w0: spec.w };
     }
     // Then room for a screenshot module beside every session: screenshots arrive after the board is built, so the space is
     // kept even while there are none.
     for (const v of chips) if (v.n.kind === 'session') v.d.shot = mount(v, LCD_W / 2 + .12, LCD_D / 2 + .12, [.6, 1.4, 2.3, 3.3], [false]);
+    // Then wider glass for a long name, where the board leaves room (sessions first): wide enough for it on one line, else on
+    // two lines of the smaller type, else as wide as there's room for. A display grows away from the bus at its header, or
+    // either way when the bus comes in from above or below; its header stays where the bus meets it.
+    const hit = a => blockers.some(b => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1]);
+    const place = (dp, view) => {
+      const dw = dp.h * (view - dp.view) / DISP_PX, r = dp.rect; // r: the module's blocker, on the board
+      for (const sh of dp.header[0] ? [-dp.header[0] * dw / 2] : [0, dw / 2, -dw / 2]) {
+        const a = sh - dw / 2, b = sh + dw / 2, strips = [];
+        if (a < -1e-6) strips.push([r[0] + a, r[1], r[0], r[3]]);
+        if (b > 1e-6) strips.push([r[2], r[1], r[2] + b, r[3]]);
+        if (strips.some(st => hit(st) || segs.some(sg => !dp.run.includes(sg) && segBox(sg, st)))) continue;
+        r[0] += a; r[2] += b; dp.x += sh; dp.w += dw; dp.view = view;
+        return true;
+      }
+      return false;
+    };
+    for (const v of [...chips].sort((a, b) => order[a.n.kind] - order[b.n.kind])) {
+      const dp = v.d.disp, name = v.n.name.replace(/\s+/g, ' ').trim();
+      if (!dp || !name) continue;
+      const std = dp.view, w24 = mono(name, 24), maxV = v.n.kind === 'session' ? 372 : 300, two = view => {
+        const rows = wrap(name, view - 10, t => mono(t, 20), 2);
+        return mono(rows[rows.length - 1], 20) <= view - 10;
+      };
+      if (w24 <= std - 10) continue;
+      let views = [];
+      if (w24 + 10 <= std + 72) views = [Math.ceil(w24 + 10)];
+      else {
+        let fit = 0;
+        for (let view = std; view <= maxV && !fit; view += 12) if (two(view)) fit = view;
+        if (fit === std) continue;
+        for (let view = fit || maxV; view > std + 1; view -= 24) views.push(view);
+      }
+      views.some(view => place(dp, view));
+    }
+    for (const v of chips) if (v.d.disp) display(v.d, v.d.disp);
     for (const v of [...chips].sort((a, b) => order[a.n.kind] - order[b.n.kind])) {
       const { n, d } = v;
       furnish(d, n.kind, kit.rng(n.seed ^ 0x5bd1e995), fitter(v));
@@ -568,11 +635,12 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     // The modules' buses join the traces (left out of linkOf: no packets ride them).
     for (const v of chips) for (const [m, os, lcd] of [[v.d.disp, [-.07, .07], false], [v.d.shot, [-.1, 0, .1], true]]) {
       if (!m) continue;
-      const link = { n: v.n, parent: v.n, shot: m, lcd, xFirst: m.xFirst, cmax: .6, P: v4(THREE), M: v4(THREE), traces: [], mid: null };
-      for (const o of os) { const tr = { link, o, w: .026, base: traces.length * 8, q: v4(THREE), cum: new Float32Array(4), len: 0 }; traces.push(tr); link.traces.push(tr); }
+      const link = { n: v.n, parent: v.n, shot: m, lcd, xFirst: m.xFirst, cmax: .6, P: v4(THREE), M: v4(THREE), traces: [], mid: null, ax: Infinity, az: 0, bx: 0, bz: 0, cx: 0, cz: 0, cr: 0 };
+      for (const o of os) { const tr = { link, o, w: .026, base: traces.length * 8, idx: traces.length, q: v4(THREE), cum: new Float32Array(4), len: 0, cw: -1, g: -1, f: -1, via: false }; traces.push(tr); link.traces.push(tr); }
       link.mid = link.traces[0]; links.push(link);
     }
     const byNode = new Map(chips.map(v => [v.n, v]));
+    for (const L of links) L.v = byNode.get(L.n);
     const NC = chips.length;
 
     // Footprints and markings, packed into one atlas.
@@ -633,25 +701,33 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     }
     const instanced = [...partMesh, faces, decals];
 
-    // Displays: a canvas each, redrawn only when its text changes; the glass follows its chip.
+    // Displays: a canvas each (wider for a widened glass), redrawn only when its text changes; the glass follows its chip.
     const glassGeo = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), displays = [];
-    const screen = (w, view) => {
-      const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = DISP_PX;
+    const screen = (w, h, view) => {
+      const cw = view > 250 ? 512 : 256, canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = DISP_PX;
       const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.NoColorSpace; tex.anisotropy = 4;
-      const u = { uTex: { value: tex }, uC1: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uView: { value: new THREE.Vector2(view / 256, 0) }, uSize: { value: new THREE.Vector2(256, DISP_PX) }, uOn: { value: 1 }, uShear: { value: 0 } };
+      const u = { uTex: { value: tex }, uC1: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uView: { value: new THREE.Vector2(view / cw, 0) }, uSize: { value: new THREE.Vector2(cw, DISP_PX) },
+        uOn: { value: 1 }, uShear: { value: 0 }, uSplit: { value: .5 } };
       const mesh = new THREE.Mesh(glassGeo, new THREE.ShaderMaterial({ uniforms: u, vertexShader: UV_VERT, fragmentShader: DISP_FRAG, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-      return { canvas, tex, u, mesh, view, w, sig: '' };
+      return { g: canvas.getContext('2d'), cw, tex, u, mesh, view, w, h, kName: undefined, kText: undefined, kWait: undefined };
     };
     for (const v of chips) {
       const dp = v.d.disp;
       if (!dp) continue;
       // The display shows the name, so clicking it opens the session like the chip does.
-      const x = Object.assign(screen(dp.w, dp.view), { v, at: new THREE.Vector3(dp.x, GLASS_Y, dp.z), local: new THREE.Matrix4().compose(pv.set(dp.x, GLASS_Y, dp.z), qI, sv.set(dp.w / 2, 1, dp.h / 2)),
+      const x = Object.assign(screen(dp.w, dp.h, dp.view), { v, at: new THREE.Vector3(dp.x, GLASS_Y, dp.z), local: new THREE.Matrix4().compose(pv.set(dp.x, GLASS_Y, dp.z), qI, sv.set(dp.w / 2, 1, dp.h / 2)),
         target: ctx.addTarget({ node: v.n, pos: new THREE.Vector3(), hx: dp.w / 2 + .16, hz: dp.h / 2 + .16, action: 'node' }) });
       x.u.uC1.value.set('#d6f8ff').multiplyScalar(.85); x.mesh.matrixAutoUpdate = false; x.mesh.frustumCulled = false; root.add(x.mesh); displays.push(x);
     }
-    const fontsReady = () => { for (const x of displays) x.sig = ''; if (youScreen) youScreen.sig = ''; };
-    document.fonts?.ready.then(fontsReady);
+    // Text drawn before the display font loaded is drawn again in it.
+    let dead = false;
+    document.fonts?.ready.then(() => {
+      if (dead) return;
+      for (const x of displays) x.kName = undefined;
+      youScreen.kName = undefined;
+      for (const c of cards) if (c) for (const row of c.lay.rows) row.note = undefined;
+      cardsAt = 0; ctx.wake?.();
+    });
     // Screenshot modules: a little board of their own with an LCD on it (bezel, inset glass, flex into a connector, a driver
     // IC and caps), a pin header on the edge facing the chip, hidden while its session has no screenshots.
     const shotMods = [], boxGeo = partGeo[1], LCD_Z = LCD_Z_REL;
@@ -701,20 +777,32 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       if (shot.count > 1) { g.fillStyle = 'rgba(0, 0, 0, .78)'; g.fillRect(412, 268, 92, 44); g.fillStyle = '#9ff2ff'; g.font = `400 32px ${FONT}`; g.textAlign = 'right'; g.textBaseline = 'middle'; g.fillText(`×${shot.count}`, 496, 291); }
       m.tex.needsUpdate = true;
     }
-    const BLANK = [];
-    function paintScreen(x, lines) {
-      const sig = lines.join('|');
-      if (sig === x.sig) return;
-      x.sig = sig;
-      const g = x.canvas.getContext('2d');
-      g.fillStyle = '#000'; g.fillRect(0, 0, 256, DISP_PX); g.fillStyle = '#fff'; g.font = `400 24px ${FONT}`; g.textBaseline = 'middle';
-      // A line too long for the glass ends in an ellipsis, on a whole character.
-      lines.forEach((line, i) => {
-        let t = line;
-        if (g.measureText(t).width > x.view - 10) { while (t.length > 1 && g.measureText(`${t}…`).width > x.view - 10) t = t.slice(0, -1); t = `${t.trimEnd()}…`; }
-        g.fillText(t, 5, i * 32 + 17);
-      });
-      x.tex.needsUpdate = true;
+    // A display's text (name null: blank). The name over what it's doing, a line each, when the name fits the glass at the
+    // big size and the rest fits a line; else three lines of the smaller size, the name taking up to two of them (wrapped at
+    // spaces and path breaks) and what it's doing the rest. uSplit tints the name's lines apart. What still doesn't fit ends
+    // in an ellipsis.
+    const F24 = `400 24px ${FONT}`, F20 = `400 20px ${FONT}`;
+    function paintScreen(x, name, status) {
+      const g = x.g, W = x.view - 10, width = t => g.measureText(t).width;
+      g.fillStyle = '#000'; g.fillRect(0, 0, x.cw, DISP_PX); x.tex.needsUpdate = true;
+      if (name === null) return;
+      g.fillStyle = '#fff'; g.textBaseline = 'middle';
+      g.font = F24;
+      if (width(name) <= W) {
+        const big = width(status) <= W;
+        g.font = F20;
+        if (big || width(status) <= W) {
+          g.font = F24; g.fillText(name, 5, 17);
+          if (!big) g.font = F20;
+          g.fillText(status, 5, 49); x.u.uSplit.value = .5;
+          return;
+        }
+      }
+      g.font = F20;
+      const rows = wrap(name, W, width, status ? 2 : 3), nr = rows.length;
+      if (status) rows.push(...wrap(status, W, width, 3 - nr));
+      for (let i = 0; i < rows.length; i++) g.fillText(clip(rows[i], W, width), 5, (i + .5) * DISP_PX / 3);
+      x.u.uSplit.value = nr ? 1 - nr / 3 : 1;
     }
     for (const mesh of instanced) { mesh.frustumCulled = false; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(mesh); }
 
@@ -755,7 +843,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const light = new THREE.PointLight(CYAN, 60, 22, 2); light.position.y = CORE_Y; youG.add(light);
     let coreFlash = 0, needSmooth = 0;
     // You's own display, in front of the core between the usage cards: who's waiting on you.
-    const youScreen = screen(YOU_W, YOU_W / YOU_H * DISP_PX), youZ = 2.42 + YOU_H / 2;
+    const youScreen = screen(YOU_W, YOU_H, YOU_W / YOU_H * DISP_PX), youZ = 2.42 + YOU_H / 2;
     youScreen.mesh.position.set(0, GLASS_Y, youZ); youScreen.mesh.scale.set(YOU_W / 2, 1, YOU_H / 2);
     youScreen.u.uC1.value.set('#d6f8ff').multiplyScalar(.9);
     const youMat = new THREE.MeshStandardMaterial({ color: '#05080a', roughness: .5, metalness: .3 });
@@ -780,14 +868,14 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       if (!c) {
         const canvas = document.createElement('canvas'); canvas.width = CARD_PX; canvas.height = CARD_H;
         const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-        c = cards[i] = { canvas, tex, group: new THREE.Group(), vals: [], sig: '', check: 0 };
+        c = cards[i] = { canvas, tex, group: new THREE.Group(), vals: [] };
         c.base = new THREE.Mesh(cardBase, cardMat); c.base.position.y = .02;
         c.top = new THREE.Mesh(cardTop, new THREE.MeshBasicMaterial({ map: tex })); c.top.position.y = .0715;
         c.group.add(c.base, c.top); youG.add(c.group);
       }
       const lay = c.lay = cardLayout(a), sx = i % 2 ? 1 : -1, sz = (i >> 1) % 2 ? 1 : -1;
       const cx = sx * (GAP + lay.W * S / 2), cz = sz * (GAP + lay.D * S / 2);
-      Object.assign(c, { shape, sx, vals: [], sig: '', check: 0, ox: cx - lay.W * S / 2, oz: cz - lay.D * S / 2 });
+      Object.assign(c, { shape, sx, vals: [], ox: cx - lay.W * S / 2, oz: cz - lay.D * S / 2 });
       c.group.position.set(cx, 0, cz); c.group.visible = true;
       c.base.scale.set(lay.W * S, .05, lay.D * S); c.top.scale.set(lay.W * S, 1, lay.D * S);
       c.tex.repeat.set(1, lay.D / CARD_D); c.tex.offset.set(0, 1 - lay.D / CARD_D);
@@ -810,26 +898,30 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
         for (let si = 0; si < SEG; si++) lamps.setColorAt(b + LEDS + di * SEG + si, lampC.copy(sev).multiplyScalar((si < 7 ? (mask >> si) & 1 : gph?.dp) ? .95 : .07));
       });
     }
-    function updateCards(dt) {
-      const list = world.usage.filter(a => a.windows.length || a.spend?.limit).slice(0, MAXU);
+    // Usage only changes with a snapshot (world.usage is a new array then); the reset countdowns are checked once a second.
+    let usage = null, usageList = [], cardsAt = 0;
+    function updateCards(now) {
+      const fresh = world.usage !== usage;
+      if (!fresh && now < cardsAt) return;
+      cardsAt = now + 1;
+      if (fresh) { usage = world.usage; usageList = (usage || []).filter(a => a.windows.length || a.spend?.limit).slice(0, MAXU); }
       let paint = false;
       for (let i = 0; i < MAXU; i++) {
-        const a = list[i];
+        const a = usageList[i];
         if (!a) {
           const c = cards[i];
           if (c?.group.visible) { c.group.visible = false; c.shape = ''; for (let k = 0; k < PER_CARD; k++) lamps.setMatrixAt(i * PER_CARD + k, ZERO); lamps.instanceMatrix.needsUpdate = true; }
           continue;
         }
-        const shape = `${a.id}|${a.label}|${a.windows.map(w => w.label)}|${!!a.spend?.limit}`;
-        if (cards[i]?.shape !== shape) placeCard(i, a, shape);
+        if (fresh) { const shape = `${a.id}|${a.label}|${a.windows.map(w => w.label)}|${!!a.spend?.limit}`; if (cards[i]?.shape !== shape) placeCard(i, a, shape); }
         const c = cards[i], lay = c.lay;
-        if ((c.check -= dt) <= 0) {
-          c.check = 1;
-          for (const row of lay.rows) row.note = row.w >= 0 ? resetText(a.windows[row.w]?.resetsAt) : `/ $${money(a.spend.limit).replace(/\.0+$/, '')}`;
-          const sig = lay.rows.map(row => row.note).join('|');
-          if (sig !== c.sig) { c.sig = sig; drawCard(c.canvas.getContext('2d'), lay, a, c.sx); c.tex.needsUpdate = true; }
+        let redraw = false;
+        for (const row of lay.rows) {
+          const note = row.w >= 0 ? resetText(a.windows[row.w]?.resetsAt) : `/ $${money(a.spend.limit).replace(/\.0+$/, '')}`;
+          if (note !== row.note) { row.note = note; redraw = true; }
         }
-        lay.rows.forEach((row, ri) => {
+        if (redraw) { drawCard(c.canvas.getContext('2d'), lay, a, c.sx); c.tex.needsUpdate = true; }
+        if (fresh) lay.rows.forEach((row, ri) => {
           const u = row.w >= 0 ? a.windows[row.w]?.used ?? 0 : kit.clamp(a.spend.spent / a.spend.limit);
           const text = row.w >= 0 ? String(Math.round(u * 100)) : money(a.spend.spent), val = `${u.toFixed(2)}|${text}`;
           if (c.vals[ri] !== val) { c.vals[ri] = val; paintRow(i, ri, row, u, text); paint = true; }
@@ -852,10 +944,10 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     traceMesh.frustumCulled = false; traceMesh.renderOrder = 3; root.add(traceMesh);
     const flatQuad = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
     const vias = new THREE.InstancedMesh(flatQuad, new THREE.ShaderMaterial({ vertexShader: INST_VERT, fragmentShader: VIA_FRAG, transparent: true, depthWrite: false }), Math.max(1, traces.length));
+    // A via slot per trace, at zero size while it has none.
+    for (let i = 0; i < vias.count; i++) vias.setMatrixAt(i, ZERO);
     vias.setColorAt(0, bg); vias.frustumCulled = false; vias.renderOrder = 4; root.add(vias);
     const traceBase = C('#0f4f58'), traceC = new THREE.Color(), needC = new THREE.Color();
-    // Needs you, per project: how strongly its middle bus line (the interrupt line) carries a waiting session's call to the core.
-    const callOf = new Map(), callIn = new Map();
 
     // ── Packets, floor glows, rings, selection brackets ──
     const additive = frag => new THREE.ShaderMaterial({ vertexShader: INST_VERT, fragmentShader: frag, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -878,6 +970,35 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const bracketGeo = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
     const bracket = col => { const m = new THREE.Mesh(bracketGeo, new THREE.ShaderMaterial({ uniforms: { uCol: { value: C(col) }, uA: { value: 0 } }, vertexShader: UV_VERT, fragmentShader: BRACKET_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); m.renderOrder = 7; m.visible = false; root.add(m); return m; };
     const selB = bracket(CYAN), hovB = bracket('#8ff3ff');
+
+    // Only what changed goes to the GPU. A span gathers the lowest and highest element written into an attribute this frame
+    // and hands three that one range. three keeps the ranges of an attribute it hasn't drawn yet; past a few, the whole
+    // array goes instead.
+    const span = attr => ({ attr, lo: Infinity, hi: -1 });
+    const touch = (sp, i, n) => { if (i < sp.lo) sp.lo = i; if (i + n > sp.hi) sp.hi = i + n; };
+    const flush = sp => {
+      if (sp.hi < 0) return;
+      const a = sp.attr;
+      if (a.updateRanges.length > 6) a.clearUpdateRanges(); else a.addUpdateRange(sp.lo, sp.hi - sp.lo);
+      a.needsUpdate = true; sp.lo = Infinity; sp.hi = -1;
+    };
+    // Set four (three) floats at o, and mark them, if any is off by more than a change worth showing.
+    const set4 = (sp, o, a, b, c, d) => {
+      const A = sp.attr.array;
+      if (Math.abs(A[o] - a) > 1e-3 || Math.abs(A[o + 1] - b) > 1e-3 || Math.abs(A[o + 2] - c) > 1e-3 || Math.abs(A[o + 3] - d) > 1e-3) { A[o] = a; A[o + 1] = b; A[o + 2] = c; A[o + 3] = d; touch(sp, o, 4); }
+    };
+    const set3 = (sp, o, a, b, c) => {
+      const A = sp.attr.array;
+      if (Math.abs(A[o] - a) > 1e-3 || Math.abs(A[o + 1] - b) > 1e-3 || Math.abs(A[o + 2] - c) > 1e-3) { A[o] = a; A[o + 1] = b; A[o + 2] = c; touch(sp, o, 3); }
+    };
+    const partSp = partMesh.map(m => span(m.instanceMatrix)), faceSp = span(faces.instanceMatrix), decalSp = span(decals.instanceMatrix);
+    const faSp = Object.fromEntries(['iA', 'iB', 'iC', 'iD', 'iE', 'iCol'].map(k => [k, span(fa[k])])), tintSp = span(dTint);
+    const glowMSp = span(glows.instanceMatrix), glowCSp = span(glows.instanceColor);
+    const tPosSp = span(traceGeo.attributes.position), tInfoSp = span(traceGeo.attributes.aInfo), tColSp = span(traceGeo.attributes.aCol);
+    const viaMSp = span(vias.instanceMatrix), viaCSp = span(vias.instanceColor), pMSp = span(packetMesh.instanceMatrix), pCSp = span(packetMesh.instanceColor);
+    const rMSp = span(ringMesh.instanceMatrix), rCSp = span(ringMesh.instanceColor), rASp = span(ringAttr);
+    const spans = [...partSp, faceSp, decalSp, ...Object.values(faSp), tintSp, glowMSp, glowCSp, tPosSp, tInfoSp, tColSp, viaMSp, viaCSp, pMSp, pCSp, rMSp, rCSp, rASp];
+    const ports = new Float32Array(8);
 
     // A node whose display or silkscreen is big enough on screen to read needs no HTML label; zoomed out, it gets one back.
     const la = new THREE.Vector3(), lb = new THREE.Vector3(), lc = new THREE.Vector3(), wp = new THREE.Vector3();
@@ -906,7 +1027,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     });
 
     // Power-on: chips boot outward from the core.
-    let lt = 0, lastTime = world.time, beat = 3;
+    let lt = 0, lastTime = world.time, lastNow = performance.now(), beat = 3;
     for (const v of chips) v.bootAt = .25 + v.n.rest.length() * .028 + (v.n.seed % 7) * .03;
 
     function launch(link, col, speed) {
@@ -930,7 +1051,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       const v = byNode.get(n);
       if (type === 'tool') { if (!ctx.reduced && (n.kind === 'session' || n.kind === 'sub')) launch(linkOf.get(n), toolCol[data.kind] || toolCol[''], n.kind === 'sub' ? 7 : 9); return; }
       if (!v) return;
-      const S = Math.max(...v.d.foot);
+      const S = v.S;
       if (type === 'finish') { ripple(n, green, 24, 1, 2.6); shot(n, green, S * 1.2, S * 3.6, 1.1, .06); }
       else if (type === 'need') shot(n, amber, S * 1.2, S * 3.2, 1, .07, true);
       else if (type === 'answer') { shot(n, cyan, S * 2.6, S * 1.15, .6, .08, true); ripple(n, cyan, 9, .6, 1.4); }
@@ -939,20 +1060,62 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       else if (type === 'state' && data.to === 'error') { shot(n, red, S * 1.1, S * 2.8, .8, .1); ripple(n, red, 8, .8, 1.3); }
     }
 
+    // Pace: update returns the frames a second the board needs for what moves on screen, at this zoom (rates from the shaders:
+    // a chip's die pattern, trace dashes at 5.2 units a second, packets, rings, shockwaves, the reactor). Nothing moving on
+    // screen, or reduced motion, is 0: the engine draws on changes only.
+    const camM = new THREE.Matrix4(), camP = new THREE.Matrix4();
+    let camW = 0, camH = 0, zoom = 1, yx = Infinity, yz = 0;
+    // The camera eases toward its goal for ever in ever smaller steps, each a new frame if any change counted: only a change
+    // past a hundredth of a pixel or so does (against the camera last counted, so a slow drift still adds up).
+    const camNear = (a, b) => { const x = a.elements, y = b.elements; for (let k = 0; k < 16; k++) if (Math.abs(x[k] - y[k]) > 1e-4 * Math.max(1, Math.abs(y[k]))) return false; return true; };
+    // A circle of radius r at (x, z) in view, with a margin; behind the camera counts as in view.
+    const onScreen = (x, z, r) => {
+      la.set(x, 0, z).project(camera);
+      if (la.z > 1) return true;
+      const m = r * ppu * 1.5 + 24;
+      return Math.abs(la.x) < 1 + m * 2 / ctx.size.w && Math.abs(la.y) < 1 + m * 2 / ctx.size.h;
+    };
+    // A session or subagent face, by what's lit on it (FACE_FRAG): work's shimmer and sweep, think's scan line, compact's
+    // blocks, need's pulse and its rings spreading at S × 1.4 a cycle, error's tearing, wait's clock hand, idle's LED breath.
+    function chipPace(s, S) {
+      let p = 0;
+      if (s.work > .05) p = Math.max(p, kit.clamp(10 * zoom, 10, 20));
+      if (s.think > .05) p = Math.max(p, kit.clamp(8 * zoom, 6, 16));
+      if (s.compact > .05) p = Math.max(p, 8);
+      if (s.need > .05) p = Math.max(p, kit.clamp(Math.max(2 * (3.5 + 7 * s.urgency), S * 1.4 * (.7 + 1.1 * s.urgency) * ppu / 3), 10, 40));
+      if (s.error > .05) p = Math.max(p, 12);
+      if (s.wait > .05) p = Math.max(p, kit.clamp(6 * zoom, 4, 12));
+      if (s.idle > .05 && s.off < .95) p = Math.max(p, kit.clamp(3 * zoom, 2, 6));
+      return p;
+    }
+    // A wait shown on a display changes its text each second, then each minute, then each hour.
+    const waitKey = sec => sec < 60 ? Math.max(1, Math.round(sec)) : sec < 3600 ? 1000 + Math.floor(sec / 60) : 100000 + Math.floor(sec / 3600);
+
     function update(dt, time) {
-      const reduced = ctx.reduced, queue = world.queue();
-      // Look clock: real time, but jumps with the world (advance) and keeps running while sessions are paused.
-      const dw = Math.max(0, time - lastTime); lastTime = time;
-      const jump = Math.max(dt, dw), step = Math.min(.25, jump); lt += Math.min(30, jump);
+      const reduced = ctx.reduced, queue = world.queue(), now = performance.now();
+      // Look clock: real time (dt is capped for the world's springs, and at a low pace frames are far apart), jumping with the
+      // world when it's advanced, and running on while sessions are paused.
+      const dw = Math.max(0, time - lastTime), real = Math.max(0, now - lastNow) / 1000; lastTime = time; lastNow = now;
+      const jump = Math.max(dt, dw, real), step = Math.min(.25, jump); lt += Math.min(30, jump);
       const at = reduced ? 1.3 : lt;
       faceU.uMotion.value = reduced ? 0 : 1;
       faceU.uTime.value = traceU.uTime.value = reactorU.uTime.value = coreU.uTime.value = columnU.uTime.value = at;
+      // The camera as last drawn (update runs before it steps): shear, scale and what's on screen are worked out again when it
+      // changed, and one more frame follows so the last step is caught.
+      const camChanged = !camNear(camera.matrixWorld, camM) || !camNear(camera.projectionMatrix, camP) || camW !== ctx.size.w || camH !== ctx.size.h;
+      if (camChanged) { camM.copy(camera.matrixWorld); camP.copy(camera.projectionMatrix); camW = ctx.size.w; camH = ctx.size.h; }
+      // Zoomed out too far to read the displays, the HTML labels come back (one board-wide decision, so it doesn't flicker
+      // chip by chip), and the displays and silkscreen go blank so no name shows twice.
+      ppu = pxPerUnit(you); zoom = kit.clamp(ppu / 16, .25, 8);
+      far = DISPLAYS.session.h * 20 / DISP_PX * ppu < 7; decalU.uNames.value = far ? 0 : 1;
+      let pace = 0;
 
       // You
       youG.position.set(you.pos.x, Math.max(0, you.pos.y), you.pos.z);
       let urg = 0; for (const s of queue) urg = Math.max(urg, s.s.urgency);
-      needSmooth = kit.damp(needSmooth, queue.length ? 1 : 0, 4, dt);
-      coreFlash = Math.max(0, coreFlash - dt * 2.5);
+      const goal = queue.length ? 1 : 0;
+      needSmooth = reduced || Math.abs(goal - needSmooth) < 2e-3 ? goal : kit.damp(needSmooth, goal, 4, step);
+      coreFlash = Math.max(0, coreFlash - step * 2.5);
       reactorU.uCount.value = queue.length; reactorU.uUrg.value = urg; reactorU.uFlash.value = coreFlash;
       coreU.uNeed.value = needSmooth; coreU.uUrg.value = urg; coreU.uFlash.value = coreFlash;
       if (!reduced) { gyro1.rotation.set(at * .7, at * .45, 0); gyro2.rotation.set(-at * .5, 0, at * .6); } else { gyro1.rotation.set(1.2, .3, 0); gyro2.rotation.set(-.4, 0, .9); }
@@ -960,134 +1123,183 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       halo.material.color.copy(tmpC).multiplyScalar(.45 + coreFlash * .5); light.color.copy(tmpC); light.intensity = 50 + coreFlash * 40;
       columnU.uCol.value.copy(tmpC);
       boardU.uCore.value.copy(tmpC); boardU.uYou.value.set(you.pos.x, you.pos.z);
-      youG.updateMatrixWorld();
       // The core's heartbeat: a broad, faint swell out through the copper.
-      if (!reduced && (beat -= step) <= 0) { beat = 9; ripple(you, cyan, 38, .16, 7, 4.5); }
-      updateCards(dt);
+      if (!reduced && (beat -= Math.min(jump, 9)) <= 0) { beat = 9; ripple(you, cyan, 38, .16, 7, 4.5); }
+      // The core easing to amber and back, and the brief flash a packet arriving lights it and the chips round it with.
+      const youOn = !reduced && onScreen(you.pos.x, you.pos.z, 3);
+      if (!reduced && needSmooth !== goal) pace = 24;
+      if (youOn && coreFlash > 0) pace = Math.max(pace, 20);
+      if (youOn) pace = Math.max(pace, queue.length ? Math.max(10, 2 * (3 + urg * 6)) : kit.clamp(7 * zoom, 5, 14));
+      updateCards(now / 1000);
 
-      // Chips: parts move only when their chip does; the faces and footprints take the state every frame.
-      const A = fa.iA.array, B = fa.iB.array, Cc = fa.iC.array, D = fa.iD.array, E = fa.iE.array, K = fa.iCol.array, TT = dTint.array;
-      let moved = false;
+      // Chips: parts move only when their chip does; faces, footprints and glows go up only where their values changed.
       for (const v of chips) {
         const { n, d, i } = v, s = n.s, o = i * 4;
         const sc = s.alive < .002 ? 0 : reduced ? s.alive : kit.easeOutCubic(s.alive), y = Math.max(0, n.pos.y);
-        if (v.x !== n.pos.x || v.z !== n.pos.z || v.y !== y || v.sc !== sc) {
+        if (Math.abs(v.x - n.pos.x) > 1e-4 || Math.abs(v.z - n.pos.z) > 1e-4 || Math.abs(v.y - y) > 1e-4 || Math.abs(v.sc - sc) > 1e-4) {
           v.x = n.pos.x; v.y = y; v.z = n.pos.z; v.sc = sc;
           v.T.compose(pv.set(v.x, y, v.z), qI, sv.set(sc, sc, sc));
-          for (const p of v.parts) partMesh[p.t].setMatrixAt(p.i, m4.multiplyMatrices(v.T, p.m));
-          faces.setMatrixAt(i, m4.multiplyMatrices(v.T, v.faceM)); decals.setMatrixAt(i, m4.multiplyMatrices(v.T, v.decalM));
-          moved = v.moved = true;
+          for (const p of v.parts) { partMesh[p.t].setMatrixAt(p.i, m4.multiplyMatrices(v.T, p.m)); touch(partSp[p.t], p.i * 16, 16); }
+          faces.setMatrixAt(i, m4.multiplyMatrices(v.T, v.faceM)); touch(faceSp, i * 16, 16);
+          decals.setMatrixAt(i, m4.multiplyMatrices(v.T, v.decalM)); touch(decalSp, i * 16, 16);
+          const gs = v.S * 3.6 * sc;
+          glows.setMatrixAt(i, m4.compose(pv.set(v.x, .006, v.z), qI, sv.set(gs, 1, gs))); touch(glowMSp, i * 16, 16);
+          v.moved = true;
         } else v.moved = false;
         v.top = y + d.top * sc;
-        v.flash = Math.max(0, v.flash - step * 1.6);
+        if (v.flash > 0) v.flash = Math.max(0, v.flash - step * 1.6);
         const boot = v.boot = reduced ? 1 : kit.clamp((lt - v.bootAt) / .9, -1, 1);
         let pads;
         if (n.kind === 'project') {
-          let busy = 0, need = 0, err = 0;
-          for (let j = 0; j < 8; j++) { const x = n.sessions[j], val = x ? v.ports[j] * 16 + dom(x) + Math.min(.99, x.s.alive) : 0; if (j < 4) A[o + j] = val; else Cc[o + j - 4] = val; }
+          let busy = 0, need = 0, err = 0, lit = false;
+          for (let j = 0; j < 8; j++) {
+            const x = n.sessions[j];
+            if (!x) { ports[j] = 0; continue; }
+            const code = dom(x);
+            ports[j] = v.ports[j] * 16 + code + Math.min(.99, x.s.alive);
+            // Work, think, need and error ports blink; the rest hold steady.
+            if (x.s.alive > .01 && (code === 1 || code === 2 || code === 4 || code === 7)) lit = true;
+          }
+          set4(faSp.iA, o, ports[0], ports[1], ports[2], ports[3]); set4(faSp.iC, o, ports[4], ports[5], ports[6], ports[7]);
           for (const x of n.sessions) { busy += x.s.work * x.s.alive; need = Math.max(need, x.s.need * x.s.alive); err = Math.max(err, x.s.error * x.s.alive); }
           v.busy = Math.min(1, busy);
-          B[o] = Math.min(8, n.sessions.length); B[o + 1] = reduced ? 0 : v.busy; B[o + 2] = need; B[o + 3] = err;
+          set4(faSp.iB, o, Math.min(8, n.sessions.length), reduced ? 0 : v.busy, need, err);
           v.col.copy(cyan); pads = .08 + v.busy * .25 + s.hover * .2 + s.select * .25;
+          if (!reduced && (lit || v.busy > .01 || need > .01) && onScreen(v.x, v.z, v.S * 2)) pace = Math.max(pace, kit.clamp(10 * zoom, 8, 16));
         } else {
-          A[o] = s.work; A[o + 1] = s.think; A[o + 2] = s.compact; A[o + 3] = s.need;
-          B[o] = s.wait; B[o + 1] = s.error; B[o + 2] = s.off; B[o + 3] = s.idle;
-          Cc[o] = s.ctx ?? n.ctx; Cc[o + 1] = n.plan?.done || 0; Cc[o + 2] = n.plan?.total || 0; Cc[o + 3] = PROV[n.provider] ?? 0;
-          kit.statusColor(n, PAL, v.col);
+          set4(faSp.iA, o, s.work, s.think, s.compact, s.need);
+          set4(faSp.iB, o, s.wait, s.error, s.off, s.idle);
+          set4(faSp.iC, o, (s.ctx ?? n.ctx) || 0, n.plan?.done || 0, n.plan?.total || 0, PROV[n.provider] ?? 0);
+          kit.statusColor(n, palC, v.col);
           if (s.need > .01) v.col.lerp(red, s.urgency * .65 * s.need);
-          K[o] = v.col.r; K[o + 1] = v.col.g; K[o + 2] = v.col.b;
+          set4(faSp.iCol, o, v.col.r, v.col.g, v.col.b, 0);
           pads = s.work * .3 + s.think * .18 + s.compact * .25 + s.need * (.55 + s.urgency * .3) + s.error * .5 + s.hover * .2 + s.select * .25;
+          if (!reduced && s.alive > .01 && boot > 0 && onScreen(v.x, v.z, v.S * 2.6)) pace = Math.max(pace, chipPace(s, v.S));
         }
-        D[o] = n.mode === 'plan' ? 1 : n.mode === 'bypass' ? 2 : 0; D[o + 1] = s.urgency; D[o + 2] = boot; D[o + 3] = reduced ? 0 : v.flash;
-        E[o] = KIND[n.kind]; E[o + 1] = (n.seed % 997) / 997; E[o + 2] = Math.max(s.hover * .45, s.select); E[o + 3] = s.heat;
-        TT[o] = v.col.r; TT[o + 1] = v.col.g; TT[o + 2] = v.col.b; TT[o + 3] = pads * s.alive * (boot > 0 ? 1 : 0);
+        set4(faSp.iD, o, n.mode === 'plan' ? 1 : n.mode === 'bypass' ? 2 : 0, s.urgency, boot, reduced ? 0 : v.flash);
+        set4(faSp.iE, o, KIND[n.kind], (n.seed % 997) / 997, Math.max(s.hover * .45, s.select), s.heat);
+        set4(tintSp, o, v.col.r, v.col.g, v.col.b, pads * s.alive * (boot > 0 ? 1 : 0));
         // Floor glow
-        const want = n.kind === 'project' ? .04 + v.busy * .09 : s.need * (.38 + s.urgency * .3) + s.error * .38 + s.work * .14 + s.think * .08 + s.compact * .12 + s.wait * .07;
-        const gs = Math.max(...d.foot) * 3.6 * sc;
-        m4.compose(pv.set(n.pos.x, .006, n.pos.z), qI, sv.set(gs, 1, gs)); glows.setMatrixAt(i, m4);
-        glows.setColorAt(i, tmpC2.copy(v.col).multiplyScalar(want * s.alive));
+        const want = (n.kind === 'project' ? .04 + v.busy * .09 : s.need * (.38 + s.urgency * .3) + s.error * .38 + s.work * .14 + s.think * .08 + s.compact * .12 + s.wait * .07) * s.alive;
+        set3(glowCSp, i * 3, v.col.r * want, v.col.g * want, v.col.b * want);
+        // Booting (the power-on sweep) or flashing after a compaction.
+        if (!reduced && (boot < 1 || v.flash > 0)) pace = Math.max(pace, 30);
       }
-      m4.compose(pv.set(you.pos.x, .006, you.pos.z), qI, sv.set(8, 1, 8)); glows.setMatrixAt(NC, m4);
-      glows.setColorAt(NC, tmpC2.copy(cyan).lerp(amber, needSmooth).multiplyScalar(.12 + needSmooth * .06 + coreFlash * .12));
-      // Displays: the name over what it's doing, in its state's colour, dimmer when idle. Zoomed out too far to read them, the
-      // HTML labels come back (one board-wide decision, so it doesn't flicker chip by chip), and the displays and silkscreen go
-      // blank so no name shows twice.
-      ppu = pxPerUnit(you); far = DISPLAYS.session.h * 24 / DISP_PX * ppu < 7; decalU.uNames.value = far ? 0 : 1;
+      const youMoved = you.pos.x !== yx || you.pos.z !== yz;
+      if (youMoved) { yx = you.pos.x; yz = you.pos.z; glows.setMatrixAt(NC, m4.compose(pv.set(yx, .006, yz), qI, sv.set(8, 1, 8))); touch(glowMSp, NC * 16, 16); }
+      tmpC2.copy(cyan).lerp(amber, needSmooth).multiplyScalar(.12 + needSmooth * .06 + coreFlash * .12);
+      set3(glowCSp, NC * 3, tmpC2.r, tmpC2.g, tmpC2.b);
+
+      // Displays: the name over what it's doing, in its state's colour, dimmer when idle; repainted only when the text does
+      // change (a wait shown on it by the second, then the minute), blank while the labels have taken over.
       for (const x of displays) {
-        const { v } = x, n = v.n, s = n.s;
-        paintScreen(x, far ? BLANK : [n.name, needs(n) ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text]);
+        const { v } = x, n = v.n, s = n.s, name = far ? null : n.name, wk = !far && needs(n) ? waitKey(n.waitSec) : -1;
+        if (name !== x.kName || (name !== null && (n.text !== x.kText || wk !== x.kWait))) {
+          x.kName = name; x.kText = n.text; x.kWait = wk;
+          paintScreen(x, name, name === null ? '' : wk >= 0 ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text);
+        }
         x.u.uC2.value.copy(v.col).lerp(WHITE, .22);
         x.u.uOn.value = s.alive * (1 - s.off * .5) * (1 - s.idle * .35) * (v.boot > 0 ? 1 : .1);
-        x.u.uShear.value = shearAt(wp.copy(x.at).applyMatrix4(v.T), x.w, DISPLAYS[n.kind].h); x.target.pos.copy(wp);
-        if (v.moved) { x.mesh.matrix.multiplyMatrices(v.T, x.local); x.mesh.matrixWorldNeedsUpdate = true; }
+        if (v.moved) { x.mesh.matrix.multiplyMatrices(v.T, x.local); x.mesh.matrixWorldNeedsUpdate = true; x.target.pos.copy(x.at).applyMatrix4(v.T); }
+        if (v.moved || camChanged) x.u.uShear.value = shearAt(wp.copy(x.at).applyMatrix4(v.T), x.w, x.h);
       }
-      paintScreen(youScreen, ['YOU', queue.length ? `${queue.length} WAITING` : 'ALL CLEAR']);
+      if (youScreen.kName === undefined || youScreen.kText !== queue.length) {
+        youScreen.kName = 'YOU'; youScreen.kText = queue.length;
+        paintScreen(youScreen, 'YOU', queue.length ? `${queue.length} WAITING` : 'ALL CLEAR');
+      }
+      youScreen.u.uC2.value.copy(queue.length ? amber : cyan).multiplyScalar(queue.length ? 1 : .75);
+      if (camChanged || youMoved) youScreen.u.uShear.value = shearAt(wp.set(youG.position.x, GLASS_Y, youG.position.z + youZ), YOU_W, YOU_H);
       for (const m of shotMods) {
         const shot = ctx.shot(m.v.n);
-        if (shot !== m.shot) { m.shot = shot; if (shot) { if (!m.group) buildShot(m); paintShot(m, shot); } if (m.group) m.group.visible = !!shot; m.v.shotOn = !!shot; }
+        if (shot !== m.shot) { m.shot = shot; m.placed = false; if (shot) { if (!m.group) buildShot(m); paintShot(m, shot); } if (m.group) m.group.visible = !!shot; m.v.shotOn = !!shot; }
         if (!shot) continue;
-        m.group.matrix.multiplyMatrices(m.v.T, m.local); m.group.matrixWorldNeedsUpdate = true;
-        m.target.pos.copy(m.at).applyMatrix4(m.v.T); m.u.uOn.value = m.v.n.s.alive;
+        if (m.v.moved || !m.placed) { m.placed = true; m.group.matrix.multiplyMatrices(m.v.T, m.local); m.group.matrixWorldNeedsUpdate = true; m.target.pos.copy(m.at).applyMatrix4(m.v.T); }
         const ns = m.v.n.s;
+        m.u.uOn.value = ns.alive;
         m.led.material.color.copy(m.v.col).multiplyScalar(1.5 * ns.alive * (1 - ns.idle * .6));
         m.rim.material.uniforms.uA.value = Math.max(ns.hover * .45, ns.select, m.target.hovered ? .45 : 0);
       }
-      youScreen.u.uC2.value.copy(queue.length ? amber : cyan).multiplyScalar(queue.length ? 1 : .75);
-      youScreen.u.uShear.value = shearAt(wp.set(youG.position.x, GLASS_Y, youG.position.z + youZ), YOU_W, YOU_H);
-      if (moved) for (const mesh of instanced) mesh.instanceMatrix.needsUpdate = true;
-      glows.instanceMatrix.needsUpdate = true; glows.instanceColor.needsUpdate = true;
-      for (const name of ['iA', 'iB', 'iC', 'iD', 'iE', 'iCol']) fa[name].needsUpdate = true;
-      dTint.needsUpdate = true;
 
       // Traces and vias. A session that needs you lights its own trace and its project's middle bus line amber → red,
       // with dashes running core-ward, and sends interrupt packets up it: the call travels on the copper, never through the air.
-      callOf.clear();
+      for (const v of chips) if (v.n.kind === 'project') v.callK = v.callU = 0;
       for (const n of world.sessions) {
-        const k = n.s.need * n.s.alive; if (k < .01) continue;
-        const c = callOf.get(n.project); if (!c || k > c.k) callOf.set(n.project, { k, u: n.s.urgency });
-        if (!reduced) {
-          const t = (callIn.get(n) ?? 0) - step;
-          if (t <= 0 && k > .5) { launch(linkOf.get(n), needC.copy(amber).lerp(red, n.s.urgency * .75), 8 + n.s.urgency * 6); callIn.set(n, 1.1 - n.s.urgency * .6); }
-          else callIn.set(n, t);
-        }
+        const vs = byNode.get(n), k = n.s.need * n.s.alive;
+        if (!vs) continue;
+        if (k < .01) { vs.callIn = 0; continue; }
+        const vp = byNode.get(n.project);
+        if (vp && k > vp.callK) { vp.callK = k; vp.callU = n.s.urgency; }
+        if (!reduced && (vs.callIn -= step) <= 0 && k > .5) { launch(linkOf.get(n), needC.copy(amber).lerp(red, n.s.urgency * .75), 8 + n.s.urgency * 6); vs.callIn = 1.1 - n.s.urgency * .6; }
       }
-      let vi = 0;
+      let flowing = false;
       for (const L of links) {
-        const ch = L.n, cs = ch.s, alive = L.shot ? (L.lcd && !byNode.get(ch).shotOn ? 0 : cs.alive) : cs.alive * (L.parent.s.alive || 1);
-        routeOf(L, L.P, ch.pos, L.parent.pos);
-        miter(L.P, L.M);
+        const ch = L.n, cs = ch.s, v = L.v, a = ch.pos, b = L.parent.pos;
+        const alive = L.shot ? (L.lcd && !v.shotOn ? 0 : cs.alive) : cs.alive * (L.parent.s.alive || 1);
+        // Routed again only when an end moved.
+        const moved = a.x !== L.ax || a.z !== L.az || b.x !== L.bx || b.z !== L.bz;
+        if (moved) {
+          L.ax = a.x; L.az = a.z; L.bx = b.x; L.bz = b.z;
+          routeOf(L, L.P, a, b); miter(L.P, L.M);
+          let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+          for (const p of L.P) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+          L.cx = (x0 + x1) / 2; L.cz = (z0 + z1) / 2; L.cr = Math.hypot(x1 - x0, z1 - z0) / 2 + .5;
+        }
         let glow, flow;
         if (L.shot) { tmpC.copy(traceBase).lerp(cyan, .3); glow = .6 * alive; flow = 0; }
-        else if (ch.kind === 'project') { const busy = byNode.get(ch).busy; tmpC.copy(traceBase).lerp(cyan, .35 + busy * .4); glow = (.55 + busy * .35) * alive; flow = reduced ? 0 : busy * .7; }
-        else { tmpC.copy(traceBase).lerp(byNode.get(ch).col, .55 - cs.off * .4); glow = alive * (.45 + .55 * (1 - cs.off) * (1 - cs.idle * .45)); flow = reduced ? 0 : cs.work * alive; }
-        const call = L.shot ? null : ch.kind === 'project' ? callOf.get(ch) : ch.kind === 'session' && cs.need > .01 ? { k: cs.need * alive, u: cs.urgency } : null;
+        else if (ch.kind === 'project') { tmpC.copy(traceBase).lerp(cyan, .35 + v.busy * .4); glow = (.55 + v.busy * .35) * alive; flow = reduced ? 0 : v.busy * .7; }
+        else { tmpC.copy(traceBase).lerp(v.col, .55 - cs.off * .4); glow = alive * (.45 + .55 * (1 - cs.off) * (1 - cs.idle * .45)); flow = reduced ? 0 : cs.work * alive; }
+        const ck = L.shot ? 0 : ch.kind === 'project' ? v.callK : ch.kind === 'session' && cs.need > .01 ? cs.need * alive : 0;
+        const cu = ch.kind === 'project' ? v.callU : cs.urgency;
+        let lf = 0;
         for (const tr of L.traces) {
-          const q = tr.q, base = tr.base, k = call && (ch.kind !== 'project' || tr.o === 0) ? call.k : 0;
+          const q = tr.q, base = tr.base, k = ck && (ch.kind !== 'project' || tr.o === 0) ? ck : 0;
           let g = glow, f = flow; traceC.copy(tmpC);
-          if (k) { traceC.lerp(needC.copy(amber).lerp(red, call.u * .75), k); g = glow + k * (.6 + call.u * .4); f = reduced ? 0 : Math.max(flow, k * (.9 + call.u * .6)); }
-          for (let i = 0; i < 4; i++) q[i].copy(L.P[i]).addScaledVector(L.M[i], tr.o);
-          tr.cum[0] = 0; for (let i = 1; i < 4; i++) tr.cum[i] = tr.cum[i - 1] + q[i].distanceTo(q[i - 1]);
-          tr.len = tr.cum[3];
+          if (k) { traceC.lerp(needC.copy(amber).lerp(red, cu * .75), k); g = glow + k * (.6 + cu * .4); f = reduced ? 0 : Math.max(flow, k * (.9 + cu * .6)); }
+          lf = Math.max(lf, f);
+          if (moved) {
+            for (let j = 0; j < 4; j++) q[j].copy(L.P[j]).addScaledVector(L.M[j], tr.o);
+            tr.cum[0] = 0; for (let j = 1; j < 4; j++) tr.cum[j] = tr.cum[j - 1] + q[j].distanceTo(q[j - 1]);
+            tr.len = tr.cum[3];
+          }
           const w = tr.w * Math.min(1, alive * 1.5);
-          for (let i = 0; i < 4; i++) for (let sd = 0; sd < 2; sd++) {
-            const vtx = base + i * 2 + sd, side = sd ? 1 : -1, M = L.M[i];
-            tPos[vtx * 3] = q[i].x + M.x * side * w; tPos[vtx * 3 + 1] = TRACE_Y; tPos[vtx * 3 + 2] = q[i].z + M.z * side * w;
-            tInfo[vtx * 4] = tr.cum[i]; tInfo[vtx * 4 + 1] = side; tInfo[vtx * 4 + 2] = g; tInfo[vtx * 4 + 3] = f;
-            tCol[vtx * 3] = traceC.r; tCol[vtx * 3 + 1] = traceC.g; tCol[vtx * 3 + 2] = traceC.b;
+          if (moved || Math.abs(w - tr.cw) > 1e-4) {
+            tr.cw = w;
+            for (let j = 0; j < 4; j++) for (let sd = 0; sd < 2; sd++) {
+              const o = (base + j * 2 + sd) * 3, side = sd ? w : -w, M = L.M[j];
+              tPos[o] = q[j].x + M.x * side; tPos[o + 1] = TRACE_Y; tPos[o + 2] = q[j].z + M.z * side;
+            }
+            touch(tPosSp, base * 3, 24);
           }
-          const ch2 = tr.cum[2] - tr.cum[1];
-          if (ch2 > .35 && alive > .05) {
-            const vs = (tr.w * 2 + .16) * 1.6;
-            m4.compose(pv.lerpVectors(q[1], q[2], .5).setY(TRACE_Y + .002), qI, sv.set(vs, 1, vs)); vias.setMatrixAt(vi, m4);
-            vias.setColorAt(vi, tmpC2.copy(traceC).multiplyScalar(g * 1.3)); vi++;
+          if (moved || Math.abs(g - tr.g) > 1e-3 || Math.abs(f - tr.f) > 1e-3) {
+            tr.g = g; tr.f = f;
+            for (let j = 0; j < 4; j++) for (let sd = 0; sd < 2; sd++) {
+              const o = (base + j * 2 + sd) * 4;
+              tInfo[o] = tr.cum[j]; tInfo[o + 1] = sd ? 1 : -1; tInfo[o + 2] = g; tInfo[o + 3] = f;
+            }
+            touch(tInfoSp, base * 4, 32);
           }
+          const co = base * 3;
+          if (Math.abs(tCol[co] - traceC.r) > 1e-3 || Math.abs(tCol[co + 1] - traceC.g) > 1e-3 || Math.abs(tCol[co + 2] - traceC.b) > 1e-3) {
+            for (let j = 0; j < 24; j += 3) { tCol[co + j] = traceC.r; tCol[co + j + 1] = traceC.g; tCol[co + j + 2] = traceC.b; }
+            touch(tColSp, co, 24);
+          }
+          // A via where the chamfer's long enough for one; its slot stays at zero size otherwise.
+          const via = tr.cum[2] - tr.cum[1] > .35 && alive > .05, slot = tr.idx;
+          if (via !== tr.via || (via && moved)) {
+            tr.via = via;
+            if (via) { const vs = (tr.w * 2 + .16) * 1.6; vias.setMatrixAt(slot, m4.compose(pv.lerpVectors(q[1], q[2], .5).setY(TRACE_Y + .002), qI, sv.set(vs, 1, vs))); }
+            else vias.setMatrixAt(slot, ZERO);
+            touch(viaMSp, slot * 16, 16);
+          }
+          if (via) set3(viaCSp, slot * 3, traceC.r * g * 1.3, traceC.g * g * 1.3, traceC.b * g * 1.3);
         }
+        if (lf > .01 && !flowing && onScreen(L.cx, L.cz, L.cr)) flowing = true;
       }
-      vias.count = vi; vias.instanceMatrix.needsUpdate = true; if (vias.instanceColor) vias.instanceColor.needsUpdate = true;
-      traceGeo.attributes.position.needsUpdate = traceGeo.attributes.aInfo.needsUpdate = traceGeo.attributes.aCol.needsUpdate = true;
+      // Dashes run 5.2 units a second, a dash every 3.
+      if (flowing) pace = Math.max(pace, kit.clamp(5.2 * ppu / 5, 10, 30));
 
       // Packets ride the traces; one reaching a project carries on up the bus, one reaching You flashes the core.
-      let pi = 0;
+      let pi = 0, fastest = 0;
       for (const p of packets) {
         if (!p.on) continue;
         if (reduced) { p.on = false; continue; }
@@ -1106,8 +1318,12 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
         const len = Math.min(1.1, p.d + .05);
         m4.compose(pv.copy(head).addScaledVector(dir, -len / 2).setY(TRACE_Y + .01), qR.setFromAxisAngle(UP, Math.atan2(-dir.z, dir.x)), sv.set(len, 1, .22));
         packetMesh.setMatrixAt(pi, m4); packetMesh.setColorAt(pi, p.col); pi++;
+        if (p.speed > fastest && onScreen(head.x, head.z, 1.1)) fastest = p.speed;
       }
-      packetMesh.count = pi; packetMesh.instanceMatrix.needsUpdate = true; if (packetMesh.instanceColor) packetMesh.instanceColor.needsUpdate = true;
+      if (pi) { touch(pMSp, 0, pi * 16); touch(pCSp, 0, pi * 3); }
+      packetMesh.count = pi; packetMesh.visible = pi > 0;
+      // A packet's bright head is a tenth of a unit: it should move a few pixels a frame, not jump.
+      if (fastest) pace = Math.max(pace, kit.clamp(fastest * ppu / 7, 15, 60));
 
       // Rings: one-off shots, plus dashed rings spreading over the board round every chip that needs you.
       ri = 0;
@@ -1115,27 +1331,29 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
         if (!r.on) continue;
         const f = (lt - r.t0) / r.dur;
         if (f >= 1 || reduced) { r.on = false; continue; }
-        const v = byNode.get(r.n) || null, e = kit.easeOutCubic(f);
-        putRing(r.n.pos.x, r.lift && v ? v.top + .04 : .03, r.n.pos.z, kit.lerp(r.r0, r.r1, e), r.th, (1 - f) * .9, r.col);
+        const v = byNode.get(r.n) || null, e = kit.easeOutCubic(f), rad = kit.lerp(r.r0, r.r1, e);
+        putRing(r.n.pos.x, r.lift && v ? v.top + .04 : .03, r.n.pos.z, rad, r.th, (1 - f) * .9, r.col);
+        if (onScreen(r.n.pos.x, r.n.pos.z, Math.max(r.r0, r.r1))) pace = Math.max(pace, kit.clamp(3 * (1 - f) ** 2 * Math.abs(r.r1 - r.r0) / r.dur * ppu / 3, 15, 60));
       }
       for (const v of chips) {
         const s = v.n.s;
         if (s.need < .02 || v.n.kind !== 'session') continue;
-        const S = Math.max(...v.d.foot);
         tmpC.copy(amber).lerp(red, s.urgency * .7);
-        if (reduced) { putRing(v.x, .03, v.z, S * 1.55, -.06, .8 * s.need, tmpC); continue; }
+        if (reduced) { putRing(v.x, .03, v.z, v.S * 1.55, -.06, .8 * s.need, tmpC); continue; }
         for (let j = 0; j < 2; j++) {
           const f = (lt * (.7 + s.urgency * 1.1) + j * .5) % 1;
-          putRing(v.x, .03, v.z, S * (1.2 + f * 1.4), -.05, (1 - f) * s.need * (.7 + s.urgency * .5), tmpC);
+          putRing(v.x, .03, v.z, v.S * (1.2 + f * 1.4), -.05, (1 - f) * s.need * (.7 + s.urgency * .5), tmpC);
         }
       }
-      ringMesh.count = ri; ringMesh.instanceMatrix.needsUpdate = true; ringAttr.needsUpdate = true; if (ringMesh.instanceColor) ringMesh.instanceColor.needsUpdate = true;
+      ringMesh.count = ri; ringMesh.visible = ri > 0;
 
-      // Board shockwaves
+      // Board shockwaves: the front should move under a third of its width a frame while it's bright enough to see.
       for (let i = 0; i < 6; i++) {
         const r = ripples[i], f = (lt - r.t0) / r.dur;
         if (f < 0 || f >= 1 || reduced) { ripU[i].set(0, 0, 0, 0); continue; }
-        ripU[i].set(r.x, r.z, r.r * kit.easeOutCubic(f * .85 + .15 * f), r.str * Math.pow(1 - f, 1.4)); ripC[i].copy(r.col); ripW[i] = r.w;
+        const str = r.str * Math.pow(1 - f, 1.4);
+        ripU[i].set(r.x, r.z, r.r * kit.easeOutCubic(f * .85 + .15 * f), str); ripC[i].copy(r.col); ripW[i] = r.w;
+        if (onScreen(r.x, r.z, r.r)) pace = Math.max(pace, kit.clamp(r.r * 3 * (1 - f) ** 2 / r.dur / (r.w * .3) * Math.min(1, str * 5), 3, 60));
       }
 
       // Hover and selection brackets lock on around the chip.
@@ -1143,13 +1361,22 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       for (const n of world.nodes) { if (n.selected) sel = n; else if (n.hovered) hov = n; }
       placeBracket(selB, sel, 'select', 1);
       placeBracket(hovB, hov, 'hover', .45);
+
+      for (const sp of spans) flush(sp);
+      if (reduced) pace = 0;
+      return camChanged ? Math.max(pace, 30) : pace;
     }
 
+    // Rings are written in place, and only what changed goes up: a ring is a flat scale and a spot (matrix elements 0, 10, 12–14;
+    // the rest stay identity).
     let ri = 0;
     function putRing(x, y, z, radius, th, a, col) {
       if (ri >= MAXR) return;
-      m4.compose(pv.set(x, y, z), qI, sv.set(radius, 1, radius)); ringMesh.setMatrixAt(ri, m4); ringMesh.setColorAt(ri, col);
-      ringAttr.array[ri * 2] = th; ringAttr.array[ri * 2 + 1] = a; ri++;
+      const M = ringMesh.instanceMatrix.array, o = ri * 16, R = ringAttr.array, k = ri * 2, f = Math.fround;
+      if (M[o] !== f(radius) || M[o + 12] !== f(x) || M[o + 13] !== f(y) || M[o + 14] !== f(z)) { M[o] = M[o + 10] = radius; M[o + 12] = x; M[o + 13] = y; M[o + 14] = z; touch(rMSp, o, 15); }
+      set3(rCSp, ri * 3, col.r, col.g, col.b);
+      if (R[k] !== f(th) || Math.abs(R[k + 1] - a) > 1e-3) { R[k] = th; R[k + 1] = a; touch(rASp, k, 2); }
+      ri++;
     }
     function placeBracket(mesh, n, key, a) {
       mesh.visible = !!n;
@@ -1157,12 +1384,18 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       const k = n.s[key];
       let x = n.pos.x, y, z = n.pos.z, S;
       if (n.kind === 'you') { y = youG.position.y + .36; S = 2.25; }
-      else { const v = byNode.get(n); x = v.x; z = v.z; y = v.top + .02; S = Math.max(...v.d.foot) * 1.15; }
+      else { const v = byNode.get(n); x = v.x; z = v.z; y = v.top + .02; S = v.S * 1.15; }
       mesh.position.set(x, y, z); mesh.scale.setScalar(S * (1.12 + (1 - k) * (ctx.reduced ? 0 : .5)));
       mesh.material.uniforms.uA.value = k * a;
     }
 
-    return { update, event };
+    // The textures, render targets and materials below are the build's own; disposeTree takes the meshes' (skipping kept ones).
+    function dispose() {
+      dead = true;
+      for (const m of Object.values(lcdMats)) m.dispose();
+    }
+
+    return { update, event, dispose };
   },
 };
 
@@ -1261,19 +1494,46 @@ function design(n, r) {
 }
 const put = (d, t, x, y, z, hx, h, hz, color, ry = 0, rx = 0) => d.parts.push([t, x, y, z, hx, h, hz, color, ry, rx]);
 // A display module: its own board with a bezel round the glass (the glass is drawn by the look) and a pin header on the
-// edge facing its chip, where its bus comes in.
-function display(d, { x, z, header: [hx, hz] }, { w, h }) {
+// edge facing its chip, where its bus comes in (hp; a widened display's header stays its standard width).
+function display(d, { x, z, w, h, w0, hp, header: [hx, hz] }) {
   put(d, BOX, x, 0, z, w / 2 + .16, .04, h / 2 + .16, 0x0a221c);
   put(d, BOX, x, .04, z, w / 2 + .07, .06, h / 2 + .07, 0x040507);
-  const n = Math.max(3, Math.floor((hx ? h : w) * .5 / .16));
+  const n = Math.max(3, Math.floor((hx ? h : w0) * .5 / .16));
   for (let i = 0; i < n; i++) {
     const t = (i - (n - 1) / 2) * .16;
-    if (hx) put(d, METAL, x + hx * (w / 2 + .14), 0, z + t, .05, .055, .035, TIN);
-    else put(d, METAL, x + t, 0, z + hz * (h / 2 + .14), .035, .055, .05, TIN);
+    if (hx) put(d, METAL, x + hx * (w / 2 + .14), 0, hp[1] + t, .05, .055, .035, TIN);
+    else put(d, METAL, hp[0] + t, 0, z + hz * (h / 2 + .14), .035, .055, .05, TIN);
   }
 }
 let measurer = null;
 const measure = (s, em) => { measurer ||= document.createElement('canvas').getContext('2d'); measurer.font = `600 100px ${DISPLAY}`; return measurer.measureText(s).width / 100 * em; };
+// Display text width in canvas pixels, at px.
+const mono = (s, px) => { measurer ||= document.createElement('canvas').getContext('2d'); measurer.font = `400 ${px}px ${FONT}`; return measurer.measureText(s).width; };
+// Greedy wrap into at most `max` rows of width W (width(text) measures): a row breaks at a space, or after / _ . - :, if that
+// keeps it at least 40% full, else mid-word. The last row takes the rest; the caller clips it.
+function wrap(t, W, width, max) {
+  const rows = [];
+  let s = t;
+  while (s && rows.length < max - 1 && width(s) > W) {
+    let n = 1, hi = s.length - 1;
+    while (n < hi) { const m = (n + hi + 1) >> 1; if (width(s.slice(0, m)) <= W) n = m; else hi = m - 1; }
+    let cut = n, skip = 0;
+    for (let i = n; i >= Math.max(1, Math.ceil(n * .4)); i--) {
+      if (s[i] === ' ') { cut = i; skip = 1; break; }
+      if ('/_.-:'.includes(s[i - 1])) { cut = i; break; }
+    }
+    rows.push(s.slice(0, cut).trimEnd()); s = s.slice(cut + skip).trimStart();
+  }
+  if (s) rows.push(s);
+  return rows;
+}
+// Too wide for W: cut on a whole character and end in an ellipsis.
+function clip(t, W, width) {
+  if (width(t) <= W) return t;
+  let n = 0, hi = t.length - 1;
+  while (n < hi) { const m = (n + hi + 1) >> 1; if (width(`${t.slice(0, m)}…`) <= W) n = m; else hi = m - 1; }
+  return `${t.slice(0, n).trimEnd()}…`;
+}
 // Sessions are the focus: their packages come a size up.
 function grow(d, k) {
   for (const p of d.parts) { p[1] *= k; p[3] *= k; p[4] *= k; p[6] *= k; }

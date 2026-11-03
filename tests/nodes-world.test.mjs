@@ -47,3 +47,25 @@ test('usage windows become 0..1 gauges', () => {
   const [account] = usageOf([{ provider: 'claude', name: 'Claude Code', windows: [{ label: '5-hour', usedPercent: 64, resetsAt: 1 }, { label: 'Weekly', usedPercent: 120 }] }]);
   assert.deepEqual(account.windows.map(w => [w.label, w.used]), [['5h', .64], ['week', 1]]);
 });
+
+test('a poll that says nothing new leaves the board still', () => {
+  const world = createWorld(), list = () => [session('a'), session('b', { project: 'web' })];
+  world.sync({ sessions: list() }); const version = world.version;
+  world.sync({ sessions: list() });
+  assert.equal(world.version, version);
+  world.sync({ sessions: list(), usage: [{ provider: 'claude', windows: [] }] });
+  assert.equal(world.version, version + 1);
+  world.remove('a'); world.sync({ sessions: list(), usage: [{ provider: 'claude', windows: [] }] }); // the same again: still back
+  assert.equal(world.byId('a').present, true);
+});
+
+test('without the wander, a spring keeps the board moving until it lands', () => {
+  const world = createWorld(); world.motion = { zeta: 1, k: 110, drift: 0, kick: 0 };
+  world.sync({ sessions: [session('a')] });
+  const a = world.byId('a'); a.pos.x += 2;
+  let frames = 0;
+  do { world.update(1 / 60); frames++; } while (world.stir && frames < 600);
+  assert.equal(world.stir, '');
+  assert.ok(a.pos.distanceTo(a.rest) < 1e-9, 'landed on its rest');
+  const at = a.pos.clone(); world.update(.05); assert.ok(a.pos.equals(at), 'and stays there');
+});

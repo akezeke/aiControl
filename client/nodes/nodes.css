@@ -14,16 +14,17 @@
 .nodes-scene .lbl { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; white-space: nowrap; color: var(--label);
   text-shadow: 0 0 6px var(--label-halo), 0 0 2px var(--label-halo); will-change: transform; transition: opacity .25s; }
 .nodes-scene .lbl b { font-weight: 600; font-size: 12px; font-family: var(--display); }
-.nodes-scene .lbl span { font-size: 11px; color: var(--label-sub); font-family: var(--mono); max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+.nodes-scene .lbl span { font-size: 11px; color: var(--label-sub); font-family: var(--mono); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 .nodes-scene .lbl.project b { font-size: 11px; font-weight: 500; letter-spacing: .06em; color: var(--label-sub); }
 .nodes-scene .lbl.session b { font-size: 12.5px; }
 .nodes-scene .lbl.you b { font-size: 13px; }
 .nodes-scene .lbl.need span { color: var(--need); }
 .nodes-scene .lbl.error span { color: var(--err); }
 .nodes-scene .lbl.hide { opacity: 0; }
-/* Brief: the name alone, cut to BRIEF in nodes.js. On: the name on its node, as wide as the node allows (max-width from nodes.js). */
+/* Brief: the name alone, cut to --brief (BRIEF_WIDE, TWO or BRIEF in nodes.js), with .two on two lines. On: the name on its node, as wide as the node allows (max-width from nodes.js). */
 .nodes-scene .lbl:is(.brief, .on) span { display: none; }
-.nodes-scene .lbl.brief b { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.nodes-scene .lbl.brief b { max-width: var(--brief, 150px); overflow: hidden; text-overflow: ellipsis; }
+.nodes-scene .lbl.brief.two b { white-space: normal; text-wrap: balance; text-align: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .nodes-scene .lbl.on b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .nodes-scene .lbl:is(.on, .sub).need b { color: var(--need); }
 .nodes-scene .lbl:is(.on, .sub).error b { color: var(--err); }

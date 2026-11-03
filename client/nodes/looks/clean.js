@@ -48,9 +48,21 @@ const SHOT_HALF = (OUTLINE.shot.A + .1) * SCALE.session, SHOT_GAP = .55, LIFT = 
 const needs = n => n.status === 'permission' || n.status === 'question', busy = n => n.status === 'working' || n.status === 'thinking' || n.status === 'compacting';
 // Per node, across rebuilds (the look is built again whenever sessions come or go): press, pop, height, gauge.
 const keep = new WeakMap();
+// The room light the keys reflect, made once per renderer: building it takes a PMREM pass, and the look is rebuilt whenever a
+// session comes or goes. userData.keep: the rebuild's disposeTree leaves it alone.
+const envs = new WeakMap();
+function roomEnv(THREE, renderer) {
+  let tex = envs.get(renderer);
+  if (!tex) {
+    const pmrem = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment();
+    tex = pmrem.fromScene(room, .04).texture; tex.userData.keep = true;
+    room.dispose(); pmrem.dispose(); envs.set(renderer, tex);
+  }
+  return tex;
+}
 
 const FACE_FRAG = /* glsl */`
-uniform float uKind, uTime, uAnim, uWork, uThink, uCompact, uNeed, uWait, uError, uOff, uCtx, uProv, uMode, uCount, uUrg, uPress, uSides, uP, uRot, uFlash;
+uniform float uKind, uTime, uClock, uAnim, uWork, uThink, uCompact, uNeed, uWait, uError, uOff, uCtx, uProv, uMode, uCount, uUrg, uPress, uSides, uP, uRot, uFlash;
 uniform vec3 uCol, uTop, uTrack, uInk, uAccent, uProj, uAmber, uRed, uGreen, uBlue, uFlashCol;
 varying vec2 vUv;
 #define TAU 6.2831853
@@ -83,8 +95,8 @@ void main() {
     s = mix(s, vec3(1.), uCompact * .4 * smoothstep(.55, .95, fract(r * 3.6 + uTime * 1.2)));
     float rip = fract(uTime * (.55 + uUrg * 1.1));
     s = mix(s, vec3(1.), uAnim * uNeed * .5 * band(r, rip * .58 - .05, rip * .58, aa) * (1. - rip));
-    // Waiting: a clock hand that ticks once a second.
-    float ha = (floor(uTime) + smoothstep(0., .12, fract(uTime))) * TAU / 12.; vec2 hd = vec2(sin(ha), cos(ha)); float hp = clamp(dot(p, hd), 0., .44);
+    // Waiting: a clock hand that ticks once a second (uClock: seconds, whole ones while the board only redraws for the tick).
+    float ha = (floor(uClock) + smoothstep(0., .12, fract(uClock))) * TAU / 12.; vec2 hd = vec2(sin(ha), cos(ha)); float hp = clamp(dot(p, hd), 0., .44);
     s = mix(s, vec3(1.), uWait * (1. - smoothstep(.045 - aa, .045 + aa, length(p - hd * hp))));
     s = mix(s, uTop, uOff * .8);
     float face = disc(p, .62, aa);
@@ -180,6 +192,33 @@ function fit(g, text, w) {
   while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (g.measureText(text.slice(0, mid) + '…').width <= w) lo = mid; else hi = mid - 1; }
   return text.slice(0, lo).trimEnd() + '…';
 }
+// A name over two lines of w: as many whole words as fit on the first (a long word breaks where it runs out), the rest on the
+// second, with an ellipsis if that runs over too.
+function wrap(g, text, w, out) {
+  let cut = 0;
+  for (let i = text.indexOf(' ', 1); i > 0; i = text.indexOf(' ', i + 1)) { if (g.measureText(text.slice(0, i)).width > w) break; cut = i; }
+  if (!cut) {
+    let lo = 1, hi = text.length;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (g.measureText(text.slice(0, mid)).width <= w) lo = mid; else hi = mid - 1; }
+    out[0] = text.slice(0, lo); out[1] = fit(g, text.slice(lo), w);
+  } else { out[0] = text.slice(0, cut); out[1] = fit(g, text.slice(cut + 1).trimStart(), w); }
+}
+// A tile's display, roomiest first: the name's size and baseline(s), the status line's, all as fractions of the display's height,
+// and the zoom it takes (z: how far past just-legible, 1 being the .36-high name at 8.5px) for the name to stay as big on screen as
+// the first one's at its smallest. A session's name drops a size, then goes to two lines, before it's cut short; a subagent's goes
+// from beside its status to a row of its own.
+const NAME_FONT = px => `600 ${px}px Geist, system-ui, sans-serif`, STATUS_FONT = px => `500 ${px}px "Geist Mono", ui-monospace, monospace`;
+const LAYOUT = {
+  session: [{ nf: .36, ny: .45, sf: .26, sy: .82, z: 0 }, { nf: .31, ny: .44, sf: .26, sy: .82, z: .36 / .31 },
+    { nf: .28, ny: .44, sf: .26, sy: .82, z: .36 / .28 }, { nf: .28, ny: .29, ny2: .6, sf: .23, sy: .87, z: .36 / .28, wrap: true }],
+  sub: [{ nf: .4, ny: .64, sf: .32, sy: .64, z: 0, row: .55 }, { nf: .36, ny: .43, sf: .29, sy: .82, z: .4 / .36, wrap: true }],
+};
+// The wait printed after a needs-you status (kit.fmtWait) changes only when this does.
+const waitStep = s => s < 60 ? Math.max(1, Math.round(s)) : s < 3600 ? 100 + Math.floor(s / 60) : 10000 + Math.floor(s / 3600);
+// Whether x has moved off the value last acted on (a[i]) by more than a hair; if so, that becomes the new one. NaN: never acted on.
+const ch = (a, i, x) => { if (Math.abs(x - a[i]) <= 1e-3) return 0; a[i] = x; return 1; };
+const unseen = n => new Float64Array(n).fill(NaN);
+const MIX = ['work', 'think', 'compact', 'need', 'wait', 'idle', 'error', 'off'], MARK_ROT = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
 
 export default {
   id: 'clean',
@@ -304,9 +343,10 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     ctx.onResize(() => ctx.setLayout(layout));
 
     scene.background = bg;
-    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
-    const pmrem = new THREE.PMREMGenerator(renderer), env = pmrem.fromScene(new RoomEnvironment(), .04);
-    scene.environment = env.texture; scene.environmentIntensity = K.env;
+    // The shadow map is drawn only when something casting into it moves (shadowDirty, below), not every frame.
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;
+    let shadowDirty = false;
+    scene.environment = roomEnv(THREE, renderer); scene.environmentIntensity = K.env;
 
     root.add(new THREE.HemisphereLight(...K.hemi));
     const sun = new THREE.DirectionalLight('#ffffff', K.sun);
@@ -318,21 +358,25 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     function fitShadow() {
       let m = 24; for (const n of world.nodes) m = Math.max(m, Math.abs(n.rest.x) + 8, Math.abs(n.rest.z) + 6);
       Object.assign(sun.shadow.camera, { left: -m, right: m, top: m, bottom: -m }); sun.shadow.camera.updateProjectionMatrix();
+      renderer.shadowMap.needsUpdate = true;
     }
     fitShadow(); ctx.onResize(fitShadow);
 
-    // The desk: a mat with a fine grid of crosses under a lamp, plus a shadow catcher.
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.ShaderMaterial({
-      uniforms: { uBg: { value: bg }, uDot: { value: C(K.dot) } },
-      vertexShader: 'varying vec2 vP; void main(){ vec4 w = modelMatrix * vec4(position, 1.); vP = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }',
-      fragmentShader: `uniform vec3 uBg, uDot; varying vec2 vP;
-        void main(){ vec2 g = abs((fract(vP / 1.5 - .5) - .5) * 1.5); float aa = fwidth(vP.x) * .8, r = length(vP - vec2(0., 2.));
-          float cross = max((1. - smoothstep(.012 - aa, .012 + aa, g.x)) * step(g.y, .1), (1. - smoothstep(.012 - aa, .012 + aa, g.y)) * step(g.x, .1));
-          gl_FragColor = vec4(mix(uBg, uDot, .75 * cross * (1. - smoothstep(24., 60., r))) * (1. - .08 * smoothstep(16., 70., r)), 1.); }`,
-    }));
-    floor.rotation.x = -Math.PI / 2; root.add(floor);
-    const catcher = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.ShadowMaterial({ color: K.shade[0], opacity: K.shade[1] }));
-    catcher.rotation.x = -Math.PI / 2; catcher.position.y = .002; catcher.receiveShadow = true; root.add(catcher);
+    // The desk: a mat with a fine grid of crosses under a lamp, taking the shadows. One opaque plane: the grid is drawn in the
+    // shadow material's own pass, so the screen isn't filled twice (as a mat and then a see-through shadow catcher over it).
+    const deskMat = new THREE.ShadowMaterial({ color: K.shade[0], opacity: K.shade[1] }), dot = C(K.dot);
+    deskMat.transparent = false;
+    deskMat.onBeforeCompile = sh => {
+      sh.uniforms.uBg = { value: bg }; sh.uniforms.uDot = { value: dot };
+      sh.vertexShader = 'varying vec2 vP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vP = (modelMatrix * vec4(transformed, 1.)).xz;');
+      sh.fragmentShader = 'uniform vec3 uBg, uDot; varying vec2 vP;\n' + sh.fragmentShader.replace('gl_FragColor = vec4( color, opacity * ( 1.0 - getShadowMask() ) );', `
+        vec2 g = abs((fract(vP / 1.5 - .5) - .5) * 1.5); float aa = fwidth(vP.x) * .8, r = length(vP - vec2(0., 2.));
+        float cr = max((1. - smoothstep(.012 - aa, .012 + aa, g.x)) * step(g.y, .1), (1. - smoothstep(.012 - aa, .012 + aa, g.y)) * step(g.x, .1));
+        vec3 desk = mix(uBg, uDot, .75 * cr * (1. - smoothstep(24., 60., r))) * (1. - .08 * smoothstep(16., 70., r));
+        gl_FragColor = vec4(mix(desk, color, opacity * (1. - getShadowMask())), 1.);`);
+    };
+    const desk = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), deskMat);
+    desk.rotation.x = -Math.PI / 2; desk.receiveShadow = true; root.add(desk);
 
     const kits = Object.fromEntries(Object.entries(OUTLINE).map(([k, o]) => [k, shapeKit(THREE, kit, o)]));
     const planeGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), lampGeo = new THREE.CircleGeometry(LAMP, 64).rotateX(-Math.PI / 2);
@@ -344,7 +388,18 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     const hue = n => C(PROJ[n.project.index % PROJ.length]);
     const canvasTex = (w, h) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; return t; };
     let fontsReady = false;
-    Promise.all(['600 20px Geist', '500 20px "Geist Mono"'].map(f => document.fonts?.load(f))).then(() => { fontsReady = true; }, () => {});
+    // Outside update, so ask for a frame: an idle board draws none of its own.
+    Promise.all(['600 20px Geist', '500 20px "Geist Mono"'].map(f => document.fonts?.load(f))).then(() => { fontsReady = true; ctx.wake(); }, () => {});
+    // Shared by every display: the lamps' clock (seconds, real time, so animations keep their speed at any frame pace), the wait
+    // hand's, and whether anything animates at all.
+    const timeU = { value: 0 }, clockU = { value: 0 }, animU = { value: 1 };
+    const palC = MIX.map(k => C(PAL[k]));
+    // kit.statusColor without its per-call colour parsing: the status colours blended by the smoothed signals.
+    function statusMix(s, out) {
+      let r = 0, gr = 0, b = 0, total = 0;
+      for (let i = 0; i < 8; i++) { const w = s[MIX[i]]; if (!(w >= .001)) continue; const c = palC[i]; r += c.r * w; gr += c.g * w; b += c.b * w; total += w; }
+      return total > 0 ? out.setRGB(r / total, gr / total, b / total) : out.copy(palC[5]);
+    }
 
     // One key per node: a group (height off the desk, size) holding the housing, the plunger and the cap with its display;
     // a contact shadow and a coloured spill of light stay on the desk. A tile's display is a canvas of its text, with the
@@ -359,9 +414,10 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       const shaft = new THREE.Mesh(sk.shaft, shaftMat); shaft.position.y = BASE_H * S; group.add(shaft);
       const cap = new THREE.Group(); group.add(cap);
       const color = kind === 'you' ? C(K.you) : kind === 'project' ? C(K.key).lerp(hue(n), K.tint) : C(K.key);
-      const mat = new THREE.MeshPhysicalMaterial({ color, roughness: kind === 'you' ? .4 : .52, clearcoat: .2, clearcoatRoughness: .45, sheen: .15, sheenRoughness: .8, sheenColor: '#ffffff', envMapIntensity: .9 });
+      // Standard, not physical: the faint clearcoat and sheen cost a second specular lobe and a sheen term on every cap pixel.
+      const mat = new THREE.MeshStandardMaterial({ color, roughness: kind === 'you' ? .4 : .52, envMapIntensity: .9 });
       const body = new THREE.Mesh(sk.cap, mat); body.castShadow = true; body.scale.set(S, S * hy, S); cap.add(body);
-      const uniforms = { uKind: { value: { session: 0, sub: 1, project: 2, you: 3 }[kind] }, uTime: { value: 0 }, uAnim: { value: 1 }, uWork: { value: 0 }, uThink: { value: 0 }, uCompact: { value: 0 },
+      const uniforms = { uKind: { value: { session: 0, sub: 1, project: 2, you: 3 }[kind] }, uTime: timeU, uClock: clockU, uAnim: animU, uWork: { value: 0 }, uThink: { value: 0 }, uCompact: { value: 0 },
         uNeed: { value: 0 }, uWait: { value: 0 }, uError: { value: 0 }, uOff: { value: 0 }, uCtx: { value: 0 }, uProv: { value: { claude: 0, codex: 1, opencode: 2 }[n.provider] ?? 0 },
         uMode: { value: n.mode === 'plan' ? 1 : n.mode === 'bypass' ? 2 : 0 }, uCount: { value: 0 }, uUrg: { value: 0 }, uPress: { value: 0 }, uFlash: { value: 0 }, uFlashCol: { value: new THREE.Color() },
         uSides: { value: tile ? 0 : o.sides }, uP: { value: o.p || 2 }, uRot: { value: o.rot || 0 },
@@ -369,9 +425,15 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       for (const k in shared) uniforms[k] = { value: shared[k] };
       if (kind === 'you') uniforms.uTop = { value: C(K.youTop) };
       const faceMat = new THREE.ShaderMaterial({ uniforms, vertexShader: FACE_VERT, fragmentShader: FACE_FRAG, polygonOffset: true, polygonOffsetFactor: -1 });
-      const v = { n, S, hy, o, sk, st, tile, group, shaft, shaftMat, cap, body, mat, color, uniforms, top: 0, tilt: (n.seed % 628) / 100, side: 1, textKey: '' };
+      // sh: what the shadow map was last drawn with (see ch).
+      const v = { n, S, hy, o, sk, st, tile, group, shaft, shaftMat, cap, body, mat, color, uniforms, top: 0, tilt: (n.seed % 628) / 100, side: 1, sh: unseen(8) };
       if (tile) {
         v.tex = canvasTex(Math.round(2 * sk.hx * S * PX), Math.round(2 * sk.hz * S * PX));
+        // The display's text: the layouts it can take, its text area, and what it was last drawn from (k*) and with.
+        const W = v.tex.image.width, px = W / (2 * sk.hx);
+        Object.assign(v, { L: LAYOUT[kind], lampW: (2 * LAMP + .3) * px, pad: .16 * px, lay: -1, nw: 0, nwOf: null, nwFonts: false, kName: null, kText: null, kStatus: null,
+          kWait: 0, kDone: 0, kTotal: 0, kSide: 0, kFonts: false, lines: ['', ''], two: false, nameFont: '', statusFont: '', nameCol: '', col: '', ny: 0, ny2: 0, sy: 0, sf: 0,
+          x0: 0, sx: 0, end: 0, shown: '', pips: 0, pipDone: 0, pipX: 0, pipD: 0, pipGap: 0 });
         const display = new THREE.Mesh(sk.face, new THREE.MeshBasicMaterial({ map: v.tex, polygonOffset: true, polygonOffsetFactor: -1 }));
         display.position.y = H - DISH + .002; body.add(display); v.display = display; v.textMat = display.material;
         faceMat.polygonOffsetFactor = -2; faceMat.polygonOffsetUnits = -2; v.lamp = new THREE.Mesh(lampGeo, faceMat); v.lamp.position.y = H - DISH + .006; body.add(v.lamp);
@@ -410,41 +472,78 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       const w = titleW(p.name), tex = canvasTex(w, 84);
       const m = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
       m.scale.set(w / TPX, 1, 84 / TPX); m.renderOrder = -1; root.add(m);
-      return { p, m, tex, text: p.name.toUpperCase(), w, drawn: null };
+      return { p, m, tex, text: p.name.toUpperCase(), w, dir: 0, fonts: null };
     });
     function drawTitle(t, dir) {
       const g = t.tex.image.getContext('2d'), h = t.tex.image.height;
       g.clearRect(0, 0, t.w, h); g.font = TITLE_FONT; g.fillStyle = K.text; g.globalAlpha = .85; g.textBaseline = 'middle';
       g.textAlign = dir > 0 ? 'left' : 'right'; g.fillText(t.text, dir > 0 ? 6 : t.w - 6, h / 2 + 3); g.globalAlpha = 1;
-      t.tex.needsUpdate = true; t.drawn = `${fontsReady}${dir}`;
+      t.tex.needsUpdate = true; t.dir = dir; t.fonts = fontsReady;
     }
-    // A tile's text: the name in bold, what it's doing in mono below (amber when it needs you), plan steps as pips.
+    // A tile's text: the name in bold, what it's doing in mono below (amber when it needs you), plan steps as pips. The name takes
+    // the roomiest layout it fits whole in at this zoom (LAYOUT); hysteresis keeps a tile from flipping at a threshold.
     const lineOf = n => needs(n) ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text;
-    function drawTile(v) {
-      const n = v.n, line = lineOf(n), key = [n.name, line, n.status, n.plan?.done, n.plan?.total, v.side, fontsReady].join('|');
-      if (key === v.textKey) return;
-      v.textKey = key;
-      const cv = v.tex.image, g = cv.getContext('2d'), W = cv.width, h = cv.height, px = W / (2 * v.sk.hx), lampW = (2 * LAMP + .3) * px, pad = .16 * px;
-      const x0 = v.side > 0 ? lampW : pad, x1 = v.side > 0 ? W - pad : W - lampW, sub = n.kind === 'sub';
-      const col = needs(n) ? K.need : n.status === 'error' ? K.err : n.status === 'idle' || n.status === 'offline' ? K.muted : K.ink;
-      g.fillStyle = K.top; g.fillRect(0, 0, W, h); g.textBaseline = 'alphabetic';
-      if (sub) {
-        g.font = `600 ${h * .4}px Geist, system-ui, sans-serif`; g.fillStyle = K.text;
-        const name = fit(g, n.name, (x1 - x0) * .55); g.fillText(name, x0, h * .64);
-        const nx = x0 + g.measureText(name).width + h * .2;
-        g.font = `500 ${h * .32}px "Geist Mono", ui-monospace, monospace`; g.fillStyle = col; g.fillText(fit(g, line, x1 - nx), nx, h * .64);
-      } else {
-        g.font = `600 ${h * .36}px Geist, system-ui, sans-serif`; g.fillStyle = n.status === 'offline' ? K.muted : K.text; g.fillText(fit(g, n.name, x1 - x0), x0, h * .45);
-        let end = x1;
-        if (n.plan) {
-          const t = n.plan.total, d = h * .12, gap = h * .05, pw = t * (d + gap);
-          if (pw < (x1 - x0) * .35) {
-            end = x1 - pw - h * .1;
-            for (let i = 0; i < t; i++) { g.fillStyle = i < n.plan.done ? K.ink : K.track; g.fillRect(x1 - pw + i * (d + gap) + gap, h * .82 - d, d, d); }
-          }
-        }
-        g.font = `500 ${h * .26}px "Geist Mono", ui-monospace, monospace`; g.fillStyle = col; g.fillText(fit(g, line, end - x0), x0, h * .82);
+    function layoutOf(v, zr) {
+      const L = v.L, n = v.n;
+      if (v.nwOf !== n.name || v.nwFonts !== fontsReady) { measure.font = NAME_FONT(v.tex.image.height * L[0].nf); v.nw = measure.measureText(n.name).width; v.nwOf = n.name; v.nwFonts = fontsReady; }
+      const room = v.tex.image.width - v.lampW - v.pad;
+      for (let i = 0; i < L.length; i++) if (!L[i].wrap && zr >= L[i].z * (i === v.lay ? .97 : 1) && v.nw * L[i].nf / L[0].nf <= room * (L[i].row || 1) * .99) return i;
+      for (let i = 0; i < L.length; i++) if (L[i].wrap && zr >= L[i].z * (i === v.lay ? .97 : 1)) return i;
+      for (let i = L.length - 1; i > 0; i--) if (!L[i].wrap && zr >= L[i].z * (i === v.lay ? .97 : 1)) return i;
+      return 0;
+    }
+    // Where everything goes in layout lay, and the name as it'll print.
+    function layTile(v, g, lay) {
+      const n = v.n, L = v.L[lay], W = v.tex.image.width, h = v.tex.image.height, sub = n.kind === 'sub';
+      const x0 = v.side > 0 ? v.lampW : v.pad, x1 = v.side > 0 ? W - v.pad : W - v.lampW;
+      v.nameFont = NAME_FONT(h * L.nf); v.statusFont = STATUS_FONT(h * L.sf); v.ny = L.ny; v.sy = L.sy; v.sf = L.sf; v.x0 = x0;
+      v.nameCol = !sub && n.status === 'offline' ? K.muted : K.text;
+      v.col = needs(n) ? K.need : n.status === 'error' ? K.err : n.status === 'idle' || n.status === 'offline' ? K.muted : K.ink;
+      g.font = v.nameFont;
+      v.two = !!L.wrap && !sub;
+      if (v.two) { wrap(g, n.name, x1 - x0, v.lines); v.ny2 = L.ny2; } else { v.lines[0] = fit(g, n.name, (x1 - x0) * (L.row || 1)); v.lines[1] = ''; }
+      v.sx = L.row ? x0 + g.measureText(v.lines[0]).width + h * .2 : x0; v.end = x1; v.pips = 0;
+      if (n.plan && !sub) {
+        const t = n.plan.total, d = h * L.sf * .46, gap = h * L.sf * .19, pw = t * (d + gap);
+        if (pw < (x1 - x0) * .35) Object.assign(v, { end: x1 - pw - h * .1, pips: t, pipDone: n.plan.done, pipX: x1 - pw, pipD: d, pipGap: gap });
       }
+    }
+    function statusText(v, g) { g.font = v.statusFont; return fit(g, lineOf(v.n), v.end - v.sx); }
+    function paintTile(v, g) {
+      const W = v.tex.image.width, h = v.tex.image.height;
+      g.fillStyle = K.top; g.fillRect(0, 0, W, h); g.textBaseline = 'alphabetic';
+      g.font = v.nameFont; g.fillStyle = v.nameCol; g.fillText(v.lines[0], v.x0, h * v.ny);
+      if (v.lines[1]) g.fillText(v.lines[1], v.x0, h * v.ny2);
+      for (let i = 0; i < v.pips; i++) { g.fillStyle = i < v.pipDone ? K.ink : K.track; g.fillRect(v.pipX + i * (v.pipD + v.pipGap) + v.pipGap, h * v.sy - v.pipD, v.pipD, v.pipD); }
+      g.font = v.statusFont; g.fillStyle = v.col; g.fillText(v.shown, v.sx, h * v.sy);
+    }
+    // A wait counting up changes a few characters at the end of the status line: repaint and upload only the strip from the first
+    // changed character to the line's end, from its top to the display's bottom, not the whole display. It goes through a canvas
+    // the strip's exact size: the texture flips rows on upload, so the strip lands at the texture's bottom edge.
+    const band = document.createElement('canvas'), bandG = band.getContext('2d'), bandTex = new THREE.Texture(band), bandAt = new THREE.Vector2();
+    function restatus(v, g, shown) {
+      const W = v.tex.image.width, h = v.tex.image.height, old = v.shown, m = Math.min(old.length, shown.length);
+      let p = 0; while (p < m && old.charCodeAt(p) === shown.charCodeAt(p)) p++;
+      g.font = v.statusFont;
+      const xa = Math.max(0, Math.floor(v.sx + g.measureText(shown.slice(0, p)).width) - 4);
+      const xb = Math.min(W, Math.ceil(v.sx + Math.max(g.measureText(old).width, g.measureText(shown).width)) + 6);
+      const r0 = Math.max(0, Math.floor(h * (v.sy - .9 * v.sf)) - 2), bw = xb - xa, bh = h - r0;
+      v.shown = shown;
+      if (bw <= 0) return;
+      g.save(); g.beginPath(); g.rect(xa, r0, bw, bh); g.clip(); paintTile(v, g); g.restore();
+      if (band.width !== bw || band.height !== bh) { band.width = bw; band.height = bh; }
+      bandG.drawImage(g.canvas, xa, r0, bw, bh, 0, 0, bw, bh);
+      renderer.copyTextureToTexture(bandTex, v.tex, null, bandAt.set(xa, 0));
+    }
+    function drawTile(v, zr) {
+      const n = v.n, lay = layoutOf(v, zr), plan = n.plan, done = plan ? plan.done : -1, total = plan ? plan.total : -1, wait = needs(n) ? waitStep(n.waitSec) : 0;
+      const same = lay === v.lay && n.name === v.kName && n.status === v.kStatus && done === v.kDone && total === v.kTotal && v.side === v.kSide && fontsReady === v.kFonts;
+      if (same && n.text === v.kText && wait === v.kWait) return;
+      const g = v.tex.image.getContext('2d');
+      v.kText = n.text; v.kWait = wait;
+      if (same) { const shown = statusText(v, g); if (shown !== v.shown) restatus(v, g, shown); return; }
+      Object.assign(v, { lay, kName: n.name, kStatus: n.status, kDone: done, kTotal: total, kSide: v.side, kFonts: fontsReady });
+      layTile(v, g, lay); v.shown = statusText(v, g); paintTile(v, g);
       v.tex.needsUpdate = true;
     }
 
@@ -454,7 +553,7 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     const wireMat = p => wireMats.get(p) || wireMats.set(p, new THREE.MeshStandardMaterial({ color: C(K.cable).lerp(hue(p), K.wire), roughness: .75 })).get(p);
     const links = world.nodes.filter(n => n.kind !== 'you').map(n => {
       const link = { n, child: byNode.get(n), parent: byNode.get(n.kind === 'project' ? world.you : n.parent), r: { project: .085, session: .06, sub: .04 }[n.kind], k: 1,
-        a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), len: 1, sgn: n.seed % 2 ? 1 : -1, last: [], pulses: new kit.Pulses() };
+        a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), len: 1, sgn: n.seed % 2 ? 1 : -1, last: unseen(7), on: false, pulses: new kit.Pulses() };
       link.radius = t => link.r * link.k * (1 + .5 * (1 - kit.smoothstep(.06, .32, Math.min(t, 1 - t) * link.len)));
       link.point = (t, out) => { kit.bezier(link.a, link.c, link.b, t, out); out.y = link.radius(t); return out; };
       link.tube = new kit.Tube({ segments: 22, radial: 7, radius: link.radius });
@@ -462,8 +561,8 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       return link;
     });
     const linkOf = new Map(links.map(l => [l.n, l]));
-    // Rebuild a tube only when what shapes it moved; at rest the board does no geometry work.
-    function moved(last, ...xs) { let d = false; for (let i = 0; i < xs.length; i++) if (!(Math.abs(xs[i] - last[i]) < 1e-4)) { d = true; last[i] = xs[i]; } return d; }
+    // Rebuild a tube (and redraw the shadow map) only when what shapes it moved; at rest the board does no geometry work.
+    const moved = (a, x0, x1, x2, x3, x4, x5, x6) => (ch(a, 0, x0) | ch(a, 1, x1) | ch(a, 2, x2) | ch(a, 3, x3) | ch(a, 4, x4) | ch(a, 5, x5) | ch(a, 6, x6)) > 0;
     // How far a node's housing reaches towards (dx, dz), and where a tile's lamp sits along it.
     const reach = (v, dx, dz) => v.S * (v.o.r(Math.atan2(dz, dx)) + .06) * v.group.scale.x;
     const lampX = v => -v.side * (v.sk.hx - .15 - LAMP) * v.S * v.group.scale.x;
@@ -471,7 +570,7 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     // Needs-you cords: a taut amber wire strung from the popped key's lamp to You, high enough to clear what's between, with
     // beads sliding along it towards You (quicker as the wait grows).
     const cords = world.sessions.map(n => {
-      const cord = { n, a: new THREE.Vector3(), b: new THREE.Vector3(), sag: 0, L: 1, ph: (n.seed % 97) / 97, last: [] };
+      const cord = { n, a: new THREE.Vector3(), b: new THREE.Vector3(), sag: 0, L: 1, ph: (n.seed % 97) / 97, last: unseen(7), on: false };
       cord.tube = new kit.Tube({ segments: 40, radial: 6, radius: () => .055 });
       cord.mat = new THREE.MeshStandardMaterial({ color: PAL.need, emissive: PAL.need, emissiveIntensity: .25, roughness: .4 });
       cord.mesh = new THREE.Mesh(cord.tube.geometry, cord.mat); cord.mesh.castShadow = true; cord.mesh.frustumCulled = false; cord.mesh.visible = false; root.add(cord.mesh);
@@ -479,9 +578,16 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       return cord;
     });
 
-    const instanced = (geo, mat, count, shadow) => { const m = new THREE.InstancedMesh(geo, mat, count); m.castShadow = shadow; m.count = 0; m.frustumCulled = false; m.setColorAt(0, bg); root.add(m); return m; };
-    const beads = instanced(new THREE.SphereGeometry(.12, 14, 10), new THREE.MeshStandardMaterial({ roughness: .35 }), 96, true);
-    const pearls = instanced(new THREE.SphereGeometry(.12, 12, 8), new THREE.MeshStandardMaterial({ roughness: .3, emissive: '#ffb02e', emissiveIntensity: .3 }), 192, true);
+    // Beads and pearls cast no shadow: they move on every frame they're out, and each would mean drawing the shadow map again.
+    const instanced = (geo, mat, count) => { const m = new THREE.InstancedMesh(geo, mat, count); m.count = 0; m.frustumCulled = false; m.setColorAt(0, bg); root.add(m); return m; };
+    const beads = instanced(new THREE.SphereGeometry(.12, 14, 10), new THREE.MeshStandardMaterial({ roughness: .35 }), 96);
+    const pearls = instanced(new THREE.SphereGeometry(.12, 12, 8), new THREE.MeshStandardMaterial({ roughness: .3, emissive: '#ffb02e', emissiveIntensity: .3 }), 192);
+    // Upload just the instances in use, and only on a frame that has some.
+    function upload(m, count) {
+      m.count = count; if (!count) return;
+      m.instanceMatrix.clearUpdateRanges(); m.instanceMatrix.addUpdateRange(0, count * 16); m.instanceMatrix.needsUpdate = true;
+      m.instanceColor.clearUpdateRanges(); m.instanceColor.addUpdateRange(0, count * 3); m.instanceColor.needsUpdate = true;
+    }
 
     // Selection: crop marks at a key's four corners. Hover: the same, faint.
     const markTex = kit.canvasTexture(64, (g, s) => { g.fillStyle = '#fff'; g.fillRect(0, 0, s, s * .12); g.fillRect(0, 0, s * .12, s); });
@@ -491,30 +597,35 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     });
     function markOut(set, v, amount) {
       const on = !!v && amount > .01;
-      set.forEach((m, i) => {
-        m.visible = on; if (!on) return;
+      for (let i = 0; i < 4; i++) {
+        const m = set[i]; m.visible = on; if (!on) continue;
         const sx = i === 1 || i === 2 ? 1 : -1, sz = i >= 2 ? 1 : -1, hx = (v.tile ? v.o.A + .35 : 1.4) * v.S, hz = (v.tile ? 1.35 : 1.4) * v.S;
-        m.position.set(v.group.position.x + sx * (hx - .35), .008, v.n.pos.z + sz * (hz - .35)); m.rotation.y = [0, -Math.PI / 2, Math.PI, Math.PI / 2][i]; m.material.opacity = amount;
-      });
+        m.position.set(v.group.position.x + sx * (hx - .35), .008, v.n.pos.z + sz * (hz - .35)); m.rotation.y = MARK_ROT[i]; m.material.opacity = amount;
+      }
     }
 
     // Usage: a low console beside You. Its sloped display reads YOU and how many are waiting, then a ring gauge per account
     // (outer ring its longest window, inner its shortest, the fuller one's percent in the middle) and one for spend. It
     // stands in the widest gap round You, so no cable runs under it, and redraws only when a number changes.
-    const standMat = new THREE.MeshPhysicalMaterial({ color: K.key, roughness: .55, clearcoat: .2, clearcoatRoughness: .45 });
+    const standMat = new THREE.MeshStandardMaterial({ color: K.key, roughness: .55 });
     const deck = new THREE.Group(), deckBody = new THREE.Mesh(new THREE.BufferGeometry(), standMat), deckFace = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial());
     deckBody.castShadow = true; onSlope(THREE, deckFace, LEN, SLOPE, LIP);
     deck.add(deckBody, deckFace); root.add(deck);
-    let deckCols = 0, deckSig = '', deckW = 0;
+    let deckCols = 0, deckSig = '', deckW = 0, deckUsage = null, deckQ = -1, deckFonts = false;
+    const deckSh = unseen(2);
     const pct = v => `${Math.round(v * 100)}%`, fillCol = v => v > .9 ? PAL.error : v > .7 ? K.accent : K.ink, mono = (px, w = 500) => `${w} ${px}px "Geist Mono", ui-monospace, monospace`;
     function drawDeck() {
-      const list = world.usage.filter(a => a.windows.length || a.spend).slice(0, 5), q = world.queue().length;
+      const q = world.queue().length;
+      // world.usage is a new list only when the usage changed, so most frames stop here.
+      if (world.usage === deckUsage && q === deckQ && fontsReady === deckFonts) return;
+      deckUsage = world.usage; deckQ = q; deckFonts = fontsReady;
+      const list = world.usage.filter(a => a.windows.length || a.spend).slice(0, 5);
       const sig = JSON.stringify([q, fontsReady, list.map(a => [a.label, a.windows.map(w => [w.label, Math.round(w.used * 100)]), a.spend && [Math.round(a.spend.spent), a.spend.limit]])]);
       if (sig === deckSig) return;
       deckSig = sig;
       if (list.length + 1 !== deckCols) {
         deckCols = list.length + 1; deckW = deckCols * COL + .3;
-        deckBody.geometry.dispose(); deckBody.geometry = wedge(THREE, deckW, LEN, SLOPE, LIP);
+        deckBody.geometry.dispose(); deckBody.geometry = wedge(THREE, deckW, LEN, SLOPE, LIP); shadowDirty = true;
         deckFace.scale.set(deckW - .3, LEN - .3, 1);
         deckFace.material.map?.dispose(); deckFace.material.map = canvasTex(Math.round((deckW - .3) * PX), Math.round((LEN - .3) * PX)); deckFace.material.needsUpdate = true;
         if (deckCols !== planCols) ctx.setLayout(layout);
@@ -551,9 +662,9 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     // latest screenshot on its display and a count in the corner. It rises under the pointer; a click opens the viewer. Made
     // when the first screenshot comes, redrawn when it changes.
     const SK = kits.shot, SS = SCALE.session;
-    const shotMat = new THREE.MeshPhysicalMaterial({ color: K.key, roughness: .52, clearcoat: .2, clearcoatRoughness: .45, sheen: .15, sheenRoughness: .8, sheenColor: '#ffffff', envMapIntensity: .9 });
+    const shotMat = new THREE.MeshStandardMaterial({ color: K.key, roughness: .52, envMapIntensity: .9 });
     const shotShaft = new THREE.MeshStandardMaterial({ color: SHAFT, roughness: .45 }), leadGeo = new THREE.CylinderGeometry(.06, .06, 1, 10).rotateZ(Math.PI / 2);
-    const cards = new Map(world.sessions.map(n => { const t = ctx.addTarget({ node: n, pos: new THREE.Vector3(), radius: 2, hx: SHOT_HALF, hz: (OUTLINE.shot.B + .1) * SS, action: 'shots' }); return [n, { t, pos: t.pos, group: null, shot: null, lift: 0 }]; }));
+    const cards = new Map(world.sessions.map(n => { const t = ctx.addTarget({ node: n, pos: new THREE.Vector3(), radius: 2, hx: SHOT_HALF, hz: (OUTLINE.shot.B + .1) * SS, action: 'shots' }); return [n, { t, pos: t.pos, group: null, shot: null, lift: 0, sh: unseen(5) }]; }));
     ctx.setFrame(add => { for (const b of frameBoxes) { add(b[0], b[1], 0); add(b[2], b[3], 0); } });
     function drawCard(c, shot) {
       const cv = c.tex.image, g = cv.getContext('2d'), W = cv.width, h = cv.height, m = 12, r = 16, b = shot.bitmap;
@@ -571,7 +682,7 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
     }
     function updateCard(v, c, dt) {
       const shot = v.n.s.alive > .02 ? ctx.shot(v.n) : null;
-      if (!shot) { if (c.group) c.group.visible = c.ao.visible = c.lead.visible = false; return; }
+      if (!shot) { if (c.group) { c.group.visible = c.ao.visible = c.lead.visible = false; if (ch(c.sh, 0, 0)) shadowDirty = true; } return; }
       if (!c.group) {
         c.group = new THREE.Group(); root.add(c.group);
         const base = new THREE.Mesh(SK.base, baseMat); base.scale.setScalar(SS); base.receiveShadow = true;
@@ -586,7 +697,9 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       }
       if (shot !== c.shot) { c.shot = shot; drawCard(c, shot); }
       const k = v.group.scale.x, end = (v.o.A + .1) * v.S * k, x = v.group.position.x + v.side * (end + SHOT_GAP * k + SHOT_HALF * k), z = v.n.pos.z;
-      c.lift = ctx.reduced ? +!!c.t.hovered : kit.damp(c.lift, c.t.hovered ? 1 : 0, 14, dt);
+      const goal = c.t.hovered ? 1 : 0;
+      c.lift = ctx.reduced ? goal : kit.damp(c.lift, goal, 14, dt);
+      if (Math.abs(c.lift - goal) < .002) c.lift = goal; else settling = true;
       const travel = (TRAVEL + c.lift * .08) * SS;
       c.group.visible = c.ao.visible = c.lead.visible = true;
       c.group.position.set(x, 0, z); c.group.scale.setScalar(k);
@@ -594,104 +707,141 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       c.ao.position.set(x, .004, z); c.ao.scale.set(2 * SK.ex * SS * k, 1, 2 * SK.ez * SS * k);
       c.lead.position.set(v.group.position.x + v.side * (end + SHOT_GAP * k / 2), .06, z); c.lead.scale.set(SHOT_GAP * k + .2, 1, 1);
       c.pos.set(x, .6, z);
+      if (ch(c.sh, 0, 1) | ch(c.sh, 1, x) | ch(c.sh, 2, z) | ch(c.sh, 3, k) | ch(c.sh, 4, travel)) shadowDirty = true;
     }
 
     const toolCol = Object.fromEntries(Object.entries(TOOL).map(([k, v]) => [k, C(v)]));
     const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), sv = new THREE.Vector3(), pv = new THREE.Vector3(), tmp = new THREE.Color(), p0 = new THREE.Vector3(), p1 = new THREE.Vector3();
+    const lampAt = new THREE.Vector3(), pearlC = C('#fff1d6');
+    // settling: something is still springing or fading this frame, so the next one is wanted straight away (see update's return).
+    let settling = true, springV = 0, lastNow = performance.now() / 1000, lastPace = Infinity;
 
-    // A damped spring stepped finely, so stiff ones stay stable at low frame rates.
-    function spring(o, x, v, goal, k, zeta, dt) {
+    // A damped spring stepped finely, so stiff ones stay stable at low frame rates. Returns the position, the velocity in springV;
+    // it snaps to rest once there's nothing left to see, so the board can stop drawing.
+    function spring(x, v, goal, k, zeta, dt) {
+      if (x === goal && v === 0) { springV = 0; return x; }
       const c = 2 * Math.sqrt(k) * zeta, steps = Math.min(16, Math.ceil(dt * 240)), h = steps ? dt / steps : 0;
-      for (let i = 0; i < steps; i++) { o[v] += ((goal - o[x]) * k - o[v] * c) * h; o[x] += o[v] * h; }
+      for (let i = 0; i < steps; i++) { v += ((goal - x) * k - v * c) * h; x += v * h; }
+      if (Math.abs(goal - x) < 1e-4 && Math.abs(v) < 1e-3) { x = goal; v = 0; } else settling = true;
+      springV = v; return x;
     }
+    const set = (u, x) => { if (u.value !== x) u.value = x; };
     // A click: the cap dips and comes back. A flash: the lamp lights in a colour for a moment.
     const click = (v, amt) => { if (!ctx.reduced) v.st.pv += amt; };
-    const flash = (v, color) => { if (ctx.reduced) return; v.uniforms.uFlash.value = 1; v.uniforms.uFlashCol.value.set(color); };
+    const flash = (v, color) => { if (ctx.reduced) return; v.uniforms.uFlash.value = 1; v.uniforms.uFlashCol.value.copy(color); };
     function event(type, n, data) {
       const v = byNode.get(n); if (!v) return;
       // Only real work sends beads up the cable; idle, waiting and offline keys stay quiet.
       if (type === 'tool') { if (!busy(n)) return; click(v, 3); if (!ctx.reduced) linkOf.get(n)?.pulses.add(n.kind === 'sub' ? 2.4 : 1.5, 1, toolCol[data.kind] || toolCol['']); }
       else if (type === 'spawn') { if (!ctx.reduced) { v.st.y = 1.1; v.st.vy = 0; } }
-      else if (type === 'finish') { flash(v, PAL.work); click(v, 14); }
-      else if (type === 'answer') flash(v, PAL.work);
-      else if (type === 'compacted') { flash(v, PAL.compact); click(v, 10); }
-      else if (type === 'state' && data.to === 'error') { flash(v, PAL.error); if (!ctx.reduced) v.st.jv += 3.5; }
+      else if (type === 'finish') { flash(v, palC[0]); click(v, 14); }
+      else if (type === 'answer') flash(v, palC[0]);
+      else if (type === 'compacted') { flash(v, palC[2]); click(v, 10); }
+      else if (type === 'state' && data.to === 'error') { flash(v, palC[6]); if (!ctx.reduced) v.st.jv += 3.5; }
     }
 
-    function update(dt, time) {
+    // Whether world point (x, y, z) is on screen, or near enough that its lamp or pearl would be.
+    const onScreen = (x, y, z) => { lampAt.set(x, y, z).project(camera); return Math.abs(lampAt.x) < 1.15 && Math.abs(lampAt.y) < 1.15; };
+
+    function update(dt) {
       const reduced = ctx.reduced, queue = world.queue(), youV = byNode.get(world.you);
+      // The lamps run on real time, not the board's: frames come only as often as this asks (see the end), and the board's clock
+      // steps by at most a twentieth of a second a frame. The wait hand moves in whole seconds while the board draws once a second.
+      const now = performance.now() / 1000, rdt = Math.min(.1, now - lastNow); lastNow = now;
+      set(timeU, reduced ? 0 : now % 3600); set(clockU, reduced ? 0 : lastPace > 1 ? now % 60 : Math.floor(now % 60)); set(animU, reduced ? 0 : 1);
+      settling = false;
+      let loop = 0, pulsing = false, ticking = false;
       // A screenshot key sticks out past its session's key: plan the board again when one comes.
       let shotNow = 0; for (const n of world.sessions) if (ctx.shot(n)) shotNow++;
       if (shotNow !== shotCount) { shotCount = shotNow; ctx.setLayout(layout); }
       deck.position.set(deckAt.x, 0, deckAt.z);
-      // How big a tile's name prints on screen right now, and whether a label's line of text (about 14px) fits on a key's display.
+      if (ch(deckSh, 0, deckAt.x) | ch(deckSh, 1, deckAt.z)) shadowDirty = true;
+      // Pixels a world unit, how big a tile's name prints on screen (zr: 1 at 8.5px, just legible), and whether a label's line of
+      // text (about 14px; a subagent's smaller name, 10.5px in css, from 10) fits on a key's display.
       p0.copy(world.you.pos).project(camera); p1.copy(world.you.pos).setX(world.you.pos.x + 1).project(camera);
-      legible = Math.abs(p1.x - p0.x) * ctx.size.w / 2 * .36 * 2 * kits.session.hz * SCALE.session >= 8.5;
+      const pxu = Math.abs(p1.x - p0.x) * ctx.size.w / 2, zr = pxu * .36 * 2 * kits.session.hz * SCALE.session / 8.5;
+      legible = zr >= 1;
       p1.copy(world.you.pos).setZ(world.you.pos.z + 1).project(camera);
       const deep = Math.abs(p1.y - p0.y) * ctx.size.h / 2 * 2;
-      // A subagent's key takes its smaller name (10.5px, css) from a shallower depth.
-      for (const k in onFit) onFit[k] = deep * kits[k].hz * SCALE[k] >= (k === 'sub' ? 10 : 14);
+      onFit.session = deep * kits.session.hz * SCALE.session >= 14; onFit.sub = deep * kits.sub.hz * SCALE.sub >= 10;
+      let urgent = 0; for (let i = 0; i < queue.length; i++) urgent = Math.max(urgent, queue[i].s.urgency);
       for (const v of vis) {
-        const { n, S, hy, st, group, cap, uniforms: u } = v, s = n.s;
+        const { n, S, hy, st, group, cap, uniforms: u } = v, s = n.s, sh = v.sh;
         group.visible = s.alive > .002;
-        if (!group.visible) { v.ao.visible = v.glow.visible = false; if (n.kind === 'session') updateCard(v, cards.get(n), dt); continue; }
+        if (!group.visible) {
+          v.ao.visible = v.glow.visible = false; if (ch(sh, 0, 0)) shadowDirty = true;
+          if (n.kind === 'session') updateCard(v, cards.get(n), dt);
+          continue;
+        }
         // Press: held under the pointer it bottoms out, and comes back with one crisp tick. Compacting holds it half down.
-        spring(st, 'press', 'pv', Math.max(n.pressed ? 1 : 0, s.compact * .5), 1400, reduced ? 1 : .5, dt);
-        spring(st, 'pop', 'popv', (n.kind === 'you' ? queue.length > 0 : v.tile && needs(n)) ? 1 : 0, 500, reduced ? 1 : .6, dt);
-        spring(st, 'jolt', 'jv', 0, 1100, .4, dt);
+        st.press = spring(st.press, st.pv, Math.max(n.pressed ? 1 : 0, s.compact * .5), 1400, reduced ? 1 : .5, dt); st.pv = springV;
+        st.pop = spring(st.pop, st.popv, (n.kind === 'you' ? queue.length > 0 : v.tile && needs(n)) ? 1 : 0, 500, reduced ? 1 : .6, dt); st.popv = springV;
+        st.jolt = spring(st.jolt, st.jv, 0, 1100, .4, dt); st.jv = springV;
         // A new key drops onto the desk and lands with a knock.
-        if (reduced) st.y = st.vy = 0;
-        else if (st.y > 0) { st.vy -= 40 * dt; st.y += st.vy * dt; if (st.y <= 0) { st.pv += Math.min(16, -st.vy * 3); st.y = st.vy = 0; } }
+        if (reduced) { if (st.y || st.vy) st.y = st.vy = 0; }
+        else if (st.y > 0) { settling = true; st.vy -= 40 * dt; st.y += st.vy * dt; if (st.y <= 0) { st.pv += Math.min(16, -st.vy * 3); st.y = st.vy = 0; } }
         // The gauge fills as the window does, and drains visibly when the context is compacted.
-        st.ctx = reduced ? n.ctx : n.ctx < st.ctx ? Math.max(n.ctx, st.ctx - dt * .5) : kit.damp(st.ctx, n.ctx, 4, dt);
+        if (st.ctx !== n.ctx) {
+          st.ctx = reduced ? n.ctx : n.ctx < st.ctx ? Math.max(n.ctx, st.ctx - dt * .5) : kit.damp(st.ctx, n.ctx, 4, dt);
+          if (Math.abs(st.ctx - n.ctx) < .002) st.ctx = n.ctx; else settling = true;
+        }
 
         const grow = kit.smoothstep(0, 1, s.alive), popc = kit.clamp(st.pop), press = kit.clamp(st.press, -.4, 1);
         const rest = (TRAVEL + s.hover * .06 + st.pop * POP + s.error * .1) * (1 - s.off);
         const travel = Math.max(0, rest * (1 - press)) * S;
-        group.position.set(n.pos.x + st.jolt, st.y, n.pos.z);
-        group.scale.setScalar(Math.max(.0001, grow));
-        cap.position.y = BASE_H * S + travel;
-        const sq = 1 - .03 * kit.clamp(press); v.body.scale.set(S * sq, S * hy, S * sq);
-        const tilt = s.error * (v.tile ? .08 : .11); cap.rotation.set(v.tile ? tilt : Math.cos(v.tilt) * tilt, 0, v.tile ? 0 : Math.sin(v.tilt) * tilt);
+        const gx = n.pos.x + st.jolt, scale = Math.max(.0001, grow), capY = BASE_H * S + travel, sq = 1 - .03 * kit.clamp(press), tilt = s.error * (v.tile ? .08 : .11);
+        group.position.set(gx, st.y, n.pos.z);
+        group.scale.setScalar(scale);
+        cap.position.y = capY;
+        v.body.scale.set(S * sq, S * hy, S * sq);
+        cap.rotation.set(v.tile ? tilt : Math.cos(v.tilt) * tilt, 0, v.tile ? 0 : Math.sin(v.tilt) * tilt);
+        // The keys are what cast the shadows: draw the map again only when one moved.
+        if (ch(sh, 0, 1) | ch(sh, 1, gx) | ch(sh, 2, st.y) | ch(sh, 3, n.pos.z) | ch(sh, 4, scale) | ch(sh, 5, capY) | ch(sh, 6, sq) | ch(sh, 7, tilt)) shadowDirty = true;
         v.shaft.visible = travel > .002; v.shaft.scale.set(S, Math.max(travel, .0001), S);
         v.shaftMat.color.copy(SHAFT).lerp(amber, popc).lerp(red, s.error);
         v.shaftMat.emissive.copy(amber).lerp(red, Math.max(s.error, s.urgency * .5)); v.shaftMat.emissiveIntensity = popc * .55 + s.error * .3;
         v.top = st.y + (BASE_H * S + travel + H * S * hy) * grow;
         v.mat.color.copy(v.color).lerp(OFFCAP, s.off).multiplyScalar(1 - .07 * kit.clamp(press));
 
-        u.uTime.value = reduced ? 0 : time; u.uAnim.value = reduced ? 0 : 1; u.uPress.value = kit.clamp(press);
-        u.uWork.value = reduced ? s.work * .5 : s.work; u.uThink.value = s.think; u.uCompact.value = reduced ? 0 : s.compact; u.uNeed.value = s.need;
-        u.uWait.value = s.wait; u.uError.value = s.error; u.uOff.value = s.off; u.uCtx.value = st.ctx; u.uUrg.value = s.urgency;
-        u.uFlash.value = Math.max(0, u.uFlash.value - dt * 2.2);
+        set(u.uPress, kit.clamp(press)); set(u.uWork, reduced ? s.work * .5 : s.work); set(u.uThink, s.think); set(u.uCompact, reduced ? 0 : s.compact); set(u.uNeed, s.need);
+        set(u.uWait, s.wait); set(u.uError, s.error); set(u.uOff, s.off); set(u.uCtx, st.ctx); set(u.uUrg, n.kind === 'you' ? urgent : s.urgency);
+        if (u.uFlash.value > 0) { u.uFlash.value = Math.max(0, u.uFlash.value - dt * 2.2); settling = true; }
+        // How often this key's lamp wants a frame: the lamp's own loops while it's big enough on screen to see them move.
+        const lively = v.tile ? Math.max(s.work, s.think, s.compact, s.need) > .01 : n.kind === 'you' && queue.length > 0;
+        if ((lively || s.wait > .01) && !reduced) {
+          const r = .6 * S * grow * pxu;
+          if (r >= 2 && onScreen(gx + (v.tile ? lampX(v) : 0), v.top, n.pos.z)) { if (lively) loop = Math.max(loop, r < 5 ? 15 : 30); else ticking = true; }
+        }
+        if (n.kind === 'you') set(u.uCount, queue.length);
         if (v.tile) {
-          kit.statusColor(n, PAL, u.uCol.value);
+          statusMix(s, u.uCol.value);
           v.side = bank.get(n.project)?.sx ?? 1;
           v.lamp.position.x = -v.side * (v.sk.hx - .15 - LAMP);
           const mat = legible ? v.textMat : blankMat;
           if (v.display.material !== mat) v.display.material = mat;
-          if (legible) drawTile(v);
+          if (legible) drawTile(v, zr);
           if (n.kind === 'session') updateCard(v, cards.get(n), dt);
         }
-        if (n.kind === 'you') { u.uCount.value = queue.length; u.uUrg.value = queue.reduce((m, x) => Math.max(m, x.s.urgency), 0); }
 
         // On the desk: a tight contact shadow that spreads and fades as the key leaves it, and the collar's light.
-        v.ao.visible = true; v.ao.position.set(group.position.x, .004, n.pos.z); v.ao.scale.set(2 * v.sk.ex * S * grow * (1 + st.y * .5), 1, 2 * v.sk.ez * S * grow * (1 + st.y * .5));
+        v.ao.visible = true; v.ao.position.set(gx, .004, n.pos.z); v.ao.scale.set(2 * v.sk.ex * S * grow * (1 + st.y * .5), 1, 2 * v.sk.ez * S * grow * (1 + st.y * .5));
         v.ao.material.opacity = K.ao[1] / (1 + st.y * 2.5);
         const want = popc * (.3 + s.urgency * .2) + s.error * .25;
         v.glow.visible = want > .01;
         if (v.glow.visible) {
-          v.glow.position.set(group.position.x, .006, n.pos.z); v.glow.scale.set(2 * v.sk.ex * S * grow, 1, 2.6 * v.sk.ez * S * grow);
+          v.glow.position.set(gx, .006, n.pos.z); v.glow.scale.set(2 * v.sk.ex * S * grow, 1, 2.6 * v.sk.ez * S * grow);
           v.glow.material.color.copy(amber).lerp(red, Math.max(s.error, s.urgency * .5)); v.glow.material.opacity = want * s.alive * K.glow;
         }
       }
-      const sel = vis.find(v => v.n.selected), hov = vis.find(v => v.n.hovered && !v.n.selected);
+      let sel = null, hov = null;
+      for (const v of vis) { if (v.n.selected) { if (!sel) sel = v; } else if (v.n.hovered && !hov) hov = v; }
       markOut(marks[0], sel, sel ? sel.n.s.select * .9 : 0); markOut(marks[1], hov, hov ? hov.n.s.hover * .35 : 0);
 
       for (const t of titles) {
         const b = bank.get(t.p), d = b?.title.dir;
         t.m.visible = !!b && legible && t.p.s.alive > .02;
         if (!t.m.visible) continue;
-        if (t.drawn !== `${fontsReady}${d}`) drawTitle(t, d);
+        if (t.dir !== d || t.fonts !== fontsReady) drawTitle(t, d);
         const k = byNode.get(t.p)?.group.scale.x ?? 1;
         t.m.position.set(t.p.pos.x + b.title.x * k + d * t.m.scale.x / 2, .01, t.p.pos.z + b.title.z * k);
         t.m.material.opacity = t.p.s.alive;
@@ -700,25 +850,27 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
       // Cables, and the beads riding them; a bead reaching a project carries on to You, and ticks each key it reaches.
       let bi = 0;
       for (const l of links) {
-        const ch = l.child, pa = l.parent, alive = ch.n.s.alive * (pa.n.s.alive || 1);
+        const kid = l.child, pa = l.parent, alive = kid.n.s.alive * (pa.n.s.alive || 1);
         for (const p of l.pulses.update(dt)) {
           click(pa, 2.5 * p.strength);
           if (l.n.kind === 'session') linkOf.get(l.n.project).pulses.add(.75, .8, p.data);
           if (l.n.kind === 'sub') linkOf.get(l.n.parent).pulses.add(1.5, .8, p.data);
         }
-        const A = ch.group.position, B = pa.group.position;
+        const A = kid.group.position, B = pa.group.position;
         // A tile's plug is the middle of its inner end; anything else plugs in on the side facing the other end.
-        if (ch.tile) p0.set(A.x - ch.side * (ch.o.A + .06) * ch.S * ch.group.scale.x, 0, A.z); else p0.copy(A);
+        if (kid.tile) p0.set(A.x - kid.side * (kid.o.A + .06) * kid.S * kid.group.scale.x, 0, A.z); else p0.copy(A);
         let dx = B.x - p0.x, dz = B.z - p0.z; const d = Math.hypot(dx, dz) || 1; dx /= d; dz /= d;
-        const ra = ch.tile ? 0 : reach(ch, dx, dz), rb = reach(pa, -dx, -dz);
+        const ra = kid.tile ? 0 : reach(kid, dx, dz), rb = reach(pa, -dx, -dz);
         l.mesh.visible = alive > .02 && d > ra + rb + .1;
+        if (l.mesh.visible !== l.on) { l.on = l.mesh.visible; shadowDirty = true; }
         if (!l.mesh.visible) continue;
         l.k = Math.min(1, alive * 1.2);
         if (moved(l.last, p0.x, p0.z, B.x, B.z, ra, rb, l.k)) {
           l.a.set(p0.x + dx * ra, 0, p0.z + dz * ra); l.b.set(B.x - dx * rb, 0, B.z - dz * rb); l.len = d - ra - rb;
           l.c.set((l.a.x + l.b.x) / 2 - dz * l.sgn * .04 * l.len, 0, (l.a.z + l.b.z) / 2 + dx * l.sgn * .04 * l.len);
-          l.tube.update(l.point);
+          l.tube.update(l.point); shadowDirty = true;
         }
+        if (l.pulses.list.length) pulsing = true;
         for (const p of l.pulses.list) {
           if (bi >= 96) break;
           l.point(kit.easeInOutSine(p.t), pv); pv.y += l.r * l.k * .9;
@@ -726,13 +878,14 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
           m4.compose(pv, q4, sv.setScalar(Math.max(.01, k))); beads.setMatrixAt(bi, m4); beads.setColorAt(bi, p.data); bi++;
         }
       }
-      beads.count = bi; beads.instanceMatrix.needsUpdate = true; if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
+      upload(beads, bi);
 
       // Needs-you cords run out from the lamp as the key pops and reel back in when it's answered.
       let ci = 0;
       for (const c of cords) {
         const v = byNode.get(c.n), grow = kit.clamp(v.st.pop) * c.n.s.alive;
         c.mesh.visible = grow > .01;
+        if (c.mesh.visible !== c.on) { c.on = c.mesh.visible; shadowDirty = true; }
         if (!c.mesh.visible) continue;
         const ax = v.group.position.x + lampX(v), az = v.n.pos.z, B = youV.group.position;
         let dx = B.x - ax, dz = B.z - az; const d = Math.hypot(dx, dz) || 1; dx /= d; dz /= d;
@@ -740,12 +893,17 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
           const rb = reach(youV, -dx, -dz) * .74;
           c.a.set(ax, v.top, az); c.b.set(B.x - dx * rb, youV.top, B.z - dz * rb);
           c.sag = Math.min(.3, d * .012); c.L = c.a.distanceTo(c.b);
-          c.tube.update(c.point, 0, grow);
+          c.tube.update(c.point, 0, grow); shadowDirty = true;
         }
         const urg = c.n.s.urgency;
         c.mat.color.copy(amber).lerp(red, urg * .35); c.mat.emissive.copy(c.mat.color);
-        tmp.set('#fff1d6').lerp(red, urg * .4);
-        if (!reduced) c.ph += dt * (.9 + urg * 1.8) / PEARL;
+        tmp.copy(pearlC).lerp(red, urg * .4);
+        // The pearls slide on while any of the cord shows (an end, or its middle).
+        if (!reduced) {
+          c.ph += rdt * (.9 + urg * 1.8) / PEARL;
+          const r = .12 * pxu;
+          if (r >= 1 && loop < 30 && (onScreen(c.a.x, c.a.y, c.a.z) || onScreen(c.b.x, c.b.y, c.b.z) || onScreen((c.a.x + c.b.x) / 2, c.a.y, (c.a.z + c.b.z) / 2))) loop = Math.max(loop, r < 2.5 ? 15 : 30);
+        }
         const m = Math.floor(c.L / PEARL), frac = c.ph % 1;
         for (let i = 0; i <= m && ci < 192; i++) {
           const t = (i + frac) * PEARL / c.L; if (t > grow) break;
@@ -753,11 +911,17 @@ body[data-look="clean"] .nodes-tip .dot { box-shadow: 0 0 0 2px var(--panel), 0 
           c.point(t, pv); m4.compose(pv, q4, sv.setScalar(Math.max(.01, k))); pearls.setMatrixAt(ci, m4); pearls.setColorAt(ci, tmp); ci++;
         }
       }
-      pearls.count = ci; pearls.instanceMatrix.needsUpdate = true; if (pearls.instanceColor) pearls.instanceColor.needsUpdate = true;
+      upload(pearls, ci);
 
       drawDeck();
+      if (shadowDirty) { renderer.shadowMap.needsUpdate = true; shadowDirty = false; }
+      // Frames a second this wants: every frame while anything springs or fades; the lamps' and cords' loops while they show
+      // (quarter speed when they're specks), beads at full; once a second for a wait hand; else none. Reduced motion: none but
+      // what settles.
+      lastPace = settling ? Infinity : reduced ? 0 : Math.max(loop, pulsing ? 60 : 0, ticking ? 1 : 0);
+      return lastPace;
     }
 
-    return { update, event, dispose() { env.dispose(); pmrem.dispose(); for (const k of Object.values(kits)) { k.cap.dispose(); k.base.dispose(); k.shaft.dispose(); k.face.dispose(); k.ao.dispose(); } } };
+    return { update, event, dispose() { bandTex.dispose(); for (const k of Object.values(kits)) { k.cap.dispose(); k.base.dispose(); k.shaft.dispose(); k.face.dispose(); k.ao.dispose(); } } };
   },
 };

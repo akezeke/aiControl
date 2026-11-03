@@ -65,8 +65,13 @@ export function createWorld() {
     // How nodes move, set per look: zeta < 1 overshoots (bouncy, organic looks), 1 settles without overshoot (machines); drift is the idle wander.
     motion: { zeta: .42, k: 46, drift: 1, kick: 1 },
     // Changes whenever a look has to be built again: who's on the board, and the counts looks bake into geometry.
-    structure: '' };
-  let events = [];
+    structure: '',
+    // How the board moved in the last update, for the frame pace: 'fast' (springing, or a signal still easing), 'drift' (only the idle
+    // wander), or '' (at rest).
+    stir: 'fast',
+    // Counts snapshots that changed something, so the board draws for one however it came (a console or headless sync too).
+    version: 0 };
+  let events = [], queued = null, usageKey = '', lastKey = '', lastSmooth = 0;
   const emit = (type, n, data = {}) => events.push({ type, node: n, data });
 
   // Layout from ids alone, so every device and every restart shows the same board. Projects in name order round the ring,
@@ -97,7 +102,7 @@ export function createWorld() {
     const byName = (a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0, byKey = (a, b) => a.id < b.id ? -1 : 1;
     world.projects.sort(byName);
     for (const p of world.projects) { p.sessions.sort(byKey); for (const s of p.sessions) s.subs.sort(byKey); }
-    world.sessions = world.projects.flatMap(p => p.sessions);
+    world.sessions = world.projects.flatMap(p => p.sessions); queued = null;
     world.subs = world.sessions.flatMap(s => s.subs);
     world.nodes = [you, ...world.projects, ...world.sessions, ...world.subs];
     layout();
@@ -108,10 +113,15 @@ export function createWorld() {
   function arrive(n) { n.pos.copy(world.synced && n.parent ? n.parent.pos : n.rest); if (!world.synced) n.s.alive = 1; }
 
   world.sync = (snapshot, { error = false, now = Date.now() } = {}) => {
-    world.offline = !!error; world.usage = usageOf(snapshot.usage);
+    // Most polls say nothing new: one that reads as the last changes nothing, so a still board isn't drawn for it.
+    const list = snapshot.sessions || [], usage = JSON.stringify(snapshot.usage || null), all = `${+error}${usage}${error ? '' : JSON.stringify(list)}`;
+    if (all === lastKey) return;
+    lastKey = all; world.version++; world.offline = !!error;
+    // The same array while the accounts read the same, so looks that redraw on a new one don't on every snapshot.
+    if (usage !== usageKey) { usageKey = usage; world.usage = usageOf(snapshot.usage); }
     // While the connection is down nobody is known to have left.
     if (error) return;
-    const list = snapshot.sessions || [], here = new Set(list.map(session => session.id));
+    const here = new Set(list.map(session => session.id));
     let changed = false;
     const top = list.filter(session => !session.parentId), subs = list.filter(session => session.parentId && here.has(session.parentId));
     for (const session of [...top, ...subs]) {
@@ -149,10 +159,10 @@ export function createWorld() {
     for (const n of [...world.sessions, ...world.subs]) if (n.present && !here.has(n.id)) { n.present = false; emit('despawn', n); }
     for (const p of world.projects) p.present = p.sessions.some(s => s.present);
     if (changed) { restructure(); for (const n of world.nodes) if (n.s.alive === 0 && n.present && n.pos.lengthSq() === 0) arrive(n); }
-    world.synced = true;
+    world.synced = true; queued = null;
   };
   // A session just fired from the panel leaves before the server has caught up.
-  world.remove = id => { const n = byId.get(id); if (n?.present) { n.present = false; emit('despawn', n); for (const k of n.subs || []) k.present = false; } };
+  world.remove = id => { const n = byId.get(id); queued = null; lastKey = ''; if (n?.present) { n.present = false; emit('despawn', n); for (const k of n.subs || []) k.present = false; } };
 
   // Nodes that have faded out leave the board; that changes the structure, so the look is built again without them.
   function prune() {
@@ -163,7 +173,9 @@ export function createWorld() {
   }
 
   const goal = new THREE.Vector3(), tmp = new THREE.Vector3();
+  let fastest = 0, wander = false;
   function physics(dt) {
+    fastest = 0; wander = false;
     const m = world.motion, zeta = world.reduced ? 1 : m.zeta, k = m.k, c = 2 * Math.sqrt(k) * zeta, t = world.time, drift = world.reduced ? 0 : .1 * m.drift;
     for (const n of world.nodes) {
       if (n.kind === 'you' || n.kind === 'project') goal.copy(n.rest);
@@ -174,40 +186,57 @@ export function createWorld() {
       n.vel.y += ((goal.y - n.pos.y) * k - n.vel.y * c) * dt;
       n.vel.z += ((goal.z - n.pos.z) * k - n.vel.z * c) * dt;
       n.pos.addScaledVector(n.vel, dt);
+      if (n.kind !== 'you') wander = true;
+      let v2 = n.vel.x * n.vel.x + n.vel.y * n.vel.y + n.vel.z * n.vel.z;
+      // Without the wander a spring only creeps closer for ever: land it, so a still board's frames change nothing to upload.
+      if ((!drift || n.kind === 'you') && v2 < 1e-6 && n.pos.distanceToSquared(goal) < 1e-6) { n.pos.copy(goal); n.vel.set(0, 0, 0); v2 = 0; }
+      if (v2 > fastest) fastest = v2;
     }
+    if (!drift) wander = false;
   }
 
+  // Each signal eases toward its target and lands once the rest wouldn't show; easing stays true while any is still on its way
+  // (urgency creeps over ten minutes and never counts: it follows the clock, not frames, as a still board is drawn about once a minute).
+  let easing = false;
+  const ease = (v, to, k) => { const d = to - v; if (d > .004 || d < -.004) { easing = true; return v + d * k; } return to; };
   function smooth(dt) {
-    const f = 1 - Math.exp(-dt * 6), g = 1 - Math.exp(-dt * 10), now = Date.now();
+    const f = 1 - Math.exp(-dt * 6), g = 1 - Math.exp(-dt * 10), now = Date.now(), fu = 1 - Math.exp(-Math.max(dt, lastSmooth ? Math.min(60, (now - lastSmooth) / 1000) : 0) * 6);
+    easing = false; lastSmooth = now;
     for (const n of world.nodes) {
       const s = n.s, st = n.status, live = n.kind === 'session' || n.kind === 'sub';
       s.alive = Math.max(0, Math.min(1, s.alive + (n.present ? 1 : -1) * dt * 1.6));
-      s.hover += ((n.hovered ? 1 : 0) - s.hover) * g;
-      s.select += ((n.selected ? 1 : 0) - s.select) * g;
+      if (s.alive > 0 && s.alive < 1) easing = true;
+      s.hover = ease(s.hover, n.hovered ? 1 : 0, g);
+      s.select = ease(s.select, n.selected ? 1 : 0, g);
       if (!live) continue;
       n.waitSec = needs(st) ? Math.max(0, (now - n.since) / 1000) : 0;
-      s.work += ((st === 'working' ? 1 : 0) - s.work) * f;
-      s.think += ((st === 'thinking' ? 1 : 0) - s.think) * f;
-      s.compact += ((st === 'compacting' ? 1 : 0) - s.compact) * f;
-      s.need += ((needs(st) ? 1 : 0) - s.need) * f;
-      s.wait += ((st === 'waiting' ? 1 : 0) - s.wait) * f;
-      s.idle += ((st === 'idle' ? 1 : 0) - s.idle) * f;
-      s.error += ((st === 'error' ? 1 : 0) - s.error) * f;
-      s.off += ((st === 'offline' ? 1 : 0) - s.off) * f;
-      s.heat = Math.max(0, s.heat - dt * 1.4);
-      s.urgency += ((s.need > .5 ? Math.min(1, n.waitSec / 600) : 0) - s.urgency) * f;
-      s.ctx = s.ctx === undefined ? n.ctx : s.ctx + (n.ctx - s.ctx) * f;
+      s.work = ease(s.work, st === 'working' ? 1 : 0, f);
+      s.think = ease(s.think, st === 'thinking' ? 1 : 0, f);
+      s.compact = ease(s.compact, st === 'compacting' ? 1 : 0, f);
+      s.need = ease(s.need, needs(st) ? 1 : 0, f);
+      s.wait = ease(s.wait, st === 'waiting' ? 1 : 0, f);
+      s.idle = ease(s.idle, st === 'idle' ? 1 : 0, f);
+      s.error = ease(s.error, st === 'error' ? 1 : 0, f);
+      s.off = ease(s.off, st === 'offline' ? 1 : 0, f);
+      if (s.heat > 0) { s.heat = Math.max(0, s.heat - dt * 1.4); easing = true; }
+      s.urgency += ((s.need > .5 ? Math.min(1, n.waitSec / 600) : 0) - s.urgency) * fu;
+      s.ctx = s.ctx === undefined || n.ctx === undefined ? n.ctx : ease(s.ctx, n.ctx, f);
     }
   }
 
   // Everything that happened since the last call: the snapshots' differences, then nodes that finished leaving.
-  world.update = dt => {
-    world.time += dt;
+  // elapsed: the time since the last update when that's more than dt (a slow pace), for world.time, the clock looks animate by.
+  world.update = (dt, elapsed = dt) => {
+    world.time += elapsed;
     smooth(dt); physics(dt); prune();
+    // The idle wander moves a node at about .05 a second times the look's drift (magnets add a little); springing is far faster.
+    // Without the wander a spring is 'fast' until it lands (physics): stopped short, it would creep on with every later frame.
+    world.stir = easing || fastest > (wander ? .3 * .3 * Math.max(1, world.motion.drift) ** 2 : 0) ? 'fast' : wander ? 'drift' : '';
     const out = events; events = []; return out;
   };
   world.layout = layout;
-  world.queue = () => world.sessions.filter(s => s.present && needs(s.status)).sort((a, b) => a.since - b.since);
+  // Who's waiting on you, longest first. Kept until the board changes (queued, above); callers only read it.
+  world.queue = () => queued ||= world.sessions.filter(s => s.present && needs(s.status)).sort((a, b) => a.since - b.since);
   world.byId = id => byId.get(id);
   return world;
 }

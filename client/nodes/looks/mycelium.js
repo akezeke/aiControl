@@ -5,7 +5,8 @@
 // the trunks climb the stump's roots into its bark. A soft ribbon under each cord lights the soil.
 // Read without the labels: cap glow is status, cap size and falling spores are context, pinheads round the foot are plan steps,
 // the ring on the stem is the mode, an amber hypha grows to the stump while a session needs you, and the fairy ring lights up
-// with each usage window's use. Threads and cords are rebuilt on the CPU each frame, so they follow the springs.
+// with each usage window's use. Threads and cords are fixed meshes that the vertex shader lays along each cord's centre line, which
+// the CPU works out from the springs and keeps in a float texture, uploading only what changed.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NOISE_GLSL, Pulses, Tube, statusColor, clamp, smoothstep, easeOutBack, rng, vignettePass } from '../kit.js';
@@ -44,7 +45,9 @@ const HUES = ['#4dffc8', '#5ac2ff', '#b4ff5a', '#9c8cff', '#ffe066'];
 // Cap colours of the species, before the status glow: rust, tan, cream, heather, umber, fox, olive, rose, ochre.
 const CAPS = ['#9a5a3a', '#b8925e', '#d9c9a6', '#6f5f80', '#5a4434', '#b0683c', '#7d8a5e', '#c49aa0', '#a08048'];
 const C = k => new THREE.Color(k), BUSY = new Set(['working', 'thinking', 'compacting']);
-const INST_ATTRS = ['aCol', 'aP', 'aQ'], PT_ATTRS = ['position', 'aColor', 'aSize'];
+const INST_ATTRS = ['aCol', 'aP', 'aQ'], KIND = { proj: 0, sess: 1, sub: 2, need: 3 };
+// The palette as colours: kit.statusColor would parse the strings on every call.
+const PALC = Object.fromEntries(Object.entries(PAL).map(([k, v]) => [k, new THREE.Color(v)]));
 const TOOL_C = Object.fromEntries(Object.entries(TOOL).map(([k, v]) => [k, C(v)]));
 const AMBER = C(PAL.need), EMBER = C('#ff5a24'), FOX = C('#7dffcf'), REPLY = C('#eaffd8'), WHITE = C('#f2ffe8'), SPORE = C('#e8dcc0');
 const PUFF = { work: C(PAL.work), compact: C(PAL.compact), soil: C('#8a6a48'), ash: C('#b8b0a0'), rot: C('#7a2a14') };
@@ -94,22 +97,39 @@ function create(ctx) {
   ctx.setLabelAnchor((n, out) => { out.y = 0; out.z += n.kind === 'you' ? 4.1 : n.kind === 'project' ? .95 * PK : n.kind === 'session' ? 1.6 : .75; },
     (n, out) => { const m = n.kind === 'you' ? null : n.kind === 'project' ? clusters.get(n)?.[0] : mushOf.get(n); if (m) out.set(m.top.x, m.crown + .12, m.top.z); else out.y = 1.5; });
 
+  // T is the look's clock; T0, the shaders', stands still in reduced motion, so nothing on the GPU moves by itself then.
+  // busy and springy gather, each frame, what update's pace needs: something fading or flowing, or a spring still bouncing.
   const T0 = { value: 0 };
-  let T = 0;
+  let T = 0, busy = false, springy = false;
 
   // ── Soil: leaf litter lit by the glow pools around every mushroom ──
-  const EXTENT = 110, LIGHTS = 40;
-  const lightPos = Array.from({ length: LIGHTS }, () => new THREE.Vector4(0, 0, 1, 0)), lightCol = Array.from({ length: LIGHTS }, () => new THREE.Color());
+  // The pools are splatted as soft quads into a small light map over the box they cover, redrawn only when one changes, so the
+  // ground reads one texel a pixel.
+  const EXTENT = 110, LIGHTS = 40, LM = 512;
+  const lData = new Float32Array(LIGHTS * 4), lCol = new Float32Array(LIGHTS * 3), lSeenD = new Float32Array(LIGHTS * 4), lSeenC = new Float32Array(LIGHTS * 3);
+  let lSeenN = -1;
+  const lmRT = new THREE.WebGLRenderTarget(LM, LM, { type: THREE.HalfFloatType, depthBuffer: false });
+  lmRT.texture.userData.keep = true; // disposed with its render target, in dispose()
+  const LB = new THREE.Vector4(0, 0, 1, 1); // the light map's box: x and z of its corner, 1 / its width and depth
+  const lmGeo = new THREE.InstancedBufferGeometry();
+  lmGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0], 3));
+  lmGeo.setIndex([0, 1, 2, 2, 1, 3]);
+  const aL = new THREE.InstancedBufferAttribute(lData, 4).setUsage(THREE.DynamicDrawUsage), aLC = new THREE.InstancedBufferAttribute(lCol, 3).setUsage(THREE.DynamicDrawUsage);
+  lmGeo.setAttribute('aL', aL); lmGeo.setAttribute('aLC', aLC); lmGeo.instanceCount = 0;
+  const lmMat = new THREE.ShaderMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide, uniforms: { uLB: { value: LB } },
+    vertexShader: 'attribute vec4 aL; attribute vec3 aLC; uniform vec4 uLB; varying vec2 vD; varying vec3 vC; void main(){ vD = position.xy * 3.2; vC = aLC * aL.w; vec2 w = aL.xy + vD * aL.z; gl_Position = vec4((w - uLB.xy) * uLB.zw * 2.0 - 1.0, 0.0, 1.0); }',
+    fragmentShader: 'varying vec2 vD; varying vec3 vC; void main(){ gl_FragColor = vec4(vC * exp(-dot(vD, vD)), 1.0); }' });
+  const lmScene = new THREE.Scene(), lmCam = new THREE.Camera(), lmMesh = new THREE.Mesh(lmGeo, lmMat);
+  lmMesh.frustumCulled = false; lmScene.add(lmMesh);
   const groundMat = new THREE.ShaderMaterial({
-    uniforms: { uSoil: { value: soilTexture() }, uExtent: { value: EXTENT }, uL: { value: lightPos }, uLC: { value: lightCol }, uTime: T0, uCenter: { value: new THREE.Vector2(0, 1.5) } },
+    uniforms: { uSoil: { value: soilTexture() }, uLM: { value: lmRT.texture }, uLB: { value: LB }, uExtent: { value: EXTENT }, uCenter: { value: new THREE.Vector2(0, 1.5) } },
     vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: `${NOISE_GLSL}
-      uniform sampler2D uSoil; uniform float uExtent, uTime; uniform vec4 uL[${LIGHTS}]; uniform vec3 uLC[${LIGHTS}]; uniform vec2 uCenter; varying vec3 vW;
+      uniform sampler2D uSoil, uLM; uniform float uExtent; uniform vec4 uLB; uniform vec2 uCenter; varying vec3 vW;
       void main(){
         vec3 soil = texture2D(uSoil, vW.xz / uExtent + .5).rgb;
         soil *= .82 + .36 * (snoise(vec3(vW.xz * 2.7, 0.0)) * .5 + .5);
-        vec3 light = vec3(0.0);
-        for (int i = 0; i < ${LIGHTS}; i++) { vec4 L = uL[i]; if (L.w <= 0.0) continue; vec2 d = vW.xz - L.xy; light += uLC[i] * L.w * exp(-dot(d, d) / (L.z * L.z)); }
+        vec3 light = texture2D(uLM, (vW.xz - uLB.xy) * uLB.zw).rgb;
         vec3 col = soil * (vec3(.46, .5, .6) + light * 2.3) + light * .03;
         col *= smoothstep(58.0, 24.0, length(vW.xz - uCenter));
         gl_FragColor = vec4(col, 1.0);
@@ -200,12 +220,17 @@ function create(ctx) {
   // Each mushroom keeps a seeded bow in its stem, its own sway, and a squash-and-stretch spring that events kick.
   // Stiffness varies per mushroom so a whole cluster jiggles out of step.
   function addMushroom(rec) {
-    rec.capSlot = counts[rec.shape]++; rec.stemSlot = mush.length;
     const small = rec.role !== 'session' && rec.role !== 'cluster', a = rec.seed * 2.39996, bow = (small ? .04 : .07) + ((rec.seed * 7.31) % 1) * (small ? .05 : .1);
-    Object.assign(rec, { col: new THREE.Color(), rise: rec.rise ?? 1, flash: 0, top: new THREE.Vector3(), R0: 0, bulb: 0, crown: 0, exit: null, thick: rec.thick ?? 1,
+    // Every mushroom, whatever its role, is one literal with every field, given the role's own values after: objects of mixed
+    // shapes (or fields added later) make the per-frame code that reads them megamorphic, and every number it writes an allocation.
+    const m = { node: null, role: '', shape: 0, alb: null, stem: null, pat: 0, tall: 1, wide: 1, lean: 0, ys: 1, thick: 1, h: 0, R: 0, seed: 0,
+      ox: 0, oz: 0, dx: 1, dz: 0, lx: 0, lz: 0, rise: 1, step: 0, grown: 0, hue: null, phase: 0, dist: 0, angle: 0, fi: 0, lit: 1, run: -2, rk: 0, rn: 1, body: null,
+      capSlot: 0, stemSlot: mush.length, col: new THREE.Color(), flash: 0, top: new THREE.Vector3(), R0: 0, bulb: 0, crown: 0, exit: null,
       bowX: Math.cos(a) * bow, bowZ: Math.sin(a) * bow, sway: { session: .05, sub: .075, cluster: .04, fairy: .06, plan: .03, shot: .03 }[rec.role],
-      sq: 0, sqv: 0, kv: 0, kt: 0, k: 105 + ((rec.seed * 5.3) % 1) * 70, hovOn: false, selOn: false, bx: 0, bz: 0, wx: 0, wz: 0, hh: 0 });
-    mush.push(rec); return rec;
+      sq: 0, sqv: 0, kv: 0, kt: 0, k: 105 + ((rec.seed * 5.3) % 1) * 70, hovOn: false, selOn: false, bx: 0, bz: 0, wx: 0, wz: 0, hh: 0, swx: 0, swz: 0 };
+    for (const k in rec) m[k] = rec[k];
+    m.capSlot = counts[m.shape]++;
+    mush.push(m); return m;
   }
 
   const linkOf = new Map(), needOf = new Map(), mushOf = new Map(), plans = new Map();
@@ -368,12 +393,29 @@ function create(ctx) {
   // ── Threads: every hypha is a thin ribbon turned to face the camera, one mesh for all of them ──
   // Each thread is a run of samples; a sample is two vertices. Threads never get thinner than a pixel on screen: below that they
   // widen and dim instead, so far-off threads stay continuous lines.
-  const ranges = [];
+  // The mesh never changes. A sample holds which record it reads and its place in it (aA: record, kind of thread, index, count)
+  // and its own seeded shape (aB, aC); the vertex shader lays it out from the records in a float texture, uD. Per cord: a header,
+  // its centre line (two texels a sample) and where its strands carry on, then its joins; per felt mat, tether, feeding thread
+  // or cross-thread: its ends and colour. The CPU writes the records and uploads only the rows that changed (flushData).
+  const additive = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
+  const TW = 1024; // texels in a row of uD (the shaders' i & 1023, i >> 10)
+  let texN = 0;
+  const dAlloc = n => { const s = texN; texN += n; return s; };
+  for (const L of links) L.tb = dAlloc(6 + 2 * (L.segs + 1) + 2 * L.c.cont + L.joins.length);
+  const tA = [], tB = [], tC = [], ranges = [];
   let thrN = 0;
-  const fil = n => { ranges.push(thrN, n); const s = thrN; thrN += n; return s; };
+  const run = n => { ranges.push(thrN, n); thrN += n; };
+  const smp = (a0, a1, a2, a3, b0, b1, b2, b3, c0, c1, c2, c3) => { for (let e = 0; e < 2; e++) { tA.push(a0, a1, a2, a3); tB.push(b0, b1, b2, b3); tC.push(c0, c1, c2, c3); } };
+  // A thread across a record's span (kind 2, or 3 for a cross-thread): aB.x bow, aB.yzw a wave, aC height, width, brightness, offset.
+  const span = (rb, ty, N, b0, b1, b2, b3, c0, c1, c2, c3) => { run(N + 1); for (let i = 0; i <= N; i++) smp(rb, ty, i, N, b0, b1, b2, b3, c0, c1, c2, c3); };
+  // A thread of fixed points (a branch or felt): each sample keeps its point and the step across its neighbours, for its heading.
+  const walk = (rb, ty, pts, c0, c1, c2) => {
+    const n = pts.length / 2 - 1; run(n + 1);
+    for (let j = 0; j <= n; j++) { const a = Math.max(0, j - 1) * 2, b = Math.min(n, j + 1) * 2; smp(rb, ty, j, n, pts[j * 2], pts[j * 2 + 1], pts[b] - pts[a], pts[b + 1] - pts[a + 1], c0, c1, c2, 0); }
+  };
   for (const L of links) {
-    for (const st of L.strands) st.v0 = fil(L.segs + 1 + L.c.cont);
-    for (const br of L.branches) br.v0 = fil(br.pts.length / 2);
+    for (const st of L.strands) { const n = L.segs + L.c.cont; run(n + 1); for (let k = 0; k <= n; k++) smp(L.tb, 0, k, st.ph, st.a, st.f, st.p, st.sp, st.b, st.y, st.ca, st.sa); }
+    for (const br of L.branches) walk(L.tb, 1, br.pts, br.b, br.i0, br.t0);
   }
   // Felt: a mat of short, curling rhizoids round every foot. Ring mushrooms in a cluster get a little felt and a thread back to
   // the mother's foot, and each plan pinhead a thread from its session's foot, so each reads as one organism.
@@ -381,7 +423,7 @@ function create(ctx) {
   for (const m of mush) {
     if (m.role === 'fairy' || m.role === 'plan' || m.role === 'shot') continue;
     const ring = m.role === 'cluster' && m.ox !== 0, r = rng((m.node.seed ^ 0x77) + Math.floor(m.seed * 997));
-    const n = ring ? 4 : m.role === 'cluster' ? 22 : m.role === 'session' ? 24 : 10, len = ring ? .3 * PK : m.role === 'cluster' ? .9 * PK : m.role === 'session' ? .95 : .42, thr = [];
+    const n = ring ? 4 : m.role === 'cluster' ? 22 : m.role === 'session' ? 24 : 10, len = ring ? .3 * PK : m.role === 'cluster' ? .9 * PK : m.role === 'session' ? .95 : .42, F = { m, rb: dAlloc(2), teth: -1 };
     // Two kinds: short curling felt scattered over a disc round the foot, and a few longer rhizoids reaching out from it.
     for (let i = 0; i < n; i++) {
       const felt = i % 5 < 3; let a = r() * 6.28, x, z;
@@ -389,75 +431,183 @@ function create(ctx) {
       if (!felt) a = a0;
       const pts = [x, z], step = len * (felt ? .05 + r() * .07 : .16 + r() * .14), curl = (r() - .5) * (felt ? 2.4 : 1);
       for (let k = 0; k < 4; k++) { a += curl + (r() - .5) * .9; x += Math.cos(a) * step; z += Math.sin(a) * step; pts.push(x, z); }
-      thr.push({ pts, b: (felt ? .5 + .5 * (1 - r0 / (len * .42)) : .55) * (.5 + r() * .5), v0: fil(5) });
+      walk(F.rb, 4, pts, (felt ? .5 + .5 * (1 - r0 / (len * .42)) : .55) * (.5 + r() * .5), 0, 0);
     }
-    fuzz.push({ m, thr, teth: ring ? { bow: (r() - .5) * .7, ph: r() * 6.28, v0: fil(TETH + 1) } : null });
+    if (ring) { const bow = (r() - .5) * .7, ph = r() * 6.28; F.teth = dAlloc(3); span(F.teth, 2, TETH, bow * .35, .05, 8, ph, .03, .009, 1, 0); }
+    fuzz.push(F);
   }
   const SHOT_SEG = 10;
-  for (const B of shotBodies) for (let j = 0; j < 3; j++) B.threads.push({ v0: fil(SHOT_SEG + 1), ph: j * 2.1 + B.wob[0], b: .5 + .25 * j });
+  for (const B of shotBodies) { B.rb = dAlloc(3); for (let j = 0; j < 3; j++) { const ph = j * 2.1 + B.wob[0]; span(B.rb, 2, SHOT_SEG, 0, .07, 5, ph, .03, .009, .5 + .25 * j, .12 * Math.sin(ph)); } }
   const feeders = [];
-  for (const [s, list] of plans) for (const m of list) { const r = rng(s.seed + m.step * 31); feeders.push({ s, m, bow: (r() - .5) * .5, v0: fil(FEED + 1) }); }
+  for (const [s, list] of plans) for (const m of list) { const r = rng(s.seed + m.step * 31), F = { s, m, rb: dAlloc(3) }; span(F.rb, 2, FEED, (r() - .5) * .5 * .4, 0, 0, 0, .03, .008, 1, 0); feeders.push(F); }
   // Anastomosis: neighbouring cords fuse through a few fine cross-threads.
   const bridges = [];
-  const bridge = (A, B, k, r) => { for (let i = 0; i < k; i++) { const ta = .3 + r() * .55; bridges.push({ A, B, ta, tb: clamp(ta + (r() - .5) * .25, .2, .92), bow: (r() - .5) * .7, b: .35 + r() * .35, ph: r() * 6.28, v0: fil(BR + 1) }); } };
+  const bridge = (A, B, k, r) => {
+    for (let i = 0; i < k; i++) {
+      const ta = .3 + r() * .55, tb = clamp(ta + (r() - .5) * .25, .2, .92), bow = (r() - .5) * .7, b = .35 + r() * .35, ph = r() * 6.28;
+      const X = { A, B, ta, tb, ia: near(A, ta), ib: near(B, tb), b, rb: dAlloc(3) };
+      span(X.rb, 3, BR, bow * .3, .06, 9, ph, .032, .007, 1, 0); bridges.push(X);
+    }
+  };
   for (const p of world.projects) {
     const r = rng(p.seed ^ 0xa11);
     for (let i = 0; i + 1 < p.sessions.length; i++) bridge(linkOf.get(p.sessions[i]), linkOf.get(p.sessions[i + 1]), 2 + (r() < .5 ? 1 : 0), r);
     for (const s of p.sessions) for (let i = 0; i + 1 < s.subs.length; i++) bridge(linkOf.get(s.subs[i]), linkOf.get(s.subs[i + 1]), 1, r);
   }
-  const fPos = new Float32Array(thrN * 6), fTan = new Float32Array(thrN * 6), fCol = new Float32Array(thrN * 8), fW = new Float32Array(thrN * 2), fSide = new Float32Array(thrN * 2);
+  // The records: Wd is what this frame wrote, Dd what the texture last got (its image). Fixed fields are written once here: a
+  // cord's kind, samples, carried samples, carry, bundle, thread and glow widths and joins (texels 4 and 5 of its header), and
+  // the far end (1) of every span that runs all the way.
+  const rows = Math.max(1, Math.ceil(texN / TW)), Wd = new Float32Array(rows * TW * 4), Dd = new Float32Array(rows * TW * 4);
+  for (const L of links) { const o = L.tb * 4 + 16, c = L.c; Wd[o] = KIND[L.kind]; Wd[o + 1] = L.segs; Wd[o + 2] = c.cont; Wd[o + 3] = c.carry || 0; Wd[o + 4] = c.bundle; Wd[o + 5] = c.thread; Wd[o + 6] = c.width; Wd[o + 7] = L.joins.length; }
+  for (const F of fuzz) if (F.teth >= 0) Wd[F.teth * 4 + 9] = 1;
+  for (const F of feeders) Wd[F.rb * 4 + 9] = 1;
+  for (const X of bridges) Wd[X.rb * 4 + 9] = 1;
+  let dataUp = false;
+  const dataTex = new THREE.DataTexture(Dd, TW, rows, THREE.RGBAFormat, THREE.FloatType);
+  dataTex.onUpdate = () => { dataUp = true; };
+  const fSide = new Float32Array(thrN * 2);
   for (let i = 0; i < thrN * 2; i++) fSide[i] = i % 2 ? 1 : -1;
   let quads = 0; for (let k = 1; k < ranges.length; k += 2) quads += ranges[k] - 1;
   const thrIdx = new Uint32Array(quads * 6);
   for (let k = 0, o = 0; k < ranges.length; k += 2) for (let i = 0; i < ranges[k + 1] - 1; i++, o += 6) { const a = (ranges[k] + i) * 2; thrIdx[o] = a; thrIdx[o + 1] = thrIdx[o + 4] = a + 1; thrIdx[o + 2] = thrIdx[o + 3] = a + 2; thrIdx[o + 5] = a + 3; }
   const thrGeo = new THREE.BufferGeometry();
-  thrGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3).setUsage(THREE.DynamicDrawUsage));
-  thrGeo.setAttribute('aT', new THREE.BufferAttribute(fTan, 3).setUsage(THREE.DynamicDrawUsage));
-  thrGeo.setAttribute('aCol', new THREE.BufferAttribute(fCol, 4).setUsage(THREE.DynamicDrawUsage));
-  thrGeo.setAttribute('aW', new THREE.BufferAttribute(fW, 1).setUsage(THREE.DynamicDrawUsage));
+  thrGeo.setAttribute('aA', new THREE.Float32BufferAttribute(tA, 4));
+  thrGeo.setAttribute('aB', new THREE.Float32BufferAttribute(tB, 4));
+  thrGeo.setAttribute('aC', new THREE.Float32BufferAttribute(tC, 4));
   thrGeo.setAttribute('aSide', new THREE.BufferAttribute(fSide, 1));
   thrGeo.setIndex(new THREE.BufferAttribute(thrIdx, 1));
-  const additive = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
-  // Threads lie in the soil, not on it: in patches fixed to the ground they dip under the litter (aCol.a: how much they may).
-  const threadMat = new THREE.ShaderMaterial({ ...additive, side: THREE.DoubleSide, uniforms: { uPx: { value: 400 }, uMin: { value: .7 } },
-    vertexShader: `attribute vec3 aT; attribute vec4 aCol; attribute float aSide, aW; uniform float uPx, uMin; varying vec3 vC; varying float vS, vB; varying vec2 vW;
-      void main(){ vec3 p = position, e = cameraPosition - p; float dist = length(e);
-        vec3 sd = cross(aT, e); float l = length(sd); sd = l > 1e-6 ? sd / l : vec3(1.0, 0.0, 0.0);
-        float k = max(1.0, uMin * dist / max(aW * uPx, 1e-5));
-        p += sd * aSide * aW * k; vC = aCol.rgb / k; vB = aCol.a; vS = aSide; vW = p.xz;
+  // A cord's header: H0 colour × brightness, grow; H1 width where it joins, width at the bulb, twist, searching tip (or -1);
+  // H2 bulb, lift, prune, error; H3 length, seed, twist rate, the stump's height; H4 kind, samples, carried, carry; H5 bundle,
+  // thread, glow width, joins. A sample is (x, z, normal) and (distance along, pulse colour); a carried one (x, y, z, nx) and
+  // (nz, root radius or the parent's t); a join (where on the trunk, how far grown).
+  const CORD_GLSL = `uniform highp sampler2D uD; vec4 H0, H1, H2, H3, H4, H5;
+    vec4 tx(int i) { return texelFetch(uD, ivec2(i & 1023, i >> 10), 0); }
+    float warpT(float u) { return u - .62 * sin(6.2831853 * u) / 6.2831853; }
+    float maskT(float t) { float g = H0.w; if (g >= .999) return 1.0; if (g <= .001) return 0.0;
+      return H4.x > 2.5 ? 1.0 - smoothstep(g - .05, g + .005, t) : smoothstep(1.0 - g - .005, 1.0 - g + .05, t); }
+    float liftT(float t) { return H4.x > 2.5 ? H2.y * pow(max(sin(3.14159265 * t), 0.0), 1.5) : 0.0; }`;
+  // Threads lie in the soil, not on it: in patches fixed to the ground they dip under the litter (vB: how much they may).
+  // A strand gathers from the bulb into its cord's twisted bundle, narrows into the cord it joins and carries on along it, fading;
+  // a branch is a fixed walk turned with the cord; felt is fixed round its foot; a span bows across between its two ends.
+  const threadMat = new THREE.ShaderMaterial({ ...additive, side: THREE.DoubleSide, uniforms: { uPx: { value: 400 }, uMin: { value: .7 }, uD: { value: dataTex }, uTime: T0, uMove: MOVE },
+    vertexShader: `${CORD_GLSL}
+      attribute vec4 aA, aB, aC; attribute float aSide; uniform float uPx, uMin, uTime, uMove; varying vec3 vC; varying float vS, vB; varying vec2 vW;
+      int tb;
+      vec3 strandAt(int k, out vec3 col, out float bury) {
+        int segs = int(H4.y + .5); float ph = aA.w, Y = (H4.x > 2.5 ? .036 : .03) + aC.y;
+        vec4 A = tx(tb + 6 + 2 * k), B = tx(tb + 7 + 2 * k);
+        if (k <= segs) {
+          float t = warpT(float(k) / H4.y), d = B.x, fk = exp(-d / .3), bundle = H5.x;
+          float W = bundle + (H1.x - bundle) * smoothstep(.55, 1.0, t) + (H1.y - bundle) * fk * .4;
+          float o = W * sin(ph + d * H3.z + H1.z * aB.w) + aB.x * sin(6.2831853 * aB.y * t + aB.z) * sin(3.14159265 * t) * (1.0 + uMove * .3 * sin(uTime * .6 + ph)) * (1.0 - fk);
+          if (H1.w >= 0.0) o += .25 * sin(uTime * 2.3 + ph) * smoothstep(H1.w - .12, H1.w, t);
+          vec2 p = A.xy + A.zw * o;
+          float bulb = H2.x, Df = max(.4, bulb * 3.2);
+          if (d < Df) {
+            vec4 F = tx(tb + 6); vec2 h = vec2(F.w, -F.z), c = F.xy + vec2(h.x * aC.z - h.y * aC.w, h.x * aC.w + h.y * aC.z) * (bulb * .5 + d * 1.1);
+            p = c + (p - c) * smoothstep(0.0, Df, d);
+          }
+          float gap = H2.w > .01 && sin(t * H3.x * 2.3 + H3.y * 3.0) > .2 ? 1.0 - H2.w * .85 : 1.0;
+          col = H0.rgb * (aC.x * (1.0 + .5 * fk) * maskT(t) * gap) + B.yzw;
+          bury = (H4.x > 2.5 ? .3 : 1.0) * min(1.0, min(t, 1.0 - t) / .12);
+          return vec3(p.x, Y + liftT(t), p.y);
+        }
+        float e = float(k - segs) / H4.z, sp = H1.z * aB.w, end = maskT(1.0);
+        if (H4.x < .5) {
+          // Up the root's back, spread over as much of it as there is, and fading as it reaches the bark of the stump.
+          float R = B.y, o = max(.035, R * .55) * sin(ph + (H3.x + e * 2.5) * H3.z + sp);
+          col = H0.rgb * (aC.x * smoothstep(.04, .3, 1.0 - e * .93) * end); bury = 0.0;
+          return vec3(A.x + A.w * o, max(Y, A.y + sqrt(max(0.0, R * R - o * o)) * H3.w + .014), A.z + B.x * o);
+        }
+        float o = H1.x * sin(ph + (H3.x + H4.w * e) * H3.z + sp), tp = B.y;
+        col = H0.rgb * (aC.x * (1.0 - e) * (1.0 - e) * end); bury = min(1.0, min(tp, 1.0 - tp) / .12);
+        return vec3(A.x + A.w * o, Y, A.z + B.x * o);
+      }
+      vec3 spanAt(vec4 R0, vec4 R2, float u) {
+        float d = length(R0.zw); d = d > 0.0 ? d : 1.0;
+        float o = (aB.x * d + aC.w + aB.y * sin(aB.z * u + aB.w)) * sin(3.14159265 * u);
+        vec2 q = R0.xy + R0.zw * (R2.x + (R2.y - R2.x) * u) + vec2(-R0.w, R0.z) / d * o;
+        return vec3(q.x, aC.x, q.y);
+      }
+      void main(){
+        tb = int(aA.x + .5); int ty = int(aA.y + .5), i = int(aA.z + .5);
+        vec3 p, tg, col, c2; float w, bury, b2;
+        if (ty <= 1) {
+          H0 = tx(tb);
+          if (H0.w <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+          H1 = tx(tb + 1); H2 = tx(tb + 2); H3 = tx(tb + 3); H4 = tx(tb + 4); H5 = tx(tb + 5);
+          if (ty == 0) {
+            int last = int(H4.y + .5) + int(H4.z + .5);
+            p = strandAt(i, col, bury);
+            tg = strandAt(min(i + 1, last), c2, b2) - strandAt(max(i - 1, 0), c2, b2);
+            w = H5.y;
+          } else {
+            int i0 = int(aC.y + .5); vec4 A = tx(tb + 6 + 2 * i0), B = tx(tb + 7 + 2 * i0);
+            float n = aA.w, m = maskT(warpT(aC.y / H4.y)), s = max(0.0, H2.z) * (.25 + .75 * m), t0 = aC.z;
+            float wa = uMove * .16 * sin(uTime * .5 + t0 * 11.0 + H3.y); mat2 rot = mat2(cos(wa), sin(wa), -sin(wa), cos(wa));
+            vec2 d = rot * (aB.xy * s), g = rot * (aB.zw * s), T = vec2(A.w, -A.z);
+            p = vec3(A.x + T.x * d.x + A.z * d.y, (H4.x > 2.5 ? .036 : .03) + .004 + liftT(t0), A.y + T.y * d.x + A.w * d.y);
+            tg = vec3(T.x * g.x + A.z * g.y, 0.0, T.y * g.x + A.w * g.y);
+            float f = (1.0 - .65 * float(i) / n) * m * min(1.0, H2.z * 1.5 + .05);
+            col = (H0.rgb * aC.x + B.yzw * .9) * f; w = H5.y * .6 * (1.0 - .5 * float(i) / n); bury = .5;
+          }
+        } else {
+          vec4 R0 = tx(tb), R1 = tx(tb + 1);
+          if (R1.r == 0.0 && R1.g == 0.0 && R1.b == 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+          if (ty == 4) {
+            p = vec3(R0.x + aB.x * R0.z, .028, R0.y + aB.y * R0.z); tg = vec3(aB.z * R0.z, 0.0, aB.w * R0.z);
+            col = R1.rgb * ((1.0 - float(i) / 6.0) * aC.x); w = .007; bury = 0.0;
+          } else {
+            vec4 R2 = tx(tb + 2); int N = int(aA.w + .5); float u = float(i) / aA.w;
+            p = spanAt(R0, R2, u);
+            tg = spanAt(R0, R2, float(min(i + 1, N)) / aA.w) - spanAt(R0, R2, float(max(i - 1, 0)) / aA.w);
+            col = R1.rgb * (aC.z * (ty == 3 ? .55 + .45 * sin(3.14159265 * u) : 1.0)); w = aC.y; bury = ty == 3 ? .6 : 0.0;
+          }
+        }
+        vec3 e = cameraPosition - p; float dist = length(e);
+        vec3 sd = cross(tg, e); float l = length(sd); sd = l > 1e-6 ? sd / l : vec3(1.0, 0.0, 0.0);
+        float k = max(1.0, uMin * dist / max(w * uPx, 1e-5));
+        p += sd * aSide * w * k; vC = col / k; vB = bury; vS = aSide; vW = p.xz;
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0); }`,
     fragmentShader: `${NOISE_GLSL}
       varying vec3 vC; varying float vS, vB; varying vec2 vW;
       void main(){ float bury = mix(1.0, .25 + .75 * smoothstep(-.5, .25, snoise(vec3(vW * .5, 4.0))), vB);
         float a = 1.0 - smoothstep(.15, 1.0, abs(vS)); gl_FragColor = vec4(vC * a * (.6 + .4 * a) * bury, 1.0); }` });
   const threads = new THREE.Mesh(thrGeo, threadMat); threads.frustumCulled = false; root.add(threads);
-  function fp(i, x, y, z, w, r, g, b, bury) {
-    const k = i * 6, c = i * 8;
-    fPos[k] = fPos[k + 3] = x; fPos[k + 1] = fPos[k + 4] = y; fPos[k + 2] = fPos[k + 5] = z; fW[i * 2] = fW[i * 2 + 1] = w;
-    fCol[c] = fCol[c + 4] = r; fCol[c + 1] = fCol[c + 5] = g; fCol[c + 2] = fCol[c + 6] = b; fCol[c + 3] = fCol[c + 7] = bury;
-  }
-  function tangents() {
-    for (let k = 0; k < ranges.length; k += 2) {
-      const s = ranges[k], e = s + ranges[k + 1] - 1;
-      for (let i = s; i <= e; i++) {
-        const a = (i > s ? i - 1 : i) * 6, b = (i < e ? i + 1 : i) * 6, o = i * 6;
-        fTan[o] = fTan[o + 3] = fPos[b] - fPos[a]; fTan[o + 1] = fTan[o + 4] = fPos[b + 1] - fPos[a + 1]; fTan[o + 2] = fTan[o + 5] = fPos[b + 2] - fPos[a + 2];
-      }
-    }
-  }
 
-  // ── Cord glow: one soft ribbon on the soil under each bundle ──
-  let cordV = 0; const cordIdx = [];
-  for (const L of links) { L.cord0 = cordV; for (let i = 0; i < L.segs; i++) { const a = cordV + i * 2; cordIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } cordV += (L.segs + 1) * 2; }
-  const cordPos = new Float32Array(cordV * 3), cordCol = new Float32Array(cordV * 3), cordSide = new Float32Array(cordV);
+  // ── Cord glow: one soft ribbon on the soil under each bundle, laid out from the same records ──
+  let cordV = 0; const cordIdx = [], cordK = [];
+  for (const L of links) {
+    for (let i = 0; i < L.segs; i++) { const a = cordV + i * 2; cordIdx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    for (let i = 0; i <= L.segs; i++) cordK.push(L.tb, i, L.tb, i);
+    cordV += (L.segs + 1) * 2;
+  }
+  const cordSide = new Float32Array(cordV);
   for (let i = 0; i < cordV; i++) cordSide[i] = i % 2 ? 1 : -1;
   const cordGeo = new THREE.BufferGeometry();
-  cordGeo.setAttribute('position', new THREE.BufferAttribute(cordPos, 3).setUsage(THREE.DynamicDrawUsage));
-  cordGeo.setAttribute('aCol', new THREE.BufferAttribute(cordCol, 3).setUsage(THREE.DynamicDrawUsage));
+  cordGeo.setAttribute('aK', new THREE.Float32BufferAttribute(cordK, 2));
   cordGeo.setAttribute('aSide', new THREE.BufferAttribute(cordSide, 1));
   cordGeo.setIndex(cordIdx);
-  const cords = new THREE.Mesh(cordGeo, new THREE.ShaderMaterial({ ...additive, side: THREE.DoubleSide,
-    vertexShader: 'attribute vec3 aCol; attribute float aSide; varying vec3 vC; varying float vS; void main(){ vC = aCol; vS = aSide; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  // Wide at the foot, fading out before the join so two never pile up there; a trunk steps up at every session that joins it.
+  const cords = new THREE.Mesh(cordGeo, new THREE.ShaderMaterial({ ...additive, side: THREE.DoubleSide, uniforms: { uD: { value: dataTex } },
+    vertexShader: `${CORD_GLSL}
+      attribute vec2 aK; attribute float aSide; varying vec3 vC; varying float vS;
+      void main(){
+        int tb = int(aK.x + .5), i = int(aK.y + .5); H0 = tx(tb);
+        if (H0.w <= 0.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+        H2 = tx(tb + 2); H4 = tx(tb + 4); H5 = tx(tb + 5);
+        vec4 A = tx(tb + 6 + 2 * i), B = tx(tb + 7 + 2 * i);
+        int segs = int(H4.y + .5); float t = warpT(float(i) / H4.y), d0 = B.x, lift = liftT(t);
+        float w = H5.z * (1.0 + 1.4 * exp(-d0 / .35)), k = .48 * (1.0 + .6 * exp(-d0 / .4));
+        if (H4.x < .5) {
+          float bw = 1.0; int nj = int(H5.w + .5), jb = tb + 6 + 2 * (segs + 1) + 2 * int(H4.z + .5);
+          for (int j = 0; j < nj; j++) { vec4 J = tx(jb + j); bw += .22 * J.y * smoothstep(J.x - .02, J.x + .06, t); }
+          w *= bw * (1.0 - .5 * smoothstep(.8, 1.0, t)); k *= 1.0 - .7 * smoothstep(.75, 1.0, t);
+        } else if (H4.x > 2.5) k *= 1.5 * (1.0 - smoothstep(.04, .2, lift));
+        else k *= 1.0 - smoothstep(.6, .97, t);
+        vC = (H0.rgb * k + B.yzw * .9) * maskT(t); vS = aSide;
+        vec2 p = A.xy - A.zw * (w * aSide);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p.x, (H4.x < .5 ? .018 : .024) + lift, p.y, 1.0); }`,
     fragmentShader: 'varying vec3 vC; varying float vS; void main(){ gl_FragColor = vec4(vC * exp(-vS * vS * 3.2) * (1.0 - vS * vS), 1.0); }' }));
   cords.frustumCulled = false; root.add(cords);
 
@@ -465,49 +615,87 @@ function create(ctx) {
   root.add(matLines());
 
   // ── Points: drifting spores, puffs, and glints (need tips, cap halos) ──
-  const pointMat = twinkle => new THREE.ShaderMaterial({ ...additive,
-    uniforms: { uScale: { value: 400 }, uTime: T0, uTwinkle: { value: twinkle } },
-    vertexShader: `attribute float aSize; attribute vec3 aColor; attribute float aPhase; uniform float uScale, uTime, uTwinkle; varying vec3 vC;
-      void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv;
-        float tw = 1.0 + uTwinkle * (.6 * sin(uTime * 2.1 + aPhase * 6.283) - .1); gl_PointSize = aSize * uScale / -mv.z; vC = aColor * tw; }`,
+  // Spores and puffs move in their vertex shader, in closed form, so the CPU writes a puff once, when it's let go: spores drift on
+  // uTau (which stands still in reduced motion), and a puff ages on uPT from its birth (aV.w), slowing as it goes.
+  const TAU = { value: 0 }, PT = { value: 0 };
+  const pointMat = (head, body) => new THREE.ShaderMaterial({ ...additive,
+    uniforms: { uScale: { value: 400 }, uTime: T0, uTau: TAU, uPT: PT },
+    vertexShader: `attribute vec3 aColor; ${head} uniform float uScale, uTime, uTau, uPT; varying vec3 vC;
+      void main(){ vec3 p = position; float tw = 1.0, sz; ${body}
+        vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv; gl_PointSize = sz * uScale / -mv.z; vC = aColor * tw; }`,
     fragmentShader: 'varying vec3 vC; void main(){ float r = length(gl_PointCoord - .5) * 2.0; if (r > 1.0) discard; gl_FragColor = vec4(vC * (exp(-r * r * 5.0) + .6 * exp(-r * r * 40.0)), 1.0); }' });
-  function points(n, twinkle) {
-    const g = new THREE.BufferGeometry(), pos = new Float32Array(n * 3), col = new Float32Array(n * 3), sz = new Float32Array(n), ph = new Float32Array(n);
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('aColor', new THREE.BufferAttribute(col, 3).setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('aSize', new THREE.BufferAttribute(sz, 1).setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
-    const p = new THREE.Points(g, pointMat(twinkle)); p.frustumCulled = false; root.add(p);
-    return { p, g, pos, col, sz, ph, n };
+  function points(n, attrs, head, body) {
+    const g = new THREE.BufferGeometry(), a = {};
+    for (const [name, k, dyn] of attrs) { const at = a[name] = new THREE.BufferAttribute(new Float32Array(n * k), k); if (dyn) at.setUsage(THREE.DynamicDrawUsage); g.setAttribute(name, at); }
+    const p = new THREE.Points(g, pointMat(head, body)); p.frustumCulled = false; root.add(p);
+    return { p, g, a, n };
   }
-  const spores = points(520, 1), puffs = points(1100, 0), glints = points(220, 0), clouds = [spores, puffs, glints];
+  // aSp: the phases of the drift's x, y and z waves, and the spore's speed. Each wave is integrated, so where a spore is follows from uTau.
+  const spores = points(520, [['position', 3], ['aColor', 3], ['aSize', 1], ['aPhase', 1], ['aSp', 4]], 'attribute float aSize, aPhase; attribute vec4 aSp;', `
+    float sp = aSp.w, w1 = .23 * sp, w3 = .19 * sp, t = uTau;
+    p += vec3(.05 * t - .12 / w1 * (cos(w1 * t + aSp.x) - cos(aSp.x)), sp * (.06 * t - .1 * (cos(.5 * t + aSp.y) - cos(aSp.y))), .12 / w3 * (sin(w3 * t + aSp.z) - sin(aSp.z)));
+    p.x = mod(p.x + 35.0, 70.0) - 35.0; p.y = .15 + mod(p.y - .15, 4.65);
+    tw = .9 + .6 * sin(uTime * 2.1 + aPhase * 6.283); sz = aSize;`);
+  // aV: the puff's velocity when let go and its birth; aS: its size and life. Drag slows it, and it rises a little as it goes.
+  const puffs = points(1100, [['position', 3, 1], ['aColor', 3, 1], ['aV', 4, 1], ['aS', 2, 1]], 'attribute vec4 aV; attribute vec2 aS;', `
+    float age = uPT - aV.w;
+    if (age < 0.0 || age >= aS.y) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
+    float q = (1.0 - exp(-1.8 * age)) / 1.8, f = 1.0 - age / aS.y;
+    p += aV.xyz * q + vec3(0.0, (age - q) * .12 / 1.8, 0.0);
+    tw = f > .85 ? (1.0 - f) / .15 : f / .85; sz = aS.x * (1.4 - .4 * f);`);
+  const glints = points(220, [['position', 3, 1], ['aColor', 3, 1], ['aSize', 1, 1]], 'attribute float aSize;', 'sz = aSize;');
+  const clouds = [spores, puffs, glints], puffAttrs = [puffs.a.position, puffs.a.aColor, puffs.a.aV, puffs.a.aS];
 
-  const sporeVel = new Float32Array(spores.n * 3);
-  { const r = rng(4242); for (let i = 0; i < spores.n; i++) {
-    spores.pos[i * 3] = (r() - .5) * 70; spores.pos[i * 3 + 1] = .2 + r() * 4.5; spores.pos[i * 3 + 2] = (r() - .5) * 56 + 1.5;
-    const c = [C('#d9ffd0'), C('#ffe9b0'), C('#a8f4ff')][Math.floor(r() * 3)], b = .25 + r() * .5;
-    spores.col[i * 3] = c.r * b; spores.col[i * 3 + 1] = c.g * b; spores.col[i * 3 + 2] = c.b * b; spores.sz[i] = .05 + r() * .09; spores.ph[i] = r();
-    sporeVel[i * 3] = r() * 6.28; sporeVel[i * 3 + 1] = .5 + r(); sporeVel[i * 3 + 2] = r() * 6.28;
-  } }
-  const pVel = new Float32Array(puffs.n * 3), pLife = new Float32Array(puffs.n), pMax = new Float32Array(puffs.n), pBase = new Float32Array(puffs.n * 3), pSize = new Float32Array(puffs.n);
-  let pNext = 0;
+  { const r = rng(4242), P = spores.a.position.array, K = spores.a.aColor.array, Z = spores.a.aSize.array, F = spores.a.aPhase.array, V = spores.a.aSp.array, SC = [C('#d9ffd0'), C('#ffe9b0'), C('#a8f4ff')];
+    for (let i = 0; i < spores.n; i++) {
+      P[i * 3] = (r() - .5) * 70; P[i * 3 + 1] = .2 + r() * 4.5; P[i * 3 + 2] = (r() - .5) * 56 + 1.5;
+      const c = SC[Math.floor(r() * 3)], b = .25 + r() * .5;
+      K[i * 3] = c.r * b; K[i * 3 + 1] = c.g * b; K[i * 3 + 2] = c.b * b; Z[i] = .05 + r() * .09; F[i] = r();
+      const ph = r() * 6.28, sp = .5 + r(), ph3 = r() * 6.28; V[i * 4] = V[i * 4 + 1] = ph; V[i * 4 + 2] = ph3; V[i * 4 + 3] = sp;
+    } }
+  // Where the spores are now becomes their start, every ten minutes, so uTau stays small enough to keep its precision.
+  function rebaseSpores() {
+    const t = TAU.value, P = spores.a.position.array, V = spores.a.aSp.array, TAU2 = Math.PI * 2;
+    for (let i = 0; i < spores.n; i++) {
+      const k = i * 3, o = i * 4, sp = V[o + 3], w1 = .23 * sp, w3 = .19 * sp, a = V[o], b = V[o + 1], c = V[o + 2];
+      const x = P[k] + .05 * t - .12 / w1 * (Math.cos(w1 * t + a) - Math.cos(a)), y = P[k + 1] + sp * (.06 * t - .1 * (Math.cos(.5 * t + b) - Math.cos(b)));
+      P[k] = ((x + 35) % 70 + 70) % 70 - 35; P[k + 1] = .15 + ((y - .15) % 4.65 + 4.65) % 4.65; P[k + 2] += .12 / w3 * (Math.sin(w3 * t + c) - Math.sin(c));
+      V[o] = (a + w1 * t) % TAU2; V[o + 1] = (b + .5 * t) % TAU2; V[o + 2] = (c + w3 * t) % TAU2;
+    }
+    TAU.value = 0; spores.a.position.needsUpdate = spores.a.aSp.needsUpdate = true;
+  }
+  // Puffs are written once, when let go; the slots written since the last upload go up together. puffEnd is when the last puff
+  // dies, fastEnd the last of a burst (not the slow spores a ripe cap sheds), for the pace.
+  let pNext = 0, emitLo = puffs.n, emitHi = -1, puffEnd = 0, fastEnd = 0;
   const prand = rng(777);
   function emit(x, y, z, col, count, { speed = 1.6, up = .9, size = .16, life = 1.8, spread = .5 } = {}) {
-    if (reduced()) count = Math.ceil(count / 4);
+    const still = reduced(), P = puffs.a.position.array, K = puffs.a.aColor.array, V = puffs.a.aV.array, S = puffs.a.aS.array, now = PT.value;
+    if (still) count = Math.ceil(count / 4);
     for (let j = 0; j < count; j++) {
       const i = pNext; pNext = (pNext + 1) % puffs.n;
-      const a = prand() * 6.28, e = prand() * 2 - 1, sp = speed * (.3 + prand() * .7) * (reduced() ? .15 : 1), h = Math.sqrt(1 - e * e);
-      puffs.pos[i * 3] = x + Math.cos(a) * spread * prand(); puffs.pos[i * 3 + 1] = y; puffs.pos[i * 3 + 2] = z + Math.sin(a) * spread * prand();
-      pVel[i * 3] = Math.cos(a) * h * sp; pVel[i * 3 + 1] = Math.abs(e) * sp * up + up * .4; pVel[i * 3 + 2] = Math.sin(a) * h * sp;
-      pLife[i] = pMax[i] = life * (.6 + prand() * .6); const b = .3 + prand() * .45;
-      pBase[i * 3] = col.r * b; pBase[i * 3 + 1] = col.g * b; pBase[i * 3 + 2] = col.b * b; pSize[i] = size * (.5 + prand());
+      const a = prand() * 6.28, e = prand() * 2 - 1, sp = speed * (.3 + prand() * .7) * (still ? .15 : 1), h = Math.sqrt(1 - e * e);
+      P[i * 3] = x + Math.cos(a) * spread * prand(); P[i * 3 + 1] = y; P[i * 3 + 2] = z + Math.sin(a) * spread * prand();
+      V[i * 4] = Math.cos(a) * h * sp; V[i * 4 + 1] = Math.abs(e) * sp * up + up * .4; V[i * 4 + 2] = Math.sin(a) * h * sp; V[i * 4 + 3] = now;
+      const max = life * (.6 + prand() * .6), b = .3 + prand() * .45;
+      K[i * 3] = col.r * b; K[i * 3 + 1] = col.g * b; K[i * 3 + 2] = col.b * b; S[i * 2] = size * (.5 + prand()); S[i * 2 + 1] = max;
+      if (i < emitLo) emitLo = i;
+      if (i > emitHi) emitHi = i;
+      puffEnd = Math.max(puffEnd, now + max);
+      if (speed > .5) fastEnd = Math.max(fastEnd, now + max);
     }
   }
+  function rebasePuffs() {
+    const t = PT.value, V = puffs.a.aV;
+    for (let i = 3; i < V.array.length; i += 4) V.array[i] -= t;
+    puffEnd -= t; fastEnd -= t; PT.value = 0;
+    V.clearUpdateRanges(); V.needsUpdate = true; // all of it
+  }
   let glintN = 0;
+  const gP = glints.a.position.array, gC = glints.a.aColor.array, gS = glints.a.aSize.array;
   function glint(x, y, z, col, k, s) {
     if (glintN >= glints.n || k <= .002) return; const i = glintN++;
-    glints.pos[i * 3] = x; glints.pos[i * 3 + 1] = y; glints.pos[i * 3 + 2] = z;
-    glints.col[i * 3] = col.r * k; glints.col[i * 3 + 1] = col.g * k; glints.col[i * 3 + 2] = col.b * k; glints.sz[i] = s;
+    gP[i * 3] = x; gP[i * 3 + 1] = y; gP[i * 3 + 2] = z;
+    gC[i * 3] = col.r * k; gC[i * 3 + 1] = col.g * k; gC[i * 3 + 2] = col.b * k; gS[i] = s;
   }
 
   // Hover and selection rings on the soil
@@ -517,10 +705,52 @@ function create(ctx) {
   hoverRing.position.y = selRing.position.y = .04; root.add(hoverRing, selRing);
 
   // ── Per-frame ──
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qc = new THREE.Quaternion(), axis = new THREE.Vector3(), sc = new THREE.Vector3(), base = new THREE.Vector3(), up = new THREE.Vector3(), tmpC = new THREE.Color(), tmpC2 = new THREE.Color(), tmpV = new THREE.Vector3();
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qc = new THREE.Quaternion(), axis = new THREE.Vector3(), sc = new THREE.Vector3(), base = new THREE.Vector3(), up = new THREE.Vector3(), tmpC = new THREE.Color(), tmpC2 = new THREE.Color(), tmpV = new THREE.Vector3(), clearC = new THREE.Color();
   let lightN = 0, waitAmt = 0;
   const fairyFlash = new THREE.Color(0, 0, 0);
-  function light(x, z, r, k, col) { if (lightN >= LIGHTS || k <= .002) return; lightPos[lightN].set(x, z, r, k); lightCol[lightN].copy(col); lightN++; }
+  function light(x, z, r, k, col) {
+    if (lightN >= LIGHTS || k <= .002) return;
+    const o = lightN * 4, c = lightN * 3; lData[o] = x; lData[o + 1] = z; lData[o + 2] = r; lData[o + 3] = k; lCol[c] = col.r; lCol[c + 1] = col.g; lCol[c + 2] = col.b; lightN++;
+  }
+  // Uploads what changed of the first n values of a buffer since it was last sent: one range, from the first change to the last.
+  function sync(attr, n) {
+    const a = attr.array, s = attr.sent ||= new Float32Array(a.length).fill(NaN); let i = 0; // NaN: all of it, the first time
+    while (i < n && a[i] === s[i]) i++;
+    if (i >= n) return false;
+    let j = n - 1; while (a[j] === s[j]) j--;
+    for (let k = i; k <= j; k++) s[k] = a[k];
+    upRange(attr, i, j + 1); return true;
+  }
+  // Adds [i, e) to what a buffer uploads next, in one reused range.
+  function upRange(attr, i, e) {
+    const ur = attr.updateRanges, R = attr.r1 ||= { start: 0, count: 0 };
+    if (ur.length) { const end = Math.max(R.start + R.count, e); R.start = Math.min(R.start, i); R.count = end - R.start; }
+    else { R.start = i; R.count = e - i; ur.push(R); }
+    attr.needsUpdate = true;
+  }
+  // The soil's light map: redrawn only when a pool of light moved or changed, over the box the pools cover (snapped, so it holds still).
+  function renderLights() {
+    const n = lightN;
+    if (n === lSeenN) {
+      let i = 0; while (i < n * 4 && lData[i] === lSeenD[i]) i++;
+      let j = 0; while (j < n * 3 && lCol[j] === lSeenC[j]) j++;
+      if (i === n * 4 && j === n * 3) return;
+    }
+    lSeenN = n; lSeenD.set(lData); lSeenC.set(lCol);
+    let x0 = 0, z0 = 0, x1 = 2, z1 = 2;
+    if (n) {
+      x0 = z0 = Infinity; x1 = z1 = -Infinity;
+      for (let i = 0; i < n; i++) { const o = i * 4, e = lData[o + 2] * 3.2; x0 = Math.min(x0, lData[o] - e); x1 = Math.max(x1, lData[o] + e); z0 = Math.min(z0, lData[o + 1] - e); z1 = Math.max(z1, lData[o + 1] + e); }
+      x0 = Math.floor(x0 / 2) * 2; z0 = Math.floor(z0 / 2) * 2; x1 = Math.max(x0 + 2, Math.ceil(x1 / 2) * 2); z1 = Math.max(z0 + 2, Math.ceil(z1 / 2) * 2);
+      upRange(aL, 0, n * 4); upRange(aLC, 0, n * 3);
+    }
+    LB.set(x0, z0, 1 / (x1 - x0), 1 / (z1 - z0)); lmGeo.instanceCount = n;
+    const rt = renderer.getRenderTarget(), auto = renderer.autoClear, alpha = renderer.getClearAlpha();
+    renderer.getClearColor(clearC);
+    renderer.setRenderTarget(lmRT); renderer.setClearColor(0x000000, 0); renderer.clear(true, false, false);
+    if (n) { renderer.autoClear = false; renderer.render(lmScene, lmCam); }
+    renderer.autoClear = auto; renderer.setRenderTarget(rt); renderer.setClearColor(clearC, alpha);
+  }
 
   function glowOf(n) {
     const s = n.s, ph = (n.seed % 1000) / 159, still = reduced();
@@ -528,29 +758,29 @@ function create(ctx) {
     return s.work * (.85 + s.heat * .5) + s.think * (.4 + .55 * breath) + s.compact * .85 + s.need * (.7 + .35 * throb + .35 * s.urgency) + s.wait * (.3 + .5 * slow) + s.idle * .14 + s.error * .3;
   }
 
-  function writeInst(mesh, slot, col, p0, p1, p2, p3, q0, q1, q2 = 0, q3 = 0) {
-    mesh.setMatrixAt(slot, m4);
-    const g = mesh.geometry.attributes;
-    g.aCol.array[slot * 3] = col.r; g.aCol.array[slot * 3 + 1] = col.g; g.aCol.array[slot * 3 + 2] = col.b;
-    g.aP.array[slot * 4] = p0; g.aP.array[slot * 4 + 1] = p1; g.aP.array[slot * 4 + 2] = p2; g.aP.array[slot * 4 + 3] = p3;
-    g.aQ.array[slot * 4] = q0; g.aQ.array[slot * 4 + 1] = q1; g.aQ.array[slot * 4 + 2] = q2; g.aQ.array[slot * 4 + 3] = q3;
-  }
   // Lean (lx, lz, in radians) doesn't tip the mushroom over as a stick: the foot stays rooted and the stem curves so its top
   // swings out, and the cap follows the tip's tangent. sq is the squash-and-stretch spring: taller and narrower, or shorter and wider.
-  const capPos = new THREE.Vector3();
-  function place(m, bx, bz, h, R, lx, lz, droop, col, glow, ctxV, rot, wither, rim, sq = 0) {
-    base.set(bx, 0, bz);
-    const bxv = lx * h * .8, bzv = lz * h * .8, bl = Math.hypot(bxv, bzv) / Math.max(h, .01);
+  // place takes its numbers in PL rather than as arguments, which would be boxed on every call.
+  const capPos = new THREE.Vector3(), PL = { bx: 0, bz: 0, h: 0, R: 0, lx: 0, lz: 0, droop: 0, glow: 0, ctx: 0, rot: 0, wither: 0, rim: 0, sq: 0 };
+  const stA = stems.geometry.attributes;
+  function place(m) {
+    const P = PL, h = P.h, R = P.R, sq = P.sq, col = m.col;
+    base.set(P.bx, 0, P.bz);
+    const bxv = P.lx * h * .8, bzv = P.lz * h * .8, bl = Math.sqrt(bxv * bxv + bzv * bzv) / Math.max(h, .01);
     const hh = h * (1 - .3 * Math.min(1, bl * bl)) * (1 + sq);
     const r = .11 * Math.max(.6, R / .6) ** .5 * (m.role === 'session' || m.role === 'cluster' ? 1 : .7) * m.thick * Math.min(1, h / Math.max(.01, m.h)) * (1 - .35 * sq);
     m.bulb = r * 1.6;
     m4.compose(base, q.identity(), sc.set(Math.max(.001, r), Math.max(.001, hh), Math.max(.001, r)));
-    writeInst(stems, m.stemSlot, col, glow, -1, rot, wither, m.seed, 0, m.exit ? 1 : 0, m.exit ? Math.atan2(m.exit.x, -m.exit.y) : 0);
+    let k = m.stemSlot;
+    stems.setMatrixAt(k, m4);
+    stA.aCol.array[k * 3] = col.r; stA.aCol.array[k * 3 + 1] = col.g; stA.aCol.array[k * 3 + 2] = col.b;
+    let a = stA.aP.array; a[k * 4] = P.glow; a[k * 4 + 1] = -1; a[k * 4 + 2] = P.rot; a[k * 4 + 3] = P.wither;
+    a = stA.aQ.array; a[k * 4] = m.seed; a[k * 4 + 1] = 0; a[k * 4 + 2] = m.exit ? 1 : 0; a[k * 4 + 3] = m.exit ? Math.atan2(m.exit.x, -m.exit.y) : 0;
     m.bx = bxv; m.bz = bzv; m.wx = m.bowX * h; m.wz = m.bowZ * h; m.hh = hh;
-    const b = bendAttr.array, k = m.stemSlot * 4; b[k] = bxv; b[k + 1] = bzv; b[k + 2] = m.wx; b[k + 3] = m.wz;
-    m.top.set(bx + bxv, hh, bz + bzv);
+    const b = bendAttr.array, o = m.stemSlot * 4; b[o] = bxv; b[o + 1] = bzv; b[o + 2] = m.wx; b[o + 3] = m.wz;
+    m.top.set(P.bx + bxv, hh, P.bz + bzv);
     // The bow is flat at both ends, so the tip's direction comes from the lean alone.
-    const tx = 2 * bxv, tz = 2 * bzv, tl = Math.hypot(tx, tz), tilt = Math.atan2(tl, Math.max(hh, .001)) + droop;
+    const tx = 2 * bxv, tz = 2 * bzv, tl = Math.sqrt(tx * tx + tz * tz), tilt = Math.atan2(tl, Math.max(hh, .001)) + P.droop;
     let dx = m.dx ?? 1, dz = m.dz ?? 0; if (tl > 1e-4) { dx = tx / tl; dz = tz / tl; }
     if (tilt > 1e-4) qc.setFromAxisAngle(axis.set(dz, 0, -dx).normalize(), tilt); else qc.identity();
     up.set(0, 1, 0).applyQuaternion(qc);
@@ -558,7 +788,11 @@ function create(ctx) {
     capPos.copy(m.top).addScaledVector(up, -SHAPE_SEAT[m.shape] * cy);
     m4.compose(capPos, qc, sc.set(Math.max(.001, cr), Math.max(.001, cy), Math.max(.001, cr)));
     m.crown = capPos.y + SHAPE_TOP[m.shape] * cy;
-    writeInst(caps[m.shape], m.capSlot, col, glow, ctxV, rot, wither, m.seed, rim, m.role === 'session' || m.role === 'cluster' ? 0 : 1, m.pat);
+    const cap = caps[m.shape], g = cap.geometry.attributes; k = m.capSlot;
+    cap.setMatrixAt(k, m4);
+    g.aCol.array[k * 3] = col.r; g.aCol.array[k * 3 + 1] = col.g; g.aCol.array[k * 3 + 2] = col.b;
+    a = g.aP.array; a[k * 4] = P.glow; a[k * 4 + 1] = P.ctx; a[k * 4 + 2] = P.rot; a[k * 4 + 3] = P.wither;
+    a = g.aQ.array; a[k * 4] = m.seed; a[k * 4 + 1] = P.rim; a[k * 4 + 2] = m.role === 'session' || m.role === 'cluster' ? 0 : 1; a[k * 4 + 3] = m.pat;
   }
   // Point on the bent stem at height fraction y, and the direction it runs there.
   function stemAt(m, y, out, dir) {
@@ -568,10 +802,12 @@ function create(ctx) {
     dir.set(m.bx * 2 * y + m.wx * d, m.hh, m.bz * 2 * y + m.wz * d).normalize();
   }
   function kick(m, v, delay = 0) { if (reduced()) return; if (delay > 0) { m.kv = v; m.kt = T + delay; } else m.sqv += v; }
+  // A spring still moving keeps the board at full rate (springy); one that has all but settled is put to rest.
   function spring(m, dt) {
     if (reduced()) { m.sq = m.sqv = m.kv = 0; return 0; }
     if (m.kv && T >= m.kt) { m.sqv += m.kv; m.kv = 0; }
     m.sqv += (-m.k * m.sq - 7 * m.sqv) * dt; m.sq = clamp(m.sq + m.sqv * dt, -.32, .4);
+    if (m.kv || Math.abs(m.sq) > .002 || Math.abs(m.sqv) > .02) springy = true; else m.sq = m.sqv = 0;
     return m.sq;
   }
   // Hover and select give a little hop the moment they start; delay staggers a group into a wave.
@@ -581,20 +817,20 @@ function create(ctx) {
     if (sl && !m.selOn) kick(m, 2.3, delay);
     m.hovOn = hv; m.selOn = sl;
   }
-  // Slow, out-of-step sway, added to the lean.
-  let swx = 0, swz = 0;
+  // Slow, out-of-step sway, added to the lean (m.swx, m.swz).
   function swayOf(m) {
-    if (reduced()) { swx = swz = 0; return; }
-    swx = m.sway * (Math.sin(T * .8 + m.seed * 1.9) + .45 * Math.sin(T * 1.37 + m.seed * 4.1));
-    swz = m.sway * (Math.cos(T * .66 + m.seed * 2.3) + .45 * Math.sin(T * 1.21 + m.seed * 3.3));
+    if (reduced()) { m.swx = m.swz = 0; return; }
+    m.swx = m.sway * (Math.sin(T * .8 + m.seed * 1.9) + .45 * Math.sin(T * 1.37 + m.seed * 4.1));
+    m.swz = m.sway * (Math.cos(T * .66 + m.seed * 2.3) + .45 * Math.sin(T * 1.21 + m.seed * 3.3));
   }
   // ── Usage round the stump ──
   // The fairy ring is the gauge: an arc per account and in it a run of mushrooms per window (a spend limit counts as one), runs split
   // by a bud and accounts by two. A run is grown and lit as far as its window is used: green, amber past 70%, ember past 90%. Beside
   // the ring a sign in glowing spores names each account and reads its windows out; a sign redraws only when its text changes.
-  const usageCol = new THREE.Color(), signs = [], mids = [], SIGN_W = 512, SIGN_H = 150;
-  let runs = [], usageShape = null;
-  const refont = () => { for (const S of signs) S.text = null; };
+  // All of it is worked out again only when world.usage changes (it is replaced, never edited) or the fonts arrive.
+  const usageCol = new THREE.Color(), signs = [], mids = [], SIGN_W = 512, SIGN_H = 150, TC = Math.cos(.9);
+  let runs = [], accts = [], cols = [[], []], usageShape = null, usageRef = null, usageStale = true, layHs = NaN, layX = NaN, layZ = NaN;
+  const refont = () => { usageStale = true; for (const S of signs) S.text = null; ctx.wake?.(); };
   document.fonts?.addEventListener?.('loadingdone', refont);
   function fairyState(m) {
     if (m.run === -2) { m.lit = 1; return FOX; }
@@ -609,27 +845,66 @@ function create(ctx) {
       const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
       // Kept under the bloom threshold, so the text stays sharp.
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, color: C('#c4c4c4') })); s.renderOrder = 3; root.add(s);
-      signs[j] = { s, c, tex, text: null };
+      signs[j] = { s, c, tex, text: null, H: SIGN_H };
     }
     return signs[j];
   }
   const money = v => `$${v < 10 ? v.toFixed(2) : Math.round(v)}`;
+  const NAME_FONT = px => `italic 500 ${px}px Fraunces, Georgia, serif`, PART_FONT = px => `${px}px "JetBrains Mono", ui-monospace, monospace`;
+  // Words (or readings) w wide, gap apart, in a box W wide: one row, shrunk to no less than 85%; failing that two rows, split
+  // as evenly as they go and shrunk as far as the longer needs, again to no less than 85%. Text is only ever scaled evenly.
+  function fitRows(items, gap, W) {
+    const n = items.length; let total = gap * (n - 1);
+    for (const it of items) total += it.w;
+    const k1 = Math.min(1, W / total);
+    if (k1 >= .85 || n < 2) return { k: Math.max(.85, k1), rows: [items] };
+    let best = 1, bestW = Infinity, left = -gap;
+    for (let i = 1; i < n; i++) { left += items[i - 1].w + gap; const m = Math.max(left, total - left - gap); if (m < bestW) { bestW = m; best = i; } }
+    return { k: Math.max(.85, Math.min(1, W / bestW)), rows: [items.slice(0, best), items.slice(best)] };
+  }
+  const rowWidth = (g, row, gap) => { let w = gap * (row.length - 1); for (const it of row) w += g.measureText(it.t).width; return w; };
+  // A row that still doesn't fit ends in an ellipsis, cutting into as many of its last words as it must.
+  function clip(g, row, gap, W) {
+    if (rowWidth(g, row, gap) <= W + 4) return;
+    for (;;) {
+      const it = row[row.length - 1]; let t = it.t; it.t = t + '…';
+      while (t && rowWidth(g, row, gap) > W) { t = t.slice(0, -1).trimEnd(); it.t = t + '…'; }
+      if (t || row.length < 2) return;
+      row.pop();
+    }
+  }
+  // Measures and fits items at size px with the given font; returns the rows, the font to draw them in and the gap between words.
+  function fit(g, font, px, items, gap, W) {
+    g.font = font(px);
+    for (const it of items) it.w = g.measureText(it.t).width;
+    if (gap < 0) gap = g.measureText(' ').width;
+    const { k, rows } = fitRows(items, gap, W), f = font(px * k);
+    g.font = f;
+    for (const row of rows) clip(g, row, gap * k, W);
+    return { rows, font: f, gap: gap * k };
+  }
+  function drawRow(g, row, gap, y) {
+    let x = (SIGN_W - rowWidth(g, row, gap)) / 2;
+    for (const it of row) { g.fillStyle = it.col; g.fillText(it.t, x, y); x += g.measureText(it.t).width + gap; }
+  }
   function drawSign(S, a) {
     const parts = a.wins.map(w => [w.spend ? `${money(w.spend.spent)} / ${money(w.spend.limit)}` : `${w.label} ${Math.round(w.used * 100)}%`, w.used > .9 ? '#ff7a52' : w.used > .7 ? '#ffbe5c' : '#a8f5b4']);
     const text = a.name + parts.map(p => p[0]).join();
     if (S.text === text) return;
     S.text = text;
-    const g = S.c.getContext('2d'), gap = 30;
+    const g = S.c.getContext('2d');
+    const name = fit(g, NAME_FONT, 48, (a.name.match(/\S+/g) || ['']).map(t => ({ t, col: '#eef4e4' })), -1, SIGN_W - 60);
+    const read = fit(g, PART_FONT, 40, parts.map(([t, col]) => ({ t, col })), 30, SIGN_W - 64);
+    // The sign grows a line taller for each row past the first of either.
+    const nameY = 64, partY = nameY + 54 * (name.rows.length - 1) + 52, H = partY + 48 * (read.rows.length - 1) + 34;
+    if (H !== S.H) { S.c.height = H; S.H = H; S.tex.dispose(); } else g.clearRect(0, 0, SIGN_W, H);
     // A tag of loam like the labels', edged with a faint glow.
-    g.clearRect(0, 0, SIGN_W, SIGN_H); g.shadowColor = 'rgba(110, 240, 150, .3)'; g.shadowBlur = 14;
-    g.beginPath(); g.roundRect(12, 12, SIGN_W - 24, SIGN_H - 24, [30, 30, 30, 10]); g.fillStyle = 'rgba(7, 10, 6, .88)'; g.fill();
-    g.shadowBlur = 0; g.strokeStyle = 'rgba(164, 240, 160, .3)'; g.lineWidth = 2.5; g.stroke(); g.textAlign = 'center';
-    g.font = 'italic 500 48px Fraunces, Georgia, serif'; g.fillStyle = '#eef4e4'; g.fillText(a.name, SIGN_W / 2, 64, SIGN_W - 60);
-    g.font = '40px "JetBrains Mono", ui-monospace, monospace'; g.textAlign = 'left';
-    const widths = parts.map(([t]) => g.measureText(t).width), total = widths.reduce((x, y) => x + y, 0) + gap * (parts.length - 1), k = Math.min(1, (SIGN_W - 64) / total);
-    g.save(); g.translate((SIGN_W - total * k) / 2, 0); g.scale(k, 1);
-    let x = 0; parts.forEach(([t, col], i) => { g.fillStyle = col; g.fillText(t, x, 116); x += widths[i] + gap; });
-    g.restore(); S.tex.needsUpdate = true;
+    g.shadowColor = 'rgba(110, 240, 150, .3)'; g.shadowBlur = 14;
+    g.beginPath(); g.roundRect(12, 12, SIGN_W - 24, H - 24, [30, 30, 30, 10]); g.fillStyle = 'rgba(7, 10, 6, .88)'; g.fill();
+    g.shadowBlur = 0; g.strokeStyle = 'rgba(164, 240, 160, .3)'; g.lineWidth = 2.5; g.stroke(); g.textAlign = 'left';
+    g.font = name.font; name.rows.forEach((row, i) => drawRow(g, row, name.gap, nameY + 54 * i));
+    g.font = read.font; read.rows.forEach((row, i) => drawRow(g, row, read.gap, partY + 48 * i));
+    S.tex.needsUpdate = true;
   }
   // The screenshot body's cap, its underside turned to face you: pale flesh with fine gills round its edge and a faint bioluminescent rim, the
   // screenshot set into its middle like a pool, darkened towards the lip; a spore on the flesh below it for each screenshot, up to
@@ -662,104 +937,129 @@ function create(ctx) {
     B.tex.needsUpdate = true;
   }
   function updateUsage() {
-    const accts = world.usage.map(a => ({ name: String(a.label || a.provider).replace(/ Code\b/, ''), wins: [...a.windows.map(w => ({ label: w.label === 'week' ? 'wk' : w.label, used: w.used })),
-      ...(a.spend?.limit > 0 ? [{ used: Math.min(1, a.spend.spent / a.spend.limit), spend: a.spend }] : [])] })).filter(a => a.wins.length);
-    runs = accts.flatMap(a => a.wins);
-    const shape = accts.map(a => a.wins.length).join();
-    if (shape !== usageShape) {
-      usageShape = shape;
-      const n = Math.max(1, Math.floor((FAIRY - 1 - accts.reduce((g, a) => g + a.wins.length + 1, 0)) / Math.max(1, runs.length))), seq = [-1];
-      let w = 0;
-      accts.forEach((a, j) => { const from = seq.length; for (const _ of a.wins) { for (let k = 0; k < n; k++) seq.push(w); seq.push(-1); w++; } mids[j] = Math.PI / 2 + ((from + seq.length - 2) / 2 + .5) / FAIRY * Math.PI * 2; seq.push(-1); });
-      for (const m of fairy) { const v = accts.length ? seq[m.fi] ?? -1 : -2; m.run = v; m.rk = v >= 0 ? m.fi - seq.indexOf(v) : 0; m.rn = n; }
+    if (usageStale || world.usage !== usageRef) {
+      usageStale = false; usageRef = world.usage; layHs = NaN;
+      accts = world.usage.map(a => ({ name: String(a.label || a.provider).replace(/ Code\b/, ''), wins: [...a.windows.map(w => ({ label: w.label === 'week' ? 'wk' : w.label, used: w.used })),
+        ...(a.spend?.limit > 0 ? [{ used: Math.min(1, a.spend.spent / a.spend.limit), spend: a.spend }] : [])] })).filter(a => a.wins.length);
+      runs = accts.flatMap(a => a.wins);
+      const shape = accts.map(a => a.wins.length).join();
+      if (shape !== usageShape) {
+        usageShape = shape;
+        const n = Math.max(1, Math.floor((FAIRY - 1 - accts.reduce((g, a) => g + a.wins.length + 1, 0)) / Math.max(1, runs.length))), seq = [-1];
+        let w = 0;
+        accts.forEach((a, j) => { const from = seq.length; for (const _ of a.wins) { for (let k = 0; k < n; k++) seq.push(w); seq.push(-1); w++; } mids[j] = Math.PI / 2 + ((from + seq.length - 2) / 2 + .5) / FAIRY * Math.PI * 2; seq.push(-1); });
+        for (const m of fairy) { const v = accts.length ? seq[m.fi] ?? -1 : -2; m.run = v; m.rk = v >= 0 ? m.fi - seq.indexOf(v) : 0; m.rn = n; }
+      }
+      cols = [[], []];
+      accts.forEach((a, j) => { cols[Math.cos(mids[j]) < 0 ? 0 : 1].push(j); const S = signFor(j); drawSign(S, a); S.s.visible = true; });
+      for (const col of cols) col.sort((p, q) => Math.sin(mids[p]) - Math.sin(mids[q]));
+      for (let j = accts.length; j < signs.length; j++) signs[j].s.visible = false;
     }
-    // Signs in two columns beside the ring, each on the side of its arc, kept between a readable and a modest size on screen.
+    // Signs in two columns beside the ring, each on the side of its arc, kept between a readable and a modest size on screen,
+    // stacked by their heights as they show on screen (TC: how much the tilted ground shortens depth there).
     const Y = world.you.pos, ppu = size.h / (2 * Math.tan(camera.fov * Math.PI / 360) * camera.position.distanceTo(tmpV.set(Y.x, 0, Y.z)));
-    const hs = Math.min(Math.max(.95, (size.w < 700 ? 24 : 34) / ppu), 56 / ppu), ws = hs * SIGN_W / SIGN_H, cols = [[], []];
-    accts.forEach((a, j) => cols[Math.cos(mids[j]) < 0 ? 0 : 1].push(j));
-    cols.forEach((col, side) => {
-      col.sort((p, q) => Math.sin(mids[p]) - Math.sin(mids[q]));
-      col.forEach((j, row) => {
-        const S = signFor(j); drawSign(S, accts[j]); S.s.visible = true; S.s.scale.set(ws, hs, 1);
-        S.s.position.set(Y.x + (side ? 1 : -1) * (3.3 + ws / 2), hs * .55, Y.z + (row - (col.length - 1) / 2) * hs * 1.65);
-      });
-    });
-    for (let j = accts.length; j < signs.length; j++) signs[j].s.visible = false;
+    const hs = Math.min(Math.max(.95, (size.w < 700 ? 24 : 34) / ppu), 56 / ppu);
+    if (hs === layHs && Y.x === layX && Y.z === layZ) return;
+    layHs = hs; layX = Y.x; layZ = Y.z;
+    const ws = hs * SIGN_W / SIGN_H, G = 1.65 * TC * hs - hs;
+    for (let side = 0; side < 2; side++) {
+      const col = cols[side]; let E = G * (col.length - 1), s = 0;
+      for (let r = 0; r < col.length; r++) E += hs * signs[col[r]].H / SIGN_H;
+      for (let r = 0; r < col.length; r++) {
+        const S = signs[col[r]], hj = hs * S.H / SIGN_H;
+        S.s.scale.set(ws, hj, 1);
+        S.s.position.set(Y.x + (side ? 1 : -1) * (3.3 + ws / 2), hs * .55, Y.z + (s + hj / 2 - E / 2) / TC);
+        s += hj + G;
+      }
+    }
   }
 
-  const camUp = new THREE.Vector3();
+  const SHED = { speed: .25, up: -.15, size: .09, life: 3.2, spread: 0 };
   function updateMushrooms(dt) {
-    const still = reduced();
-    camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    const still = reduced(), ss = world.sessions, ps = world.projects, P = PL;
     let waiting = 0, urg = 0;
-    for (const s of world.sessions) if (s.present && (s.status === 'permission' || s.status === 'question')) { waiting++; urg = Math.max(urg, s.s.urgency); }
-    waitAmt += ((waiting ? 1 : 0) - waitAmt) * (1 - Math.exp(-dt * 3));
-    for (const p of world.projects) {
-      const st = pstat.get(p); let live = 0, act = 0;
-      for (const x of p.sessions) if (x.present) { live++; act += x.s.work + x.s.think * .7 + x.s.compact * .7; }
+    for (let i = 0; i < ss.length; i++) { const s = ss[i]; if (s.present && (s.status === 'permission' || s.status === 'question')) { waiting++; urg = Math.max(urg, s.s.urgency); } }
+    const wt = waiting ? 1 : 0;
+    if (Math.abs(wt - waitAmt) < .001) waitAmt = wt; else { waitAmt += (wt - waitAmt) * (1 - Math.exp(-dt * 3)); busy = true; }
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i], st = pstat.get(p), xs = p.sessions; let live = 0, act = 0;
+      for (let j = 0; j < xs.length; j++) { const x = xs[j]; if (x.present) { live++; act += x.s.work + x.s.think * .7 + x.s.compact * .7; } }
       st.act = live ? act / live : 0;
     }
-    for (const m of mush) {
-      const n = m.node, s = n.s;
+    for (let mi = 0; mi < mush.length; mi++) {
+      const m = mush[mi], n = m.node, s = n.s;
       if (m.role === 'session' || m.role === 'sub') {
         const L = linkOf.get(n), target = n.present ? 1 : 0, was = m.rise;
         if (still) m.rise = s.alive;
         else if (target) { if (!L || L.grow > .8) m.rise = Math.min(1, m.rise + dt * 1.8); }
         else m.rise = Math.max(0, m.rise - dt * 2.4);
+        if (m.rise !== was) busy = true;
         if (was < 1 && m.rise >= 1) kick(m, -2.6); // lands from the pop with a squash
         if (m.rise > .5) pokes(m, s);
         swayOf(m);
         const sq = spring(m, dt);
         const rs = m.rise <= 0 ? 0 : easeOutBack(m.rise, 2.4);
-        statusColor(n, PAL, m.col);
+        statusColor(n, PALC, m.col);
         const glow = (glowOf(n) + m.flash * 1.4) * Math.min(1, m.rise * 1.5);
-        m.flash = Math.max(0, m.flash - dt * 2.5);
+        if (m.flash > 0) { m.flash = Math.max(0, m.flash - dt * 2.5); busy = true; }
         const hop = clamp(n.pos.y * .3, -.3, .7), bob = still ? 0 : s.need * .05 * Math.sin(T * 3.2 + m.seed);
         const h = m.h * rs * (1 + hop + .24 * s.need + bob + .12 * s.hover + .08 * s.select - .3 * s.off);
         // Context fills the cap out.
         const R = m.R * rs * (m.role === 'session' ? .88 + .2 * s.ctx : 1) * (1 - .1 * s.compact - .04 * hop) * (1 + (still ? 0 : s.think * .035 * Math.sin(T * 2.1 + m.seed)));
         // Offline stems wilt: they bend right over and the cap hangs.
-        const lx = clamp(n.vel.x * .045, -.6, .6) + m.lx + m.dx * s.off * .65 + swx * (1 - .7 * s.off), lz = clamp(n.vel.z * .045, -.6, .6) + m.lz + m.dz * s.off * .65 + swz * (1 - .7 * s.off);
-        place(m, n.pos.x, n.pos.z, h, R, lx, lz, .5 * s.off, m.col, glow, m.role === 'session' ? s.ctx : -1, s.error, s.off, Math.max(s.hover, s.select), sq);
+        P.bx = n.pos.x; P.bz = n.pos.z; P.h = h; P.R = R;
+        P.lx = clamp(n.vel.x * .045, -.6, .6) + m.lx + m.dx * s.off * .65 + m.swx * (1 - .7 * s.off);
+        P.lz = clamp(n.vel.z * .045, -.6, .6) + m.lz + m.dz * s.off * .65 + m.swz * (1 - .7 * s.off);
+        P.droop = .5 * s.off; P.glow = glow; P.ctx = m.role === 'session' ? s.ctx : -1; P.rot = s.error; P.wither = s.off; P.rim = Math.max(s.hover, s.select); P.sq = sq;
+        place(m);
         m.R0 = R;
         if (rs > .05) {
           light(n.pos.x, n.pos.z, m.role === 'session' ? 2.1 : 1.1, glow * (m.role === 'session' ? .26 : .16) * Math.min(1, rs), m.col);
           glint(m.top.x, m.top.y + R * .35, m.top.z, m.col, glow * .03, R * 4);
           // A ripe cap sheds spores, amber when it's nearly full.
-          if (!still && m.role === 'session' && s.ctx > .55 && Math.random() < dt * (s.ctx - .5) * 7) emit(m.top.x, m.top.y - .05, m.top.z, s.ctx > .85 ? AMBER : SPORE, 1, { speed: .25, up: -.15, size: .09, life: 3.2, spread: R * .8 });
+          if (!still && m.role === 'session' && s.ctx > .55 && Math.random() < dt * (s.ctx - .5) * 7) { SHED.spread = R * .8; emit(m.top.x, m.top.y - .05, m.top.z, s.ctx > .85 ? AMBER : SPORE, 1, SHED); }
         }
       } else if (m.role === 'shot') {
-        const B = m.body, shot = ctx.shot ? ctx.shot(n) : null, sm = mushOf.get(n);
+        const B = m.body, shot = ctx.shot ? ctx.shot(n) : null, sm = mushOf.get(n), was = m.rise;
         if (shot && shot !== B.shot) drawLens(B, shot);
         B.shot = shot;
         m.rise = still ? (shot ? 1 : 0) : clamp(m.rise + (shot && n.present ? dt * 1.4 : -dt * 2.5));
+        if (m.rise !== was) busy = true;
         const e = Math.min(m.rise <= 0 ? 0 : easeOutBack(m.rise, 1.6), sm.rise);
         m.col.copy(sm.col).lerp(WHITE, .6);
         swayOf(m);
-        place(m, n.pos.x + m.ox, n.pos.z + m.oz, m.h * e, m.R * e, m.lx + swx * .5, m.lz + swz * .5, 0, m.col, .18 * e, -1, 0, n.s.off * .6, 0, 0);
+        P.bx = n.pos.x + m.ox; P.bz = n.pos.z + m.oz; P.h = m.h * e; P.R = m.R * e; P.lx = m.lx + m.swx * .5; P.lz = m.lz + m.swz * .5;
+        P.droop = 0; P.glow = .18 * e; P.ctx = -1; P.rot = 0; P.wither = n.s.off * .6; P.rim = 0; P.sq = 0;
+        place(m);
         m.exit ||= new THREE.Vector2(); m.exit.set(-m.ox, -m.oz);
         B.lens.visible = e > .02;
         // The cap leans right over to show you its face: centred on the stalk's tip, which disappears up behind it.
-        if (B.lens.visible) { B.lens.position.copy(camera.position).sub(m.top).setLength(.2).add(m.top); B.lens.quaternion.copy(camera.quaternion); B.lens.rotateZ(still ? 0 : swx * .25); B.lens.scale.setScalar(e); }
+        if (B.lens.visible) { B.lens.position.copy(camera.position).sub(m.top).setLength(.2).add(m.top); B.lens.quaternion.copy(camera.quaternion); B.lens.rotateZ(still ? 0 : m.swx * .25); B.lens.scale.setScalar(e); }
         B.pos.copy(B.lens.position);
       } else if (m.role === 'plan') {
-        const sm = mushOf.get(n), done = n.plan ? m.step < n.plan.done : false, cur = n.plan && m.step === n.plan.done;
-        m.grown += ((done ? 1 : cur ? .5 : .18) - m.grown) * (1 - Math.exp(-dt * 3));
+        const sm = mushOf.get(n), done = n.plan ? m.step < n.plan.done : false, cur = n.plan && m.step === n.plan.done, gt = done ? 1 : cur ? .5 : .18;
+        if (Math.abs(gt - m.grown) < .002) m.grown = gt; else { m.grown += (gt - m.grown) * (1 - Math.exp(-dt * 3)); busy = true; }
         const rs = sm.rise <= 0 ? 0 : easeOutBack(sm.rise, 2.4), pulse = cur && !still ? .5 + .5 * Math.sin(T * 3 + m.step) : .5;
         m.col.copy(done ? WHITE : sm.col);
         swayOf(m);
-        place(m, n.pos.x + m.ox, n.pos.z + m.oz, m.h * m.grown * rs, m.R * (.45 + .55 * m.grown) * rs, m.lx + swx + clamp(n.vel.x * .04, -.5, .5), m.lz + swz + clamp(n.vel.z * .04, -.5, .5), 0, m.col, (done ? .55 : cur ? .3 + .4 * pulse : .06) * Math.min(1, sm.rise * 1.5), -1, 0, n.s.off, 0, spring(m, dt));
+        P.bx = n.pos.x + m.ox; P.bz = n.pos.z + m.oz; P.h = m.h * m.grown * rs; P.R = m.R * (.45 + .55 * m.grown) * rs;
+        P.lx = m.lx + m.swx + clamp(n.vel.x * .04, -.5, .5); P.lz = m.lz + m.swz + clamp(n.vel.z * .04, -.5, .5); P.droop = 0;
+        P.glow = (done ? .55 : cur ? .3 + .4 * pulse : .06) * Math.min(1, sm.rise * 1.5); P.ctx = -1; P.rot = 0; P.wither = n.s.off; P.rim = 0; P.sq = spring(m, dt);
+        place(m);
       } else if (m.role === 'cluster') {
-        const { act } = pstat.get(n), ph = m.phase ?? 0;
+        const act = pstat.get(n).act, ph = m.phase ?? 0;
         const breath = still ? .5 : .5 + .5 * Math.sin(T * 1.6 + ph + m.seed);
         m.col.copy(m.hue);
         const glow = (.42 + .6 * act + .35 * s.hover + .25 * s.select) * (.85 + .2 * breath) + m.flash;
-        m.flash = Math.max(0, m.flash - dt * 2);
+        if (m.flash > 0) { m.flash = Math.max(0, m.flash - dt * 2); busy = true; }
         const hop = clamp(n.pos.y * .25, -.3, .6);
         pokes(m, s, m.ox === 0 ? 0 : .05 + m.dist * .07);
         swayOf(m);
-        const sq = spring(m, dt);
-        place(m, n.pos.x + m.ox, n.pos.z + m.oz, m.h * (1 + hop + .1 * s.hover), m.R * (1 - .04 * hop), m.lx + swx + clamp(n.vel.x * .045, -.6, .6), m.lz + swz + clamp(n.vel.z * .045, -.6, .6), 0, m.col, glow, -1, 0, 0, m.ox === 0 ? Math.max(s.hover, s.select) : s.hover * .5, sq);
+        P.sq = spring(m, dt);
+        P.bx = n.pos.x + m.ox; P.bz = n.pos.z + m.oz; P.h = m.h * (1 + hop + .1 * s.hover); P.R = m.R * (1 - .04 * hop);
+        P.lx = m.lx + m.swx + clamp(n.vel.x * .045, -.6, .6); P.lz = m.lz + m.swz + clamp(n.vel.z * .045, -.6, .6); P.droop = 0;
+        P.glow = glow; P.ctx = -1; P.rot = 0; P.wither = 0; P.rim = m.ox === 0 ? Math.max(s.hover, s.select) : s.hover * .5;
+        place(m);
         if (m.ox === 0) { light(n.pos.x, n.pos.z, 1.7, .22 + .3 * act + .15 * s.hover, m.col); glint(m.top.x, m.top.y + .2, m.top.z, m.col, glow * .06, 2.5); }
       } else {
         const a = m.angle, wave = still ? .6 : .5 + .5 * Math.sin(a * 3 - T * 1.6);
@@ -769,28 +1069,35 @@ function create(ctx) {
         // A hop on You runs round the ring as a wave.
         pokes(m, n.s, (m.fi / FAIRY) * .6);
         swayOf(m);
-        const sq = spring(m, dt);
-        place(m, n.pos.x + m.ox, n.pos.z + m.oz, m.h * bud * (1 + clamp(n.pos.y * .2, -.3, .5)), m.R * (.6 + .4 * bud), m.lx + swx, m.lz + swz, 0, m.col, glow, -1, 0, m.lit < 0 ? .6 : 0, 0, sq);
+        P.sq = spring(m, dt);
+        P.bx = n.pos.x + m.ox; P.bz = n.pos.z + m.oz; P.h = m.h * bud * (1 + clamp(n.pos.y * .2, -.3, .5)); P.R = m.R * (.6 + .4 * bud);
+        P.lx = m.lx + m.swx; P.lz = m.lz + m.swz; P.droop = 0; P.glow = glow; P.ctx = -1; P.rot = 0; P.wither = m.lit < 0 ? .6 : 0; P.rim = 0;
+        place(m);
       }
     }
-    for (const mesh of instMeshes) { mesh.instanceMatrix.needsUpdate = true; for (const k of INST_ATTRS) mesh.geometry.attributes[k].needsUpdate = true; }
-    bendAttr.needsUpdate = true;
+    // Only what changed goes up.
+    for (let i = 0; i < instMeshes.length; i++) {
+      const mesh = instMeshes[i], at = mesh.geometry.attributes;
+      sync(mesh.instanceMatrix, mesh.count * 16);
+      for (let k = 0; k < INST_ATTRS.length; k++) { const a = at[INST_ATTRS[k]]; sync(a, mesh.count * a.itemSize); }
+    }
+    sync(bendAttr, mush.length * 4);
     // Skirts mark the mode
-    modeSessions.forEach((s, i) => {
-      const m = mushOf.get(s), rs = m.rise <= 0 ? 0 : easeOutBack(m.rise, 2.4), r = .17 * Math.max(.001, rs) * m.thick;
+    for (let i = 0; i < modeSessions.length; i++) {
+      const s = modeSessions[i], m = mushOf.get(s), rs = m.rise <= 0 ? 0 : easeOutBack(m.rise, 2.4), r = .17 * Math.max(.001, rs) * m.thick;
       // The skirt rides the bent stem at 58% of its height and tilts with it.
       stemAt(m, .58, base, up); base.x += s.pos.x; base.z += s.pos.z;
       q.setFromUnitVectors(axis.set(0, 1, 0), up);
       m4.compose(base, q, sc.set(r, r, r)); skirts.setMatrixAt(i, m4);
-    });
-    skirts.instanceMatrix.needsUpdate = true;
+    }
+    sync(skirts.instanceMatrix, modeSessions.length * 16);
     // The stump
     you.position.set(world.you.pos.x, 0, world.you.pos.z);
     you.scale.set(1, 1 + clamp(world.you.pos.y * .2, -.2, .4), 1);
     stumpMat.uniforms.uWait.value = waitAmt * (.6 + .6 * urg);
     stumpMat.uniforms.uFlash.value.copy(fairyFlash);
     gripCol.copy(AMBER).lerp(EMBER, urg * .6).multiplyScalar(1.4);
-    fairyFlash.multiplyScalar(Math.exp(-dt * 2.5));
+    if (fairyFlash.r + fairyFlash.g + fairyFlash.b > .005) { fairyFlash.multiplyScalar(Math.exp(-dt * 2.5)); busy = true; } else fairyFlash.r = fairyFlash.g = fairyFlash.b = 0;
     light(world.you.pos.x, world.you.pos.z, 4.2, .35 + waitAmt * .35, tmpC2.copy(FOX).lerp(AMBER, waitAmt));
   }
 
@@ -810,9 +1117,9 @@ function create(ctx) {
   function frame(L) {
     const P = L.P, N = L.N, S = L.S, n = L.segs; S[0] = 0;
     for (let i = 0; i <= n; i++) {
-      const i0 = Math.max(0, i - 1), i1 = Math.min(n, i + 1), tx = P[i1 * 2] - P[i0 * 2], tz = P[i1 * 2 + 1] - P[i0 * 2 + 1], tl = Math.hypot(tx, tz) || 1;
+      const i0 = Math.max(0, i - 1), i1 = Math.min(n, i + 1), tx = P[i1 * 2] - P[i0 * 2], tz = P[i1 * 2 + 1] - P[i0 * 2 + 1], tl = Math.sqrt(tx * tx + tz * tz) || 1;
       N[i * 2] = -tz / tl; N[i * 2 + 1] = tx / tl;
-      if (i) S[i] = S[i - 1] + Math.hypot(P[i * 2] - P[i * 2 - 2], P[i * 2 + 1] - P[i * 2 - 1]);
+      if (i) { const dx = P[i * 2] - P[i * 2 - 2], dz = P[i * 2 + 1] - P[i * 2 - 1]; S[i] = S[i - 1] + Math.sqrt(dx * dx + dz * dz); }
     }
     L.len = Math.max(.3, S[n]);
   }
@@ -820,7 +1127,7 @@ function create(ctx) {
     const A = L.child.pos, Y = world.you.pos, still = reduced(), segs = L.segs, P = L.P, N = L.N;
     const sx = A.x, sz = A.z; let ex, ez, etx, etz;
     if (L.kind === 'proj' || L.kind === 'need') {
-      let ux = A.x - Y.x, uz = A.z - Y.z; const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul;
+      let ux = A.x - Y.x, uz = A.z - Y.z; const ul = Math.sqrt(ux * ux + uz * uz) || 1; ux /= ul; uz /= ul;
       if (L.kind === 'proj') { L.u.set(ux, uz); const d = ROOT_IN + ROOT_LEN; ex = Y.x + ux * d; ez = Y.z + uz * d; }
       else { const a = L.bend * .3, c = Math.cos(a), s = Math.sin(a), rx = ux * c - uz * s; uz = ux * s + uz * c; ux = rx; ex = Y.x + ux * 1.45; ez = Y.z + uz * 1.45; L.u.set(ux, uz); }
       etx = -ux; etz = -uz;
@@ -829,12 +1136,12 @@ function create(ctx) {
       const ahead = (A.x - pp.x) * hx + (A.z - pp.z) * hz, d = Math.min(Math.max(sub ? .35 : .4, ahead + .5) + L.dj * (sub ? .45 : .7), H.len * .5);
       along(H, d); ex = J.x; ez = J.z; etx = J.tx; etz = J.tz; L.jt = J.t; L.jd = d;
     }
-    let cx = ex - sx, cz = ez - sz; const cl = Math.hypot(cx, cz) || 1; cx /= cl; cz /= cl;
+    let cx = ex - sx, cz = ez - sz; const cl = Math.sqrt(cx * cx + cz * cz) || 1; cx /= cl; cz /= cl;
     let stx, stz;
-    if (L.kind === 'need') { const S = linkOf.get(L.child).P; stx = S[2] - S[0]; stz = S[3] - S[1]; const l = Math.hypot(stx, stz) || 1; stx /= l; stz /= l; }
+    if (L.kind === 'need') { const S = linkOf.get(L.child).P; stx = S[2] - S[0]; stz = S[3] - S[1]; const l = Math.sqrt(stx * stx + stz * stz) || 1; stx /= l; stz /= l; }
     else {
       // Never arrive against the flow of the cord being joined.
-      const back = etx * cx + etz * cz; if (back < .25) { etx += cx * (.25 - back) * 2; etz += cz * (.25 - back) * 2; const l = Math.hypot(etx, etz) || 1; etx /= l; etz /= l; }
+      const back = etx * cx + etz * cz; if (back < .25) { etx += cx * (.25 - back) * 2; etz += cz * (.25 - back) * 2; const l = Math.sqrt(etx * etx + etz * etz) || 1; etx /= l; etz /= l; }
       const ca = Math.cos(L.bend), sa = Math.sin(L.bend); stx = cx * ca - cz * sa; stz = cx * sa + cz * ca;
     }
     const k0 = cl * (L.kind === 'need' ? .5 : .9), k1 = cl * (L.kind === 'need' ? .7 : .9);
@@ -846,7 +1153,7 @@ function create(ctx) {
     // The meander, and a slow drift like a thread in water: two waves running opposite ways, flat at both ends.
     const amp = Math.min(cl, 8), drift = still ? 0 : Math.min(.25, .025 * cl + .04);
     for (let i = 1; i < segs; i++) {
-      const t = L.tt[i], o = L.off[i] * amp + drift * (.65 * Math.sin(T * .42 + t * 3.1 + L.seed) + .35 * Math.sin(T * .27 - t * 5.3 + L.seed * 1.7)) * Math.sin(Math.PI * t) ** 2;
+      const t = L.tt[i], sp = Math.sin(Math.PI * t), o = L.off[i] * amp + drift * (.65 * Math.sin(T * .42 + t * 3.1 + L.seed) + .35 * Math.sin(T * .27 - t * 5.3 + L.seed * 1.7)) * sp * sp;
       P[i * 2] += N[i * 2] * o; P[i * 2 + 1] += N[i * 2 + 1] * o;
     }
     frame(L);
@@ -855,19 +1162,20 @@ function create(ctx) {
     const g = L.grow; if (g >= .999) return 1; if (g <= .001) return 0;
     return L.kind === 'need' ? 1 - smoothstep(g - .05, g + .005, t) : smoothstep(1 - g - .005, 1 - g + .05, t);
   };
-  // Pulses near each sample, once per cord per frame: every strand and branch reads them.
+  // Pulses near each sample, once per cord per frame: every strand and branch reads them. Cleared once when the last one ends.
   function pulses(L) {
-    const n = L.segs, PR = L.pc;
-    PR.fill(0);
-    for (const p of L.pulses.list) {
-      const f = p.data.from || 0, pt = p.data.rev ? 1 - p.t : f + (1 - f) * p.t, c = p.data.col;
+    const n = L.segs, PR = L.pc, list = L.pulses.list;
+    if (!list.length && !L.pcOn) return;
+    PR.fill(0); L.pcOn = list.length > 0;
+    for (let j = 0; j < list.length; j++) {
+      const p = list[j], f = p.data.from || 0, pt = p.data.rev ? 1 - p.t : f + (1 - f) * p.t, c = p.data.col;
       for (let i = 0; i <= n; i++) { const d = (L.tt[i] - pt) * L.len; if (d < -2 || d > 2) continue; const w = p.strength * Math.exp(-d * d * 3.5); PR[i * 3] += c.r * w; PR[i * 3 + 1] += c.g * w; PR[i * 3 + 2] += c.b * w; }
     }
   }
   // Half-width of a cord's bundle at t: a trunk steps up at every session that joins it.
   function bundleAt(L, t) {
     let w = L.c.bundle;
-    if (L.kind === 'proj') for (const sl of L.joins) if (sl.grow > 0) w += L.c.bundle * .22 * Math.min(1, sl.grow * 2) * smoothstep(sl.jt - .02, sl.jt + .06, t);
+    if (L.kind === 'proj') { const js = L.joins; for (let i = 0; i < js.length; i++) { const sl = js[i]; if (sl.grow > 0) w += L.c.bundle * .22 * Math.min(1, sl.grow * 2) * smoothstep(sl.jt - .02, sl.jt + .06, t); } }
     return w;
   }
   // The arch of a need hypha: it leaves the soil to reach across, higher as the wait grows.
@@ -875,15 +1183,16 @@ function create(ctx) {
   function updateLinks(dt) {
     const still = reduced();
     let grips = 0;
-    for (const L of links) {
-      const c = L.child, s = c.s;
+    for (let li = 0; li < links.length; li++) {
+      const L = links[li], c = L.child, s = c.s, g0 = L.grow;
       // State: how far grown, how bright, what colour, how pruned
       if (L.kind === 'need') {
         const target = s.need > .5 && c.present ? 1 : 0;
         if (still) L.grow = target;
         else if (target) L.grow = Math.min(1, Math.max(L.grow + dt * (.32 + s.urgency * .9), (c.waitSec - .5) * .4));
         else L.grow = Math.max(0, L.grow - dt * 1.4);
-        if (L.grow <= 0 && !L.pulses.list.length) { if (!L.dead) zeroLink(L); continue; }
+        if (L.grow !== g0) busy = true;
+        if (L.grow <= 0 && !L.pulses.list.length) { Wd[L.tb * 4 + 3] = 0; continue; }
         const throb = still ? .7 : .5 + .5 * Math.sin(T * (3 + s.urgency * 5) + L.seed);
         L.col.copy(AMBER).lerp(EMBER, s.urgency * .6);
         L.bright = (.75 + .35 * throb + .5 * s.urgency) * Math.max(s.need, .25);
@@ -896,26 +1205,30 @@ function create(ctx) {
       } else {
         const target = c.present ? 1 : 0;
         if (still) L.grow = s.alive; else L.grow = target ? Math.min(1, L.grow + dt * 1.1) : (L.foot.rise <= .25 ? Math.max(0, L.grow - dt * 1.4) : L.grow);
-        statusColor(c, PAL, L.col);
+        if (L.grow !== g0) busy = true;
+        statusColor(c, PALC, L.col);
         const breath = still ? .5 : .5 + .5 * Math.sin(T * 2.1 + L.seed);
         L.bright = s.work * .72 + s.think * (.38 + .25 * breath) + s.compact * .5 + s.need * .5 + s.wait * .14 + s.idle * .13 + s.error * .4 + s.off * .07 + s.heat * .45 + s.hover * .35 + s.select * .25;
         L.prune = 1 - .88 * s.compact - .6 * s.off;
       }
       // The bundle's twist turns only while something flows through it.
       if (!still) L.spin += dt * .35 * (L.kind === 'need' ? 1 : L.kind === 'proj' ? pstat.get(c).act : Math.min(1, s.work + s.think + s.compact));
-      for (const p of L.pulses.update(dt)) {
+      const done = L.pulses.update(dt);
+      for (let j = 0; j < done.length; j++) {
+        const p = done[j];
         // A pulse that reaches a join carries on down the cord it joined, from the join.
         if (L.kind === 'sess' && !p.data.rev) { const pl = L.H; if (pl) pl.pulses.add(6 / (pl.len * (1 - L.jt)), p.strength * .75, { col: p.data.col, rev: false, from: L.jt }); const mom = clusters.get(c.parent)?.[0]; if (mom) { mom.flash = .6; kick(mom, -.9); } }
         if (L.kind === 'proj') { fairyFlash.add(tmpC.copy(p.data.col).multiplyScalar(.5)); if (fairyFlash.r + fairyFlash.g + fairyFlash.b > 2.4) fairyFlash.multiplyScalar(.8); rootFlash[c.index] = Math.min(1.5, rootFlash[c.index] + p.strength * .8); }
         if (L.kind === 'sub' && !p.data.rev) { const m = mushOf.get(c.parent), sl = L.H; if (m) m.flash = Math.max(m.flash, .4); if (sl && sl.grow > .5) sl.pulses.add(6 / (sl.len * (1 - L.jt)), p.strength * .7, { col: p.data.col, rev: false, from: L.jt }); }
         if (L.kind === 'need' && p.data.rev) { const m = mushOf.get(c); if (m) { m.flash = 1; kick(m, 1.8); } }
       }
+      // A need hypha's heartbeat runs at the ambient pace; anything else in flight wants every frame.
+      if (L.pulses.list.length && L.kind !== 'need') busy = true;
       layoutLink(L); // even when unseen: others may join it
       // The cord leaves its foot this way; the stem's shader runs the strands up the bulb there.
       if (L.kind !== 'need' && L.foot) { L.foot.exit ||= new THREE.Vector2(); L.foot.exit.set(L.P[2] - L.P[0], L.P[3] - L.P[1]); }
-      if (L.grow <= 0) { if (!L.dead) zeroLink(L); continue; }
-      L.dead = false;
-      writeLink(L);
+      if (L.grow <= 0) { Wd[L.tb * 4 + 3] = 0; continue; }
+      writeLinkData(L);
       // Growing tips
       if (L.grow < .999) {
         const t = L.kind === 'need' ? L.grow : 1 - L.grow, i = near(L, t);
@@ -925,12 +1238,6 @@ function create(ctx) {
       }
     }
     for (let i = grips; i < NEEDS; i++) gripAt[i].z = 0;
-  }
-  function zeroLink(L) {
-    L.dead = true;
-    cordCol.fill(0, L.cord0 * 3, (L.cord0 + (L.segs + 1) * 2) * 3);
-    for (const st of L.strands) fCol.fill(0, st.v0 * 8, (st.v0 + L.segs + 1 + L.c.cont) * 8);
-    for (const br of L.branches) fCol.fill(0, br.v0 * 8, (br.v0 + br.pts.length / 2) * 8);
   }
   // The places a cord's strands carry on through after its own end: along the parent cord past the join for sessions and
   // subagents, and up the back of its stump root for a trunk. Q = [x, y, z, nx, nz, room]: room is the root's radius there.
@@ -946,180 +1253,141 @@ function create(ctx) {
       }
     }
   }
-  // A cord: its glow ribbon, its bundle of strands and its side branches. Strands start inside the foot's bulb spread across it,
-  // gather into a twisted bundle, narrow to fit inside the cord they join and carry on along it, fading, so nothing ends in the open.
-  function writeLink(L) {
-    const { segs, P, N, S, len, kind, c } = L, still = reduced(), Yg = kind === 'proj' ? .018 : .024;
-    const cr = L.col.r * L.bright, cg = L.col.g * L.bright, cb = L.col.b * L.bright, PC = L.pc;
+  // A cord's record (see CORD_GLSL): its header, centre line with pulses, the samples its strands carry on through, and for a
+  // trunk where each session joins it. The shaders build its glow, strands and branches from it.
+  function writeLinkData(L) {
+    const segs = L.segs, P = L.P, N = L.N, S = L.S, kind = L.kind, c = L.c, H = L.H, foot = L.foot, col = L.col, b = L.bright, W = Wd, PC = L.pc;
     pulses(L); carryOn(L);
-    for (let i = 0; i <= segs; i++) L.m[i] = mask(L, L.tt[i]);
-    const H = L.H, jw = H ? bundleAt(H, L.jt) * .7 : kind === 'proj' ? .045 : c.bundle;
-    const fan = L.foot ? Math.max(c.bundle, L.foot.bulb * .85) : c.bundle;
-    // The glow: wide at the foot, fading out before the join so two never pile up there.
-    for (let i = 0; i <= segs; i++) {
-      const t = L.tt[i], d0 = S[i], m = L.m[i];
-      let w = c.width * (1 + 1.4 * Math.exp(-d0 / .35)), k = .48 * (1 + .6 * Math.exp(-d0 / .4));
-      if (kind === 'proj') { w *= (bundleAt(L, t) / c.bundle) * (1 - .5 * smoothstep(.8, 1, t)); k *= 1 - .7 * smoothstep(.75, 1, t); }
-      else if (kind === 'need') k *= 1.5 * (1 - smoothstep(.04, .2, liftOf(L, t)));
-      else k *= 1 - smoothstep(.6, .97, t);
-      const o = (L.cord0 + i * 2) * 3, nx = N[i * 2], nz = N[i * 2 + 1], y = Yg + liftOf(L, t);
-      cordPos[o] = P[i * 2] + nx * w; cordPos[o + 1] = y; cordPos[o + 2] = P[i * 2 + 1] + nz * w;
-      cordPos[o + 3] = P[i * 2] - nx * w; cordPos[o + 4] = y; cordPos[o + 5] = P[i * 2 + 1] - nz * w;
-      const r = (cr * k + PC[i * 3] * .9) * m, g = (cg * k + PC[i * 3 + 1] * .9) * m, b = (cb * k + PC[i * 3 + 2] * .9) * m;
-      cordCol[o] = cordCol[o + 3] = r; cordCol[o + 1] = cordCol[o + 4] = g; cordCol[o + 2] = cordCol[o + 5] = b;
+    const jw = H ? bundleAt(H, L.jt) * .7 : kind === 'proj' ? .045 : c.bundle, fan = foot ? Math.max(c.bundle, foot.bulb * .85) : c.bundle;
+    const tip = kind === 'need' && L.grow < 1 && !reduced() ? L.grow : -1, o0 = L.tb * 4;
+    W[o0] = col.r * b; W[o0 + 1] = col.g * b; W[o0 + 2] = col.b * b; W[o0 + 3] = L.grow;
+    W[o0 + 4] = jw; W[o0 + 5] = fan; W[o0 + 6] = L.spin; W[o0 + 7] = tip;
+    W[o0 + 8] = foot ? foot.bulb : .05; W[o0 + 9] = L.lift; W[o0 + 10] = L.prune; W[o0 + 11] = L.child.s.error || 0;
+    W[o0 + 12] = L.len; W[o0 + 13] = L.seed; W[o0 + 14] = L.tw; W[o0 + 15] = you.scale.y;
+    let o = o0 + 24;
+    for (let i = 0; i <= segs; i++, o += 8) {
+      W[o] = P[i * 2]; W[o + 1] = P[i * 2 + 1]; W[o + 2] = N[i * 2]; W[o + 3] = N[i * 2 + 1];
+      W[o + 4] = S[i]; W[o + 5] = PC[i * 3]; W[o + 6] = PC[i * 3 + 1]; W[o + 7] = PC[i * 3 + 2];
     }
-    const err = L.child.s.error, spin = L.spin, tip = kind === 'need' && L.grow < 1 && !still ? L.grow : -1;
-    const Y = kind === 'need' ? .036 : .03, bury = kind === 'need' ? .3 : 1, C = c.cont, Q = L.Q, end = L.m[segs];
-    // Near the foot each strand comes out of the bulb on its own heading, all round its front, and sweeps into the bundle.
-    const bulb = L.foot ? L.foot.bulb : .05, Df = Math.max(.4, bulb * 3.2), fx = P[0], fz = P[1], hx = N[1], hz = -N[0];
-    for (const st of L.strands) {
-      let v = st.v0;
-      const wob = 1 + (still ? 0 : .3 * Math.sin(T * .6 + st.ph)), rx = hx * st.ca - hz * st.sa, rz = hx * st.sa + hz * st.ca;
-      for (let i = 0; i <= segs; i++) {
-        const t = L.tt[i], d = S[i], m = L.m[i], fk = Math.exp(-d / .3);
-        const W = c.bundle + (jw - c.bundle) * smoothstep(.55, 1, t) + (fan - c.bundle) * fk * .4;
-        let o = W * Math.sin(st.ph + d * L.tw + spin * st.sp) + st.off[i] * wob * (1 - fk);
-        // A growing need hypha's tip searches about.
-        if (tip >= 0) o += .25 * Math.sin(T * 2.3 + st.ph) * smoothstep(tip - .12, tip, t);
-        let x = P[i * 2] + N[i * 2] * o, z = P[i * 2 + 1] + N[i * 2 + 1] * o;
-        if (d < Df) { const w = smoothstep(0, Df, d), rr = bulb * .5 + d * 1.1; x = fx + rx * rr + (x - fx - rx * rr) * w; z = fz + rz * rr + (z - fz - rz * rr) * w; }
-        const gap = err > .01 ? 1 - err * (Math.sin(t * len * 2.3 + L.seed * 3) > .2 ? .85 : 0) : 1;
-        const k = st.b * (1 + .5 * fk) * m * gap;
-        fp(v++, x, Y + st.y + liftOf(L, t), z, c.thread, cr * k + PC[i * 3], cg * k + PC[i * 3 + 1], cb * k + PC[i * 3 + 2], bury * Math.min(1, t / .12, (1 - t) / .12));
-      }
-      for (let j = 1; j <= C; j++) {
-        const q = j * 6, e = j / C, x = Q[q], z = Q[q + 2];
-        if (H) {
-          const o = jw * Math.sin(st.ph + (len + c.carry * e) * L.tw + spin * st.sp), k = st.b * (1 - e) * (1 - e) * end, tp = Q[q + 5];
-          fp(v++, x + Q[q + 3] * o, Y + st.y, z + Q[q + 4] * o, c.thread, cr * k, cg * k, cb * k, Math.min(1, tp / .12, (1 - tp) / .12));
-        } else {
-          // Up the root's back, spread over as much of it as there is, and fading as it reaches the bark of the stump.
-          const R = Q[q + 5], W = Math.max(.035, R * .55), o = W * Math.sin(st.ph + (len + e * 2.5) * L.tw + spin * st.sp), sy = you.scale.y;
-          const top = (Q[q + 1] + Math.sqrt(Math.max(0, R * R - o * o)) * sy) + .014, k = st.b * smoothstep(.04, .3, 1 - e * .93) * end;
-          fp(v++, x + Q[q + 3] * o, Math.max(Y + st.y, top), z + Q[q + 4] * o, c.thread, cr * k, cg * k, cb * k, 0);
-        }
-      }
-    }
-    for (const br of L.branches) {
-      const bi = br.i0, bx = P[bi * 2], bz = P[bi * 2 + 1], nx = N[bi * 2], nz = N[bi * 2 + 1], tx = nz, tz = -nx;
-      const m = L.m[bi], s = Math.max(0, L.prune) * (.25 + .75 * m), n = br.pts.length / 2 - 1, y = Y + .004 + liftOf(L, br.t0);
-      const wa = still ? 0 : .16 * Math.sin(T * .5 + br.t0 * 11 + L.seed), ca = Math.cos(wa), sa = Math.sin(wa);
-      const pr = PC[bi * 3] * .9, pg = PC[bi * 3 + 1] * .9, pb = PC[bi * 3 + 2] * .9;
-      for (let j = 0; j <= n; j++) {
-        const pu = br.pts[j * 2] * s, pv = br.pts[j * 2 + 1] * s, du = pu * ca - pv * sa, dv = pu * sa + pv * ca, f = (1 - .65 * j / n) * m * Math.min(1, L.prune * 1.5 + .05);
-        fp(br.v0 + j, bx + tx * du + nx * dv, y, bz + tz * du + nz * dv, c.thread * .6 * (1 - .5 * j / n), (cr * br.b + pr) * f, (cg * br.b + pg) * f, (cb * br.b + pb) * f, .5);
-      }
-    }
+    const Q = L.Q;
+    for (let j = 1; j <= c.cont; j++, o += 8) { const q = j * 6; W[o] = Q[q]; W[o + 1] = Q[q + 1]; W[o + 2] = Q[q + 2]; W[o + 3] = Q[q + 3]; W[o + 4] = Q[q + 4]; W[o + 5] = Q[q + 5]; }
+    if (kind === 'proj') { const js = L.joins; for (let j = 0; j < js.length; j++, o += 4) { const sl = js[j]; W[o] = sl.jt; W[o + 1] = sl.grow > 0 ? Math.min(1, sl.grow * 2) : 0; } }
   }
   function updateBridges() {
-    for (const B of bridges) {
-      const LA = B.A, LB = B.B, ia = near(LA, B.ta), ib = near(LB, B.tb), ma = mask(LA, B.ta), mb = mask(LB, B.tb);
-      const ax = LA.P[ia * 2], az = LA.P[ia * 2 + 1], bx = LB.P[ib * 2], bz = LB.P[ib * 2 + 1], dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz) || 1;
-      const f = LA.grow > 0 && LB.grow > 0 ? ma * mb * smoothstep(4, 1.6, d) * Math.min(LA.prune, LB.prune) * B.b * .5 : 0;
-      const r = (LA.col.r * LA.bright + LB.col.r * LB.bright) * f, g = (LA.col.g * LA.bright + LB.col.g * LB.bright) * f, b = (LA.col.b * LA.bright + LB.col.b * LB.bright) * f;
-      const px = -dz / d, pz = dx / d;
-      for (let i = 0; i <= BR; i++) {
-        const u = i / BR, o = (B.bow * d * .3 + .06 * Math.sin(u * 9 + B.ph)) * Math.sin(Math.PI * u), fade = .55 + .45 * Math.sin(Math.PI * u);
-        fp(B.v0 + i, ax + dx * u + px * o, .032, az + dz * u + pz * o, .007, r * fade, g * fade, b * fade, .6);
-      }
+    for (let i = 0; i < bridges.length; i++) {
+      const X = bridges[i], LA = X.A, LB = X.B, o = X.rb * 4;
+      if (LA.grow <= 0 || LB.grow <= 0) { Wd[o + 4] = Wd[o + 5] = Wd[o + 6] = 0; continue; }
+      const ax = LA.P[X.ia * 2], az = LA.P[X.ia * 2 + 1], dx = LB.P[X.ib * 2] - ax, dz = LB.P[X.ib * 2 + 1] - az, d = Math.sqrt(dx * dx + dz * dz) || 1;
+      const f = mask(LA, X.ta) * mask(LB, X.tb) * smoothstep(4, 1.6, d) * Math.min(LA.prune, LB.prune) * X.b * .5;
+      Wd[o] = ax; Wd[o + 1] = az; Wd[o + 2] = dx; Wd[o + 3] = dz;
+      Wd[o + 4] = (LA.col.r * LA.bright + LB.col.r * LB.bright) * f; Wd[o + 5] = (LA.col.g * LA.bright + LB.col.g * LB.bright) * f; Wd[o + 6] = (LA.col.b * LA.bright + LB.col.b * LB.bright) * f;
     }
   }
   function updateRoots(dt) {
-    trunks.forEach((L, i) => {
+    for (let i = 0; i < trunks.length; i++) {
+      const L = trunks[i];
       rootDir[i].copy(L.u); veinDir[i].copy(L.u);
-      rootFlash[i] *= Math.exp(-dt * 2.5);
+      if (rootFlash[i] > .005) { rootFlash[i] *= Math.exp(-dt * 2.5); busy = true; } else rootFlash[i] = 0;
       rootCol[i].copy(L.col).multiplyScalar(.3 + L.bright * .7 + rootFlash[i]);
       veinCol[i].copy(L.col).multiplyScalar((.25 + L.bright * .6 + rootFlash[i]) * .8);
-      const M = trunks[(i + 1) % NP].u; let mx = L.u.x + M.x, mz = L.u.y + M.y; const ml = Math.hypot(mx, mz);
+      const M = trunks[(i + 1) % NP].u; let mx = L.u.x + M.x, mz = L.u.y + M.y; const ml = Math.sqrt(mx * mx + mz * mz);
       if (NP < 2 || ml < 1e-3) { mx = -L.u.y; mz = L.u.x; } else { mx /= ml; mz /= ml; }
       rootDir[NP + i].set(mx, mz);
-    });
+    }
   }
+  // Felt, tethers, the screenshot body's threads and feeding threads: where their ends are and how bright.
   function updateFuzz() {
-    for (const F of fuzz) {
-      const m = F.m, n = m.node, s = n.s, cl = m.role === 'cluster', rise = cl ? 1 : m.rise, L = linkOf.get(n);
+    const W = Wd;
+    for (let i = 0; i < fuzz.length; i++) {
+      const F = fuzz[i], m = F.m, n = m.node, s = n.s, cl = m.role === 'cluster', rise = cl ? 1 : m.rise, L = linkOf.get(n);
       // The felt is the foot's own strands: the same colour and brightness as the cord where it leaves.
       const col = tmpC.copy(m.col).lerp(WHITE, .2), ox = n.pos.x + (m.ox || 0), oz = n.pos.z + (m.oz || 0), sc = cl ? 1 : Math.min(1, rise * 1.3);
       const b = rise * (cl ? .55 : .35 + .45 * Math.min(1.4, L ? L.bright * 1.3 : .5)) * (cl ? .5 + .5 * (m.ox === 0 ? 1 : .6) : 1 - .7 * s.off);
-      for (const th of F.thr) for (let j = 0; j <= 4; j++) {
-        const f = (1 - j / 6) * b * th.b;
-        fp(th.v0 + j, ox + th.pts[j * 2] * sc, .028, oz + th.pts[j * 2 + 1] * sc, .007, col.r * f, col.g * f, col.b * f, 0);
-      }
-      if (F.teth) {
-        const t = F.teth, mx = n.pos.x, mz = n.pos.z, dx = mx - ox, dz = mz - oz, d = Math.hypot(dx, dz) || 1, px = -dz / d, pz = dx / d, f = b * .8;
-        for (let i = 0; i <= TETH; i++) {
-          const u = i / TETH, o = (t.bow * d * .35 + .05 * Math.sin(u * 8 + t.ph)) * Math.sin(Math.PI * u);
-          fp(t.v0 + i, ox + dx * u + px * o, .03, oz + dz * u + pz * o, .009, m.col.r * f, m.col.g * f, m.col.b * f, 0);
-        }
+      let o = F.rb * 4;
+      W[o] = ox; W[o + 1] = oz; W[o + 2] = sc; W[o + 4] = col.r * b; W[o + 5] = col.g * b; W[o + 6] = col.b * b;
+      if (F.teth >= 0) {
+        const f = b * .8; o = F.teth * 4;
+        W[o] = ox; W[o + 1] = oz; W[o + 2] = n.pos.x - ox; W[o + 3] = n.pos.z - oz; W[o + 4] = m.col.r * f; W[o + 5] = m.col.g * f; W[o + 6] = m.col.b * f;
       }
     }
-    for (const B of shotBodies) {
-      const { s, m } = B, sm = mushOf.get(s), L = linkOf.get(s), e = Math.min(m.rise, sm.rise), x0 = s.pos.x, z0 = s.pos.z, dx = m.ox, dz = m.oz, d = Math.hypot(dx, dz) || 1, px = -dz / d, pz = dx / d;
-      const col = tmpC.copy(sm.col).lerp(WHITE, .25), f = e * (.2 + .45 * Math.min(1.2, L.bright)) * (1 - .7 * s.s.off), a = sm.bulb * .45, b = m.bulb * .45;
-      for (const th of B.threads) for (let i = 0; i <= SHOT_SEG; i++) {
-        // From inside the session's bulb to inside the stalk's, drawn out as the body grows, gathered at both ends.
-        const u = i / SHOT_SEG, along = (a + (d * e - a - b) * u) / d, o = .07 * Math.sin(th.ph + u * 5) * Math.sin(Math.PI * u) + .12 * Math.sin(Math.PI * u) * Math.sin(th.ph), k = f * th.b;
-        fp(th.v0 + i, x0 + dx * along + px * o, .03, z0 + dz * along + pz * o, .009, col.r * k, col.g * k, col.b * k, 0);
-      }
+    // From inside the session's bulb to inside the stalk's, drawn out as the body grows, gathered at both ends.
+    for (let i = 0; i < shotBodies.length; i++) {
+      const B = shotBodies[i], s = B.s, m = B.m, sm = mushOf.get(s), L = linkOf.get(s), e = Math.min(m.rise, sm.rise), dx = m.ox, dz = m.oz, d = Math.sqrt(dx * dx + dz * dz) || 1;
+      const col = tmpC.copy(sm.col).lerp(WHITE, .25), f = e * (.2 + .45 * Math.min(1.2, L.bright)) * (1 - .7 * s.s.off), o = B.rb * 4;
+      W[o] = s.pos.x; W[o + 1] = s.pos.z; W[o + 2] = dx; W[o + 3] = dz; W[o + 4] = col.r * f; W[o + 5] = col.g * f; W[o + 6] = col.b * f;
+      W[o + 8] = sm.bulb * .45 / d; W[o + 9] = e - m.bulb * .45 / d;
     }
-    for (const F of feeders) {
-      const { s, m } = F, sm = mushOf.get(s), x0 = s.pos.x, z0 = s.pos.z, dx = m.ox, dz = m.oz, d = Math.hypot(dx, dz) || 1, px = -dz / d, pz = dx / d;
+    for (let i = 0; i < feeders.length; i++) {
+      const F = feeders[i], s = F.s, m = F.m, sm = mushOf.get(s), o = F.rb * 4;
       const f = sm.rise * (.12 + .3 * m.grown) * (1 - .7 * s.s.off), col = tmpC.copy(sm.col).lerp(WHITE, .35);
-      for (let i = 0; i <= FEED; i++) { const u = i / FEED, o = F.bow * d * .4 * Math.sin(Math.PI * u); fp(F.v0 + i, x0 + dx * u + px * o, .03, z0 + dz * u + pz * o, .008, col.r * f, col.g * f, col.b * f, 0); }
+      W[o] = s.pos.x; W[o + 1] = s.pos.z; W[o + 2] = m.ox; W[o + 3] = m.oz; W[o + 4] = col.r * f; W[o + 5] = col.g * f; W[o + 6] = col.b * f;
     }
   }
-  function updatePoints(dt) {
-    const still = reduced();
-    if (!still) for (let i = 0; i < spores.n; i++) {
-      const k = i * 3, ph = sporeVel[k], sp = sporeVel[k + 1];
-      spores.pos[k] += Math.sin(T * .23 * sp + ph) * .12 * dt + .05 * dt; spores.pos[k + 1] += (.06 + .05 * Math.sin(T * .5 + ph)) * sp * dt; spores.pos[k + 2] += Math.cos(T * .19 * sp + sporeVel[k + 2]) * .12 * dt;
-      if (spores.pos[k + 1] > 4.8) spores.pos[k + 1] = .15;
-      if (spores.pos[k] > 35) spores.pos[k] -= 70;
+  // Sends the records that changed: per row of the texture, each run of changes as a range (runs fewer than GAP floats apart go
+  // as one). Until the texture has gone up once it goes whole (its first upload allocates it).
+  const rowR = [], GAP = 256; let rUsed = 0;
+  function flushData() {
+    if (!dataTex.updateRanges.length) rUsed = 0;
+    if (!dataUp || rUsed > rows * 32) { dataTex.clearUpdateRanges(); rUsed = 0; Dd.set(Wd); dataTex.needsUpdate = true; return; }
+    const n = texN * 4, n0 = rUsed;
+    for (let lo = 0; lo < n; lo += TW * 4) {
+      const hi = Math.min(n, lo + TW * 4); let a = -1, e = 0;
+      for (let k = lo; k < hi; k++) {
+        if (Wd[k] === Dd[k]) continue;
+        Dd[k] = Wd[k];
+        if (a >= 0 && k - e > GAP) { addRange(a, e); a = -1; }
+        if (a < 0) a = k;
+        e = k;
+      }
+      if (a >= 0) addRange(a, e);
     }
-    spores.g.attributes.position.needsUpdate = true;
-    for (let i = 0; i < puffs.n; i++) {
-      const k = i * 3;
-      if (pLife[i] <= 0) { puffs.sz[i] = 0; continue; }
-      pLife[i] -= dt; const drag = Math.exp(-dt * 1.8);
-      pVel[k] *= drag; pVel[k + 1] = pVel[k + 1] * drag + .12 * dt; pVel[k + 2] *= drag;
-      puffs.pos[k] += pVel[k] * dt; puffs.pos[k + 1] += pVel[k + 1] * dt; puffs.pos[k + 2] += pVel[k + 2] * dt;
-      const f = Math.max(0, pLife[i] / pMax[i]), a = f > .85 ? (1 - f) / .15 : f / .85;
-      puffs.col[k] = pBase[k] * a; puffs.col[k + 1] = pBase[k + 1] * a; puffs.col[k + 2] = pBase[k + 2] * a; puffs.sz[i] = pSize[i] * (1.4 - .4 * f);
+    if (rUsed > n0) dataTex.needsUpdate = true;
+  }
+  // Floats a to e, widened to whole texels.
+  function addRange(a, e) { const R = rowR[rUsed++] ||= { start: 0, count: 0 }; R.start = a - (a & 3); R.count = (e | 3) + 1 - R.start; dataTex.updateRanges.push(R); }
+  function updatePoints() {
+    if (TAU.value > 600) rebaseSpores();
+    if (emitHi >= emitLo) {
+      for (let i = 0; i < puffAttrs.length; i++) { const a = puffAttrs[i]; upRange(a, emitLo * a.itemSize, (emitHi + 1) * a.itemSize); }
+      emitLo = puffs.n; emitHi = -1;
     }
-    for (const a of PT_ATTRS) puffs.g.attributes[a].needsUpdate = true;
+    if (PT.value > 4000) rebasePuffs();
+    const ga = glints.a; sync(ga.position, glintN * 3); sync(ga.aColor, glintN * 3); sync(ga.aSize, glintN);
     glints.g.setDrawRange(0, glintN);
-    for (const a of PT_ATTRS) glints.g.attributes[a].needsUpdate = true;
     const scale = renderer.getPixelRatio() * size.h / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
-    for (const p of clouds) p.p.material.uniforms.uScale.value = scale;
+    for (let i = 0; i < clouds.length; i++) clouds[i].p.material.uniforms.uScale.value = scale;
     threadMat.uniforms.uPx.value = scale;
   }
   function updateRings(dt) {
-    let h = null, sel = null;
-    for (const n of world.nodes) { if (n.hovered) h = n; if (n.selected) sel = n; }
+    let h = null, sel = null; const ns = world.nodes;
+    for (let i = 0; i < ns.length; i++) { const n = ns[i]; if (n.hovered) h = n; if (n.selected) sel = n; }
     for (let i = 0; i < 2; i++) {
-      const ring = i ? selRing : hoverRing, n = i ? sel : h, k = i ? .7 : .35;
-      const target = n ? k : 0;
-      ring.material.opacity += (target - ring.material.opacity) * (1 - Math.exp(-dt * 10));
+      const ring = i ? selRing : hoverRing, n = i ? sel : h, target = n ? (i ? .7 : .35) : 0, mat = ring.material;
+      if (Math.abs(target - mat.opacity) > .002) { mat.opacity += (target - mat.opacity) * (1 - Math.exp(-dt * 10)); busy = true; } else mat.opacity = target;
       if (n) { const r = n.kind === 'you' ? 3.2 : n.kind === 'project' ? .8 * PK : n.kind === 'session' ? 1.35 : .55; ring.position.x = n.pos.x; ring.position.z = n.pos.z; ring.scale.setScalar(r * (1 + (reduced() ? 0 : .04 * Math.sin(T * 3)))); }
     }
   }
 
   return {
+    // The pace: every frame while a spring bounces, 60 fps while something fades, flows or grows, and otherwise 30 for the sway
+    // and drift; in reduced motion nothing moves by itself, so it rests (0) unless something is fading (30).
     update(dt) {
-      T += dt; T0.value = T; MOVE.value = reduced() ? 0 : 1;
-      lightN = 0; glintN = 0;
+      const still = reduced();
+      T += dt; if (!still) { T0.value += dt; TAU.value += dt; }
+      MOVE.value = still ? 0 : 1; PT.value += dt;
+      busy = springy = false; lightN = 0; glintN = 0;
       updateUsage();
       updateMushrooms(dt);
       updateLinks(dt);
       updateBridges();
       updateRoots(dt);
       updateFuzz();
-      tangents();
-      for (let i = lightN; i < LIGHTS; i++) lightPos[i].w = 0;
-      cordGeo.attributes.position.needsUpdate = cordGeo.attributes.aCol.needsUpdate = true;
-      for (const k of ['position', 'aT', 'aCol', 'aW']) thrGeo.attributes[k].needsUpdate = true;
-      updatePoints(dt);
+      flushData();
+      renderLights();
+      updatePoints();
       updateRings(dt);
+      if (PT.value < (still ? puffEnd : fastEnd)) busy = true;
+      return springy ? Infinity : busy ? (still ? 30 : 60) : still ? 0 : 30;
     },
     event(type, n, data) {
       const m = mushOf.get(n), still = reduced();
@@ -1140,15 +1408,15 @@ function create(ctx) {
       else if (type === 'answer') { const L = needOf.get(n); if (L && L.grow > .2 && !still) L.pulses.add(7 / L.len, 1.8, { col: REPLY, rev: true }); else if (m) { m.flash = 1; kick(m, 1.6); } }
       else if (type === 'state' && data.to === 'error' && m) { kick(m, -1.8); emit(m.top.x, m.top.y, m.top.z, PUFF.rot, 34, { speed: 1.4, up: .5, size: .2, life: 2.4 }); }
     },
-    dispose() { document.fonts?.removeEventListener?.('loadingdone', refont); },
+    dispose() { document.fonts?.removeEventListener?.('loadingdone', refont); lmRT.dispose(); lmGeo.dispose(); lmMat.dispose(); dataTex.dispose(); },
   };
 
   // ── Builders ──
   function buildLink(kind, child, parent, seed) {
     const c = CFG[kind], r = rng(seed ^ { proj: 11, sess: 23, sub: 37, need: 51 }[kind]), segs = c.segs;
-    const L = { kind, child, parent, c, segs, pulses: new Pulses(), grow: kind === 'need' ? 0 : 1, col: new THREE.Color(), bright: 0, prune: 1, len: 1, seed: r() * 100, dead: false, lift: 0, spin: 0,
+    const L = { kind, child, parent, c, segs, pulses: new Pulses(), grow: kind === 'need' ? 0 : 1, col: new THREE.Color(), bright: 0, prune: 1, len: 1, seed: r() * 100, lift: 0, spin: 0,
       off: new Float32Array(segs + 1), strands: [], branches: [], P: new Float32Array((segs + 1) * 2), N: new Float32Array((segs + 1) * 2), S: new Float32Array(segs + 1),
-      tt: Float32Array.from({ length: segs + 1 }, (_, i) => warp(i / segs)), m: new Float32Array(segs + 1), pc: new Float32Array((segs + 1) * 3), Q: new Float32Array((c.cont + 1) * 6), jt: 1, jd: 0, joins: [], u: new THREE.Vector2(1, 0) };
+      tt: Float32Array.from({ length: segs + 1 }, (_, i) => warp(i / segs)), pc: new Float32Array((segs + 1) * 3), Q: new Float32Array((c.cont + 1) * 6), jt: 1, jd: 0, joins: [], pcOn: false, tb: 0, u: new THREE.Vector2(1, 0) };
     // How the cord leaves its foot (radians off the straight line), how far along its parent's cord it joins, and how tight its twist is.
     L.bend = kind === 'need' ? (r() < .5 ? -1 : 1) * (.45 + r() * .3) : (r() * 2 - 1) * .5;
     L.dj = r(); L.tw = (r() < .5 ? -1 : 1) * (1.6 + r() * 1.4);
@@ -1156,10 +1424,9 @@ function create(ctx) {
     // sin² keeps the meander flat at both ends, so the cord leaves its foot and enters its parent without a kink.
     for (let i = 0; i <= segs; i++) { const t = L.tt[i], env = Math.sin(Math.PI * t) ** 2; let o = 0; for (const [f, p, a] of waves) o += a * Math.sin(Math.PI * f * t + p); L.off[i] = o * env; }
     for (let s = 0; s < c.strands; s++) {
-      const f = 1.5 + r() * 3, p = r() * 6.28, a = (.02 + r() * .05) * c.scale, arr = new Float32Array(segs + 1);
-      for (let i = 0; i <= segs; i++) { const t = L.tt[i]; arr[i] = a * Math.sin(Math.PI * 2 * f * t + p) * Math.sin(Math.PI * t); }
+      const f = 1.5 + r() * 3, p = r() * 6.28, a = (.02 + r() * .05) * c.scale;
       const fa = ((s + .5) / c.strands - .5) * 2 * (kind === 'need' ? .8 : 1.75) + (r() - .5) * .3;
-      L.strands.push({ off: arr, ph: s / c.strands * Math.PI * 2 + (r() - .5) * .6, sp: .6 + r() * .8, b: .45 + r() * .35, y: s * .0015, ca: Math.cos(fa), sa: Math.sin(fa) });
+      L.strands.push({ a, f, p, ph: s / c.strands * Math.PI * 2 + (r() - .5) * .6, sp: .6 + r() * .8, b: .45 + r() * .35, y: s * .0015, ca: Math.cos(fa), sa: Math.sin(fa) });
     }
     // Side branches along the cord; a in the cord's local frame (0 is along it toward the parent).
     const sprout = (t0, a, n, step, b, fork) => {
@@ -1204,7 +1471,7 @@ function matWalks() {
 }
 
 // Leaf litter, twigs and grit, drawn once into a big canvas covering the board and kept for every rebuild.
-let soilCanvas = null;
+let soilCanvas = null, soilTex = null; // the texture is shared by every build too, so a rebuild doesn't dispose it (userData.keep)
 function soilTexture() {
   if (!soilCanvas) {
     const S = 2048, c = soilCanvas = document.createElement('canvas'); c.width = c.height = S;
@@ -1231,7 +1498,8 @@ function soilTexture() {
     }
     for (let i = 0; i < 9000; i++) { const v = 30 + r() * 60; g.fillStyle = `rgba(${v},${v * .85},${v * .7},${.2 + r() * .4})`; g.fillRect(r() * S, r() * S, 1 + r() * 1.5, 1 + r() * 1.5); }
   }
-  const tex = new THREE.CanvasTexture(soilCanvas); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; return tex;
+  if (!soilTex) { soilTex = new THREE.CanvasTexture(soilCanvas); soilTex.colorSpace = THREE.SRGBColorSpace; soilTex.anisotropy = 8; soilTex.userData.keep = true; }
+  return soilTex;
 }
 
 function stumpGeometry() {

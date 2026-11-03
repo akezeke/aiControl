@@ -13,6 +13,8 @@ const pal = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, new TH
 const CORE = pal({ work: '#ff4a12', think: '#ffa86a', compact: '#b08aff', need: '#ffc531', wait: '#3f9dff', idle: '#4a5f8c', error: '#ff1f45', off: '#151c2e' });
 const ACT = { work: 1, think: .7, compact: .45, need: 1, wait: .5, idle: .14, error: .9, off: 0 };
 const RIM = pal({ work: '#cfe0ff', think: '#d4e2ff', compact: '#c8bcff', need: '#ffe3a6', wait: '#b8dcff', idle: '#8fa7d6', error: '#ffb3c0', off: '#7d8bab' });
+// The same, in KEYS order, for the per-frame mixes.
+const CORE_L = KEYS.map(k => CORE[k]), RIM_L = KEYS.map(k => RIM[k]), ACT_L = Float64Array.from(KEYS, k => ACT[k]);
 const PULSE = pal({ edit: '#ffb46a', read: '#a6dbff', search: '#d2a6ff', bash: '#ffe07a', web: '#7dffd8', agent: '#ff9ad6', '': '#ffd0a0' });
 const C = { white: new THREE.Color('#fff4e6'), cyan: new THREE.Color('#7fe6ff'), gold: new THREE.Color('#ffb21f'), violet: new THREE.Color('#b99cff'), red: new THREE.Color('#ff3355'),
   bulb: new THREE.Color('#4fdcff'), youCalm: new THREE.Color('#8fd0ff'), rimProject: new THREE.Color('#d6e6ff'), plan: new THREE.Color('#5fe0ff'), bypass: new THREE.Color('#ff4fd8'),
@@ -309,13 +311,15 @@ void main() {
 const BOKEH_FRAG = /* glsl */`
 varying vec3 vColor;
 void main() { vec2 c = gl_PointCoord * 2. - 1.; float r = length(c); if (r > 1.) discard; gl_FragColor = vec4(vColor, smoothstep(1., .55, r) * (.5 + .35 * r * r)); }`;
-const NEBULA_VERT = /* glsl */`varying vec2 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.); vW = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }`;
+// The nebula is baked once into a texture (nebulaTexture): a full-screen quad whose texel (u, v) is the world point the 1400-wide
+// floor plane puts there. Its drift (a few thousandths of the noise a second) was too slow to see, so it is left still.
+const NEBULA_BAKE_VERT = /* glsl */`varying vec2 vW; void main() { vW = vec2(position.x, -position.y) * 700.; gl_Position = vec4(position.xy, 0., 1.); }`;
 const NEBULA_FRAG = /* glsl */`
-varying vec2 vW; uniform float uTime;
+varying vec2 vW;
 ${kit.NOISE_GLSL}
 void main() {
   vec2 p = vW * .011;
-  float n = snoise(vec3(p, uTime * .006)) * .65 + snoise(vec3(p * 2.4, 3.1 + uTime * .004)) * .35;
+  float n = snoise(vec3(p, 0.)) * .65 + snoise(vec3(p * 2.4, 3.1)) * .35;
   vec3 col = mix(vec3(.004, .009, .03), vec3(.016, .04, .13), smoothstep(-.5, .7, n));
   float k = smoothstep(.15, .95, n);
   col += vec3(.05, .16, .45) * k * k * .55;
@@ -323,8 +327,20 @@ void main() {
   col += vec3(.08, .3, .85) * exp(-dot(h1, h1) / 2600.) * .55 + vec3(.25, .1, .4) * exp(-dot(h2, h2) / 3400.) * .25;
   gl_FragColor = vec4(col, 1.);
 }`;
+// The floor samples the bake with a 4-tap cubic B-spline (each tap a bilinear fetch), so even zoomed right in, where a texel
+// spans many pixels, the gradients stay smooth instead of showing the texel grid.
+const NEBULA_VERT = /* glsl */`varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`;
+const NEBULA_MAP_FRAG = /* glsl */`
+uniform sampler2D uMap; uniform vec2 uTexel; varying vec2 vUv;
+vec4 bspline(float v) { vec4 n = vec4(1., 2., 3., 4.) - v, s = n * n * n; float x = s.x, y = s.y - 4. * s.x, z = s.z - 4. * s.y + 6. * s.x; return vec4(x, y, z, 6. - x - y - z) / 6.; }
+void main() {
+  vec2 t = vUv / uTexel - .5, f = fract(t); t -= f;
+  vec4 xc = bspline(f.x), yc = bspline(f.y), c = t.xxyy + vec2(-.5, 1.5).xyxy, s = vec4(xc.xz + xc.yw, yc.xz + yc.yw), o = (c + vec4(xc.yw, yc.yw) / s) * uTexel.xxyy;
+  float sx = s.x / (s.x + s.y), sy = s.z / (s.z + s.w);
+  gl_FragColor = vec4(mix(mix(texture2D(uMap, o.yw), texture2D(uMap, o.xw), sx), mix(texture2D(uMap, o.yz), texture2D(uMap, o.xz), sx), sy).rgb, 1.);
+}`;
 
-const cubic = (a, b, c, d, t, out) => {
+const cubic =(a, b, c, d, t, out) => {
   const s = 1 - t, k0 = s * s * s, k1 = 3 * s * s * t, k2 = 3 * s * t * t, k3 = t * t * t;
   return out.set(a.x * k0 + b.x * k1 + c.x * k2 + d.x * k3, a.y * k0 + b.y * k1 + c.y * k2 + d.y * k3, a.z * k0 + b.z * k1 + c.z * k2 + d.z * k3);
 };
@@ -375,6 +391,23 @@ function baseSoma() {
   return somaSphere;
 }
 
+// The nebula, rendered once per renderer and kept for good (userData.keep: disposeTree in nodes.js skips it), so rebuilds and a
+// new look drawn beside the old one share it. sRGB 8-bit keeps the dark gradients finer than linear would; 4 MB.
+const nebulaBakes = new WeakMap(), NEBULA_RES = 1024;
+function nebulaTexture(renderer) {
+  let rt = nebulaBakes.get(renderer);
+  if (rt) return rt.texture;
+  rt = new THREE.WebGLRenderTarget(NEBULA_RES, NEBULA_RES, { depthBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, colorSpace: THREE.SRGBColorSpace });
+  rt.texture.userData.keep = true;
+  const bake = new THREE.Scene(), quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ vertexShader: NEBULA_BAKE_VERT, fragmentShader: NEBULA_FRAG, depthTest: false, depthWrite: false }));
+  quad.frustumCulled = false; bake.add(quad);
+  const prev = renderer.getRenderTarget();
+  renderer.setRenderTarget(rt); renderer.render(bake, new THREE.Camera()); renderer.setRenderTarget(prev);
+  quad.geometry.dispose(); quad.material.dispose();
+  nebulaBakes.set(renderer, rt);
+  return rt.texture;
+}
+
 // A soft, out-of-focus neuron drawn into a canvas for the deep background.
 function blurNeuron(seed, blur, core) {
   return kit.canvasTexture(256, (g, S) => {
@@ -417,19 +450,29 @@ function create(ctx) {
   ctx.setLabelAnchor((n, out) => { const e = neurons.get(n); out.z += (e ? e.R * e.sc : .7) * 1.55 + (n.kind === 'you' ? .5 : .28); out.y = 0; });
   scene.background = new THREE.Color('#02050f');
 
-  const tmp = new THREE.Vector3(), tmpQ = new THREE.Quaternion();
-  const tmpM = new THREE.Matrix4(), tmpS = new THREE.Vector3(), tmpC = new THREE.Color();
+  const tmp = new THREE.Vector3(), tmpC = new THREE.Color();
+  // The look's own clock, one uniform every material shares: it stands still in reduced motion.
   let anim = 0;
-  const blend = (n, p, out) => {
+  const time = { value: 0 };
+  // What this frame left in motion, for the pace update returns: moving (pulses, ripples) wants 60 a second, easing (flashes
+  // fading, cells growing, a vesicle opening) 30, and with neither a reduced-motion board can stop drawing.
+  let moving = false, easing = false;
+  // Most uniforms hold their value frame after frame; writing only changes skips boxing a fresh number for each one.
+  const sv = (o, v) => { if (o.value !== v) o.value = v; };
+  // A node's state weights in KEYS order. Read by name: read by a key held in a variable, every number comes back freshly boxed.
+  const W = new Float64Array(KEYS.length);
+  const weigh = s => { W[0] = s.work; W[1] = s.think; W[2] = s.compact; W[3] = s.need; W[4] = s.wait; W[5] = s.idle; W[6] = s.error; W[7] = s.off; return W; };
+  const blend = (w, p, out) => {
     out.setRGB(0, 0, 0); let tot = 0;
-    for (const k of KEYS) { const w = n.s[k]; if (w < .001) continue; out.r += p[k].r * w; out.g += p[k].g * w; out.b += p[k].b * w; tot += w; }
-    return tot > .001 ? out.multiplyScalar(1 / tot) : out.copy(p.idle);
+    for (let i = 0; i < w.length; i++) { const x = w[i]; if (x < .001) continue; const c = p[i]; out.r += c.r * x; out.g += c.g * x; out.b += c.b * x; tot += x; }
+    return tot > .001 ? out.multiplyScalar(1 / tot) : out.copy(p[5]);
   };
-  const activity = n => { let a = 0, tot = 0; for (const k of KEYS) { a += n.s[k] * ACT[k]; tot += n.s[k]; } return tot > .001 ? a / tot : ACT.idle; };
+  const activity = w => { let a = 0, tot = 0; for (let i = 0; i < w.length; i++) { a += w[i] * ACT_L[i]; tot += w[i]; } return tot > .001 ? a / tot : ACT.idle; };
   const hash = x => { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.floor(s); };
 
   // ── Deep background: nebula, blurred neurons and bokeh ──
-  const nebula = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ vertexShader: NEBULA_VERT, fragmentShader: NEBULA_FRAG, uniforms: { uTime: { value: 0 } }, depthWrite: false }));
+  const nebula = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ vertexShader: NEBULA_VERT, fragmentShader: NEBULA_MAP_FRAG,
+    uniforms: { uMap: { value: nebulaTexture(ctx.renderer) }, uTexel: { value: new THREE.Vector2(1 / NEBULA_RES, 1 / NEBULA_RES) } }, depthWrite: false }));
   nebula.position.y = -60; nebula.renderOrder = -30; root.add(nebula);
   const bgTex = [blurNeuron(11, 2.2, true), blurNeuron(23, 2.2, false), blurNeuron(37, 5.5, true), blurNeuron(41, 5.5, false), blurNeuron(59, 3.5, false)];
   // The blurred background neurons merge into one mesh per texture, tinted and faded through vertex colours.
@@ -460,7 +503,7 @@ function create(ctx) {
   const bokehGeo = new THREE.BufferGeometry();
   bokehGeo.setAttribute('position', new THREE.BufferAttribute(bp, 3)); bokehGeo.setAttribute('aSize', new THREE.BufferAttribute(bs, 1));
   bokehGeo.setAttribute('aSeed', new THREE.BufferAttribute(bseed, 1)); bokehGeo.setAttribute('aColor', new THREE.BufferAttribute(bc, 3));
-  const bokehMat = new THREE.ShaderMaterial({ vertexShader: BOKEH_VERT, fragmentShader: BOKEH_FRAG, uniforms: { uTime: { value: 0 }, uPx: { value: 600 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const bokehMat = new THREE.ShaderMaterial({ vertexShader: BOKEH_VERT, fragmentShader: BOKEH_FRAG, uniforms: { uTime: time, uPx: { value: 600 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const bokeh = new THREE.Points(bokehGeo, bokehMat); bokeh.renderOrder = -10; bokeh.frustumCulled = false; root.add(bokeh);
   const px = () => { bokehMat.uniforms.uPx.value = ctx.size.h * ctx.renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(ctx.camera.fov / 2))); };
   px(); ctx.onResize(px);
@@ -570,7 +613,7 @@ function create(ctx) {
   // Every nucleus is one instance of a granular sphere and every halo one instance of a camera-facing quad: two draw calls in all.
   // Instance colour carries the core colour already scaled by its strength.
   const NN = world.nodes.length;
-  const nuclei = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 4), new THREE.ShaderMaterial({ vertexShader: NUCLEUS_VERT, fragmentShader: NUCLEUS_FRAG, uniforms: { uTime: { value: 0 } },
+  const nuclei = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 4), new THREE.ShaderMaterial({ vertexShader: NUCLEUS_VERT, fragmentShader: NUCLEUS_FRAG, uniforms: { uTime: time },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), NN);
   const halos = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ vertexShader: HALO_VERT, fragmentShader: HALO_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), NN);
   for (const im of [nuclei, halos]) { im.renderOrder = 2; im.frustumCulled = false; for (let i = 0; i < NN; i++) im.setColorAt(i, C.white); root.add(im); }
@@ -651,7 +694,7 @@ function create(ctx) {
     const group = new THREE.Group();
     const mat = new THREE.ShaderMaterial({ vertexShader: MEMBRANE_VERT, fragmentShader: MEMBRANE_FRAG, transparent: true, depthWrite: false,
       uniforms: { uRim: { value: new THREE.Color() }, uCore: { value: new THREE.Color() }, uBulb: { value: C.bulb.clone() }, uCoreAmt: { value: 0 }, uAlpha: { value: 1 }, uGrow: { value: 1 }, uFront: { value: 0 },
-        uTime: { value: 0 }, uHi: { value: 0 }, uR: { value: R }, uSeed: { value: (n.seed % 1000) / 37 }, uShimmer: { value: 0 }, uSway: { value: 1 },
+        uTime: time, uHi: { value: 0 }, uR: { value: R }, uSeed: { value: (n.seed % 1000) / 37 }, uShimmer: { value: 0 }, uSway: { value: 1 },
         // Not used by the cell itself: the fibres it grows read where it is.
         uCen: { value: n.pos.clone() }, uCen0: { value: n.rest.clone() }, uScl: { value: 1 } } });
     const mesh = new THREE.Mesh(geo, mat); mesh.renderOrder = 1; group.add(mesh);
@@ -670,12 +713,12 @@ function create(ctx) {
     const lg = new THREE.BufferGeometry();
     lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); lg.setAttribute('along', new THREE.Float32BufferAttribute(la, 1)); lg.setAttribute('phase', new THREE.Float32BufferAttribute(lph, 1));
     const lineMat = new THREE.ShaderMaterial({ vertexShader: CRACKLE_VERT, fragmentShader: CRACKLE_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      uniforms: { uColor: { value: new THREE.Color() }, uAmt: { value: 0 }, uTime: { value: 0 }, uRate: { value: 12 }, uStatic: { value: 0 } } });
+      uniforms: { uColor: { value: new THREE.Color() }, uAmt: { value: 0 }, uTime: time, uRate: { value: 12 }, uStatic: { value: 0 } } });
     const lines = new THREE.LineSegments(lg, lineMat); lines.renderOrder = 3; group.add(lines);
     let ring = null;
     if (n.mode === 'plan' || n.mode === 'bypass') {
       ring = new THREE.Mesh(ringGeo, new THREE.ShaderMaterial({ vertexShader: PLANE_VERT, fragmentShader: RING_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-        uniforms: { uColor: { value: (n.mode === 'plan' ? C.plan : C.bypass).clone() }, uDash: { value: n.mode === 'plan' ? 1 : 0 }, uTime: { value: 0 }, uAmt: { value: 1 } } }));
+        uniforms: { uColor: { value: (n.mode === 'plan' ? C.plan : C.bypass).clone() }, uDash: { value: n.mode === 'plan' ? 1 : 0 }, uTime: time, uAmt: { value: 1 } } }));
       ring.scale.setScalar(R * 3.4); ring.position.y = -R * .5; ring.renderOrder = 2; group.add(ring);
     }
     root.add(group);
@@ -712,7 +755,7 @@ function create(ctx) {
     for (let i = 0; i <= 12; i++) us.push(.94 + .06 * i / 12);
     const rest = restFibre(curve, us, 6, () => 1);
     const rc = { n, rest, a: neurons.get(n), b: neurons.get(world.you), skin: new THREE.Vector2(Math.min(.3, P.R * 1.6 / rest.L), 1 - Math.min(.3, U.R * 1.4 / rest.L)), side: new THREE.Vector3(),
-      amp: Math.min(1.1, rest.L * .05) * .7, waves: kit.clamp(rest.L / 6, 1.2, 4), speed: .9, mseed: (n.seed % 89) / 13, lift: 0, tip: .18 / rest.L };
+      amp: Math.min(1.1, rest.L * .05) * .7, waves: kit.clamp(rest.L / 6, 1.2, 4), speed: .9, mseed: (n.seed % 89) / 13, lift: 0, tip: .18 / rest.L, atU: -1, atP: new THREE.Vector3() };
     rc.mat = fibreMaterial(rc.a.mat.uniforms, rc.b.mat.uniforms, { uSkin: { value: rc.skin }, uLen: { value: rest.L }, uMeander: { value: new THREE.Vector4(rc.amp, rc.waves, rc.speed, rc.mseed) },
       uReach: { value: 0 }, uRest: { value: restLen / rest.L }, uGrowA: neurons.get(n).mat.uniforms.uGrow, uR0: { value: P.R * .3 }, uLenD: { value: restLen / rest.L }, uTip: { value: rc.tip },
       uTipR: { value: .12 }, uTipM: { value: .4 }, uLift: { value: 0 }, uGold: { value: C.gold }, uGoldAmt: { value: 1 }, uFlow: { value: 0 }, uFlowSpeed: { value: 4 } }, true);
@@ -723,8 +766,10 @@ function create(ctx) {
   });
   // Where a fibre's centreline is now (without the warp): the same skin and meander the shader applies.
   const skinA = new THREE.Vector3(), skinB = new THREE.Vector3();
+  // The rest point is a search along the arc table: kept while u holds (a reach's tip sits still once it has reached).
   function fibrePoint(f, u, out) {
-    f.rest.at(u, out);
+    if (f.atU !== u) { f.rest.at(u, f.atP); f.atU = u; }
+    out.copy(f.atP);
     const x = kit.clamp((u - f.skin.x) / Math.max(1e-3, f.skin.y - f.skin.x)), w = x * x * (3 - 2 * x);
     skinA.subVectors(out, f.a.mat.uniforms.uCen0.value).multiplyScalar(f.a.sc).add(f.a.vis);
     skinB.subVectors(out, f.b.mat.uniforms.uCen0.value).multiplyScalar(f.b.sc).add(f.b.vis);
@@ -741,15 +786,16 @@ function create(ctx) {
     uniforms: { uArc: { value: Array.from({ length: 10 }, () => new THREE.Vector4()) }, uN: { value: 0 } } }));
   const UR = ye().R * 4.4;
   usage.scale.setScalar(UR * 2); usage.position.y = -ye().R * .55; usage.renderOrder = 2; ye().group.add(usage);
+  // Skipped while no account has a readout to show.
   const overlay = new THREE.Scene(), overlayPass = ctx.addPass(new RenderPass(overlay, ctx.camera));
-  overlayPass.clear = false;
-  const tags = new Map();
+  overlayPass.clear = false; overlayPass.enabled = false;
+  const tags = new Map(), shown = [];
   const level = u => u > .86 ? '#ff6474' : u > .6 ? '#ffc04a' : '#86e2ff';
   function drawTag(tag, acc, right) {
     const parts = acc.windows.map(w => [`${w.label} `, `${Math.round(w.used * 100)}%`, level(w.used)]);
     if (acc.spend?.limit > 0) parts.push(['$', `${Math.round(acc.spend.spent)}/${Math.round(acc.spend.limit)}`, level(acc.spend.spent / acc.spend.limit)]);
-    const name = acc.label.replace('Claude Code', 'Claude').toUpperCase(), fonts = document.fonts?.check?.('24px "IBM Plex Mono"') ? 1 : 0;
-    const key = `${name}|${parts.map(p => p[0] + p[1]).join(' ')}|${right}|${fonts}`;
+    const name = acc.label.replace('Claude Code', 'Claude').toUpperCase();
+    const key = `${name}|${parts.map(p => p[0] + p[1]).join(' ')}|${right}`;
     if (tag.key === key) return;
     tag.key = key;
     const c = tag.canvas, g = c.getContext('2d'), mono = '500 24px "IBM Plex Mono", ui-monospace, monospace', head = '600 19px Sora, system-ui, sans-serif', sp = 20;
@@ -766,11 +812,14 @@ function create(ctx) {
     parts.forEach(([a, b, col], i) => { g.fillStyle = '#7086bd'; g.fillText(a, x, 55); g.fillStyle = col; g.fillText(b, x + g.measureText(a).width, 55); x += widths[i] + sp; });
     tag.tex.needsUpdate = true; tag.aspect = W / H;
   }
-  // Accounts split down both sides of You, filling from the top, so the readouts never sit on You's own label below.
-  function updateUsage() {
+  // Accounts split down both sides of You, filling from the top, so the readouts never sit on You's own label below. Laid out
+  // when the usage changes (world.usage is a new array each snapshot) or the fonts arrive; each frame only follows You.
+  let usageRef;
+  function layoutUsage() {
+    usageRef = world.usage;
     const accs = world.usage.filter(a => a.windows.length || a.spend?.limit > 0).slice(0, 6), arcs = usage.material.uniforms.uArc.value, y = ye();
-    const px = 2 * Math.tan(THREE.MathUtils.degToRad(ctx.camera.fov / 2)) / ctx.size.h, lh = ctx.size.w < 700 ? 26 : 32, half = Math.ceil(accs.length / 2), gap = .1;
-    let i = 0;
+    const half = Math.ceil(accs.length / 2), gap = .1;
+    let i = 0; shown.length = 0;
     accs.forEach((acc, k) => {
       const right = k >= half, j = right ? k - half : k, per = right ? accs.length - half : half, w = (2.1 - gap * (per - 1)) / per;
       const lo = .3 + j * (w + gap), hi = lo + w, a0 = right ? lo : -hi, a1 = right ? hi : -lo;
@@ -781,17 +830,26 @@ function create(ctx) {
         const canvas = document.createElement('canvas'), tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false }));
-        tag = { canvas, tex, sprite, key: '', aspect: 4 }; overlay.add(sprite); tags.set(acc.id, tag);
+        tag = { canvas, tex, sprite, key: '', aspect: 4, mid: 0, reach: 0 }; overlay.add(sprite); tags.set(acc.id, tag);
       }
       drawTag(tag, acc, right);
-      const mid = (a0 + a1) / 2, r = y.R * (2.7 + .34 * bands.length + .65) * y.sc;
+      tag.mid = (a0 + a1) / 2; tag.reach = y.R * (2.7 + .34 * bands.length + .65);
       tag.sprite.center.set(right ? 0 : 1, .5);
-      tag.sprite.position.set(y.vis.x + Math.sin(mid) * r, y.vis.y - y.R * .55, y.vis.z - Math.cos(mid) * r);
-      tag.sprite.scale.set(lh * px * tag.aspect, lh * px, 1);
-      tag.sprite.visible = true; tag.seen = true;
+      tag.sprite.visible = true; tag.seen = true; shown.push(tag);
     });
     for (const tag of tags.values()) { if (!tag.seen) tag.sprite.visible = false; tag.seen = false; }
     usage.material.uniforms.uN.value = i;
+    overlayPass.enabled = shown.length > 0;
+  }
+  function updateUsage() {
+    if (world.usage !== usageRef) layoutUsage();
+    if (!shown.length) return;
+    const y = ye(), lh = (ctx.size.w < 700 ? 26 : 32) * 2 * Math.tan(THREE.MathUtils.degToRad(ctx.camera.fov / 2)) / ctx.size.h;
+    for (let k = 0; k < shown.length; k++) {
+      const tag = shown[k], r = tag.reach * y.sc;
+      tag.sprite.position.set(y.vis.x + Math.sin(tag.mid) * r, y.vis.y - y.R * .55, y.vis.z - Math.cos(tag.mid) * r);
+      tag.sprite.scale.set(lh * tag.aspect, lh, 1);
+    }
   }
 
   // ── Screenshots: a vesicle on its own dendrite, clickable to open the viewer ──
@@ -816,6 +874,18 @@ function create(ctx) {
     ctx.addTarget({ node: n, pos, radius: 1.4, action: 'shots' });
     return sh;
   });
+  // The usage tags and the screenshot count are drawn in Sora and IBM Plex Mono: checked once here, and if they are still on their
+  // way, drawn again when they land, with the board woken to show it (it doesn't draw otherwise).
+  let disposed = false;
+  const FONTS = ['500 24px "IBM Plex Mono"', '600 19px Sora'];
+  if (document.fonts?.load && !FONTS.every(f => document.fonts.check(f))) {
+    Promise.all(FONTS.map(f => document.fonts.load(f))).then(() => {
+      if (disposed) return;
+      usageRef = undefined; for (const t of tags.values()) t.key = '';
+      for (const sh of shots) sh.last = null;
+      ctx.wake();
+    }, () => {});
+  }
   // The newest screenshot fitted into the vesicle, its count on a small vesicle of its own in the corner. Only when it changes.
   function drawShot(sh, shot) {
     const b = shot.bitmap, W = b.width, H = b.height;
@@ -841,15 +911,17 @@ function create(ctx) {
   function updateShot(sh, dt) {
     const n = sh.n, e = sh.a, shot = ctx.shot(n), u = sh.mat.uniforms;
     if (shot && shot !== sh.last) { drawShot(sh, shot); sh.last = shot; }
-    sh.k = kit.damp(sh.k, shot && n.s.alive > .5 ? 1 : 0, ctx.reduced ? 12 : 3, dt);
+    const to = shot && n.s.alive > .5 ? 1 : 0;
+    sh.k = kit.damp(sh.k, to, ctx.reduced ? 12 : 3, dt);
+    if (Math.abs(to - sh.k) < 1e-3) sh.k = to; else easing = true;
     sh.mesh.visible = e.group.visible;
     sh.pos.subVectors(sh.V0, n.rest).multiplyScalar(e.sc).add(e.vis);
     if (!ctx.reduced) sh.pos.y += Math.sin(anim * .9 + e.seedF) * .07;
     sideOf(sh); u.uSide.value.copy(sh.side);
-    const k = kit.easeOutCubic(sh.k); u.uReach.value = k;
+    const k = kit.easeOutCubic(sh.k); sv(u.uReach, k);
     sh.cell.visible = k > .01 && e.group.visible && !!sh.tex;
     if (!sh.cell.visible) return;
-    sh.cell.material.uniforms.uAmt.value = k * Math.min(1, n.s.alive * 1.4);
+    sv(sh.cell.material.uniforms.uAmt, k * Math.min(1, n.s.alive * 1.4));
   }
 
   // ── Ripples: finish, compaction, answers, spawns and errors ──
@@ -867,14 +939,23 @@ function create(ctx) {
   }
 
   // ── Per-frame ──
+  // A nucleus or halo instance is a scale and a position (the rest of its matrix stays identity) and a colour, written in place;
+  // the buffers upload only when a value really changed, so a still frame (reduced motion, a camera move) uploads nothing.
+  function inst(im, i, p, sc, col) {
+    const m = im.instanceMatrix.array, c = im.instanceColor.array, o = i * 16, q = i * 3;
+    const fs = Math.fround(sc), fx = Math.fround(p.x), fy = Math.fround(p.y), fz = Math.fround(p.z), fr = Math.fround(col.r), fg = Math.fround(col.g), fb = Math.fround(col.b);
+    if (m[o] !== fs || m[o + 12] !== fx || m[o + 13] !== fy || m[o + 14] !== fz) { m[o] = m[o + 5] = m[o + 10] = fs; m[o + 12] = fx; m[o + 13] = fy; m[o + 14] = fz; im.instanceMatrix.needsUpdate = true; }
+    if (c[q] !== fr || c[q + 1] !== fg || c[q + 2] !== fb) { c[q] = fr; c[q + 1] = fg; c[q + 2] = fb; im.instanceColor.needsUpdate = true; }
+  }
   function updateNeuron(e, dt) {
-    const { n, mat, lineMat } = e, s = n.s, reduced = ctx.reduced, u = mat.uniforms;
+    const { n, mat, lineMat } = e, s = n.s, reduced = ctx.reduced, u = mat.uniforms, lu = lineMat.uniforms;
     const alive = s.alive;
     e.group.visible = alive > .01;
     let crackle = 0, rate = 12;
     if (n.kind === 'session' || n.kind === 'sub') {
-      blend(n, CORE, e.core); blend(n, RIM, e.rim);
-      let amt = activity(n);
+      const w = weigh(s);
+      blend(w, CORE_L, e.core); blend(w, RIM_L, e.rim);
+      let amt = activity(w);
       e.base = amt;
       if (!reduced) {
         amt *= 1 + s.wait * (.5 * Math.sin(anim * 2.4 + e.seedF) - .1);
@@ -889,13 +970,15 @@ function create(ctx) {
       // Context fill is the nucleus: it grows as the context does, and shrinks while compacting.
       const ctxR = .26 + .44 * (s.ctx ?? n.ctx);
       e.nucR = e.R * ctxR * (1 - .25 * s.compact);
+      // Growing in or withering: settled once within a thousandth, which no dendrite tip shows.
       const target = Math.min(kit.lerp(1, .38, s.off), kit.smoothstep(.05, .95, alive));
       e.grow = kit.damp(e.grow, target, target > e.grow ? 2.4 : 3, dt);
+      if (Math.abs(target - e.grow) < 1e-3) e.grow = target; else easing = true;
       e.front = kit.clamp((target - e.grow) * 10, 0, 1);
     } else if (n.kind === 'project') {
       e.core.setRGB(0, 0, 0); let tot = 0, sum = 0, need = 0;
-      for (const ss of n.sessions) {
-        const se = neurons.get(ss); if (ss.s.alive < .05) continue;
+      for (let i = 0; i < n.sessions.length; i++) {
+        const ss = n.sessions[i], se = neurons.get(ss); if (ss.s.alive < .05) continue;
         const w = se.base * se.base + .02; e.core.r += se.core.r * w; e.core.g += se.core.g * w; e.core.b += se.core.b * w; tot += w; sum += se.base * ss.s.alive; need = Math.max(need, ss.s.need);
       }
       if (tot > 0) e.core.multiplyScalar(1 / tot);
@@ -904,13 +987,16 @@ function create(ctx) {
       crackle = Math.min(1, sum * .3);
       e.nucR = e.R * .5;
     } else {
-      let need = 0, urg = 0; for (const ss of world.sessions) if (ss.s.alive > .5) { need = Math.max(need, ss.s.need); urg = Math.max(urg, ss.s.urgency * ss.s.need); }
+      let need = 0, urg = 0;
+      for (let i = 0; i < world.sessions.length; i++) { const ss = world.sessions[i]; if (ss.s.alive > .5) { need = Math.max(need, ss.s.need); urg = Math.max(urg, ss.s.urgency * ss.s.need); } }
       e.core.copy(C.youCalm).lerp(CORE.need, need); e.rim.copy(C.rimProject).lerp(RIM.need, need * .6);
       const beat = reduced ? .5 : Math.pow(.5 + .5 * Math.sin(anim * (2.6 + urg * 4)), 6);
       e.amt = .32 + need * (.15 + beat * .35 * (1 + urg));
       crackle = need * .6;
       e.nucR = e.R * .52;
     }
+    // A flash shown this frame wants the next one, which shows it a step dimmer (and the last, none at all).
+    if (e.flash > 0) easing = true;
     e.amt += e.flash; e.flash = Math.max(0, e.flash - dt * 2);
     let sc = n.kind === 'sub' ? kit.easeOutBack(alive) : n.kind === 'session' ? kit.easeOutCubic(alive) : 1;
     sc *= 1 - .16 * s.compact;
@@ -921,17 +1007,16 @@ function create(ctx) {
     e.vis.copy(n.pos); e.vis.y += .5 * s.hover + .3 * s.select;
     e.group.position.copy(e.vis);
     const hi = s.hover * .55 + s.select * .4;
-    u.uRim.value.copy(e.rim); u.uCore.value.copy(e.core); u.uCoreAmt.value = e.amt; u.uGrow.value = n.kind === 'you' || n.kind === 'project' ? 1 : e.grow; u.uFront.value = e.front;
-    u.uAlpha.value = (n.kind === 'sub' ? Math.min(1, alive * 1.4) : 1) * (1 - .2 * s.off); u.uTime.value = anim; u.uHi.value = hi; u.uShimmer.value = s.think; u.uSway.value = reduced ? 0 : 1 - s.off * .8;
-    u.uCen.value.copy(e.vis); u.uScl.value = e.sc;
+    u.uRim.value.copy(e.rim); u.uCore.value.copy(e.core); sv(u.uCoreAmt, e.amt); sv(u.uGrow, n.kind === 'you' || n.kind === 'project' ? 1 : e.grow); sv(u.uFront, e.front);
+    sv(u.uAlpha, (n.kind === 'sub' ? Math.min(1, alive * 1.4) : 1) * (1 - .2 * s.off)); sv(u.uHi, hi); sv(u.uShimmer, s.think); sv(u.uSway, reduced ? 0 : 1 - s.off * .8);
+    u.uCen.value.copy(e.vis); sv(u.uScl, e.sc);
     u.uBulb.value.copy(C.bulb).multiplyScalar(1 - .75 * s.off + hi * .5);
-    lineMat.uniforms.uColor.value.copy(e.core).lerp(C.gold, s.error > .5 ? 0 : .45); lineMat.uniforms.uAmt.value = crackle * alive; lineMat.uniforms.uTime.value = anim;
-    lineMat.uniforms.uRate.value = rate; lineMat.uniforms.uStatic.value = reduced ? 1 : 0; e.lines.visible = crackle > .02;
-    tmpC.copy(e.core).multiplyScalar(e.amt * (1 - s.off)).lerp(C.ash, s.off); nuclei.setColorAt(e.i, tmpC);
-    tmpQ.identity(); tmpM.compose(e.vis, tmpQ, tmpS.setScalar(Math.max(1e-4, e.nucR * e.sc))); nuclei.setMatrixAt(e.i, tmpM);
-    tmpC.copy(e.core).multiplyScalar(Math.min(.6, e.amt * .2 + hi * .15) * alive * (1 - s.off)); halos.setColorAt(e.i, tmpC);
-    tmpM.compose(e.vis, tmpQ, tmpS.setScalar(e.R * (2.6 + 1.4 * Math.min(e.amt, 1.5)) * .5 * (e.group.visible ? 1 : 0) + 1e-4)); halos.setMatrixAt(e.i, tmpM);
-    if (e.ring) { e.ring.material.uniforms.uTime.value = anim; e.ring.material.uniforms.uAmt.value = alive * (.5 + hi) * (1 - s.off * .6); }
+    lu.uColor.value.copy(e.core).lerp(C.gold, s.error > .5 ? 0 : .45); sv(lu.uAmt, crackle * alive);
+    sv(lu.uRate, rate); sv(lu.uStatic, reduced ? 1 : 0); e.lines.visible = crackle > .02;
+    inst(nuclei, e.i, e.vis, Math.max(1e-4, e.nucR * e.sc), tmpC.copy(e.core).multiplyScalar(e.amt * (1 - s.off)).lerp(C.ash, s.off));
+    inst(halos, e.i, e.vis, e.R * (2.6 + 1.4 * Math.min(e.amt, 1.5)) * .5 * (e.group.visible ? 1 : 0) + 1e-4,
+      tmpC.copy(e.core).multiplyScalar(Math.min(.6, e.amt * .2 + hi * .15) * alive * (1 - s.off)));
+    if (e.ring) sv(e.ring.material.uniforms.uAmt, alive * (.5 + hi) * (1 - s.off * .6));
   }
 
   function updateLink(lk, dt) {
@@ -940,13 +1025,15 @@ function create(ctx) {
     if (!lk.mesh.visible) { lk.pulses.list.length = 0; return; }
     sideOf(lk); u.uSide.value.copy(lk.side);
     const grow = n.kind === 'project' ? 1 : n.kind === 'sub' ? alive : kit.easeOutCubic(alive);
-    u.uGrow.value = Math.max(.02, grow); u.uFront.value = kit.clamp((1 - grow) * 6);
+    sv(u.uGrow, Math.max(.02, grow)); sv(u.uFront, kit.clamp((1 - grow) * 6));
     // Advance pulses in place (kit's Pulses.update builds two arrays per call).
     const L = lk.pulses.list;
     for (let i = L.length - 1; i >= 0; i--) { const p = L[i]; p.t += p.speed * dt; if (p.t >= 1) { L.splice(i, 1); arrive(lk, p); } }
+    if (L.length) moving = true;
     lk.pulses.vec4(u.uPulse.value);
     if (lk.steps) u.uPlan.value.set(alive > .6 ? lk.steps : 0, Math.round(n.plan.done / n.plan.total * lk.steps), .24, .76);
-    u.uFlash.value = lk.flash; lk.flash = Math.max(0, lk.flash - dt * 2.5);
+    if (lk.flash > 0) easing = true;
+    sv(u.uFlash, lk.flash); lk.flash = Math.max(0, lk.flash - dt * 2.5);
   }
   function arrive(lk, p) {
     const pe = neurons.get(lk.n.parent);
@@ -968,10 +1055,10 @@ function create(ctx) {
     rc.mesh.visible = e.group.visible;
     sideOf(rc); u.uSide.value.copy(rc.side);
     // The longer it waits, the higher it arches and the faster the gold runs along it.
-    rc.lift = k * s.urgency * 1.6; u.uLift.value = rc.lift;
-    u.uReach.value = k; u.uFlow.value = (.75 + s.urgency * .5) * k; u.uFlowSpeed.value = ctx.reduced ? 0 : 4 + s.urgency * 9;
+    rc.lift = k * s.urgency * 1.6; sv(u.uLift, rc.lift);
+    sv(u.uReach, k); sv(u.uFlow, (.75 + s.urgency * .5) * k); sv(u.uFlowSpeed, ctx.reduced ? 0 : 4 + s.urgency * 9);
     const beat = ctx.reduced ? .5 : Math.pow(.5 + .5 * Math.sin(anim * (4 + s.urgency * 6) + e.seedF), 3);
-    u.uTipR.value = .1 + beat * .05 * (1 + s.urgency);
+    sv(u.uTipR, .1 + beat * .05 * (1 + s.urgency));
     rc.glow.visible = k > .01 && rc.mesh.visible;
     if (!rc.glow.visible) return;
     fibrePoint(rc, kit.lerp(u.uRest.value * u.uGrowA.value, 1, k) - rc.tip, rc.glow.position);
@@ -979,10 +1066,12 @@ function create(ctx) {
   }
 
   function updateRipples(dt) {
-    for (const r of ripples) {
+    for (let i = 0; i < ripples.length; i++) {
+      const r = ripples[i];
       if (!r.m.visible) continue;
       r.t += dt / r.dur;
       if (r.t >= 1) { r.m.visible = false; continue; }
+      moving = true;
       const e = neurons.get(r.node), p = kit.easeOutCubic(r.t);
       r.m.position.copy(e.vis); r.m.position.y -= .25;
       r.m.scale.setScalar(r.max * 2);
@@ -991,17 +1080,21 @@ function create(ctx) {
   }
 
   return {
+    // Returns the frames a second the look needs: 60 while pulses run along fibres or ripples spread (they cross the screen fast),
+    // else 30 for the ambient life (sway, crackle, beats; the board's drift asks 30 anyway). In reduced motion everything of the
+    // look's own stands still, so 30 only while a flash fades, a cell grows or a ripple spreads, and then 0: no frames at all.
     update(dt) {
-      if (!ctx.reduced) anim += dt;
-      nebula.material.uniforms.uTime.value = anim; bokehMat.uniforms.uTime.value = anim;
-      for (const e of order) updateNeuron(e, dt);
-      nuclei.material.uniforms.uTime.value = anim;
-      for (const im of [nuclei, halos]) { im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; }
-      for (const lk of links) updateLink(lk, dt);
-      for (const rc of reaches) updateReach(rc, dt);
-      for (const sh of shots) updateShot(sh, dt);
+      const reduced = ctx.reduced;
+      if (!reduced) anim += dt;
+      sv(time, anim);
+      moving = easing = false;
+      for (let i = 0; i < order.length; i++) updateNeuron(order[i], dt);
+      for (let i = 0; i < links.length; i++) updateLink(links[i], dt);
+      for (let i = 0; i < reaches.length; i++) updateReach(reaches[i], dt);
+      for (let i = 0; i < shots.length; i++) updateShot(shots[i], dt);
       updateUsage();
       updateRipples(dt);
+      return reduced ? (moving || easing ? 30 : 0) : moving ? 60 : 30;
     },
     event(type, n, data) {
       const e = neurons.get(n); if (!e) return;
@@ -1015,6 +1108,7 @@ function create(ctx) {
     },
     // The usage labels live outside root, in the overlay drawn after the bloom.
     dispose() {
+      disposed = true;
       for (const t of tags.values()) { t.tex.dispose(); t.sprite.material.dispose(); }
       overlay.clear();
     },

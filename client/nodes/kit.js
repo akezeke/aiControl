@@ -22,11 +22,13 @@ export function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79
 const KEYS = ['work', 'think', 'compact', 'need', 'wait', 'idle', 'error', 'off'];
 export const dominant = node => KEYS.reduce((a, b) => node.s[b] > node.s[a] ? b : a, 'idle');
 // A colour blended by the smoothed signals, so changes fade instead of snapping. `palette` maps the KEYS above to colours.
-const mixTmp = new THREE.Color();
+// Palettes of strings are parsed once, not on every call.
+const mixTmp = new THREE.Color(), parsed = new Map();
+const colorOf = v => v.isColor ? v : parsed.get(v) || parsed.set(v, new THREE.Color(v)).get(v);
 export function statusColor(node, palette, out = new THREE.Color()) {
   out.setRGB(0, 0, 0); let total = 0;
-  for (const key of KEYS) { const w = node.s[key]; if (w < .001 || !palette[key]) continue; out.add(mixTmp.set(palette[key]).multiplyScalar(w)); total += w; }
-  return total > 0 ? out.multiplyScalar(1 / total) : out.set(palette.idle || '#888');
+  for (let i = 0; i < KEYS.length; i++) { const key = KEYS[i], w = node.s[key]; if (w < .001 || !palette[key]) continue; out.add(mixTmp.copy(colorOf(palette[key])).multiplyScalar(w)); total += w; }
+  return total > 0 ? out.multiplyScalar(1 / total) : out.copy(colorOf(palette.idle || '#888'));
 }
 
 // Quadratic bezier from a to b. `bend` pushes the middle sideways (fraction of length), `lift` raises it.
@@ -106,7 +108,8 @@ export function glowTexture(stops = [[0, 'rgba(255,255,255,1)'], [.35, 'rgba(255
   const g = c.getContext('2d'), grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   for (const [o, col] of stops) grad.addColorStop(o, col);
   g.fillStyle = grad; g.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  // Cached for good, so kept through rebuilds (disposeTree in nodes.js skips userData.keep).
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.userData.keep = true;
   glowCache.set(key, tex); return tex;
 }
 

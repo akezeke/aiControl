@@ -380,12 +380,44 @@ function fitText(g, text, font, size, max, min = .72) {
   let t = text; while (t.length > 1 && g.measureText(t + '…').width > max) t = t.slice(0, -1);
   return t.trimEnd() + '…';
 }
-function engrave(g, text, x, y, font, size, max, color = '#160c03') {
-  const t = fitText(g, text, font, size, max, .84);
-  g.textAlign = 'center'; g.textBaseline = 'middle';
+function engrave(g, t, x, y, font, size, color = '#160c03') {
+  g.font = font.replace('$', size); g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = 'rgba(255,242,205,.4)'; g.fillText(t, x, y + Math.max(1, size * .05));
   g.fillStyle = g.strokeStyle = color; g.lineWidth = size * .045; g.lineJoin = 'round'; g.strokeText(t, x, y); g.fillText(t, x, y);
 }
+// How a plate's name fits, worked out when the name changes: one line at full size, shrunk a little if need be; failing that (a
+// session's) two lines split at the space that lets both be biggest, line 1 clear of the top studs, line 2 nearly edge to edge; only
+// past that is line 2 cut with an ellipsis. fs is the size it came out at against full size. oneLine gives the plain fit (one line,
+// shrunk at most to .84, then cut): what a plate shows instead while the full fit would engrave too small to read (see showPlate).
+const NAME = {
+  session: { font: `500 $px ${SERIF}`, full: .41, floor: .74, y: .28, side: 4.5 },
+  project: { font: `700 $px ${CAPS}`, full: .5, floor: .6, y: .54, side: 5.4, caps: true },
+  you: { font: `700 $px ${CAPS}`, full: .34, floor: .84, y: .29, side: 8, caps: true },
+};
+const widthAt = (g, font, size, t) => { g.font = font.replace('$', size); return g.measureText(t).width; };
+// The longest prefix of t (cut at one of `at`, else anywhere) that fits max in the current font.
+function prefix(g, t, at, max) { let k = 0; for (const i of at) { if (g.measureText(t.slice(0, i)).width > max) break; k = i; } if (!k) while (k < t.length - 1 && g.measureText(t.slice(0, k + 1)).width <= max) k++; return Math.max(1, k); }
+function nameFit(g, kind, w, h, text, oneLine) {
+  const N = NAME[kind], s = h * .085, t = N.caps ? text.toUpperCase() : text, full = h * N.full, max = w - s * N.side, R = 100;
+  const one = Math.min(full, R * max / Math.max(1, widthAt(g, N.font, R, t)));
+  const single = size => { g.font = N.font.replace('$', size); return { lines: [cut(g, t, max)], ys: [h * N.y], size, font: N.font, fs: size / full }; };
+  if (oneLine) return single(Math.max(one, full * .84));
+  if (one >= full * N.floor || kind !== 'session') return single(Math.max(one, full * N.floor));
+  const L1 = w - s * 6.8, L2 = w - s * 3.5, top = h * .185, low = h * .165, sp = [];
+  for (let i = t.indexOf(' '); i > 0; i = t.indexOf(' ', i + 1)) sp.push(i);
+  const at = sp.length ? sp : Array.from({ length: t.length - 1 }, (_, i) => i + 1), skip = sp.length ? 1 : 0;
+  let best = 0, bi = 0;
+  for (const i of at) { const z = R * Math.min(L1 / Math.max(1, widthAt(g, N.font, R, t.slice(0, i))), L2 / Math.max(1, widthAt(g, N.font, R, t.slice(i + skip)))); if (z > best) { best = z; bi = i; } }
+  let size = Math.min(top, best);
+  if (one >= size) return single(one);
+  if (size < low) { size = low; g.font = N.font.replace('$', size); bi = prefix(g, t, at, L1); }
+  g.font = N.font.replace('$', size);
+  const rest = t.slice(bi + (t[bi] === ' ' ? 1 : 0));
+  // The pair is centred between the inner border (.125) and the ticker's rim (.505); Spectral reaches .56em above its middle, .44 below.
+  const d = size * 1.04, y1 = h * .315 + size * .064 - d / 2;
+  return { lines: [t.slice(0, bi), cut(g, rest, L2)], ys: [y1, y1 + d], size, font: N.font, fs: size / full };
+}
+function cut(g, t, max) { if (g.measureText(t).width <= max) return t; while (t.length > 1 && g.measureText(t + '…').width > max) t = t.slice(0, -1); return t.trimEnd() + '…'; }
 // A ticker window: slate, or amber / red enamel when it needs you or failed.
 const TICKER = { need: ['#e0a03a', '#2a1606'], error: ['#9a2416', '#ffe2d0'], off: ['#3a3836', '#a8a294'], work: ['#1e2420', '#bfe6b8'], idle: ['#22201d', '#d8ccb0'] };
 function ticker(g, text, x, y, w, h, tone) {
@@ -396,12 +428,13 @@ function ticker(g, text, x, y, w, h, tone) {
   const t = fitText(g, text, `700 $px ${TYPE}`, h * .78, w - h * .5, .85);
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = fg; g.fillText(t, x + w / 2, y + h * .54);
 }
-function paintPlate(g, kind, w, h, name, line, tone, seed) {
+// A nameplate: its name as fitted by nameFit (none while the brass tag stands in), then the ticker.
+function paintPlate(g, kind, w, h, fit, line, tone, seed) {
   g.clearRect(0, 0, w, h); brass(g, w, h, seed);
   const s = h * .085; for (const [x, y] of [[s * 1.9, s * 1.9], [w - s * 1.9, s * 1.9], [s * 1.9, h - s * 1.9], [w - s * 1.9, h - s * 1.9]]) stud(g, x, y, s);
-  if (kind === 'project') return engrave(g, name.toUpperCase(), w / 2, h * .54, `700 $px ${CAPS}`, h * .5, w - s * 8);
-  if (kind === 'you') { engrave(g, name.toUpperCase(), w / 2, h * .29, `700 $px ${CAPS}`, h * .34, w - s * 8); return ticker(g, line, w * .12, h * .52, w * .76, h * .38, tone); }
-  engrave(g, name, w / 2, h * .28, `500 $px ${SERIF}`, h * .41, w - s * 4.5);
+  if (fit) for (let i = 0; i < fit.lines.length; i++) engrave(g, fit.lines[i], w / 2, fit.ys[i], fit.font, fit.size);
+  if (kind === 'project') return;
+  if (kind === 'you') return ticker(g, line, w * .12, h * .52, w * .76, h * .38, tone);
   ticker(g, line, w * .045, h * .53, w * .91, h * .4, tone);
 }
 
@@ -443,7 +476,7 @@ function paintBoard(g, lay, k, H) {
     g.fillStyle = gr; g.beginPath(); g.roundRect(x0 + 10, ny, x1 - x0 - 20, nh, 6); g.fill();
     g.strokeStyle = '#e2bd72'; g.lineWidth = 2; g.stroke();
     stud(g, x0 + 22, ny + nh / 2, 4); stud(g, x1 - 22, ny + nh / 2, 4);
-    const t = fitText(g, gp.label.toUpperCase(), `700 $px ${CAPS}`, nh * .62, x1 - x0 - 64, .6);
+    const t = fitText(g, gp.label.toUpperCase(), `700 $px ${CAPS}`, nh * .62, x1 - x0 - 56, .48);
     g.fillStyle = '#f3dba0'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, (x0 + x1) / 2, ny + nh / 2 + 1);
   }
   for (const c of lay.cells) {
@@ -494,6 +527,8 @@ function boardLayout(usage) {
   });
   return { groups, cells: groups.flatMap(gp => gp.cells), W, H, cw, key: groups.map(gp => `${gp.label}:${gp.cells.map(c => c.kind + (c.limit ? 'l' : '')).join()}`).join('|') };
 }
+
+const WORKING = new Set(['working', 'thinking', 'compacting']), BLACK = new THREE.Color(0, 0, 0), WHEEL_C = new THREE.Color('#4a3a2c');
 
 export default {
   id: 'steampunk',
@@ -582,16 +617,37 @@ diffuseColor.rgb *= (.74 + .38 * grime) * (.55 + .45 * smoothstep(0., .22, vObj.
     };
     bodyMat.customProgramCacheKey = () => 'sp-body';
 
-    const O = new THREE.Object3D(), dyn = [], still = [];
-    function setT(m, i, x, y, z, ry = 0, sx = 1, sy = sx, sz = sx) { O.position.set(x, y, z); O.rotation.set(0, ry, 0); O.scale.set(Math.max(1e-4, sx), Math.max(1e-4, sy), Math.max(1e-4, sz)); O.updateMatrix(); m.setMatrixAt(i, O.matrix); }
-    function setR(m, i, x, y, z, rx, ry, rz, sx, sy = sx, sz = sx, order = 'XYZ') { O.position.set(x, y, z); O.rotation.set(rx, ry, rz, order); O.scale.set(Math.max(1e-4, sx), Math.max(1e-4, sy), Math.max(1e-4, sz)); O.updateMatrix(); m.setMatrixAt(i, O.matrix); }
+    // Instances are written through put/putC, which only touch what changed and widen a dirty range; flush uploads just that range, so a
+    // still board uploads nothing. The shadow map is drawn only when something that casts moved (shadowDirty), not every frame.
+    const O = new THREE.Object3D(), insts = [];
+    let shadowDirty = true;
+    renderer.shadowMap.autoUpdate = false;
+    function put(m, i) {
+      O.updateMatrix(); const e = O.matrix.elements, a = m.instanceMatrix.array, o = i * 16; let d = false;
+      for (let k = 0; k < 16; k++) { const v = Math.fround(e[k]); if (a[o + k] !== v) { a[o + k] = v; d = true; } }
+      if (d) { if (i < m.lo) m.lo = i; if (i > m.hi) m.hi = i; }
+    }
+    function putC(m, i, c) {
+      const a = m.instanceColor.array, o = i * 3, r = Math.fround(c.r), gg = Math.fround(c.g), b = Math.fround(c.b);
+      if (a[o] === r && a[o + 1] === gg && a[o + 2] === b) return;
+      a[o] = r; a[o + 1] = gg; a[o + 2] = b; if (i < m.clo) m.clo = i; if (i > m.chi) m.chi = i;
+    }
+    const track = m => { m.lo = m.clo = Infinity; m.hi = m.chi = -1; insts.push(m); return m; };
+    function flush(m) {
+      if (m.hi >= m.lo) { m.instanceMatrix.addUpdateRange(m.lo * 16, (m.hi - m.lo + 1) * 16); m.instanceMatrix.needsUpdate = true; if (m.castShadow) shadowDirty = true; m.lo = Infinity; m.hi = -1; }
+      if (m.chi >= m.clo) { m.instanceColor.addUpdateRange(m.clo * 3, (m.chi - m.clo + 1) * 3); m.instanceColor.needsUpdate = true; m.clo = Infinity; m.chi = -1; }
+    }
+    function setT(m, i, x, y, z, ry = 0, sx = 1, sy = sx, sz = sx) { O.position.set(x, y, z); O.rotation.set(0, ry, 0); O.scale.set(Math.max(1e-4, sx), Math.max(1e-4, sy), Math.max(1e-4, sz)); put(m, i); }
+    function setR(m, i, x, y, z, rx, ry, rz, sx, sy = sx, sz = sx, order = 'XYZ') { O.position.set(x, y, z); O.rotation.set(rx, ry, rz, order); O.scale.set(Math.max(1e-4, sx), Math.max(1e-4, sy), Math.max(1e-4, sz)); put(m, i); }
     const hide = (m, i) => setT(m, i, 0, -50, 0, 0, 0);
-    function inst(geo, material, count, { cast = true, color, fixed = false } = {}) {
-      const m = new THREE.InstancedMesh(geo, material, Math.max(1, count)); m.frustumCulled = false; m.castShadow = cast; m.receiveShadow = true;
+    // Only the big shapes cast (bodies, pipes, plate frames, televisor slabs, fittings): small moving parts would redraw the shadow
+    // map whenever they turn, for shadows nobody sees at this distance.
+    function inst(geo, material, count, { cast = false, color } = {}) {
+      const m = track(new THREE.InstancedMesh(geo, material, Math.max(1, count))); m.frustumCulled = false; m.castShadow = cast; m.receiveShadow = true;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       if (color !== undefined) { const c = new THREE.Color(color); for (let i = 0; i < m.count; i++) m.setColorAt(i, c); m.instanceColor.setUsage(THREE.DynamicDrawUsage); }
       for (let i = 0; i < m.count; i++) hide(m, i);
-      root.add(m); (fixed ? still : dyn).push(m); return m;
+      root.add(m); return m;
     }
     const NS = world.sessions.length, NP = world.projects.length, NK = world.subs.length, NPIPE = NP + NS + NK;
 
@@ -605,26 +661,33 @@ diffuseColor.rgb *= (.74 + .38 * grime) * (.55 + .45 * smoothstep(0., .22, vObj.
     batch.castShadow = batch.receiveShadow = true; batch.frustumCulled = false; root.add(batch);
     const addBody = p => batch.addInstance(batch.addGeometry(p.geo));
     const youId = addBody(YOU), V4 = new THREE.Vector4();
+    // three re-sorts and re-culls a BatchedMesh every frame unless both are off; there's one opaque body each, always on screen.
+    batch.sortObjects = false; batch.perObjectFrustumCulled = false;
+    // Its matrices and colours live in textures three re-uploads whole on any set: write only what changed.
+    const NB = 1 + NP + NS, bM = new Float32Array(16 * NB).fill(NaN), bC = new Float32Array(4 * NB).fill(NaN);
+    function bMat(id, m) { const e = m.elements, o = id * 16; let d = false; for (let k = 0; k < 16; k++) { const v = Math.fround(e[k]); if (bM[o + k] !== v) { bM[o + k] = v; d = true; } } if (d) { batch.setMatrixAt(id, m); shadowDirty = true; } }
+    function bCol(id, v) { const o = id * 4, x = Math.fround(v.x), y = Math.fround(v.y), z = Math.fround(v.z), w = Math.fround(v.w); if (bC[o] === x && bC[o + 1] === y && bC[o + 2] === z && bC[o + 3] === w) return; bC[o] = x; bC[o + 1] = y; bC[o + 2] = z; bC[o + 3] = w; batch.setColorAt(id, v); }
+    function bVis(id, on) { if (batch.getVisibleAt(id) !== on) { batch.setVisibleAt(id, on); shadowDirty = true; } }
 
     // ── Moving and lit parts, instanced across all machines ──
     const rigsU = UM.map(u => u.rig);
     const nGauge = 1 + NP + rigsU.reduce((s, r) => s + r.gauges.length, 0) + 2 * NS, nWheel = rigsU.reduce((s, r) => s + r.wheels.length, 0), nRod = rigsU.reduce((s, r) => s + r.rods.length, 0);
     const nPip = world.sessions.reduce((s, n) => s + Math.min(PLAN.max, n.plan?.total || 0), 0);
     const dialGeo = new THREE.CircleGeometry(1, 40).rotateX(-HP), needleGeo = merge([place(box(.8, .03, .07), .3, .03, 0), place(cyl(.08, .08, .05, 12), 0, .03, 0), place(box(.22, .03, .1), -.12, .03, 0)]);
-    const dials = inst(dialGeo, dialMat, nGauge, { cast: false, color: '#ffffff' });
-    const needles = inst(needleGeo, blackMat, nGauge, { cast: false });
+    const dials = inst(dialGeo, dialMat, nGauge, { color: '#ffffff' });
+    const needles = inst(needleGeo, blackMat, nGauge);
     const wheels = inst(merge([torus(1, .08, 6, 36), ...Array.from({ length: 6 }, (_, i) => place(box(.92, .07, .05), Math.cos(i * PI / 3) * .48, Math.sin(i * PI / 3) * .48, 0, 0, 0, i * PI / 3)),
       place(cyl(.16, .16, .2, 14), 0, 0, 0, HP), place(cyl(.06, .06, .14, 8), .45, 0, .12, HP)]), mat({ color: '#ffffff', metalness: .8, roughness: .4 }), nWheel, { color: '#4a3a2c' });
     const rods = inst(merge([place(cyl(1, 1, 1, 8), 0, .5, 0), place(box(2.6, .22, 2.6), 0, 1, 0)]), steelMat, nRod);
     const govs = inst(merge([place(cyl(.03, .03, .5, 8), 0, .25, 0), place(ball(.045, 10, 6), 0, .52, 0), place(cyl(.06, .06, .05, 10), 0, .3, 0),
       ...[-1, 1].flatMap(s => [place(box(.02, .26, .02), s * .09, .4, 0, 0, 0, s * .6), place(ball(.065, 12, 8), s * .17, .3, 0)])]), brassMat, NP);
     const bellows = inst(new THREE.LatheGeometry([[.11, 0], [.13, .04], [.09, .08], [.13, .12], [.09, .16], [.13, .2], [.11, .24], [0, .25]].map(([r, y]) => new THREE.Vector2(r, y)), 16), leatherMat, NS);
-    const fills = inst(place(cyl(.052, .052, 1, 10), .5, 0, 0, 0, 0, HP), lampMat, NS, { cast: false, color: '#000000' });
+    const fills = inst(place(cyl(.052, .052, 1, 10), .5, 0, 0, 0, 0, HP), lampMat, NS, { color: '#000000' });
     // Indicator bulbs (HDR colour, blooms): machines' mode bulbs, plan pips, a bulb per session on its junction, subagent bulbs, the
     // boiler's inlet bulbs and the televisors' rows.
     const nJB = world.projects.reduce((s, p) => s + Math.min(6, p.sessions.length), 0);
     const L_PIP = NS, L_JB = L_PIP + nPip, L_SUB = L_JB + nJB, L_JUN = L_SUB + NK, L_TVB = L_JUN + NP;
-    const lamps = inst(ball(1, 12, 8), lampMat, L_TVB + 5 * NS, { cast: false, color: '#000000' });
+    const lamps = inst(ball(1, 12, 8), lampMat, L_TVB + 5 * NS, { color: '#000000' });
     // Filament tubes: a brass socket and tip, fresnel glass lit from inside, and the filament itself (the only part that blooms).
     // Two on every machine, two on every junction, four by the gauge board, four on every televisor.
     const T_J = 2 * NS, T_Y = T_J + 2 * NP, T_TV = T_Y + 4, NT = T_TV + 4 * NS;
@@ -637,31 +700,32 @@ totalEmissiveRadiance += vColor.rgb * (.22 + .8 * rim * rim);`);
     };
     glassMat.customProgramCacheKey = () => 'sp-glass';
     const tubeCap = inst(merge([place(cyl(1.15, .95, .22, 14), 0, .11, 0), place(torus(1.02, .09, 6, 18), 0, .22, 0, HP), place(cyl(.22, .32, .1, 8), 0, 1.07, 0)]), brassMat, NT);
-    const tubeGlass = inst(new THREE.LatheGeometry([[.95, .2], [1, .27], [1, .82], [.9, .95], [.62, 1.03], [.25, 1.07], [0, 1.075]].map(([x, y]) => new THREE.Vector2(x, y)), 16), glassMat, NT, { cast: false, color: '#000000' });
+    const tubeGlass = inst(new THREE.LatheGeometry([[.95, .2], [1, .27], [1, .82], [.9, .95], [.62, 1.03], [.25, 1.07], [0, 1.075]].map(([x, y]) => new THREE.Vector2(x, y)), 16), glassMat, NT, { color: '#000000' });
     tubeGlass.renderOrder = 1;
     const tubeFil = inst(merge([place(cyl(.07, .07, .4, 5), -.4, .42, 0), place(cyl(.07, .07, .4, 5), .4, .42, 0),
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[-.4, .6], [-.25, .88], [-.08, .62], [.08, .88], [.25, .62], [.4, .6]].map(([x, y]) => new THREE.Vector3(x, y, 0))), 30, .1, 5)]), lampMat, NT, { cast: false, color: '#000000' });
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[-.4, .6], [-.25, .88], [-.08, .62], [.08, .88], [.25, .62], [.4, .6]].map(([x, y]) => new THREE.Vector3(x, y, 0))), 30, .1, 5)]), lampMat, NT, { color: '#000000' });
     const tGl = new THREE.Color();
     function tube(k, x, y, z, r, h, glow) {
       setT(tubeCap, k, x, y, z, 0, r, h, r); setT(tubeGlass, k, x, y, z, 0, r, h, r); setT(tubeFil, k, x, y, z, 0, r, h, r);
-      tubeFil.setColorAt(k, glow); tubeGlass.setColorAt(k, tGl.copy(glow).multiplyScalar(.32));
+      putC(tubeFil, k, glow); putC(tubeGlass, k, tGl.copy(glow).multiplyScalar(.32));
     }
     const hideTube = k => { hide(tubeCap, k); hide(tubeGlass, k); hide(tubeFil, k); };
     // Soft light the tubes and fires cast on the floor.
     const POOL_P = 1, POOL_S = 1 + NP;
-    const pools = inst(new THREE.PlaneGeometry(1, 1).rotateX(-HP), new THREE.MeshBasicMaterial({ map: kit.glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), POOL_S + NS, { cast: false, color: '#000000' });
+    const pools = inst(new THREE.PlaneGeometry(1, 1).rotateX(-HP), new THREE.MeshBasicMaterial({ map: kit.glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), POOL_S + NS, { color: '#000000' });
     // Subagents: a little valve beside their machine; the handwheel turns while it works.
     const kBody = inst(merge([oct(.2, .22, .08, .04), place(cyl(.03, .03, .26, 8), 0, .2, 0), place(cyl(.06, .075, .07, 10), 0, .11, 0)]), brassMat, NK);
     const kWheel = inst(merge([place(torus(.13, .022, 6, 24), 0, .33, 0, HP), bar(-.13, 0, .13, 0, .025, .025, .33), bar(0, -.13, 0, .13, .025, .025, .33), place(cyl(.035, .035, .05, 8), 0, .33, 0)]),
       mat({ color: '#ffffff', metalness: 1, roughness: .25 }), NK, { color: '#3a5bd0' });
     // Nameplates: a canvas face each, on a shared dark frame and two posts.
-    const NPL = NS + NP + 1, frames = inst(box(1, 1, 1), blackMat, NPL), posts = inst(cyl(.035, .045, 1, 8), brassMat, NPL * 2);
+    const NPL = NS + NP + 1, frames = inst(box(1, 1, 1), blackMat, NPL, { cast: true }), posts = inst(cyl(.035, .045, 1, 8), brassMat, NPL * 2);
     // Televisors, all in floor units round the screen's centre: a walnut slab with the bulging screen on it in a bent brass frame with a
     // finial, the walnut console along its back edge with grille plates, knobs, two meter cases, a red cloth wire to a tube, and a brass
     // conduit to the machine. The screen is a canvas each, made when a session first has a screenshot.
     const CZ = -TV.sh / 2 - .38, CY = .32, conduitZ = MZ - TV.z;
     const TV_TUBES = [[-1.22, .11, .72], [-.97, .08, .46], [.97, .08, .46], [1.22, .11, .72]], TV_METERS = [[.22, .44, CZ + .17], [.54, .44, CZ + .17]];
-    const tvWood = inst(merge([place(box(TV.sw + .34, .12, TV.sh + .3), 0, .06, .05), place(box(TV.sw + .44, CY, .56), 0, CY / 2, CZ)]), mat({ color: '#4a2a16', metalness: .05, roughness: .5 }), NS);
+    const TV_MC = TV_METERS.map(([x, y, z]) => ({ x, y, z, r: .1, t: .55 }));
+    const tvWood = inst(merge([place(box(TV.sw + .34, .12, TV.sh + .3), 0, .06, .05), place(box(TV.sw + .44, CY, .56), 0, CY / 2, CZ)]), mat({ color: '#4a2a16', metalness: .05, roughness: .5 }), NS, { cast: true });
     const tvBrass = inst(merge([
       new THREE.TubeGeometry(new RoundRect(TV.sw / 2 + .07, TV.sh / 2 + .07, .36, .16), 120, .035, 6, true),
       place(cyl(.02, .03, .1, 8), 0, .2, -TV.sh / 2 - .07), place(ball(.05, 10, 6), 0, .27, -TV.sh / 2 - .07),
@@ -670,12 +734,13 @@ totalEmissiveRadiance += vColor.rgb * (.22 + .8 * rim * rim);`);
       ...TV_METERS.flatMap(([x, y, z]) => [place(cyl(.125, .115, .06, 18), x, y - .03, z - .02, .55), place(flat(torus(.122, .014, 5, 20)), x, y + .003, z, .55), place(cyl(.02, .02, y - CY, 6), x, (y + CY) / 2, z - .04)]),
       place(cyl(.045, .045, TV.x - TV.sw / 2 - .17 - AU * US, 10), (AU * US - TV.x - TV.sw / 2 - .17) / 2, .07, conduitZ, 0, 0, HP), place(cyl(.075, .075, .05, 10), -TV.sw / 2 - .17, .07, conduitZ, 0, 0, HP)]), brassMat, NS);
     const tvWire = inst(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(new THREE.Vector3(-1.22, CY + .8, CZ), new THREE.Vector3(-1.5, CY + .9, CZ + .7), new THREE.Vector3(-TV.sw / 2 - .07, .17, -TV.sh / 2 + .2)), 16, .018, 5), mat({ color: '#9a1c12', roughness: .8 }), NS);
-    const tvU = { uTvT: { value: 0 }, uRoll: { value: 1 } }, tvGeo = (() => {
+    const tvT = { value: 0 }, tvGeo = (() => {
       const g = new THREE.PlaneGeometry(TV.sw, TV.sh, 24, 16), p = g.attributes.position;
       for (let i = 0; i < p.count; i++) { const u = 2 * p.getX(i) / TV.sw, v = 2 * p.getY(i) / TV.sh; p.setZ(i, .1 * Math.max(0, 1 - u * u) * Math.max(0, 1 - v * v)); }
       g.rotateX(-HP); g.computeVertexNormals(); return g;
     })();
-    // The screen glows; a faint band rolls down it and it flickers a touch (not with reduced motion). Its square corners are cut away.
+    // The screen glows; while its machine is busy a faint band rolls down it and it flickers a touch (each screen's own uRoll, eased, so
+    // an idle televisor is a still picture and costs no frames; none with reduced motion). Its square corners are cut away.
     // The picture is all emission (black diffuse, so the key light can't wash it out) and stays below the bloom threshold even for a
     // white page, so screenshots read; a rough glass sheen keeps it a tube.
     const TV_GLOW = .6;
@@ -683,15 +748,16 @@ totalEmissiveRadiance += vColor.rgb * (.22 + .8 * rim * rim);`);
       const cv = document.createElement('canvas'); cv.width = TV.cw; cv.height = TV.ch;
       const t = tex(new THREE.CanvasTexture(cv)); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso;
       const m = mat({ color: '#000000', map: t, emissiveMap: t, emissive: '#ffffff', emissiveIntensity: TV_GLOW, metalness: 0, roughness: .22, envMapIntensity: .3, alphaTest: .5 });
+      const roll = { value: 0 };
       m.onBeforeCompile = sh => {
-        Object.assign(sh.uniforms, tvU);
+        sh.uniforms.uTvT = tvT; sh.uniforms.uRoll = roll;
         sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uTvT; uniform float uRoll;').replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 float rd = (fract(vMapUv.y - uTvT * .11) - .5) * 7.;
 totalEmissiveRadiance *= 1. + uRoll * (.12 * exp(-rd * rd) + .03 * sin(uTvT * 47.));`);
       };
       m.customProgramCacheKey = () => 'sp-tv';
       const mesh = new THREE.Mesh(tvGeo, m); mesh.receiveShadow = true; root.add(mesh);
-      return { g: cv.getContext('2d'), tex: t, mesh, shot: null };
+      return { g: cv.getContext('2d'), tex: t, mesh, shot: null, roll };
     }
 
     // ── Per-node state ──
@@ -801,7 +867,7 @@ float spSum(vec4 c, float w) { return spP(c.x, w) + spP(c.y, w) + spP(c.z, w) + 
 int pk = int(vPipe + .5); vec4 pm = uM[pk];
 totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y) + vec3(.85, .45, .08) * (spSum(uG[pk], pm.z * 1.3) + pm.x);`);
     };
-    pipeMat.customProgramCacheKey = () => 'sp-pipes';
+    pipeMat.customProgramCacheKey = () => 'sp-pipes' + NPIPE;
     const pipeMesh = new THREE.Mesh(new THREE.BufferGeometry(), pipeMat); pipeMesh.castShadow = pipeMesh.receiveShadow = true; pipeMesh.frustumCulled = false; root.add(pipeMesh);
     const TIER_COL = [null, new THREE.Color('#c8754a'), new THREE.Color('#c99a4a'), new THREE.Color('#c07a52')], RAD = 12;
     function buildPipeMesh(list) {
@@ -826,15 +892,15 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
     // Fittings, modelled for a radius-1 pipe along +x: flanged inlet with a reducer, joint flanges, clamp brackets, gate valve, relief tee.
     const boltRing = (n, Rr, rr, len, x) => Array.from({ length: n }, (_, i) => { const a = (i + .5) / n * TAU; return place(cyl(rr, rr, len, 6), x, PY + Math.cos(a) * Rr, Math.sin(a) * Rr, 0, 0, HP); });
     const portM = inst(merge([place(cyl(1.35, 1.35, 1, 20), .5, PY, 0, 0, 0, HP), place(cyl(1.85, 1.85, .35, 24), 1.15, PY, 0, 0, 0, HP), ...boltRing(6, 1.55, .14, .6, 1.15),
-      place(cyl(1.35, 1, .6, 20), 1.62, PY, 0, 0, 0, HP)]), brassMat, NPIPE * 2, { fixed: true });
-    const flangeM = inst(merge([place(cyl(1.75, 1.75, .45, 24), 0, PY, 0, 0, 0, HP), ...boltRing(6, 1.45, .14, .8, 0)]), brassMat, 4 * (NP + NS), { fixed: true });
+      place(cyl(1.35, 1, .6, 20), 1.62, PY, 0, 0, 0, HP)]), brassMat, NPIPE * 2, { cast: true });
+    const flangeM = inst(merge([place(cyl(1.75, 1.75, .45, 24), 0, PY, 0, 0, 0, HP), ...boltRing(6, 1.45, .14, .8, 0)]), brassMat, 4 * (NP + NS), { cast: true });
     const bracketM = inst(merge([place(box(.7, .2, 3.2), 0, .1, 0), place(box(.45, 1.15, .26), 0, .67, 1.12), place(box(.45, 1.15, .26), 0, .67, -1.12),
-      place(torus(1.12, .13, 6, 16, PI), 0, PY, 0, 0, HP, 0), place(cyl(.17, .17, .16, 6), 0, .26, 1.45), place(cyl(.17, .17, .16, 6), 0, .26, -1.45)]), blackMat, 8 * NP + 3 * NS, { fixed: true });
+      place(torus(1.12, .13, 6, 16, PI), 0, PY, 0, 0, HP, 0), place(cyl(.17, .17, .16, 6), 0, .26, 1.45), place(cyl(.17, .17, .16, 6), 0, .26, -1.45)]), blackMat, 8 * NP + 3 * NS, { cast: true });
     const valveM = inst(merge([place(ball(1.45, 16, 10), 0, PY, 0, 0, 0, 0, 1.1, 1, 1), place(cyl(1.25, 1.25, .4, 16), 1.7, PY, 0, 0, 0, HP), place(cyl(1.25, 1.25, .4, 16), -1.7, PY, 0, 0, 0, HP),
-      place(cyl(.95, 1.05, 1.1, 14), 0, PY + 1.5, 0), place(cyl(.22, .22, 1.8, 8), 0, PY + 2.6, 0)]), brassMat, NP, { fixed: true });
+      place(cyl(.95, 1.05, 1.1, 14), 0, PY + 1.5, 0), place(cyl(.22, .22, 1.8, 8), 0, PY + 2.6, 0)]), brassMat, NP, { cast: true });
     const handM = inst(merge([place(torus(1.1, .16, 6, 28), 0, 0, 0, HP), bar(-1.1, 0, 1.1, 0, .18, .18), bar(0, -1.1, 0, 1.1, .18, .18), cyl(.3, .3, .3, 10)]), mat({ color: '#9a2a1c', metalness: .6, roughness: .35 }), NP);
     const reliefM = inst(merge([place(cyl(1.3, 1.3, 2.6, 16), 0, PY, 0, 0, 0, HP), place(cyl(1, 1, 1.4, 14), 0, PY + 1.2, 0), place(cyl(1.5, 1.5, .3, 16), 0, PY + 1.95, 0),
-      place(cyl(.75, 1, 1.2, 14), 0, PY + 2.7, 0), place(hemi(.75, 14, 6), 0, PY + 3.3, 0), place(box(2.6, .22, .3), .9, PY + 3, 0), place(ball(.42, 10, 8), 2.1, PY + 2.85, 0)]), brassMat, NP, { fixed: true });
+      place(cyl(.75, 1, 1.2, 14), 0, PY + 2.7, 0), place(hemi(.75, 14, 6), 0, PY + 3.3, 0), place(box(2.6, .22, .3), .9, PY + 3, 0), place(ball(.42, 10, 8), 2.1, PY + 2.85, 0)]), brassMat, NP, { cast: true });
     const RELIEF_TOP = PY + 3.7, WHEEL_Y = PY + 3.4;
 
     const mkPipe = (idx, tier, A, B, o) => ({ idx, tier, r: TIER_R[tier], A, B, on: tier === 1, pulses: new kit.Pulses(), gold: new kit.Pulses(), path: null, speed: 1, needT: 0, flash: 0, hw: 0, vent: 0, ...o });
@@ -871,7 +937,6 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
       for (; np < portM.count; np++) hide(portM, np);
       for (; nf < flangeM.count; nf++) hide(flangeM, nf);
       for (; nb < bracketM.count; nb++) hide(bracketM, nb);
-      for (const m of still) m.instanceMatrix.needsUpdate = true;
     }
     function rebuildPipes() {
       for (const b of BODIES) b.used.fill(0);
@@ -880,7 +945,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
         if (!pp.on) { pp.path = null; continue; }
         pp.path = makePath(route(pp.A, pp.B, pp.r), pp.r); pp.speed = (pp.tier === 1 ? 5 : 3.5) / pp.path.len; list.push(pp);
       }
-      buildPipeMesh(list); placeFittings(list);
+      buildPipeMesh(list); placeFittings(list); shadowDirty = true;
     }
     const sigNow = new Float32Array(2 * NP + 3 * NS + 3 * NK), sigBuilt = new Float32Array(sigNow.length).fill(NaN);
 
@@ -981,14 +1046,16 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
       const L = ext * 1.25 + 5, cam = key.shadow.camera;
       cam.left = cam.bottom = -L; cam.right = cam.top = L; cam.near = 1; cam.far = 160; cam.updateProjectionMatrix();
       key.target.position.set(cx, -1, cz); key.position.set(-14, 30, 18).normalize().multiplyScalar(70).add(key.target.position);
-      sigBuilt.fill(NaN);
+      sigBuilt.fill(NaN); shadowDirty = true;
     }
     layout();
     ctx.onResize(layout);
 
     // ── Labels: the nameplates carry them. HTML labels (brass tags, see css) come back when the plates get too small to read. ──
+    // platePx is a full-size session name's height on screen. All plates hand over together (a mix of blank and engraved plates reads
+    // as broken); a name whose full fit came out small (two lines, or shrunk) shows its one-line cut until it would be at least LEGIBLE.
     let platePx = 99;
-    const tagged = () => platePx < 10.5;
+    const LEGIBLE = 10.5 * .84, tagged = () => platePx < 10.5;
     ctx.setLabelRule(n => n.kind === 'sub' || tagged() ? undefined : false);
     ctx.setLabelAnchor((n, out) => {
       if (n.kind === 'you') return out.set(0, .3, PLATE.you.z - .5);
@@ -1005,28 +1072,55 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
       const P = PLATE[kind], cv = document.createElement('canvas'); cv.width = P.cw; cv.height = P.ch;
       const t = tex(new THREE.CanvasTexture(cv)); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso;
       const m = new THREE.Mesh(plateGeo[kind], mat({ map: t, emissiveMap: t, emissive: '#ffffff', emissiveIntensity: .12, metalness: .4, roughness: .5, envMapIntensity: .4 }));
-      m.rotation.x = LEAN; m.castShadow = true; m.visible = false; root.add(m);
-      const pl = { kind, node, seed, P, g: cv.getContext('2d'), tex: t, mesh: m, key: null, i: plates.length };
+      m.rotation.x = LEAN; m.visible = false; root.add(m);
+      // What's painted (name text, its fit, ticker line and tone), so a frame compares fields, not a built key.
+      const pl = { kind, node, seed, P, g: cv.getContext('2d'), tex: t, mesh: m, i: plates.length, painted: false, shown: null, text: null, fit: null, fit1: null, line: null, tn: null, at: 0 };
       plates.push(pl); return pl;
     }
     const youPlate = makePlate('you', world.you, 1);
     for (const p of world.projects) PG.get(p).plate = makePlate('project', p, p.seed);
     for (const s of world.sessions) SG.get(s).plate = makePlate('session', s, s.seed);
-    const tone = n => n.status === 'permission' || n.status === 'question' ? 'need' : n.status === 'error' ? 'error' : n.status === 'offline' ? 'off' : ['working', 'thinking', 'compacting'].includes(n.status) ? 'work' : 'idle';
-    const lineOf = n => tone(n) === 'need' ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text;
+    const tone = n => n.status === 'permission' || n.status === 'question' ? 'need' : n.status === 'error' ? 'error' : n.status === 'offline' ? 'off' : WORKING.has(n.status) ? 'work' : 'idle';
+    // A waiting session's ticker reads "text · 3m"; the string is rebuilt only when the shown wait (or the text) changes.
+    const WAITS = new Map();
+    function lineOf(n, tn) {
+      if (tn !== 'need') return n.text;
+      const t = n.waitSec || 0, k = t < 60 ? Math.max(1, Math.round(t)) : t < 3600 ? 1000 + Math.floor(t / 60) : 100000 + Math.floor(t / 3600);
+      let w = WAITS.get(n); if (!w) WAITS.set(n, w = { k: -1, text: null, line: '' });
+      if (w.k !== k || w.text !== n.text) { w.k = k; w.text = n.text; w.line = `${n.text} · ${kit.fmtWait(t)}`; }
+      return w.line;
+    }
     let fontsReady = false, disposed = false;
-    if (document.fonts) Promise.all([`500 20px Spectral`, `700 20px Cinzel`, `400 20px "Courier Prime"`].map(f => document.fonts.load(f))).then(() => { if (!disposed) { fontsReady = true; for (const pl of plates) pl.key = null; board.sig = ''; usageRef = null; } }, () => {});
-    // Place a plate with its bottom edge at (x, z) on the floor, grown by s; paint it if its text changed (a few a frame). While the
-    // brass tags are up the plate goes blank (its ticker keeps its colour), so no name shows twice.
-    let painted = 0;
+    // Webfonts land after the first paint: refit and repaint every face, then wake the loop (nothing else would draw the frame).
+    if (document.fonts) Promise.all([`500 20px Spectral`, `700 20px Cinzel`, `400 20px "Courier Prime"`].map(f => document.fonts.load(f))).then(() => {
+      if (disposed) return; fontsReady = true; for (const pl of plates) { pl.painted = false; pl.text = null; } board.sig = ''; usageRef = null; ctx.wake?.();
+    }, () => {});
+    // Place a plate with its bottom edge at (x, z) on the floor, grown by s; paint it if what it shows changed (a few a frame, the rest
+    // next frame: pendingPaint keeps the pace up). A ticker whose only change is its wait clock repaints at most about once a second.
+    // While its brass tag is up the plate's name goes blank (its ticker keeps its colour), so no name shows twice.
+    let painted = 0, pendingPaint = false, tickWait = false;
     function showPlate(pl, x, z, s, text, line, tn, hl) {
-      if (tagged()) text = line = '';
-      const { P, mesh } = pl, h = P.h * s, k = `${text}|${line}|${tn}`;
-      if (pl.key !== k && painted < 6) { painted++; pl.key = k; paintPlate(pl.g, pl.kind, P.cw, P.ch, text, line, tn, pl.seed % 97); pl.tex.needsUpdate = true; mesh.visible = true; }
+      const { P, mesh } = pl, h = P.h * s;
+      if (pl.text !== text) {
+        pl.text = text; pl.fit = nameFit(pl.g, pl.kind, P.cw, P.ch, text); pl.painted = false;
+        pl.fit1 = pl.fit.fs < .84 ? nameFit(pl.g, pl.kind, P.cw, P.ch, text, true) : pl.fit;
+      }
+      const blank = tagged(), fit = blank ? null : platePx * pl.fit.fs >= LEGIBLE ? pl.fit : pl.fit1;
+      if (blank) line = '';
+      if (!pl.painted || pl.shown !== fit || pl.tn !== tn || pl.line !== line) {
+        const tick = pl.painted && pl.shown === fit && pl.tn === tn, now = performance.now();
+        if (painted >= 6) pendingPaint = true;
+        else if (tick && now - pl.at < 950) tickWait = true;
+        else {
+          painted++; pl.painted = true; pl.shown = fit; pl.tn = tn; pl.line = line; pl.at = now;
+          paintPlate(pl.g, pl.kind, P.cw, P.ch, fit, line, tn, pl.seed % 97); pl.tex.needsUpdate = true;
+        }
+      }
+      mesh.visible = pl.painted;
       const cy = .1 * s + h * .5 * Math.cos(LEAN), cz = z - h * .5 * Math.sin(-LEAN);
       mesh.position.set(x, cy, cz); mesh.scale.setScalar(Math.max(1e-4, s)); mesh.material.emissiveIntensity = .12 + .3 * hl;
       setR(frames, pl.i, x, cy + .035 * s * Math.sin(LEAN), cz - .035 * s * Math.cos(LEAN), LEAN, 0, 0, (P.w + .1) * s, (P.h + .1) * s, .05 * s);
-      for (const j of [0, 1]) setT(posts, pl.i * 2 + j, x + (j ? 1 : -1) * P.w * .36 * s, cy * .5, cz - .06, 0, s, cy, s);
+      const px = P.w * .36 * s; setT(posts, pl.i * 2, x - px, cy * .5, cz - .06, 0, s, cy, s); setT(posts, pl.i * 2 + 1, x + px, cy * .5, cz - .06, 0, s, cy, s);
     }
     function hidePlate(pl) { pl.mesh.visible = false; hide(frames, pl.i); hide(posts, pl.i * 2); hide(posts, pl.i * 2 + 1); }
 
@@ -1034,7 +1128,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
     const ZB = 2.75, board = { group: new THREE.Group(), key: null, sig: '', lay: null, tex: null, face: null, needles: null, lamps: null, cv: null, val: [] };
     board.group.rotation.x = LEAN; root.add(board.group);
     const boardNeedleGeo = needleGeo.clone().rotateX(HP), boardFrame = mat({ color: '#2c2723', metalness: .7, roughness: .5 });
-    function clearBoard() { for (const o of [...board.group.children]) { board.group.remove(o); if (o.isInstancedMesh) o.dispose(); if (o.geometry !== boardNeedleGeo && o.geometry !== lamps.geometry) o.geometry.dispose(); if (o.material !== blackMat && o.material !== lampMat && o.material !== boardFrame && o.material !== brassMat) o.material.dispose(); } board.tex?.dispose(); board.tex = null; }
+    function clearBoard() { for (const o of [...board.group.children]) { board.group.remove(o); if (o.isInstancedMesh) { o.dispose(); const k = insts.indexOf(o); if (k >= 0) insts.splice(k, 1); } if (o.geometry !== boardNeedleGeo && o.geometry !== lamps.geometry) o.geometry.dispose(); if (o.material !== blackMat && o.material !== lampMat && o.material !== boardFrame && o.material !== brassMat) o.material.dispose(); } board.tex?.dispose(); board.tex = null; }
     function buildBoard(lay) {
       clearBoard(); board.lay = lay; board.sig = ''; board.val = lay ? lay.cells.map(c => c.used) : [];
       if (!lay) return;
@@ -1046,12 +1140,12 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
       board.face.receiveShadow = true;
       const frame = new THREE.Mesh(merge([place(box(W + .2, H + .2, .1), 0, 0, -.06), place(box(.1, H + .2, .4), -W / 2 - .1, 0, -.2), place(box(.1, H + .2, .4), W / 2 + .1, 0, -.2),
         place(box(W * .9, .6, H * .55), 0, -H * .25, -H * .32, -.5, 0, 0)]), boardFrame);
-      frame.castShadow = frame.receiveShadow = true;
-      const bezel = new THREE.Mesh(merge(lay.cells.filter(c => c.kind === 'win' || c.limit).map(c => place(torus(c.r + .015, .03, 6, 36), c.x, c.y, .015))), brassMat);
-      bezel.castShadow = true;
-      board.needles = new THREE.InstancedMesh(boardNeedleGeo, blackMat, lay.cells.length); board.needles.castShadow = true;
-      board.lamps = new THREE.InstancedMesh(lamps.geometry, lampMat, lay.cells.length);
-      lay.cells.forEach((c, i) => { board.lamps.setColorAt(i, new THREE.Color(0, 0, 0)); O.position.set(c.x + c.r * .84, c.y + c.r * .84, .04); O.rotation.set(0, 0, 0); O.scale.setScalar(.055); O.updateMatrix(); board.lamps.setMatrixAt(i, O.matrix); });
+      frame.castShadow = frame.receiveShadow = true; shadowDirty = true;
+      // Its own brass: brassMat on a plain mesh beside all the instanced brass made three re-pick the program twice a frame.
+      const bezel = new THREE.Mesh(merge(lay.cells.filter(c => c.kind === 'win' || c.limit).map(c => place(torus(c.r + .015, .03, 6, 36), c.x, c.y, .015))), brassMat.clone());
+      board.needles = track(new THREE.InstancedMesh(boardNeedleGeo, blackMat, lay.cells.length));
+      board.lamps = track(new THREE.InstancedMesh(lamps.geometry, lampMat, lay.cells.length));
+      for (let i = 0; i < lay.cells.length; i++) { const c = lay.cells[i]; board.lamps.setColorAt(i, BLACK); O.position.set(c.x + c.r * .84, c.y + c.r * .84, .04); O.rotation.set(0, 0, 0); O.scale.setScalar(.055); O.updateMatrix(); board.lamps.setMatrixAt(i, O.matrix); }
       board.group.add(board.face, frame, bezel, board.needles, board.lamps);
     }
     function syncBoard() {
@@ -1077,7 +1171,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
     const pPos = new Float32Array(PN * 3), pSize = new Float32Array(PN), pAlpha = new Float32Array(PN), pCol = new Float32Array(PN * 3), pRot = new Float32Array(PN);
     const pVel = new Float32Array(PN * 3), pLife = new Float32Array(PN), pMax = new Float32Array(PN).fill(1), pS0 = new Float32Array(PN), pS1 = new Float32Array(PN);
     const pA0 = new Float32Array(PN), pSpin = new Float32Array(PN), pRise = new Float32Array(PN), pDrag = new Float32Array(PN);
-    let pHead = 0;
+    let pHead = 0, pLive = 0, cFrom = 0, cCount = 0;
     const pGeo = new THREE.BufferGeometry(), dynA = (a, n) => new THREE.BufferAttribute(a, n).setUsage(THREE.DynamicDrawUsage);
     pGeo.setAttribute('position', dynA(pPos, 3)); pGeo.setAttribute('aSize', dynA(pSize, 1)); pGeo.setAttribute('aAlpha', dynA(pAlpha, 1)); pGeo.setAttribute('aColor', dynA(pCol, 3)); pGeo.setAttribute('aRot', dynA(pRot, 1));
     const pMat = new THREE.ShaderMaterial({
@@ -1097,6 +1191,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
     function puff(x, y, z, vx, vy, vz, life, s0, s1, a0, col, rise = .5, drag = 1.2) {
       if (ctx.reduced) return;
       const i = pHead, i3 = i * 3; pHead = (pHead + 1) % PN;
+      if (!cCount) cFrom = i; if (cCount < PN) cCount++; // the run of fresh colours, uploaded this frame
       pPos[i3] = x; pPos[i3 + 1] = y; pPos[i3 + 2] = z; pVel[i3] = vx; pVel[i3 + 1] = vy; pVel[i3 + 2] = vz;
       pCol[i3] = col.r; pCol[i3 + 1] = col.g; pCol[i3 + 2] = col.b;
       pLife[i] = pMax[i] = life; pS0[i] = s0; pS1[i] = s1; pA0[i] = a0; pRot[i] = rnd() * TAU; pSpin[i] = (rnd() - .5) * 1.2; pRise[i] = rise; pDrag[i] = drag; pSize[i] = s0; pAlpha[i] = 0;
@@ -1152,94 +1247,143 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
       const ny = Math.cos(c.t), nz = Math.sin(c.t);
       setR(dials, k, X + c.x * sc, (c.y + ny * .006) * sc, Z + (c.z + nz * .006) * sc, c.t, 0, 0, c.r * sc);
       setR(needles, k, X + c.x * sc, (c.y + ny * .008) * sc, Z + (c.z + nz * .008) * sc, c.t, gaugeAng(f), 0, c.r * sc);
-      dials.setColorAt(k, tint);
+      putC(dials, k, tint);
     }
     const tint4 = (q, hl, fire) => { tc.setRGB(1, 1, 1).lerp(OFF_TINT, q.off ?? 0).lerp(ERR_TINT, q.error ?? 0).multiplyScalar(1 + .22 * hl); return V4.set(tc.r, tc.g, tc.b, fire); };
 
-    let warm = 0, yp = 0, yWhistle = 0, first = true;
+    let warm = 0, yp = 0, yWhistle = 0, first = true, fps = 0, yq = -1, yLine = '';
+    // update() returns the frame rate the plant needs right now (the engine draws no faster): the highest any part asks for through
+    // want(), 0 when everything is still. Busy machines, beats and smoke ask 30; thinking alone (slow swells) 20; steam pulses running
+    // down a pipe 60; anything moving across the floor every frame.
+    const want = x => { if (x > fps) fps = x; };
+    // Ease v toward goal; close enough, it lands, so the loop can rest. Settling asks for 30 fps, the last small creep for 20.
+    const ease = (v, goal, rate, dt, eps) => { const d = Math.abs(goal - v); if (d < eps) return goal; want(d > .05 ? 30 : 20); return kit.damp(v, goal, rate, dt); };
+    // A machine's local point in the world, for the machine at WX, WZ drawn WS times its model size (set per machine, no closure each).
+    let WX = 0, WZ = 0, WS = 0;
+    const W = (lx, ly, lz) => tA.set(WX + lx * WS, ly * WS, WZ + lz * WS), W3 = a => W(a[0], a[1], a[2]);
+    const PATTRS = ['position', 'aSize', 'aAlpha', 'aRot'].map(n => pGeo.attributes[n]), PWIDTH = [3, 1, 1, 1];
+
+    // Indexed loops: a for-of here would make an iterator per list per pipe, every frame, until the engine optimises update.
+    const markPrev = l => { for (let i = 0; i < l.length; i++) l[i].data.prev = l[i].t; };
+    const cross = (pp, l, gold) => { if (pp.tier !== 3) for (let i = 0; i < l.length; i++) crossJoints(pp, l[i], gold); };
+    // Smoke and steam. Only the slots that were alive go up: live ones sit just behind the ring's head, so at most two runs either side of it.
+    function stepSmoke(dt) {
+      const wx = .3 * dt, wz = -.1 * dt; let lo1 = PN, hi1 = -1, lo2 = PN, hi2 = -1; pLive = 0;
+      for (let i = 0; i < PN; i++) {
+        if (pLife[i] <= 0) continue;
+        if (i < pHead) { if (i < lo1) lo1 = i; hi1 = i; } else { if (i < lo2) lo2 = i; hi2 = i; }
+        pLife[i] -= dt; if (pLife[i] <= 0) { pSize[i] = 0; pAlpha[i] = 0; continue; }
+        pLive++;
+        const k = 1 - pLife[i] / pMax[i], i3 = i * 3, f = Math.exp(-pDrag[i] * dt);
+        pVel[i3] = pVel[i3] * f + wx; pVel[i3 + 1] = pVel[i3 + 1] * f + pRise[i] * dt; pVel[i3 + 2] = pVel[i3 + 2] * f + wz;
+        pPos[i3] += pVel[i3] * dt; pPos[i3 + 1] += pVel[i3 + 1] * dt; pPos[i3 + 2] += pVel[i3 + 2] * dt;
+        if (pPos[i3 + 1] < .05) { pPos[i3 + 1] = .05; pVel[i3 + 1] = Math.abs(pVel[i3 + 1]) * .3; }
+        pSize[i] = pS0[i] + (pS1[i] - pS0[i]) * (1 - (1 - k) * (1 - k));
+        pAlpha[i] = pA0[i] * Math.min(1, k * 8) * Math.pow(1 - k, 1.4); pRot[i] += pSpin[i] * dt;
+      }
+      const any = hi1 >= 0 || hi2 >= 0;
+      if (any) for (let a = 0; a < 4; a++) { const at = PATTRS[a], n = PWIDTH[a]; if (hi1 >= 0) at.addUpdateRange(lo1 * n, (hi1 - lo1 + 1) * n); if (hi2 >= 0) at.addUpdateRange(lo2 * n, (hi2 - lo2 + 1) * n); at.needsUpdate = true; }
+      if (cCount) { const ac = pGeo.attributes.aColor, end = cFrom + cCount; if (end <= PN) ac.addUpdateRange(cFrom * 3, cCount * 3); else { ac.addUpdateRange(cFrom * 3, (PN - cFrom) * 3); ac.addUpdateRange(0, (end - PN) * 3); } ac.needsUpdate = true; cCount = 0; }
+      smoke.visible = any;
+      if (pLive) want(30);
+      pMat.uniforms.uScale.value = ctx.size.h * renderer.getPixelRatio() / (2 * Math.tan(camera.fov * PI / 360));
+    }
 
     return {
       update(dt, time) {
-        const reduced = ctx.reduced; dt = Math.min(dt, .1); painted = 0;
+        const reduced = ctx.reduced; dt = Math.min(dt, .1); painted = 0; fps = 0; pendingPaint = tickWait = false;
         const snap = first || reduced, pulse = reduced ? 1 : .72 + .28 * Math.sin(time * 5.5);
-        tvU.uTvT.value = time; tvU.uRoll.value = reduced ? 0 : 1;
+        tvT.value = time;
         if (world.usage !== usageRef) { usageRef = world.usage; syncBoard(); }
         platePx = PLATE.session.h * .41 * ctx.size.h / (2 * Math.tan(camera.fov * PI / 360) * camera.position.y / Math.cos(.5));
         // Junctions: the governor spins with their machines' work; the gauge reads pressure, pinned in the red when a session needs you.
         let activity = 0;
-        for (const p of world.projects) {
-          const g = PG.get(p), rig = g.rig, tx = p.drag ? p.pos.x : p.rest.x, tz = p.drag ? p.pos.z : p.rest.z;
-          g.x = snap || !g.init ? tx : kit.damp(g.x, tx, 8, dt); g.z = snap || !g.init ? tz : kit.damp(g.z, tz, 8, dt); g.init = true;
-          g.body.x = g.x; g.body.z = g.z;
+        for (let pi = 0; pi < world.projects.length; pi++) {
+          const p = world.projects[pi], g = PG.get(p), rig = g.rig, tx = p.drag ? p.pos.x : p.rest.x, tz = p.drag ? p.pos.z : p.rest.z;
+          if (snap || !g.init || (Math.abs(g.x - tx) < .002 && Math.abs(g.z - tz) < .002)) { g.x = tx; g.z = tz; }
+          else { g.x = kit.damp(g.x, tx, 8, dt); g.z = kit.damp(g.z, tz, 8, dt); want(Infinity); }
+          g.init = true; g.body.x = g.x; g.body.z = g.z;
           let work = 0, heat = 0, need = 0, err = 0, think = 0, urg = 0;
-          for (const s of p.sessions) { if (s.s.alive < .05) continue; work += s.s.work; heat = Math.max(heat, s.s.heat); need = Math.max(need, s.s.need); err = Math.max(err, s.s.error); think = Math.max(think, s.s.think + s.s.compact); if (s.s.need > .3) urg = Math.max(urg, s.s.urgency || 0); }
-          Object.assign(g, { work, heat, need, err, urg }); activity += work;
+          for (let j = 0; j < p.sessions.length; j++) { const s = p.sessions[j]; if (s.s.alive < .05) continue; work += s.s.work; heat = Math.max(heat, s.s.heat); need = Math.max(need, s.s.need); err = Math.max(err, s.s.error); think = Math.max(think, s.s.think + s.s.compact); if (s.s.need > .3) urg = Math.max(urg, s.s.urgency || 0); }
+          g.work = work; g.heat = heat; g.need = need; g.err = err; g.urg = urg; activity += work;
+          if (!reduced) { if (work > .01 || need > .01 || err > .01) want(30); else if (think > .01) want(20); }
+          // The governor turns only while its machines work: no idle creep, so a quiet plant draws no frames.
           const goal = work > .05 ? .25 + .2 * Math.min(3, work) + .25 * heat : 0;
-          g.w = reduced ? 0 : kit.damp(g.w, goal, 2, dt); g.gv += reduced ? 0 : (g.w * 1.6 + .02) * TAU * dt;
+          g.w = reduced ? 0 : ease(g.w, goal, 2, dt, .003); g.gv += g.w * 1.6 * TAU * dt;
           const hl = Math.max(p.s.hover, p.s.select), X = g.x, Z = g.z;
-          M4.makeScale(JS, JS, JS).setPosition(X, 0, Z); batch.setMatrixAt(g.bid, M4); batch.setColorAt(g.bid, V4.set(1 + .2 * hl, 1 + .2 * hl, 1 + .2 * hl, 0));
+          M4.makeScale(JS, JS, JS).setPosition(X, 0, Z); bMat(g.bid, M4); bCol(g.bid, V4.set(1 + .2 * hl, 1 + .2 * hl, 1 + .2 * hl, 0));
           const G = rig.governor, sp = clamp(g.w * 1.4, 0, 1);
           setT(govs, g.i, X + G.x * JS, G.y * JS, Z + G.z * JS, g.gv, (.85 + .2 * sp) * JS, (.85 - .1 * sp) * JS, (.85 + .2 * sp) * JS);
           if (!reduced && work > .05 && rnd() < dt * (.4 + .6 * work)) steam(X + G.x * JS, G.y * JS + .5, Z + G.z * JS, .3, .3);
           const pr = need > .3 ? .86 + .12 * urg : err > .3 ? .99 : .08 + .17 * Math.min(3, work) + .08 * heat + .12 * think;
-          g.pr = snap ? pr : kit.damp(g.pr, pr, 3, dt);
+          g.pr = snap ? pr : ease(g.pr, pr, 3, dt, .002);
           gauge(g.gauge, rig.gauges[0], X, Z, JS, g.pr, tc.copy(DIAL).lerp(DIAL_NEED, need * (.55 + .45 * pulse)).lerp(DIAL_ERR, err * (need > .3 ? 0 : 1)));
           tc2.copy(need > .3 ? LC.need : err > .3 ? LC.error : work > .3 ? LC.work : think > .3 ? LC.think : LC.idle);
           if (need > .3 || err > .3) tc2.multiplyScalar(pulse);
-          g.col.lerp(tc2, snap ? 1 : 1 - Math.exp(-dt * 6));
-          const jq = Object.assign(g.q, { work: Math.min(1, work), think: Math.min(1, think), compact: 0, need, wait: 0, error: err, off: 0, heat });
+          if (snap || Math.abs(g.col.r - tc2.r) + Math.abs(g.col.g - tc2.g) + Math.abs(g.col.b - tc2.b) < .006) g.col.copy(tc2);
+          else { g.col.lerp(tc2, 1 - Math.exp(-dt * 6)); want(30); }
+          const jq = g.q; jq.work = Math.min(1, work); jq.think = Math.min(1, think); jq.compact = 0; jq.need = need; jq.wait = 0; jq.error = err; jq.off = 0; jq.heat = heat;
           jq.idle = Math.max(0, 1 - jq.work - jq.think - need - err);
           glow(g.glow, jq, time, g.i * 1.7, reduced, urg);
-          rig.tubes.forEach(([x, y, z], j) => tube(T_J + 2 * g.i + j, X + x * JS, y * JS, Z + z * JS, .12 * JS, (j ? .5 : .68) * JS, g.glow));
-          const live = p.sessions.slice(0, 6);
-          live.forEach((s2, j) => { const k = L_JB + g.jb + j; setT(lamps, k, X + (j - (live.length - 1) / 2) * .14 * JS, .23 * JS, Z + .8 * JS, 0, .038 * JS * s2.s.alive); lamps.setColorAt(k, bulb(s2.s, tc, pulse)); });
-          setT(pools, POOL_P + g.i, X, .02, Z, 0, 4 * JS); pools.setColorAt(POOL_P + g.i, tc.copy(g.glow).multiplyScalar(.012).add(tc2.copy(YOU_GOLD).multiplyScalar(.02)));
+          for (let j = 0; j < rig.tubes.length; j++) { const t = rig.tubes[j]; tube(T_J + 2 * g.i + j, X + t[0] * JS, t[1] * JS, Z + t[2] * JS, .12 * JS, (j ? .5 : .68) * JS, g.glow); }
+          const nl = Math.min(6, p.sessions.length);
+          for (let j = 0; j < nl; j++) { const s2 = p.sessions[j], k = L_JB + g.jb + j; setT(lamps, k, X + (j - (nl - 1) / 2) * .14 * JS, .23 * JS, Z + .8 * JS, 0, .038 * JS * s2.s.alive); putC(lamps, k, bulb(s2.s, tc, pulse)); }
+          setT(pools, POOL_P + g.i, X, .02, Z, 0, 4 * JS); putC(pools, POOL_P + g.i, tc.copy(g.glow).multiplyScalar(.012).add(tc2.copy(YOU_GOLD).multiplyScalar(.02)));
           showPlate(g.plate, X, Z + PLATE.project.z, 1, p.name, '', '', hl);
         }
         // Machines: the node is the station; the machine stands MZ behind it, the nameplate in front.
         let relay = false;
-        for (const s of world.sessions) {
-          const g = SG.get(s), q = s.s, pg = PG.get(s.parent), rig = g.rig;
+        for (let sj = 0; sj < world.sessions.length; sj++) {
+          const s = world.sessions[sj], g = SG.get(s), q = s.s, pg = PG.get(s.parent), rig = g.rig;
           const mx = pg.x + g.ox, mz = pg.z + g.oz;
           g.px = kit.damp(g.px, s.drag ? s.pos.x - mx : 0, 8, dt); g.pz = kit.damp(g.pz, s.drag ? s.pos.z - mz : 0, 8, dt);
-          if (Math.abs(g.px) + Math.abs(g.pz) < .003) g.px = g.pz = 0;
+          if (Math.abs(g.px) + Math.abs(g.pz) < .003) g.px = g.pz = 0; else want(Infinity);
           const grow = q.alive < .005 ? 0 : kit.easeOutCubic(q.alive), sc = grow * US, urg = q.need > .3 ? (q.urgency || 0) : 0, hl = Math.max(q.hover, q.select);
           const SX = mx + g.px, SZ = mz + g.pz, X = SX, Z = SZ + MZ * grow;
           g.sx = SX; g.sz = SZ; g.x = X; g.z = Z; g.sc = grow; g.body.x = X; g.body.z = Z; g.body.on = q.alive > .1;
-          const W = (lx, ly, lz) => tA.set(X + lx * sc, ly * sc, Z + lz * sc);
-          if (!reduced) { g.ph += dt * TAU * ((1.3 + 1.5 * Math.min(1, q.heat)) * q.work + .25 * q.think); g.bp += dt * TAU * 1.1 * q.compact; }
-          M4.compose(V.set(X, 0, Z), Q.identity(), S3.setScalar(Math.max(1e-4, sc))); batch.setMatrixAt(g.bid, M4); batch.setVisibleAt(g.bid, sc > .001);
-          batch.setColorAt(g.bid, tint4(q, hl, 0));
+          WX = X; WZ = Z; WS = sc;
+          if (!reduced) {
+            g.ph += dt * TAU * ((1.3 + 1.5 * Math.min(1, q.heat)) * q.work + .25 * q.think); g.bp += dt * TAU * 1.1 * q.compact;
+            if (q.work > .01 || q.compact > .01 || q.need > .01 || q.error > .01) want(30); else if (q.think > .01) want(20);
+          }
+          M4.compose(V.set(X, 0, Z), Q.identity(), S3.setScalar(Math.max(1e-4, sc))); bMat(g.bid, M4); bVis(g.bid, sc > .001);
+          bCol(g.bid, tint4(q, hl, 0));
           // Gauge: working pressure, swinging while thinking, low when idle, deep in the red when it needs you, pinned on error. The second one is heat.
           const swing = reduced ? .5 : .5 + .5 * Math.sin(time * 2.4 + g.i * 1.3);
           let nd = q.work * (.5 + .12 * Math.min(1, q.heat)) + q.think * (.22 + .4 * swing) + q.compact * .38 + q.wait * .2 + q.idle * .06 + q.need * (.86 + .12 * urg) + q.error * .99;
           if (!reduced && q.error > .5) nd += ((Math.floor(time * 12) * 7 + g.i * 3) % 5 - 2) * .01;
-          g.nd = snap ? nd : kit.damp(g.nd, nd, 5, dt);
-          g.h2 = snap ? q.heat : kit.damp(g.h2, .15 + .55 * q.heat + .25 * q.work, 3, dt);
+          g.nd = snap ? nd : ease(g.nd, nd, 5, dt, .002);
+          const h2 = .15 + .55 * q.heat + .25 * q.work;
+          g.h2 = snap ? h2 : ease(g.h2, h2, 3, dt, .002);
           const dialTint = tc2.copy(DIAL).lerp(DIAL_IDLE, clamp(q.idle * .8 + q.wait * .3, 0, 1)).lerp(DIAL_OFF, q.off).lerp(DIAL_NEED, q.need * (.55 + .45 * pulse)).lerp(DIAL_ERR, q.error);
-          rig.gauges.forEach((c, j) => gauge(g.gauge[j], c, X, Z, sc, j ? g.h2 : g.nd, dialTint));
-          rig.rods.forEach((rd, j) => { const o = rd.stroke * Math.sin(g.ph + rd.ph); if (rd.axis) setR(rods, g.rod[j], X + (rd.x + o) * sc, rd.y * sc, Z + rd.z * sc, 0, 0, -HP, rd.r * sc, rd.len * sc, rd.r * sc); else setT(rods, g.rod[j], X + rd.x * sc, (rd.y + o) * sc, Z + rd.z * sc, 0, rd.r * sc, rd.len * sc, rd.r * sc); });
-          rig.wheels.forEach((w, j) => { setR(wheels, g.wheel[j], X + w.x * sc, w.y * sc, Z + w.z * sc, 0, 0, -g.ph * .8, w.r * sc); wheels.setColorAt(g.wheel[j], tc.set('#4a3a2c').multiplyScalar(1 + .3 * hl)); });
+          for (let j = 0; j < rig.gauges.length; j++) gauge(g.gauge[j], rig.gauges[j], X, Z, sc, j ? g.h2 : g.nd, dialTint);
+          for (let j = 0; j < rig.rods.length; j++) {
+            const rd = rig.rods[j], o = rd.stroke * Math.sin(g.ph + rd.ph);
+            if (rd.axis) setR(rods, g.rod[j], X + (rd.x + o) * sc, rd.y * sc, Z + rd.z * sc, 0, 0, -HP, rd.r * sc, rd.len * sc, rd.r * sc); else setT(rods, g.rod[j], X + rd.x * sc, (rd.y + o) * sc, Z + rd.z * sc, 0, rd.r * sc, rd.len * sc, rd.r * sc);
+          }
+          tc.copy(WHEEL_C).multiplyScalar(1 + .3 * hl);
+          for (let j = 0; j < rig.wheels.length; j++) { const w = rig.wheels[j]; setR(wheels, g.wheel[j], X + w.x * sc, w.y * sc, Z + w.z * sc, 0, 0, -g.ph * .8, w.r * sc); putC(wheels, g.wheel[j], tc); }
           signal(g.glow, q, time, g.i * 2.3, reduced, urg);
-          W(...rig.lamp); tube(2 * g.i, tA.x, tA.y, tA.z, .11 * sc, .56 * sc, g.glow);
-          W(...TUBE2); tube(2 * g.i + 1, tA.x, tA.y, tA.z, .085 * sc, .4 * sc, tc.copy(g.glow).multiplyScalar(Math.max(.4 + 1.2 * q.heat, q.need + q.error)));
-          W(...rig.mode); setT(lamps, g.i, tA.x, tA.y + .045 * sc, tA.z, 0, .045 * sc);
-          lamps.setColorAt(g.i, s.mode === 'plan' ? LC.wait : s.mode === 'bypass' ? LC.error : MODE_OFF);
+          W3(rig.lamp); tube(2 * g.i, tA.x, tA.y, tA.z, .11 * sc, .56 * sc, g.glow);
+          W3(TUBE2); tube(2 * g.i + 1, tA.x, tA.y, tA.z, .085 * sc, .4 * sc, tc.copy(g.glow).multiplyScalar(Math.max(.4 + 1.2 * q.heat, q.need + q.error)));
+          W3(rig.mode); setT(lamps, g.i, tA.x, tA.y + .045 * sc, tA.z, 0, .045 * sc);
+          putC(lamps, g.i, s.mode === 'plan' ? LC.wait : s.mode === 'bypass' ? LC.error : MODE_OFF);
           if (g.pips) {
             const lit = Math.round((s.plan?.done || 0) / Math.max(1, s.plan?.total || 1) * g.pips);
             for (let j = 0; j < g.pips; j++) {
               const f = (j + .5) / g.pips; W(PLAN.x0 + (PLAN.x1 - PLAN.x0) * f, PLAN.y, PLAN.z0 + (PLAN.z1 - PLAN.z0) * f);
               setT(lamps, L_PIP + g.pip + j, tA.x, tA.y, tA.z, 0, .03 * sc);
-              lamps.setColorAt(L_PIP + g.pip + j, j < lit ? PIP_ON : j === lit && q.work > .5 ? tc.copy(PIP_ON).multiplyScalar(.3) : PIP_OFF);
+              putC(lamps, L_PIP + g.pip + j, j < lit ? PIP_ON : j === lit && q.work > .5 ? tc.copy(PIP_ON).multiplyScalar(.3) : PIP_OFF);
             }
           }
           const cx = clamp(q.ctx ?? s.ctx ?? 0, 0, 1);
           setT(fills, g.i, X + SIGHT.x * sc, SIGHT.y * sc, Z + SIGHT.z * sc, 0, SIGHT.len * Math.max(.02, cx) * sc, sc, sc);
-          fills.setColorAt(g.i, cx > .8 ? FILL_HI : tc.copy(FILL_LO).lerp(FILL_MID, clamp((cx - .5) / .3, 0, 1)).multiplyScalar(1 - .6 * q.off));
+          putC(fills, g.i, cx > .8 ? FILL_HI : tc.copy(FILL_LO).lerp(FILL_MID, clamp((cx - .5) / .3, 0, 1)).multiplyScalar(1 - .6 * q.off));
           setT(bellows, g.i, X + BELLOWS[0] * sc, (Y0 + .03) * sc, Z + BELLOWS[1] * sc, 0, .8 * sc, .8 * sc * (1 - .5 * q.compact * (.5 - .5 * Math.cos(g.bp))), .8 * sc);
           tc.copy(g.glow).multiplyScalar(.012).add(tc2.copy(POOL_NEED).multiplyScalar(q.need * (.6 + .3 * urg) * pulse)).add(tc2.copy(POOL_ERR).multiplyScalar(q.error * .8)).add(tc2.copy(POOL_WORK).multiplyScalar(q.work * .1)).add(tc2.copy(YOU_GOLD).multiplyScalar(.03 * (1 - q.off)));
-          setT(pools, POOL_S + g.i, X, .025, Z + .6 * grow, 0, 4.4 * grow); pools.setColorAt(POOL_S + g.i, tc);
-          if (grow > .01) showPlate(g.plate, SX, SZ + PLATE.session.z * grow, grow, s.name, lineOf(s), tone(s), hl); else hidePlate(g.plate);
+          setT(pools, POOL_S + g.i, X, .025, Z + .6 * grow, 0, 4.4 * grow); putC(pools, POOL_S + g.i, tc);
+          const tn = tone(s);
+          if (grow > .01) showPlate(g.plate, SX, SZ + PLATE.session.z * grow, grow, s.name, lineOf(s, tn), tn, hl); else hidePlate(g.plate);
           const shot = ctx.shot?.(s);
           if (!!shot !== hasTV.has(s)) { if (shot) hasTV.add(s); else hasTV.delete(s); relay = true; }
           if (shot && grow > .01) {
@@ -1249,68 +1393,77 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
             setT(tvWood, g.i, bx, 0, bz, 0, grow); setT(tvBrass, g.i, bx, 0, bz, 0, grow); setT(tvWire, g.i, bx, 0, bz, 0, grow);
             g.tv.mesh.visible = true; g.tv.mesh.position.set(bx, .125 * grow, bz); g.tv.mesh.scale.setScalar(grow);
             g.tv.mesh.material.emissiveIntensity = TV_GLOW * (1 + .15 * hl); g.target?.pos.set(bx, .2, bz);
-            TV_TUBES.forEach(([x, r, h], j) => tube(T_TV + 4 * g.i + j, bx + x * grow, CY * grow, bz + CZ * grow, r * grow, h * grow, j % 3 ? tc.copy(g.glow).multiplyScalar(.6) : g.glow));
-            TV_METERS.forEach(([x, y, z], j) => gauge(g.meters[j], { x, y, z, r: .1, t: .55 }, bx, bz, grow, j ? g.h2 : cx, METER));
-            for (let j = 0; j < 5; j++) {
-              const k = L_TVB + 5 * g.i + j;
-              setT(lamps, k, bx + (j - 2) * .2 * grow, (CY + .035) * grow, bz + (CZ - .17) * grow, 0, .035 * grow); lamps.setColorAt(k, tc.copy(AMB).multiplyScalar((.1 + .25 * q.work) * (1 - q.off)));
-            }
+            const roll = reduced ? 0 : Math.max(q.work, q.think, q.compact, q.need, q.error);
+            g.tv.roll.value = snap ? roll : ease(g.tv.roll.value, roll, 2, dt, .005);
+            if (g.tv.roll.value > .005) want(30);
+            for (let j = 0; j < TV_TUBES.length; j++) { const t = TV_TUBES[j]; tube(T_TV + 4 * g.i + j, bx + t[0] * grow, CY * grow, bz + CZ * grow, t[1] * grow, t[2] * grow, j % 3 ? tc.copy(g.glow).multiplyScalar(.6) : g.glow); }
+            gauge(g.meters[0], TV_MC[0], bx, bz, grow, cx, METER); gauge(g.meters[1], TV_MC[1], bx, bz, grow, g.h2, METER);
+            tc.copy(AMB).multiplyScalar((.1 + .25 * q.work) * (1 - q.off));
+            for (let j = 0; j < 5; j++) { const k = L_TVB + 5 * g.i + j; setT(lamps, k, bx + (j - 2) * .2 * grow, (CY + .035) * grow, bz + (CZ - .17) * grow, 0, .035 * grow); putC(lamps, k, tc); }
           } else {
             hide(tvWood, g.i); hide(tvBrass, g.i); hide(tvWire, g.i); if (g.tv) g.tv.mesh.visible = false; g.target?.pos.set(0, -50, 0);
             for (let j = 0; j < 4; j++) hideTube(T_TV + 4 * g.i + j);
-            for (const k of g.meters) { hide(dials, k); hide(needles, k); }
+            for (let j = 0; j < 2; j++) { hide(dials, g.meters[j]); hide(needles, g.meters[j]); }
             for (let j = 0; j < 5; j++) hide(lamps, L_TVB + 5 * g.i + j);
           }
           if (!reduced && q.alive > .5) {
-            if (q.need > .5 && (g.wh -= dt) < 0) { g.wh = 1.5 - urg + rnd() * .3; const [wx, wy, wz] = rig.whistle; for (let k = 0; k < 4 + 4 * urg; k++) jet(X + wx * US, wy * US, Z + wz * US, .55 + .25 * urg); }
+            const wh = rig.whistle;
+            if (q.need > .5 && (g.wh -= dt) < 0) { g.wh = 1.5 - urg + rnd() * .3; for (let k = 0; k < 4 + 4 * urg; k++) jet(X + wh[0] * US, wh[1] * US, Z + wh[2] * US, .55 + .25 * urg); }
             if (q.error > .5 && (g.sp -= dt) < 0) { g.sp = 1.1 + rnd() * .7; burst(X, .7, Z, 5, .7, STEAM, .75); for (let k = 0; k < 4; k++) spark(X, .6, Z); if (rnd() < .5) steam(X, .7, Z, .7, .5, SOOT); }
             if (q.compact > .5 && rnd() < dt * 2.5) steam(X + BELLOWS[0] * US, .42, Z + BELLOWS[1] * US, .4, .4);
-            if (q.work > .5 && rnd() < dt * 1.4) { const [ex, ey, ez] = rig.exhaust || rig.lamp; steam(X + ex * US, ey * US, Z + ez * US, .32, .35); }
-            if (rig.smoke && rnd() < dt * (.15 + .9 * q.work + .3 * q.think)) steam(X + rig.smoke[0] * US, rig.smoke[1] * US, Z + rig.smoke[2] * US, .32, .3, SOOT);
+            if (q.work > .5 && rnd() < dt * 1.4) { const ex = rig.exhaust || rig.lamp; steam(X + ex[0] * US, ex[1] * US, Z + ex[2] * US, .32, .35); }
+            // The stack smokes with work and thought; an idle machine stands still (smoke would keep the plant drawing all day).
+            if (rig.smoke && rnd() < dt * (.9 * q.work + .3 * q.think)) steam(X + rig.smoke[0] * US, rig.smoke[1] * US, Z + rig.smoke[2] * US, .32, .3, SOOT);
           }
         }
         if (relay) layout();
         // Subagent valves, beside their machine.
-        for (const k of world.subs) {
-          const g = KG.get(k), sg = SG.get(k.parent), q = k.s;
+        for (let ki = 0; ki < world.subs.length; ki++) {
+          const k = world.subs[ki], g = KG.get(k), sg = SG.get(k.parent), q = k.s;
           g.x = sg.sx + g.ox * sg.sc; g.z = sg.sz + g.oz * sg.sc; g.body.x = g.x; g.body.z = g.z; g.body.on = q.alive > .1 && sg.body.on;
-          if (!reduced) g.th += dt * (2.5 * q.work + .6 * q.think);
+          if (!reduced) { g.th += dt * (2.5 * q.work + .6 * q.think); if (q.work > .01 || q.need > .01 || q.error > .01) want(30); else if (q.think > .01) want(20); }
           const sc = (q.alive < .005 ? 0 : kit.easeOutCubic(q.alive) * Math.min(1, sg.sc)) * KS;
           setT(kBody, g.i, g.x, 0, g.z, 0, sc); setT(kWheel, g.i, g.x, 0, g.z, g.th, sc);
-          kWheel.setColorAt(g.i, tc.copy(KW[k.provider] || KW.claude).lerp(OFF_TINT, q.off).lerp(LC.need, q.need * .25).lerp(LC.error, q.error * .25).multiplyScalar(1 + .4 * Math.max(q.hover, q.select)));
-          setT(lamps, L_SUB + g.i, g.x, .37 * sc, g.z, 0, .045 * sc); lamps.setColorAt(L_SUB + g.i, lampColor(q, tc2, pulse));
+          putC(kWheel, g.i, tc.copy(KW[k.provider] || KW.claude).lerp(OFF_TINT, q.off).lerp(LC.need, q.need * .25).lerp(LC.error, q.error * .25).multiplyScalar(1 + .4 * Math.max(q.hover, q.select)));
+          setT(lamps, L_SUB + g.i, g.x, .37 * sc, g.z, 0, .045 * sc); putC(lamps, L_SUB + g.i, lampColor(q, tc2, pulse));
         }
         // You: the boiler. Pressure, firebox and whistle rise with the queue.
-        const queue = world.queue().length; let urg = 0; for (const s of world.sessions) if (s.s.need > .3) urg = Math.max(urg, s.s.urgency || 0);
-        warm = snap ? (queue ? 1 : 0) : kit.damp(warm, queue ? 1 : 0, 3, dt);
+        const queue = world.queue().length; let urg = 0; for (let j = 0; j < world.sessions.length; j++) { const q = world.sessions[j].s; if (q.need > .3) urg = Math.max(urg, q.urgency || 0); }
+        warm = snap ? (queue ? 1 : 0) : ease(warm, queue ? 1 : 0, 3, dt, .002);
         const yr = YOU.rig;
         const ypr = queue ? .84 + .04 * Math.min(3, queue) + .1 * urg : .3 + .08 * Math.min(4, activity);
-        yp = snap ? ypr : kit.damp(yp, ypr, 3, dt);
+        yp = snap ? ypr : ease(yp, ypr, 3, dt, .002);
         gauge(0, yr.gauge, 0, 0, 1, yp, tc.copy(DIAL).lerp(DIAL_NEED, warm * (.55 + .45 * pulse)));
-        const flick = reduced ? 1 : 1 + .06 * Math.sin(time * 13) + .04 * Math.sin(time * 31.7);
-        batch.setMatrixAt(youId, M4.identity()); batch.setColorAt(youId, V4.set(1, 1, 1, (.35 + .12 * Math.min(4, activity) + .8 * warm * pulse) * flick));
+        // The firebox flickers, its tubes waver and its stack smokes only while there's fire: work on the plant or someone waiting.
+        const fire = clamp(activity + warm, 0, 1);
+        if (!reduced && (fire > .01 || queue)) want(30);
+        const flick = reduced ? 1 : 1 + fire * (.06 * Math.sin(time * 13) + .04 * Math.sin(time * 31.7));
+        bMat(youId, M4.identity()); bCol(youId, V4.set(1, 1, 1, (.35 + .12 * Math.min(4, activity) + .8 * warm * pulse) * flick));
         if (!reduced) {
-          if (queue && (yWhistle -= dt) < 0) { yWhistle = 2.2 - 1.3 * urg; for (let k = 0; k < 5 + 5 * urg; k++) jet(...yr.whistle, .8 + .3 * urg); }
-          if (rnd() < dt * (.8 + .5 * Math.min(4, activity))) steam(...yr.smoke, .7, .45, SOOT);
+          if (queue && (yWhistle -= dt) < 0) { yWhistle = 2.2 - 1.3 * urg; const w = yr.whistle; for (let k = 0; k < 5 + 5 * urg; k++) jet(w[0], w[1], w[2], .8 + .3 * urg); }
+          if ((activity > .05 || queue) && rnd() < dt * (.8 + .5 * Math.min(4, activity))) steam(yr.smoke[0], yr.smoke[1], yr.smoke[2], .7, .45, SOOT);
         }
-        setT(pools, 0, 0, .02, .4, 0, 13 + 2 * warm); pools.setColorAt(0, tc.copy(YOU_GOLD).multiplyScalar(.035 + .1 * warm * pulse + .02 * Math.min(4, activity)));
-        yr.tubes.forEach(([x, y, z], j) => tube(T_Y + j, x, y, z, .14, j % 2 ? .62 : .82,
-          tc.copy(FIL).multiplyScalar((.3 + .15 * Math.min(4, activity)) * (reduced ? 1 : 1 + .08 * Math.sin(time * 13 + j * 2))).add(tc2.copy(AMB).multiplyScalar(warm * (reduced ? 1 : .55 + .45 * pulse)))));
-        showPlate(youPlate, 0, PLATE.you.z, 1, 'You', queue ? `${queue} waiting` : 'all clear', queue ? 'need' : 'idle', world.you.s.hover);
-        // The gauge board's needles and warning lamps.
+        setT(pools, 0, 0, .02, .4, 0, 13 + 2 * warm); putC(pools, 0, tc.copy(YOU_GOLD).multiplyScalar(.035 + .1 * warm * pulse + .02 * Math.min(4, activity)));
+        for (let j = 0; j < yr.tubes.length; j++) {
+          const t = yr.tubes[j];
+          tube(T_Y + j, t[0], t[1], t[2], .14, j % 2 ? .62 : .82, tc.copy(FIL).multiplyScalar((.3 + .15 * Math.min(4, activity)) * (reduced ? 1 : 1 + .08 * fire * Math.sin(time * 13 + j * 2))).add(tc2.copy(AMB).multiplyScalar(warm * (reduced ? 1 : .55 + .45 * pulse))));
+        }
+        if (queue !== yq) { yq = queue; yLine = queue ? `${queue} waiting` : 'all clear'; }
+        showPlate(youPlate, 0, PLATE.you.z, 1, 'You', yLine, queue ? 'need' : 'idle', world.you.s.hover);
+        // The gauge board's needles and warning lamps. Past 90% the lamp burns a steady red: a beat would keep the plant drawing for hours.
         if (board.lay) {
-          board.lay.cells.forEach((c, i) => {
-            board.val[i] = snap ? c.used : kit.damp(board.val[i], c.used, 3, dt);
-            const dial = c.kind === 'win' || c.limit;
-            O.position.set(c.x, c.y, .025); O.rotation.set(0, 0, gaugeAng(board.val[i])); O.scale.setScalar(dial ? c.r * 1.08 : 1e-4); O.updateMatrix(); board.needles.setMatrixAt(i, O.matrix);
-            board.lamps.setColorAt(i, !dial ? MODE_OFF : c.used >= .9 ? tc.copy(WARN_RED).multiplyScalar(pulse) : c.used >= .75 ? WARN_AMBER : MODE_OFF);
-          });
-          board.needles.instanceMatrix.needsUpdate = true; board.lamps.instanceColor.needsUpdate = true;
+          const cells = board.lay.cells;
+          for (let i = 0; i < cells.length; i++) {
+            const c = cells[i], dial = c.kind === 'win' || c.limit;
+            board.val[i] = snap ? c.used : ease(board.val[i], c.used, 3, dt, .001);
+            O.position.set(c.x, c.y, .025); O.rotation.set(0, 0, gaugeAng(board.val[i])); O.scale.setScalar(dial ? c.r * 1.08 : 1e-4); put(board.needles, i);
+            putC(board.lamps, i, !dial ? MODE_OFF : c.used >= .9 ? WARN_RED : c.used >= .75 ? WARN_AMBER : MODE_OFF);
+          }
         }
         // Pipes: re-route when anything moved or a machine came or went.
         let si = 0;
-        for (const p of world.projects) { const g = PG.get(p); sigNow[si++] = g.x; sigNow[si++] = g.z; }
-        for (const pp of pipes) if (pp.tier > 1) { pp.on = pp.A.on; sigNow[si++] = pp.on ? 1 : 0; sigNow[si++] = pp.A.x; sigNow[si++] = pp.A.z; }
+        for (let j = 0; j < world.projects.length; j++) { const g = PG.get(world.projects[j]); sigNow[si++] = g.x; sigNow[si++] = g.z; }
+        for (let j = 0; j < pipes.length; j++) { const pp = pipes[j]; if (pp.tier < 2) continue; pp.on = pp.A.on; sigNow[si++] = pp.on ? 1 : 0; sigNow[si++] = pp.A.x; sigNow[si++] = pp.A.z; }
         let moved = false; for (let k = 0; k < si; k++) if (!(Math.abs(sigNow[k] - sigBuilt[k]) < .004)) { moved = true; break; }
         if (moved) { rebuildPipes(); sigBuilt.set(sigNow); }
         // Pulses: subagent → machine → junction → boiler. Walk the tiers backwards so a pulse handed on starts next frame's leg at 0.
@@ -1320,19 +1473,17 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
           const q = pp.tier === 1 ? pp.g : (pp.s || pp.k).s, L = pp.path.len;
           if (pp.tier === 2 && !reduced && q.need > .5 && (pp.needT -= dt) <= 0) { pp.gold.add(pp.speed * .8, 1, { prev: 0 }); pp.needT = 2 - (q.urgency || 0); } else if (pp.tier === 2 && q.need <= .5) pp.needT = 0;
           if (reduced) { pp.pulses.list.length = 0; pp.gold.list.length = 0; }
-          for (const x of pp.pulses.list) x.data.prev = x.t;
-          for (const x of pp.gold.list) x.data.prev = x.t;
-          const done = pp.pulses.update(dt); let nd = done.length;
-          for (const x of done) crossJoints(pp, x, false);
-          for (const x of pp.pulses.list) crossJoints(pp, x, false);
-          const gdone = pp.gold.update(dt); const ng = gdone.length;
-          for (const x of gdone) crossJoints(pp, x, true);
-          for (const x of pp.gold.list) crossJoints(pp, x, true);
+          markPrev(pp.pulses.list); markPrev(pp.gold.list);
+          const done = pp.pulses.update(dt); let nd = done.length; cross(pp, done, false); cross(pp, pp.pulses.list, false);
+          const gdone = pp.gold.update(dt), ng = gdone.length; cross(pp, gdone, true); cross(pp, pp.gold.list, true);
           if (pp.next) { for (; nd > 0; nd--) pp.next.pulses.add(pp.next.speed, 1, { prev: 0 }); if (ng) pp.next.gold.add(pp.next.speed * .8, 1, { prev: 0 }); }
           else if (nd || ng) { pp.flash = Math.max(pp.flash, ng ? 1 : .5); const E = pp.path.E; ringPuff(E.x + E.dx * .3, .35, E.z + E.dz * .3, .25, .5, 10, ng ? GOLDSTEAM : STEAM); }
           pp.pulses.vec4(uP); pp.gold.vec4(uG);
           uM.set(q.need * (reduced ? .4 : .06), q.heat * (reduced ? .3 : .05), (pp.tier === 1 ? .35 : pp.tier === 2 ? .22 : .14) / L, 0);
           pp.flash = Math.max(0, pp.flash - dt * 2.5);
+          // A steam pulse is a short bright blob running down the pipe: it needs every frame to read as motion; gold is slower and wider.
+          if (pp.pulses.list.length) want(60);
+          if (pp.gold.list.length || pp.flash > 0) want(30);
           if (pp.tier === 1) {
             const g = pp.g, r = pp.r;
             pp.hw += reduced ? 0 : dt * (g.heat * 3 + g.work * .4);
@@ -1341,38 +1492,26 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
             if (pp.relief && !reduced && g.need > .5 && (pp.vent -= dt) < 0) { pp.vent = 1.6 - .8 * g.urg; for (let k = 0; k < 3 + 3 * g.urg; k++) jet(pp.relief.x, RELIEF_TOP * r, pp.relief.z, .5 + .2 * g.urg, GOLDSTEAM); }
             const E = pp.path.E;
             setT(lamps, L_JUN + pp.idx, E.x + E.dx * .08, .5, E.z + E.dz * .08, 0, .09 + .04 * pp.flash);
-            tc2.copy(g.col).multiplyScalar(.8 + pp.flash * 1.5); if (g.need > .3) tc2.lerp(LC.need, pp.flash); lamps.setColorAt(L_JUN + pp.idx, tc2);
+            tc2.copy(g.col).multiplyScalar(.8 + pp.flash * 1.5); if (g.need > .3) tc2.lerp(LC.need, pp.flash); putC(lamps, L_JUN + pp.idx, tc2);
           }
         }
-        for (const m of dyn) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
-        // Particles
-        smoke.visible = !reduced;
-        if (!reduced) {
-          const wx = .3 * dt, wz = -.1 * dt;
-          for (let i = 0; i < PN; i++) {
-            if (pLife[i] <= 0) continue;
-            pLife[i] -= dt; if (pLife[i] <= 0) { pSize[i] = 0; pAlpha[i] = 0; continue; }
-            const k = 1 - pLife[i] / pMax[i], i3 = i * 3, f = Math.exp(-pDrag[i] * dt);
-            pVel[i3] = pVel[i3] * f + wx; pVel[i3 + 1] = pVel[i3 + 1] * f + pRise[i] * dt; pVel[i3 + 2] = pVel[i3 + 2] * f + wz;
-            pPos[i3] += pVel[i3] * dt; pPos[i3 + 1] += pVel[i3 + 1] * dt; pPos[i3 + 2] += pVel[i3 + 2] * dt;
-            if (pPos[i3 + 1] < .05) { pPos[i3 + 1] = .05; pVel[i3 + 1] = Math.abs(pVel[i3 + 1]) * .3; }
-            pSize[i] = pS0[i] + (pS1[i] - pS0[i]) * (1 - (1 - k) * (1 - k));
-            pAlpha[i] = pA0[i] * Math.min(1, k * 8) * Math.pow(1 - k, 1.4); pRot[i] += pSpin[i] * dt;
-          }
-          for (const a of ['position', 'aSize', 'aAlpha', 'aColor', 'aRot']) pGeo.attributes[a].needsUpdate = true;
-          pMat.uniforms.uScale.value = ctx.size.h * renderer.getPixelRatio() / (2 * Math.tan(camera.fov * PI / 360));
-        }
+        for (let j = 0; j < insts.length; j++) flush(insts[j]);
+        if (reduced) smoke.visible = false; else stepSmoke(dt);
+        // The shadow map is redrawn only on a frame where something that casts moved (see put/bMat/layout).
+        if (shadowDirty) { renderer.shadowMap.needsUpdate = true; shadowDirty = false; }
+        if (pendingPaint) want(Infinity); else if (tickWait) want(2);
         first = false;
+        return fps;
       },
 
       event(type, n, data) {
         if (n.kind !== 'session' && n.kind !== 'sub') return;
         const sub = n.kind === 'sub', g = sub ? KG.get(n) : SG.get(n);
         if (!g) return;
-        const pp = pipes[sub ? NP + NS + g.i : NP + g.i], x = g.x, z = g.z, w = sub ? [0, .4, 0] : g.rig.whistle.map(v => v * US);
+        const pp = pipes[sub ? NP + NS + g.i : NP + g.i], x = g.x, z = g.z, wh = sub ? null : g.rig.whistle;
         // Only real work sends steam up the line; idle, waiting and offline machines' pipes stay calm.
-        if (type === 'tool') { if (!ctx.reduced && pp.path && ['working', 'thinking', 'compacting'].includes(n.status)) pp.pulses.add(pp.speed, 1, { prev: 0 }); }
-        else if (type === 'need') { if (!sub) for (let k = 0; k < 8; k++) jet(x + w[0], w[1], z + w[2], .7); if (!ctx.reduced && pp.path && !sub) { pp.gold.add(pp.speed * .8, 1, { prev: 0 }); pp.needT = 2; } }
+        if (type === 'tool') { if (!ctx.reduced && pp.path && WORKING.has(n.status)) pp.pulses.add(pp.speed, 1, { prev: 0 }); }
+        else if (type === 'need') { if (!sub) for (let k = 0; k < 8; k++) jet(x + wh[0] * US, wh[1] * US, z + wh[2] * US, .7); if (!ctx.reduced && pp.path && !sub) { pp.gold.add(pp.speed * .8, 1, { prev: 0 }); pp.needT = 2; } }
         else if (type === 'answer') ringPuff(x, .65, z, .45, .6);
         else if (type === 'state' && data?.to === 'error') { burst(x, .7, z, 10, .9, STEAM, .8); for (let k = 0; k < 10; k++) spark(x, .6, z); }
         else if (type === 'compacted') burst(x + BELLOWS[0] * US, .45, z + BELLOWS[1] * US, 6, .6, STEAM);
