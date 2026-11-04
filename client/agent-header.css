@@ -1,7 +1,7 @@
 /* Explicit grid areas keep controls out of the title/actions row in every theme. */
 :root .chat-header {
   grid-template-columns: 36px minmax(0, 1fr) auto;
-  grid-template-areas: 'back identity actions' 'settings settings settings' 'info info info';
+  grid-template-areas: 'back identity actions' 'info info info';
   gap: 8px 10px; padding: max(12px, env(safe-area-inset-top)) 16px 10px;
 }
 :root .chat-header .back-button { width: 36px; min-height: 36px; }
@@ -16,7 +16,7 @@
 :root .chat-header .panel-heading-actions { gap: 5px; }
 :root .chat-header .panel-heading-actions > .quiet-button,
 :root .chat-header .theme-menu > summary { min-height: 36px; padding: 7px 9px; }
-:root .chat-header .agent-settings { grid-area: settings; display: grid; grid-template-columns: minmax(0, 1fr) minmax(108px, .32fr); gap: 7px; margin: 2px 0 0; min-width: 0; }
+:root .chat-header .agent-settings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(108px, .32fr); gap: 7px; margin: 6px 0 2px; min-width: 0; }
 .setting-field { position: relative; display: grid; min-width: 0; padding: 6px 11px 5px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--sunken); transition: border-color .15s, box-shadow .15s; }
 .setting-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .setting-label { color: var(--text-3); font-size: 9px; font-weight: 650; line-height: 1.3; letter-spacing: .09em; text-transform: uppercase; pointer-events: none; }
@@ -39,7 +39,7 @@
 /* Each header uses the theme's materials; controls keep the same readable geometry. */
 :root[data-theme=modern] .chat-header { box-shadow: 0 3px 14px #10182806; }
 :root[data-theme=modern] .setting-field { background: var(--panel-2); }
-:root:is([data-theme=alien], [data-theme=command]) .chat-header { grid-template-areas: 'label label label' 'back identity actions' 'settings settings settings' 'info info info'; }
+:root:is([data-theme=alien], [data-theme=command]) .chat-header { grid-template-areas: 'label label label' 'back identity actions' 'info info info'; }
 :root:is([data-theme=alien], [data-theme=command]) .chat-header::before { margin: 0; max-width: 100%; font-size: 10px; line-height: 1.5; }
 :root[data-theme=alien] .setting-field { border-color: #25492b; border-radius: 0; background: linear-gradient(90deg, #0b2111, #031007); box-shadow: inset 3px 0 #2d6336; }
 :root[data-theme=alien] .setting-label { color: #62a86c; }
@@ -68,18 +68,20 @@
 :root[data-theme=simpsons] .chat-header .setting-select { color: #352c28; }
 
 @media (max-width: 640px) {
-  :root .chat-header { grid-template-columns: 36px minmax(0, 1fr) auto; grid-template-areas: 'back . actions' 'identity identity identity' 'settings settings settings' 'info info info'; gap: 7px 8px; padding: max(7px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); }
+  :root:root .chat-header { grid-template-columns: 36px minmax(0, 1fr) auto; grid-template-areas: 'back identity actions' 'info info info'; align-items: center; gap: 4px 8px; padding: max(7px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); }
   :root:is([data-theme=alien], [data-theme=command]) .chat-header::before { display: none; }
-  :root .chat-header .panel-title { font-size: 15px; -webkit-line-clamp: 2; }
+  :root .chat-header .agent-identity .agent-mark { display: none; }
+  :root .chat-header .panel-title { font-size: 15px; line-height: 1.25; -webkit-line-clamp: 2; }
+  .agent-byline { margin-top: 1px; }
   :root .chat-header .panel-heading-actions > .quiet-button:not(.armed) { width: 36px; padding: 0; }
   :root .chat-header .agent-settings { grid-template-columns: minmax(0, 1fr) 104px; }
   :root[data-theme=heroes] .chat-header { padding: 10px 14px 12px; }
   :root[data-theme=diablo] .chat-header::before { display: none; }
 }
 @media (max-height: 500px) and (max-width: 640px) {
-  :root .chat-header { grid-template-areas: 'back identity actions' 'settings settings settings'; padding-top: 4px; row-gap: 4px; }
+  :root:root .chat-header { grid-template-areas: 'back identity actions' 'info info info'; padding-top: 4px; row-gap: 4px; }
   .chat-header .agent-mark, .chat-header .agent-byline { display: none; }
   :root .chat-header .panel-title { -webkit-line-clamp: 1; font-size: 13px; }
-  .chat-header .chat-info { display: none; }
+  :root .chat-header .chat-info { display: block; }
 }
 @media (prefers-reduced-motion: reduce) { .setting-field { transition: none; } }
