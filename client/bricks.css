@@ -306,7 +306,10 @@
 
 /* The sky: the dusk keep is the wallpaper; a dragon crosses it now and then. */
 #brick-sky { position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none; background: linear-gradient(90deg, #0b0c0f66, #0b0c0f1a 60%, #0000), url('/bricks-bg.webp') 100% 60% / cover no-repeat, #2a2d33; }
-#brick-sky i { position: absolute; left: 0; background: center / contain no-repeat; will-change: translate; }
+#brick-sky i { position: absolute; z-index: 1; left: 0; background: center / contain no-repeat; will-change: translate; }
+.castle-scene { position: absolute; left: 100%; top: 60%; width: max(100vw, 150vh); height: max(100vh, 66.666667vw); transform: translate(-100%, -60%); overflow: hidden; pointer-events: none; }
+.castle-light { position: absolute; left: var(--x); top: var(--y); width: var(--size); aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle, #ffe3a8d9 0, #ff9a4166 25%, transparent 70%); mix-blend-mode: screen; animation: castle-flicker 1.6s ease-in-out var(--delay) infinite alternate; }
+.castle-water { position: absolute; inset: 0; clip-path: polygon(32% 70%, 42% 70%, 49% 74%, 49.5% 82%, 49.5% 87%, 77% 91%, 84% 87%, 89% 88%, 100% 91%, 100% 100%, 55% 100%, 52% 94%, 47% 88%, 43% 82%, 37% 77%, 33% 73%); opacity: .8; background: radial-gradient(ellipse 20px 2px at 24px 10px, #b5e5e899, transparent) 0 0 / 139px 37px, radial-gradient(ellipse 14px 2px at 55px 23px, #ffd080aa, transparent) 0 0 / 103px 31px, radial-gradient(ellipse 9px 1.5px at 38px 16px, #d3eff099, transparent) 0 0 / 83px 27px; animation: castle-water 4s ease-in-out infinite alternate; }
 .sky-dragon { top: 7%; width: 220px; height: 146px; opacity: .92; }
 .sky-dragon b { display: block; width: 100%; height: 100%; background: url('/bricks-dragon.webp') center / contain no-repeat; filter: drop-shadow(0 12px 8px #0008); }
 @media (prefers-reduced-motion: no-preference) {
@@ -315,12 +318,14 @@
   :root[data-theme=bricks] :is(.login-screen)::before, :root[data-theme=bricks] .login-screen::after { animation: lb-flicker .4s steps(1, end) infinite; }
   :root[data-theme=bricks] .login-screen::after { animation-delay: -.17s; animation-duration: .5s; }
 }
-@media (prefers-reduced-motion: reduce) { .sky-dragon { display: none; } }
-@media (max-width: 640px) { #brick-sky { background-position: 82% 40%; } .sky-dragon { width: 130px; height: 86px; } }
+@media (prefers-reduced-motion: reduce) { .sky-dragon, .castle-scene { display: none; } }
+@media (max-width: 640px) { #brick-sky { background-position: 82% 40%; } .castle-scene { left: 82%; top: 40%; transform: translate(-82%, -40%); } .sky-dragon { width: 130px; height: 86px; } }
 /* Long gaps off-screen: it crosses in the first fifth of the loop. */
 @keyframes lb-fly { 0% { translate: -260px 6vh; } 6% { translate: 22vw -2vh; } 12% { translate: 48vw 5vh; } 19% { translate: 78vw -3vh; } 24%, 100% { translate: calc(100vw + 40px) 3vh; } }
 @keyframes lb-flap { from { scale: 1 1; rotate: -2deg; } to { scale: 1 .93; rotate: 2deg; } }
 @keyframes lb-flicker { 0% { filter: drop-shadow(0 0 10px #ff9a2ccc) brightness(1); } 33% { filter: drop-shadow(0 0 16px #ffb04ae6) brightness(1.18); } 66% { filter: drop-shadow(0 0 12px #ff9a2cd9) brightness(1.06); } }
+@keyframes castle-flicker { 0%, 19%, 53%, 100% { opacity: .15; } 12%, 46%, 72% { opacity: 1; } 30%, 65% { opacity: .45; } }
+@keyframes castle-water { from { background-position: 0 0, 0 0, 0 0; } to { background-position: 24px 13px, -32px 8px, 18px -9px; } }
 
 /* Start-up: the castle gate. Two doors of brick planks close the screen, then swing open on their hinges onto the interface, lit from the other side. */
 .lb-boot { position: fixed; inset: 0; z-index: 90; perspective: 1600px; perspective-origin: 50% 50%; overflow: hidden; pointer-events: none; animation: lb-boot-out .3s linear 2.5s both; }

@@ -95,3 +95,13 @@ test('expanding an earlier message pauses following before its height changes', 
   assert.equal(viewport.scrollTop, 400); assert.equal(latest.hidden, false);
   flow.destroy();
 });
+
+test('following the latest message does not measure every history item before an update', () => {
+  const { viewport, flow } = pane(Array(100).fill(40));
+  viewport.querySelectorAll = () => { throw new Error('following should not scan message positions'); };
+  const saved = flow.capture();
+  viewport.messages.push({ id: 'new', height: 40 });
+  flow.restore(saved);
+  assert.equal(viewport.scrollTop, viewport.scrollHeight - viewport.clientHeight);
+  flow.destroy();
+});

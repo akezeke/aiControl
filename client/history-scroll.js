@@ -49,6 +49,9 @@ export class HistoryScroll {
   }
   resized() { if (this.following) this.jumpToLatest(); else this.updateButton(); }
   capture() {
+    // When following, restore() jumps to the end; measuring every message is
+    // only needed to preserve an anchor when the reader has scrolled away.
+    if (this.following) return { following: true };
     const top = this.viewport.getBoundingClientRect().top;
     const anchors = [...this.viewport.querySelectorAll('[data-message-id]')].map(node => {
       const rect = node.getBoundingClientRect();

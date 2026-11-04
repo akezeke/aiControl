@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { STUD, BRICK, PLATE, masonry, runOf, stackOf, buttonStuds, buttonHover, buttonDepth, stickerPlacement, meterCells, surfaceBase, rng } from './bond.js';
 import { COLOURS } from './parts.js';
-import { paint, imagesLoaded } from './paint.js';
+import { paint } from './paint.js';
+import { observesChange, observesFocus } from './watch.js';
 
 // Brick Knights' interface, built live in one three.js scene: every framed element of the page is measured, snapped to whole bricks (stud pitch 20 px,
 // courses of 24, plates of 8) and to the wall behind it, rebuilt as real brick geometry, and its text, icons and portraits are painted as a sticker on
@@ -10,7 +11,7 @@ import { paint, imagesLoaded } from './paint.js';
 const BLOCKS = '.primary, .secondary, .quiet-button, .stat, .shot-button, .effort-select, .nav-item, .history-latest';
 const SHARED = { blocks: BLOCKS, meters: 'progress.usage-meter, .spend-reserve', stacks: '.spend-bar', rails: '.spend-token-rail', ground: '.console-screen' };
 export const PAGE = {
-  ...SHARED, blocks: `${BLOCKS}, .machine-label, .live-label`, badges: '.badge, .lost-state', name: 'page', fixed: '.sidebar, .topbar', scrollers: [], windowScroll: true,
+  ...SHARED, blocks: `${BLOCKS}, .machine-label, .live-label`, badges: '.badge, .lost-state', name: 'page', fixed: '.sidebar, .topbar', scrollers: ['.sidebar'], windowScroll: true,
   walls: '.sidebar, .topbar', plains: '.main-content', strips: '',
   trays: '.session-card, .group-heading, .usage-accounts, .spend-panel, .status-line, .search, .empty, .integrations, .theme-console, .login-card, .request-box, .lost > details',
   free: '.brand, .sidebar-label, .page-heading, .connection-error, .no-projects, .toast',
@@ -87,15 +88,17 @@ export class BrickUi {
     document.head.append(this.hide);
     const again = () => this.schedule();
     this.resizeObserver = new ResizeObserver(() => { if (config.name === 'panel' && (scope.offsetWidth !== layer.size.width || scope.offsetHeight !== layer.size.height)) this.size(); again(); }); if (config.name === 'panel') this.resizeObserver.observe(scope);
-    this.mutations = new MutationObserver(records => { if (records.some(r => r.type === 'childList' || r.target.closest?.(this.watch) || r.target === scope)) again(); });
+    this.mutations = new MutationObserver(records => { if (records.some(r => observesChange(r, scope, this.watch, config.skip))) again(); });
     this.mutations.observe(scope, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'data-status', 'value', 'hidden', 'open', 'aria-pressed', 'data-tracked'] });
     this.listeners = [];
     const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); this.listeners.push([target, type, fn, options]); };
     listen(window, 'load', again); listen(window, 'resize', () => { this.size(); again(); });
-    if (config.windowScroll) listen(window, 'scroll', () => this.scrolled(), { passive: true }); else listen(scope, 'scroll', () => this.scrolled(), true);
+    if (config.windowScroll) listen(window, 'scroll', () => this.scrolled(), { passive: true });
+    if (config.scrollers.length) listen(scope, 'scroll', () => this.scrolled(), true);
     listen(document, 'pointerdown', event => this.press(event), true); listen(document, 'pointerup', () => this.release(), true); listen(document, 'pointercancel', () => this.release(), true);
     listen(document, 'pointerover', event => this.hover(event, true), true); listen(document, 'pointerout', event => this.hover(event, false), true);
-    listen(document, 'focusin', again); listen(document, 'focusout', again);
+    const focus = event => { if (observesFocus(event.target, scope, config.skip)) again(); };
+    listen(document, 'focusin', focus); listen(document, 'focusout', focus);
     document.fonts?.ready.then(again);
     this.size(); this.schedule();
   }
@@ -109,7 +112,7 @@ export class BrickUi {
   scrolled(now) {
     const { config, layer, scope } = this;
     if (config.windowScroll) layer.scrollGroup('page', scrollY);
-    else for (const selector of config.scrollers) { const el = scope.querySelector(selector); if (el && el.getClientRects().length) { const r = this.box(el); layer.scrollGroup(selector, el.scrollTop, { x: r.left, y: r.top, w: el.clientWidth, h: el.clientHeight }); } }
+    for (const selector of config.scrollers) { const el = scope.querySelector(selector); if (el && el.getClientRects().length) { const r = this.box(el); layer.scrollGroup(selector, el.scrollTop, { x: r.left, y: r.top, w: el.clientWidth, h: el.clientHeight }); } }
     // Keep the live hit targets aligned with the moving brick faces throughout scrolling.
     this.follow();
     clearTimeout(this.settle); this.settle = setTimeout(() => this.follow(), now ? 0 : 140);
@@ -117,8 +120,9 @@ export class BrickUi {
   offsetOf(group) { return group === 'page' ? scrollY : group === 'fixed' ? 0 : this.layer.groups[group]?.position.y || 0; }
   groupOf(el) {
     const { config } = this;
-    if (config.windowScroll) return el.closest(config.fixed) ? 'fixed' : 'page';
-    return config.scrollers.find(selector => el.closest(selector)) || 'fixed';
+    const scrolling = config.scrollers.find(selector => el.closest(selector));
+    if (scrolling) return scrolling;
+    return config.windowScroll && !el.closest(config.fixed) ? 'page' : 'fixed';
   }
 
   // Every element that is part of the build, in document order, with the kind of piece it becomes.
@@ -166,7 +170,8 @@ export class BrickUi {
     const config = this.config, shifted = SHIFTED(config), byEl = new Map();
     return found.map(({ el, kind }) => {
       const group = this.groupOf(el), r = this.box(el), parent = el.parentElement?.closest(shifted), up = parent && byEl.get(parent), nested = !!up && up.kind === 'tray';
-      const wide = kind === 'plain' && el.matches('.history-viewport') ? el.clientWidth : r.width, tall = kind === 'plain' && el.matches('.history-viewport') ? el.scrollHeight : r.height;
+      const scrollSurface = (kind === 'plain' && el.matches('.history-viewport')) || (kind === 'wall' && el.matches('.sidebar'));
+      const wide = scrollSurface ? el.clientWidth : r.width, tall = scrollSurface ? Math.max(el.scrollHeight, el.clientHeight) : r.height;
       const px = up ? up.snap.x : 0, py = up ? up.snap.y : 0, wx = r.left + px, wy = r.top + py;
       let x = Math.round(wx / STUD) * STUD, y = wy;
       const w = Math.max(STUD, Math.round(wide / STUD) * STUD), h = Math.max(PLATE, Math.round(tall / PLATE) * PLATE);
@@ -198,13 +203,19 @@ export class BrickUi {
 
   // A sticker's picture, from cache when the element looks exactly as before. Painted with the elements drawn normally (their text is hidden afterwards).
   stickerFor(el, w, h) {
-    const focused = el.matches(':focus-visible') || !!el.querySelector(':focus-visible'), key = `${el.outerHTML}|${w}x${h}|${focused}|${imagesLoaded()}|${this.layer.renderer.getPixelRatio()}`;
+    const focused = el.matches(':focus-visible') || !!el.querySelector(':focus-visible'), key = `${el.outerHTML}|${w}x${h}|${focused}|${this.layer.renderer.getPixelRatio()}`;
     let hit = this.textures.get(key);
-    if (!hit) {
+    if (!hit || hit.dirty) {
       const scale = Math.min(this.layer.renderer.getPixelRatio(), 4096 / Math.max(w, h));
-      const { canvas } = paint(el, { scale, sticker: el.matches(this.config.blocks), own: node => node !== el && node.matches(roots(this.config)), onLoad: () => { this.sig = ''; this.schedule(); } });
-      const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.generateMipmaps = false; texture.minFilter = THREE.LinearFilter; texture.anisotropy = 4;
-      hit = { texture, key, id: ++this.nextTextureId }; this.textures.set(key, hit);
+      const { canvas } = paint(el, { scale, sticker: el.matches(this.config.blocks), own: node => node !== el && node.matches(roots(this.config)), onLoad: () => {
+        if (this.textures.get(key) !== hit) return;
+        hit.dirty = true; this.schedule();
+      } });
+      if (hit) { hit.texture.image = canvas; hit.texture.needsUpdate = true; hit.dirty = false; this.layer.invalidate(); }
+      else {
+        const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.generateMipmaps = false; texture.minFilter = THREE.LinearFilter; texture.anisotropy = 4;
+        hit = { texture, key, id: ++this.nextTextureId }; this.textures.set(key, hit);
+      }
     }
     this.textures.delete(key); this.textures.set(key, hit); return hit;
   }
@@ -298,7 +309,7 @@ export class BrickUi {
     for (const [target, type, fn, options] of this.listeners) target.removeEventListener(type, fn, options);
     document.documentElement.removeAttribute(this.attribute); this.hide.remove();
     for (const { el } of this.items) if (el.style) { el.style.translate = ''; el.style.minWidth = ''; el.style.minHeight = ''; }
-    for (const hit of this.textures.values()) hit.texture.dispose();
+    for (const hit of this.textures.values()) hit.texture.dispose(); this.textures.clear();
     this.layer.dispose();
   }
 }
@@ -324,11 +335,10 @@ function wall(L, { group, x, y, w, h, el, lift, openings }, handles, seed) {
   }
 }
 // The center is an open timber frame, leaving the castle scenery visible between its posts.
-function plain(L, { group, x, y, w, h, el }, handles, seed) {
-  const history = el.matches('.history-viewport'), top = group === 'page' ? 0 : y, cols = Math.ceil(w / STUD), rows = Math.ceil((history ? el.clientHeight : Math.max(h, L.size.height)) / BRICK) + 1, random = rng(91 + seed);
-  if (history) group = 'fixed';
+export function plain(L, { group, x, y, w, h, el }, handles, seed) {
+  const history = el.matches('.history-viewport'), top = group === 'page' ? 0 : y, cols = Math.ceil(w / STUD), rows = Math.ceil((history ? h : Math.max(h, L.size.height)) / BRICK) + 1, random = rng(91 + seed);
   if (!el.matches('.main-content')) {
-    for (const p of masonry(cols * STUD, Math.floor(el.clientHeight / PLATE) * PLATE, [], 11 + seed)) put(L, handles, group, `${p.length}:${p.height}:${STUD}:t`, x + p.x, top + p.y, 0, shade('sand', random, .03));
+    for (const p of masonry(cols * STUD, Math.ceil(h / PLATE) * PLATE, [], 11 + seed)) put(L, handles, group, `${p.length}:${p.height}:${STUD}:t`, x + p.x, top + p.y, 0, shade('sand', random, .03));
     return;
   }
   const posts = new Set([0, cols - 1]);

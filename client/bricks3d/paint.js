@@ -1,21 +1,7 @@
 // Paints a DOM element's visible content (backgrounds, borders, text, icons, portraits) into a canvas at the positions the browser gave it, so it can be
 // a sticker on a brick face in three.js and move with the bricks. This is not a general renderer: it covers what this interface draws (flat colours,
 // hard shadows, solid and dotted borders, one background image per element, text runs with ellipsis, inline SVG icons, <img>).
-const images = new Map();
-let loaded = 0;
-export const imagesLoaded = () => loaded;
-
-// An image by URL, or null while it loads (and `onLoad` is called once it has).
-function image(url, onLoad) {
-  let entry = images.get(url);
-  if (!entry) {
-    const img = new Image(); entry = { img, ready: false, failed: false }; images.set(url, entry);
-    img.onload = () => { entry.ready = true; loaded++; onLoad?.(); }; img.onerror = () => { entry.failed = true; };
-    img.src = url;
-  }
-  return entry.ready ? entry.img : null;
-}
-
+import { image } from './image-cache.js';
 import { stickerPlacement } from './bond.js';
 import { labelRects, labelColour } from './stickers.js';
 

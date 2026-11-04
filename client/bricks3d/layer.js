@@ -143,10 +143,17 @@ export class BrickLayer {
       const gl = renderer.getContext(); gl.colorMask(false, false, false, false); renderer.shadowMap.needsUpdate = true; renderer.render(scene, camera); gl.colorMask(true, true, true, true); this.shadowDirty = false;
     }
     renderer.setScissorTest(false); renderer.autoClear = true; renderer.clear(); renderer.autoClear = false;
-    for (const name of names) {
+    // Unclipped groups share the depth buffer and can be drawn together. Only
+    // scrolling groups need separate passes for their individual scissors.
+    const unclipped = names.filter(name => !this.clips[name]);
+    if (unclipped.length) {
+      for (const name of names) this.groups[name].visible = !this.clips[name];
+      renderer.render(scene, camera);
+    }
+    for (const name of names.filter(name => this.clips[name])) {
       for (const other of names) this.groups[other].visible = other === name;
       const clip = this.clips[name];
-      if (clip) { renderer.setScissorTest(true); renderer.setScissor(clip.x, this.size.height - clip.y - clip.h, clip.w, clip.h); } else renderer.setScissorTest(false);
+      renderer.setScissorTest(true); renderer.setScissor(clip.x, this.size.height - clip.y - clip.h, clip.w, clip.h);
       renderer.render(scene, camera);
     }
     for (const name of names) this.groups[name].visible = true;

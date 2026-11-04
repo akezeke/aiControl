@@ -20,6 +20,7 @@ import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
+import { populateOnOpen } from './lazy-details.js';
 import { placeShots } from './history-shots.js';
 import { ImagePanZoom } from './image-pan-zoom.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
@@ -1242,7 +1243,8 @@ function toolRun(run, open) {
   const details = el('details', 'tool-run'); details.open = open;
   const failed = run.filter(message => message.failed).length;
   const summary = el('summary'); summary.append(el('strong', '', `${run.length} tool calls`)); if (failed) summary.append(el('span', 'tool-run-failed', `${failed} failed`));
-  summary.append(el('code', 'tool-call', run.at(-1).text)); details.append(summary, ...run.map(toolLine));
+  summary.append(el('code', 'tool-call', run.at(-1).text)); details.append(summary);
+  populateOnOpen(details, () => run.map(toolLine));
   return details;
 }
 function messageNode(message, session, previous) {
