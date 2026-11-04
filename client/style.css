@@ -382,6 +382,9 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .composer-image-remove:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
 .composer-images[hidden], .composer-attach[hidden] { display: none; }
 .composer-feedback { margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--text-3); }
+.composer-suggestion { display: block; width: 100%; margin: 0 0 6px; padding: 6px 8px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-3); background: transparent; border: 1px dashed var(--line); border-radius: 4px; cursor: pointer; }
+.composer-suggestion[hidden] { display: none; }
+.composer-suggestion:hover, .composer-suggestion:focus-visible { color: var(--text); border-color: var(--accent); }
 .composer-feedback.form-error { color: var(--danger); }
 .composer-feedback:empty, .message-queue:empty { display: none; }
 .message-queue { max-height: 130px; overflow-y: auto; margin-bottom: 8px; }

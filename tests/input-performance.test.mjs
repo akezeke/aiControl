@@ -71,6 +71,16 @@ test('sending immediately flushes the last keystroke, and only acknowledged send
   composer.destroy();
 });
 
+test('accepting a suggestion creates an editable draft without overwriting text', () => {
+  const time = clock(), input = new Input(), draft = { text: '' };
+  const composer = new ComposerInput(input, draft, () => {}, time);
+  assert.equal(composer.acceptSuggestion('Run the tests'), true);
+  assert.equal(composer.flush(), 'Run the tests');
+  assert.equal(composer.acceptSuggestion('Other'), false);
+  assert.equal(input.value, 'Run the tests');
+  composer.destroy();
+});
+
 test('leaving the session flushes its draft and locking cancels pending draft writes', () => {
   const time = clock(), input = new Input(), draft = { text: '' };
   const composer = new ComposerInput(input, draft, () => {}, time);
