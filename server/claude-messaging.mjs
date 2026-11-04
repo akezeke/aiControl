@@ -27,7 +27,9 @@ export async function spawnAgent(cwd, provider, { configDir = '', sessionId, mod
   // npm stop ends the server's own session, so agents never go there.
   let name = panes.find(([session, path]) => path === cwd && session !== 'aiControl')?.[0] || basename(cwd).replace(/[^\w-]/g, '_');
   if (name === 'aiControl') name += '-agents';
-  const target = panes.some(([session]) => session === name) ? ['new-window', '-t', `=${name}:`] : ['new-session', '-s', name];
+  // A detached session is 80×24 unless sized, too short for Claude's prompt box under a notice; readyPane would then
+  // see no prompt. -x/-y also set the session's default-size, so later windows get it until a client attaches.
+  const target = panes.some(([session]) => session === name) ? ['new-window', '-t', `=${name}:`] : ['new-session', '-s', name, '-x', '160', '-y', '50'];
   try {
     const pane = (await tmux([...target, '-d', '-c', cwd, '-n', provider, '-P', '-F', '#{pane_id}'])).trim();
     // A plain `codex` joins the shared app server the dashboard watches; any -c override runs a private one it never sees.
