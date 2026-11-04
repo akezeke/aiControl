@@ -4,11 +4,13 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import * as kit from '../kit.js';
 
 // A steam plant standing on a dark floor. You are the boiler in the middle, every account's usage on the gauge board in front of it.
-// Projects are pipe junctions, sessions are machines branching off them, subagents valves beside their machine. Each junction and
-// machine is built from its id (body, cylinders, stack, gauges, trim), so it looks the same on every device and differs from its
-// neighbours; on every machine the gas lamp is its state, the big gauge its pressure, the sight glass its context and the brass pips its
-// plan, and a brass nameplate in front carries its name and what it's doing. Pipes are plumbing on the floor (straight runs, 45°/90°
-// elbows, flanges): tool calls are steam pulses machine → junction → boiler, needs-you runs gold along the same route.
+// Projects are junctions, sessions are machines branching off them, subagents valves beside their machine; each kind its own size
+// and outline from afar: a junction is a round crowned manifold, the biggest body in its cluster, with a black and gold name; a
+// machine is square-shouldered with a brass plate; a valve is a little handwheel with no plate. Each junction and machine is built
+// from its id (body, cylinders, stack, gauges, trim), so it looks the same on every device and differs from its neighbours; on every
+// machine the gas lamp is its state, the big gauge its pressure, the sight glass its context and the brass pips its plan, and its
+// nameplate carries its name and what it's doing. Pipes are plumbing on the floor (straight runs, 45°/90° elbows, flanges): tool
+// calls are steam pulses machine → junction → boiler, needs-you runs gold along the same route.
 
 const TAU = Math.PI * 2, PI = Math.PI, HP = Math.PI / 2;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -35,14 +37,14 @@ function bar(x0, z0, x1, z1, w, h = .05, y = 0) { const L = Math.hypot(x1 - x0, 
 function octPts(r, perEdge) { const pts = []; for (let k = 0; k < 8; k++) { const a = PI / 8 + k * PI / 4, b = a + PI / 4; for (let j = 0; j < perEdge; j++) { const f = (j + .5) / perEdge; pts.push([Math.cos(a) * r * (1 - f) + Math.cos(b) * r * f, Math.sin(a) * r * (1 - f) + Math.sin(b) * r * f]); } } return pts; }
 function segDist(px, pz, ax, az, bx, bz) { const vx = bx - ax, vz = bz - az, l = vx * vx + vz * vz, t = l ? clamp(((px - ax) * vx + (pz - az) * vz) / l, 0, 1) : 0; return Math.hypot(px - ax - vx * t, pz - az - vz * t); }
 function solve2(px, pz, qx, qz, wx, wz) { const d = px * qz - pz * qx; return Math.abs(d) < 1e-6 ? null : [(wx * qz - wz * qx) / d, (px * wz - pz * wx) / d]; }
-// Does the segment a→b cross the rectangle [x0, x1] × [z0, z1]? (slab test)
+// Does the segment a→b cross the rectangle [x0, x1] × [z0, z1]? (slab test; scalars only, the layout calls it a great deal)
 function segRect(ax, az, bx, bz, x0, x1, z0, z1) {
-  let t0 = 0, t1 = 1; const dx = bx - ax, dz = bz - az;
-  for (const [p, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dz, az - z0], [dz, z1 - az]]) {
-    if (Math.abs(p) < 1e-9) { if (q < 0) return false; continue; }
-    const t = q / p; if (p < 0) t0 = Math.max(t0, t); else t1 = Math.min(t1, t);
-    if (t0 > t1) return false;
-  }
+  let t0 = 0, t1 = 1;
+  const dx = bx - ax, dz = bz - az;
+  if (Math.abs(dx) < 1e-9) { if (ax < x0 || ax > x1) return false; }
+  else { const u = (x0 - ax) / dx, v = (x1 - ax) / dx; t0 = Math.max(t0, Math.min(u, v)); t1 = Math.min(t1, Math.max(u, v)); if (t0 > t1) return false; }
+  if (Math.abs(dz) < 1e-9) { if (az < z0 || az > z1) return false; }
+  else { const u = (z0 - az) / dz, v = (z1 - az) / dz; t0 = Math.max(t0, Math.min(u, v)); t1 = Math.min(t1, Math.max(u, v)); if (t0 > t1) return false; }
   return true;
 }
 
@@ -112,27 +114,32 @@ class Helix extends THREE.Curve {
 
 // ── Sizes. Pipes leave octagonal bodies by their faces: tier 1 junction → boiler, 2 machine → junction, 3 subagent → machine.
 // A session is a station: its machine (modelled at radius UR, drawn US times larger) MZ behind the node, its nameplate in front.
-// A junction is modelled at radius JR and drawn JS times larger, so a project (the button for a new session) stands out. ──
-const UR = .95, US = 1.5, AU = UR * Math.cos(PI / 8), JR = .95, JS = 1.25, JA = JR * JS * Math.cos(PI / 8), BR = 4.5, AB = BR * Math.cos(PI / 8), KS = 1.4, AK = .2 * KS * Math.cos(PI / 8);
+// A project is a manifold hub (radius JR, drawn JS times larger): wider and taller than any machine, so each cluster has a plain centre.
+// A subagent's valve is modelled small and drawn KS times larger: big enough to see, plainly a fitting off its machine. ──
+const UR = .95, US = 1.5, AU = UR * Math.cos(PI / 8), JR = 2.05, JS = 1, JA = JR * JS * Math.cos(PI / 8), BR = 4.5, AB = BR * Math.cos(PI / 8), KS = 2, AK = .2 * KS * Math.cos(PI / 8);
 const Y0 = .14, MZ = -1;
 const TIER_R = [0, .16, .075, .04], PY = 1.25;
 const FD = Array.from({ length: 8 }, (_, k) => [Math.cos(k * PI / 4), Math.sin(k * PI / 4)]);
 const PROV = { claude: '#c4703f', codex: '#56668c', opencode: '#d2d2c8' };
-const RIVET = '#fff1c8 0 .8px, #c8963f 1.6px, #4a3214 2.7px, transparent 3.2px';
+const RIVET = '#fff1c8 0 .8px, #c8963f 1.6px, #4a3214 2.7px, transparent 3.2px', STUD = '#fff1c8 0 .4px, #b8883a .9px, #4a3214 1.5px, transparent 1.9px';
 // Every machine keeps these in the same place, so they read alike: sight glass along the front, plan pips on the front-right face,
 // mode bulb at the back right, bellows at the back left, a second filament tube at the front left. Bodies stand in the middle; pipes
 // leave by the left and back, the nameplate is in front, subagent valves stand on the left and the televisor (with screenshots) on the right.
 const TUBE2 = [-.7, Y0, .3], SIGHT = { x: -.42, y: .22, z: .66, len: .56 }, PLAN = { x0: .76, z0: .4, x1: .42, z1: .74, y: .175, max: 10 }, MODE = [.6, -.55], BELLOWS = [-.6, -.5];
 const UNIT_FREE = [4, 5, 6, 7];
 const TYPES = ['upright', 'tank', 'pistons', 'condenser', 'still', 'pumphouse'];
-// Nameplates stand on the floor, leaning back to face the camera: width, height, where the bottom edge is (from the node), canvas size.
+// Nameplates stand on two posts, leaning back to face the camera: width, height, where the bottom edge is (from the node), canvas size.
+// They're big for their machines so a name on two lines still reads from across the hall; each stands far enough out that its top
+// edge clears the machine's front, its bottom edge LIFT up so a pipe passes under it rather than through its face. A project's is
+// longer and low, black enamel with one line of gilt caps: the hub's plate reads as one at any distance.
 // The televisor of a session with screenshots lies on the floor right of its machine: a bulging CRT in a bent brass frame on a walnut
-// slab, its console along the back edge with filament tubes, knobs, two meters and indicator bulbs. (x, z): its screen's centre from the node.
-const TV = { x: 3.15, z: -.82, sw: 2.5, sh: 1.6, cw: 512, ch: 328, half: 1.5 };
-const LEAN = -1.07, PLATE = {
-  session: { w: 5.2, h: 1.35, z: 1.52, cw: 768, ch: 200 },
-  project: { w: 3.3, h: .7, z: JR * JS + .95, cw: 512, ch: 108 },
-  you: { w: 4, h: 1.3, z: AB + 1.3, cw: 512, ch: 166 },
+// slab, its console along the back edge with filament tubes, knobs, two meters and indicator bulbs. (x, z): its screen's centre from the node,
+// in floor units; it's modelled in its own units (sw, sh, half: the screen's size and the set's half width) and stood on the floor k times that.
+const TV = { x: 3.7, z: -.95, sw: 2.5, sh: 1.6, cw: 512, ch: 328, half: 1.5, k: 1.35 };
+const LEAN = -1.07, LIFT = .42, PLATE = {
+  session: { w: 7, h: 1.9, z: 2.32, cw: 768, ch: 208 },
+  project: { w: 7.8, h: 1.2, z: JR * JS + 1.38, cw: 768, ch: 118 },
+  you: { w: 5.2, h: 1.7, z: AB + 1.93, cw: 512, ch: 167 },
 };
 
 // A session's machine, from its id: body type, proportions, trim metal, stack, gauges, rivets. Provider is the body's metal.
@@ -294,39 +301,36 @@ function unitParts(seed, provider) {
 }
 
 
-// A project's junction, from its id: a small header (upright drum, lying header or ball valve) on a plate, its pressure gauge, a
-// governor spinning on top while its machines work, a lamp and a handwheel. It is where the pipes branch, not a machine of its own.
-function junctionParts(seed) {
+// A project's hub, from its id: the manifold its machines' pipes come into. A wide two-step plinth, a copper ring main on saddles round a
+// tall riveted receiver (dome, safety valve, the governor on top, filament tubes on brackets either side), a big pressure gauge on
+// its front, a handwheel on the main and a bulb per machine along the front step. It is the widest and tallest thing in its cluster, a round crown among square-shouldered
+// machines, so every cluster reads from its middle out; the button for a new session.
+function hubParts(seed) {
   const r = kit.rng(seed), pick = l => l[r() * l.length | 0], rr = (a, b) => a + (b - a) * r();
-  const trim = pick(['brass', 'brass', 'copper', 'nickel']), body = pick(['copper', 'brass', 'gun', 'green', 'copper']);
+  const trim = pick(['brass', 'brass', 'copper', 'nickel']), body = pick(['copper', 'green', 'gun', 'copper', 'brass']);
   const b = parts(), T = (g, ...at) => b.add(place(g, ...at), trim), C = (g, ...at) => b.add(place(g, ...at), body);
-  b.add(oct(JR, JR + .03, .18, .09), pick(['tread', 'iron', 'tread'])); T(flat(torus(JR - .04, .02, 4, 8)), 0, .18, 0, 0, PI / 8);
-  b.add(many(octPts(JR - .1, 1).map(([x, z]) => place(rivet(.035), x, .18, z))), trim);
-  const type = pick(['drum', 'header', 'ball']), rig = { gauges: [], governor: null, tubes: null };
-  let top;
-  if (type === 'drum') {
-    const R = rr(.34, .42), h = rr(.32, .48);
-    C(cyl(R, R, h, 24), 0, .18 + h / 2, -.1); C(hemi(R, 24, 6), 0, .18 + h, -.1, 0, 0, 0, 1, .45, 1);
-    T(flat(torus(R + .01, .018, 5, 24)), 0, .18 + h * .5, -.1); b.add(many(ringY(12, R + .012, .18 + h * .5 + .035, .016, 0, -.1)), trim);
-    top = .18 + h + R * .45;
-  } else if (type === 'header') {
-    const R = rr(.2, .26), L = rr(.9, 1.2), y = .26 + R;
-    for (const s of [-1, 1]) b.add(place(box(.1, y - .18, R * 1.4), s * L * .3, (y + .18) / 2, -.12), 'iron');
-    C(cyl(R, R, L, 24), 0, y, -.12, 0, 0, HP); C(hemi(R, 20, 5), L / 2, y, -.12, 0, 0, -HP, 1, .4, 1); C(hemi(R, 20, 5), -L / 2, y, -.12, 0, 0, HP, 1, .4, 1);
-    for (const x of [-.3, .3]) T(torus(R + .01, .015, 5, 24), x * L, y, -.12, 0, HP);
-    T(cyl(.12, .14, .12, 16), 0, y + R + .03, -.12); top = y + R + .09;
-  } else {
-    const R = rr(.32, .4), y = .3 + R * .9;
-    b.add(place(cyl(.2, .26, .14, 16), 0, .25, -.1), 'iron'); C(ball(R, 24, 14), 0, y, -.1);
-    T(torus(R + .005, .02, 6, 28), 0, y, -.1, HP); T(cyl(.09, .09, R * 2.3, 12), 0, y, -.1, 0, 0, HP); T(cyl(.09, .09, R * 2.3, 12), 0, y, -.1, HP);
-    top = y + R;
+  const D = .32, RM = 1.2, YM = .68, DR = rr(.6, .7), H = rr(1.7, 2.1), side = r() < .5 ? 1 : -1;
+  b.add(oct(JR, JR + .04, .22, .11), 'iron'); T(flat(torus(JR - .03, .03, 4, 8)), 0, .22, 0, 0, PI / 8);
+  b.add(many(octPts(JR - .13, 2).map(([x, z]) => place(rivet(.045), x, .22, z))), trim);
+  b.add(oct(JR - .32, JR - .28, .1, .27), pick(['tread', 'tread', 'iron']));
+  // The ring main on eight iron saddles, a brass collar at each, spokes into the receiver.
+  b.add(place(flat(torus(RM, .13, 8, 48)), 0, YM, 0), 'copper');
+  for (let k = 0; k < 8; k++) {
+    const a = (k + .5) * PI / 4, c = Math.cos(a), s = Math.sin(a);
+    b.add(place(box(.3, YM - D, .1), c * RM, (YM + D) / 2, s * RM, 0, -a), 'iron');
+    T(cyl(.175, .175, .09, 14), c * RM, YM, s * RM, 0, -a - HP, HP);
+    if (k % 2) b.add(place(cyl(.075, .075, RM - DR, 10), c * (RM + DR) / 2, YM, s * (RM + DR) / 2, 0, -a, HP), 'copper');
   }
-  rig.governor = { x: 0, y: top - .02, z: -.1 };
-  const side = r() < .5 ? 1 : -1;
-  rig.gauges.push(gaugeCase(b, side * .42, .5, .46, rr(.22, .26), .55, trim, .18));
-  rig.tubes = [lampPost(b, -side * .6, .18, .26, .02, trim), lampPost(b, -side * .6, .18, .58, .02, trim)];
-  b.add(bar(-.45, .8, .45, .8, .08, .03, .195), 'black');
-  if (r() < .6) handwheel(b, -side * .52, .18, -.55, .12, pick(['red', 'black', 'brass']), .2, trim);
+  C(cyl(DR, DR + .05, H, 32), 0, D + H / 2, 0); C(hemi(DR, 28, 8), 0, D + H, 0, 0, 0, 0, 1, .55, 1);
+  for (const f of [.1, .52, .94]) { T(flat(torus(DR + .02, .035, 5, 32)), 0, D + H * f, 0); b.add(many(ringY(16, DR + .03, D + H * f + .05, .022)), trim); }
+  T(cyl(.11, .13, .2, 14), side * DR * .45, D + H + DR * .38, -.1); T(ball(.09, 10, 6), side * DR * .45, D + H + DR * .38 + .14, -.1);
+  const top = D + H + DR * .55;
+  const rig = { governor: { x: 0, y: top - .02, z: 0 }, gauges: [gaugeCase(b, 0, D + H * .72, DR + .03, .36, .5, trim)] };
+  const ty = D + H * .52;
+  rig.tubes = [-1, 1].map(sx => { b.add(place(box(.36, .06, .3), sx * (DR + .14), ty - .03, .12), 'black'); return lampPost(b, sx * (DR + .22), ty, .12, 0, trim); });
+  handwheel(b, side * RM * .71, YM + .1, -RM * .71, .26, pick(['red', 'red', 'black', 'brass']), .26, trim);
+  b.add(bar(-1.2, JA - .45, 1.2, JA - .45, .14, .04, D + .02), 'black');
+  rig.bulbs = { y: D + .1, z: JA - .45, dx: .3, r: .075 };
   return { geo: b.done(), rig };
 }
 
@@ -380,9 +384,9 @@ function fitText(g, text, font, size, max, min = .72) {
   let t = text; while (t.length > 1 && g.measureText(t + '…').width > max) t = t.slice(0, -1);
   return t.trimEnd() + '…';
 }
-function engrave(g, t, x, y, font, size, color = '#160c03') {
+function engrave(g, t, x, y, font, size, color = '#160c03', lip = 'rgba(255,242,205,.4)') {
   g.font = font.replace('$', size); g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = 'rgba(255,242,205,.4)'; g.fillText(t, x, y + Math.max(1, size * .05));
+  g.fillStyle = lip; g.fillText(t, x, y + Math.max(1, size * .05));
   g.fillStyle = g.strokeStyle = color; g.lineWidth = size * .045; g.lineJoin = 'round'; g.strokeText(t, x, y); g.fillText(t, x, y);
 }
 // How a plate's name fits, worked out when the name changes: one line at full size, shrunk a little if need be; failing that (a
@@ -390,8 +394,8 @@ function engrave(g, t, x, y, font, size, color = '#160c03') {
 // past that is line 2 cut with an ellipsis. fs is the size it came out at against full size. oneLine gives the plain fit (one line,
 // shrunk at most to .84, then cut): what a plate shows instead while the full fit would engrave too small to read (see showPlate).
 const NAME = {
-  session: { font: `500 $px ${SERIF}`, full: .41, floor: .74, y: .28, side: 4.5 },
-  project: { font: `700 $px ${CAPS}`, full: .5, floor: .6, y: .54, side: 5.4, caps: true },
+  session: { font: `500 $px ${SERIF}`, full: .41, floor: .74, y: .28, side: 6.6 },
+  project: { font: `700 $px ${CAPS}`, full: .5, floor: .6, y: .53, side: 6.6, caps: true },
   you: { font: `700 $px ${CAPS}`, full: .34, floor: .84, y: .29, side: 8, caps: true },
 };
 const widthAt = (g, font, size, t) => { g.font = font.replace('$', size); return g.measureText(t).width; };
@@ -428,12 +432,19 @@ function ticker(g, text, x, y, w, h, tone) {
   const t = fitText(g, text, `700 $px ${TYPE}`, h * .78, w - h * .5, .85);
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = fg; g.fillText(t, x + w / 2, y + h * .54);
 }
-// A nameplate: its name as fitted by nameFit (none while the brass tag stands in), then the ticker.
+// A nameplate: its name as fitted by nameFit (none while the brass tag stands in), then the ticker. A project's is black enamel in a
+// brass rim, its name gilt.
 function paintPlate(g, kind, w, h, fit, line, tone, seed) {
   g.clearRect(0, 0, w, h); brass(g, w, h, seed);
-  const s = h * .085; for (const [x, y] of [[s * 1.9, s * 1.9], [w - s * 1.9, s * 1.9], [s * 1.9, h - s * 1.9], [w - s * 1.9, h - s * 1.9]]) stud(g, x, y, s);
-  if (fit) for (let i = 0; i < fit.lines.length; i++) engrave(g, fit.lines[i], w / 2, fit.ys[i], fit.font, fit.size);
-  if (kind === 'project') return;
+  const s = h * .085, hub = kind === 'project';
+  if (hub) {
+    const e = Math.max(3, h * .045) * 1.6, gr = g.createLinearGradient(0, e, 0, h - e);
+    gr.addColorStop(0, '#3a2814'); gr.addColorStop(1, '#140c05'); g.fillStyle = gr; g.fillRect(e, e, w - 2 * e, h - 2 * e);
+    g.strokeStyle = 'rgba(0,0,0,.8)'; g.lineWidth = 2; g.strokeRect(e + 1, e + 1, w - 2 * e - 2, h - 2 * e - 2);
+  }
+  for (const [x, y] of [[s * 1.9, s * 1.9], [w - s * 1.9, s * 1.9], [s * 1.9, h - s * 1.9], [w - s * 1.9, h - s * 1.9]]) stud(g, x, y, s);
+  if (fit) for (let i = 0; i < fit.lines.length; i++) engrave(g, fit.lines[i], w / 2, fit.ys[i], fit.font, fit.size, ...(hub ? ['#f0c870', 'rgba(0,0,0,.85)'] : []));
+  if (hub) return;
   if (kind === 'you') return ticker(g, line, w * .12, h * .52, w * .76, h * .38, tone);
   ticker(g, line, w * .045, h * .53, w * .91, h * .4, tone);
 }
@@ -533,7 +544,8 @@ const WORKING = new Set(['working', 'thinking', 'compacting']), BLACK = new THRE
 export default {
   id: 'steampunk',
   name: 'Steampunk',
-  // HTML labels only show when the nameplates are too small to read (zoomed out, phones): then they are brass tags themselves.
+  // HTML names show where the engraving on the nameplates is too small to read: on the plates while they can hold one, else as brass
+  // tags; a project's is a black and gold tag on its hub.
   css: `
 body[data-look="steampunk"] { --bg: #090605; --fg: #f2e4c6; --muted: #b29b78; --panel: linear-gradient(180deg, rgba(54, 46, 38, .97), rgba(26, 21, 17, .98)); --line: rgba(214, 166, 82, .45); --accent: #e0a94e;
   --need: #ffb547; --work: #7fd68a; --err: #ff5636; --wait: #7fa9e6; --font: Spectral, Georgia, serif; --display: Cinzel, Georgia, serif; --mono: "Courier Prime", ui-monospace, monospace;
@@ -552,8 +564,31 @@ body[data-look="steampunk"] .lbl b { font-family: var(--font); font-weight: 500;
 body[data-look="steampunk"] .lbl span { margin-top: 2px; padding: 0 5px; border-radius: 2px; background: #22201d; text-shadow: none; }
 body[data-look="steampunk"] .lbl.need span { background: #e0a03a; color: #2a1606; }
 body[data-look="steampunk"] .lbl.error span { background: #9a2416; color: #ffe2d0; }
-body[data-look="steampunk"] .lbl.project b { font-family: var(--display); font-weight: 700; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--label); }
+/* A project's tag is its plate's black enamel and gold caps, a size up on a session's: the hub reads first however far out. */
+body[data-look="steampunk"] .lbl.project { background: linear-gradient(#3a2814, #140c05); text-shadow: 0 1px 0 #000; box-shadow: 0 0 0 1px #c99a4a, inset 0 0 0 1px #000, 0 2px 5px rgba(0, 0, 0, .75); }
+body[data-look="steampunk"] .lbl.project b { font-family: var(--display); font-weight: 700; font-size: 13.5px; letter-spacing: .06em; text-transform: uppercase; color: #f0c870; }
 body[data-look="steampunk"] .lbl.you b { font-family: var(--display); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+/* A name on its plate is the plate's face: the plate's size and shape (tw wide), studded brass, its type scaled with it (cqi) like the
+   engraving it stands in for. A session's runs to two lines after its state's dot; amber enamel when it needs you, red when it failed.
+   You's has its ticker. */
+body[data-look="steampunk"] .lbl.on { width: 100%; min-width: 0; min-height: 0; overflow: hidden; box-sizing: border-box; container-type: inline-size; justify-content: center; padding: 0; border-radius: 1px;
+  background: radial-gradient(circle at 3.2% 22%, ${STUD}), radial-gradient(circle at 96.8% 22%, ${STUD}), radial-gradient(circle at 3.2% 78%, ${STUD}), radial-gradient(circle at 96.8% 78%, ${STUD}), var(--face, linear-gradient(170deg, #c99b52, #e6c47c 45%, #a87b36));
+  box-shadow: 0 0 0 1px #3a2610, inset 0 0 0 1px rgba(255, 240, 200, .4), 0 2px 4px rgba(0, 0, 0, .65); }
+body[data-look="steampunk"] .lbl.on b { max-width: 88%; white-space: normal; text-align: center; text-wrap: balance; line-height: 1.02; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+body[data-look="steampunk"] .lbl.session.on { aspect-ratio: ${PLATE.session.w} / ${PLATE.session.h}; }
+body[data-look="steampunk"] .lbl.session.on b { font-size: clamp(10px, 12.5cqi, 15px); font-weight: 600; }
+body[data-look="steampunk"] .lbl.session.on .k { display: inline-block; box-shadow: 0 0 0 1px rgba(40, 24, 8, .55); }
+body[data-look="steampunk"] .lbl.on.need { --face: linear-gradient(170deg, #c9862a, #f0b44c 45%, #b57018); }
+body[data-look="steampunk"] .lbl.on.error { --face: linear-gradient(170deg, #7e1c10, #b02c1a 45%, #6a160c); text-shadow: 0 1px 0 #3a0802; }
+body[data-look="steampunk"] .lbl.on.need b { color: #2a1606; }
+body[data-look="steampunk"] .lbl.on.error b { color: #ffe2d0; }
+/* A project's name is 'on' its hub (placed first) but no plate face: its tag, at the size it was measured at, over a plate's end. */
+body[data-look="steampunk"] .lbl.project.on { z-index: 1; width: auto; container-type: normal; padding: 2px 7px 3px; border-radius: 2px; background: linear-gradient(#3a2814, #140c05); box-shadow: 0 0 0 1px #c99a4a, inset 0 0 0 1px #000, 0 2px 5px rgba(0, 0, 0, .75); }
+body[data-look="steampunk"] .lbl.project.on b { display: block; max-width: none; white-space: nowrap; line-height: inherit; }
+body[data-look="steampunk"] .lbl.project.on .k { display: inline-block; }
+body[data-look="steampunk"] .lbl.you.on { aspect-ratio: ${PLATE.you.w} / ${PLATE.you.h}; }
+body[data-look="steampunk"] .lbl.you.on b { font-size: clamp(9.5px, 12.5cqi, 16px); }
+body[data-look="steampunk"] .lbl.you.on span { display: block; font-size: clamp(8px, 9.5cqi, 12px); }
 /* A subagent's name is no tag of its own, just chalked on the floor beside its little machine. */
 body[data-look="steampunk"] .lbl.sub { padding: 0 3px; background: none; box-shadow: none; text-shadow: 0 1px 2px #000, 0 0 6px rgba(0, 0, 0, .9); }
 body[data-look="steampunk"] .lbl.sub b { font-size: 11px; font-style: italic; }
@@ -653,7 +688,7 @@ diffuseColor.rgb *= (.74 + .38 * grime) * (.55 + .45 * smoothstep(0., .22, vObj.
 
     // ── The machines: one batched draw for every body ──
     const YOU = cached('you', boilerParts);
-    const PM = world.projects.map(p => cached(`j${p.seed}`, () => junctionParts(p.seed)));
+    const PM = world.projects.map(p => cached(`h${p.seed}`, () => hubParts(p.seed)));
     const UM = world.sessions.map(s => cached(`s${s.seed}${s.provider}`, () => unitParts(s.seed, s.provider)));
     let nv = 0, ni = 0;
     for (const { geo } of [YOU, ...PM, ...UM]) { nv += geo.attributes.position.count; ni += geo.index.count; }
@@ -722,7 +757,7 @@ totalEmissiveRadiance += vColor.rgb * (.22 + .8 * rim * rim);`);
     // Televisors, all in floor units round the screen's centre: a walnut slab with the bulging screen on it in a bent brass frame with a
     // finial, the walnut console along its back edge with grille plates, knobs, two meter cases, a red cloth wire to a tube, and a brass
     // conduit to the machine. The screen is a canvas each, made when a session first has a screenshot.
-    const CZ = -TV.sh / 2 - .38, CY = .32, conduitZ = MZ - TV.z;
+    const CZ = -TV.sh / 2 - .38, CY = .32, conduitZ = (MZ - TV.z) / TV.k, conduitX = (AU * US - TV.x) / TV.k;
     const TV_TUBES = [[-1.22, .11, .72], [-.97, .08, .46], [.97, .08, .46], [1.22, .11, .72]], TV_METERS = [[.22, .44, CZ + .17], [.54, .44, CZ + .17]];
     const TV_MC = TV_METERS.map(([x, y, z]) => ({ x, y, z, r: .1, t: .55 }));
     const tvWood = inst(merge([place(box(TV.sw + .34, .12, TV.sh + .3), 0, .06, .05), place(box(TV.sw + .44, CY, .56), 0, CY / 2, CZ)]), mat({ color: '#4a2a16', metalness: .05, roughness: .5 }), NS, { cast: true });
@@ -732,7 +767,7 @@ totalEmissiveRadiance += vColor.rgb * (.22 + .8 * rim * rim);`);
       place(box(TV.sw + .46, .03, .04), 0, CY + .01, CZ + .27), ...[-1, 1].map(sd => place(box(.5, .2, .02), sd * 1.15, CY * .5, CZ + .285)),
       ...[-.62, -.4, -.18].flatMap(x => [place(cyl(.075, .085, .06, 14), x, CY + .03, CZ + .08), place(box(.02, .02, .07), x, CY + .07, CZ + .06)]),
       ...TV_METERS.flatMap(([x, y, z]) => [place(cyl(.125, .115, .06, 18), x, y - .03, z - .02, .55), place(flat(torus(.122, .014, 5, 20)), x, y + .003, z, .55), place(cyl(.02, .02, y - CY, 6), x, (y + CY) / 2, z - .04)]),
-      place(cyl(.045, .045, TV.x - TV.sw / 2 - .17 - AU * US, 10), (AU * US - TV.x - TV.sw / 2 - .17) / 2, .07, conduitZ, 0, 0, HP), place(cyl(.075, .075, .05, 10), -TV.sw / 2 - .17, .07, conduitZ, 0, 0, HP)]), brassMat, NS);
+      place(cyl(.045, .045, -conduitX - TV.sw / 2 - .17, 10), (conduitX - TV.sw / 2 - .17) / 2, .07, conduitZ, 0, 0, HP), place(cyl(.075, .075, .05, 10), -TV.sw / 2 - .17, .07, conduitZ, 0, 0, HP)]), brassMat, NS);
     const tvWire = inst(new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(new THREE.Vector3(-1.22, CY + .8, CZ), new THREE.Vector3(-1.5, CY + .9, CZ + .7), new THREE.Vector3(-TV.sw / 2 - .07, .17, -TV.sh / 2 + .2)), 16, .018, 5), mat({ color: '#9a1c12', roughness: .8 }), NS);
     const tvT = { value: 0 }, tvGeo = (() => {
       const g = new THREE.PlaneGeometry(TV.sw, TV.sh, 24, 16), p = g.attributes.position;
@@ -766,7 +801,7 @@ totalEmissiveRadiance *= 1. + uRoll * (.12 * exp(-rd * rd) + .03 * sin(uTvT * 47
     const B_YOU = body(AB, BR + .2, [0, 1, 3, 4, 5, 6, 7], [0, .9, -.9]);
     const PG = new Map(), SG = new Map(), KG = new Map();
     let gi = 1, wi = 0, ri = 0, pi0 = 0, jb0 = 0;
-    world.projects.forEach((p, i) => PG.set(p, { i, rig: PM[i].rig, bid: addBody(PM[i]), x: 0, z: 0, gv: 0, w: 0, pr: 0, col: new THREE.Color(), glow: new THREE.Color(), q: {}, jb: (jb0 += Math.min(6, p.sessions.length)) - Math.min(6, p.sessions.length), init: false, body: body(JA, JR * JS + .15, ALL8, [0, .3 * JS, -.3 * JS]), gauge: gi++ }));
+    world.projects.forEach((p, i) => PG.set(p, { i, rig: PM[i].rig, bid: addBody(PM[i]), x: 0, z: 0, gv: 0, w: 0, pr: 0, col: new THREE.Color(), glow: new THREE.Color(), q: {}, jb: (jb0 += Math.min(6, p.sessions.length)) - Math.min(6, p.sessions.length), init: false, body: body(JA, JR * JS + .15, ALL8, [0, .5 * JS, -.5 * JS]), gauge: gi++ }));
     world.sessions.forEach((s, i) => {
       const rig = rigsU[i], pips = Math.min(PLAN.max, s.plan?.total || 0);
       SG.set(s, { i, rig, bid: addBody(UM[i]), glow: new THREE.Color(), x: 0, z: 0, sx: 0, sz: 0, px: 0, pz: 0, ox: 0, oz: 0, a: 0, ph: rnd() * TAU, bp: 0, nd: 0, h2: 0, wh: rnd(), sp: rnd(), sc: 0, body: body(AU * US, UR * US + .05, UNIT_FREE, [0]),
@@ -774,10 +809,11 @@ totalEmissiveRadiance *= 1. + uRoll * (.12 * exp(-rd * rd) + .03 * sin(uTvT * 47
       pi0 += pips;
     });
     // Every machine's televisor is a click target for its screenshots; the engine only takes the click while there are some.
-    for (const s of world.sessions) SG.get(s).target = ctx.addTarget?.({ node: s, pos: new THREE.Vector3(0, -50, 0), radius: 1.35, action: 'shots' });
+    for (const s of world.sessions) SG.get(s).target = ctx.addTarget?.({ node: s, pos: new THREE.Vector3(0, -50, 0), radius: 1.35 * TV.k, hx: (TV.sw / 2 + .1) * TV.k, hz: (TV.sh / 2 + .1) * TV.k, action: 'shots' });
     world.subs.forEach((k, i) => KG.set(k, { i, x: 0, z: 0, ox: 0, oz: 0, th: rnd() * TAU, body: body(AK, .24 * KS, ALL8, [0]) }));
     const BODIES = [B_YOU, ...[...PG.values(), ...SG.values(), ...KG.values()].map(g => g.body)];
-    // Nameplates are obstacles for the pipes too: [x0, x1, z0, z1] on the floor, refreshed with the layout.
+    // Nameplates and televisors are obstacles for the pipes too: [x0, x1, z0, z1, solid] on the floor, refreshed with the layout. A
+    // televisor is solid; a pipe may pass under a nameplate when it must.
     const PLATES_AT = [];
 
     // ── Plumbing. Each pipe is routed on the floor between two octagonal bodies: out of a face, straight runs joined by short-radius
@@ -787,17 +823,18 @@ totalEmissiveRadiance *= 1. + uRoll * (.12 * exp(-rd * rd) + .03 * sin(uTvT * 47
       return list.map(k => [k, Math.abs(Math.atan2(Math.sin(k * PI / 4 - ang), Math.cos(k * PI / 4 - ang)))]).sort((a, b) => a[1] - b[1]).slice(0, 3).map(a => a[0]);
     };
     const portOf = (B, k) => { const [dx, dz] = FD[k], o = B.slots[Math.min(B.used[k], B.slots.length - 1)]; return { x: B.x + dx * B.ap - dz * o, z: B.z + dz * B.ap + dx * o, dx, dz }; };
-    function blocked(pts, A, B, r) {
+    function blocked(pts, A, B, r, plates) {
       for (const b of BODIES) {
         if (!b.on) continue;
         const lim = b === A || b === B ? b.ap - .02 : b.cr + r + .05;
         if (Math.abs(b.x - (pts[0][0] + pts.at(-1)[0]) / 2) > 30) continue;
         for (let i = 1; i < pts.length; i++) if (segDist(b.x, b.z, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) < lim) return true;
       }
-      for (const [x0, x1, z0, z1] of PLATES_AT) for (let i = 1; i < pts.length; i++) if (segRect(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], x0 - r, x1 + r, z0 - r, z1 + r)) return true;
+      for (const [x0, x1, z0, z1, solid] of PLATES_AT) if (plates || solid) for (let i = 1; i < pts.length; i++) if (segRect(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], x0 - r, x1 + r, z0 - r, z1 + r)) return true;
       return false;
     }
-    // Candidates: straight, one elbow, or two elbows through a middle direction u (three ways to split the slack). Best clear one wins.
+    // Candidates: straight, one elbow, or two elbows through a middle direction u (three ways to split the slack). Best clear one wins;
+    // failing that the best that only passes under a nameplate (they stand clear of the floor), then the best of all.
     function route(A, B, r) {
       const rb = 2.2 * r, m = 2.4 * r + rb + .04, mid = 2 * rb + .06, ang = Math.atan2(B.z - A.z, B.x - A.x), cands = [];
       const fa = facesToward(A, ang), fb = facesToward(B, ang + PI);
@@ -816,7 +853,7 @@ totalEmissiveRadiance *= 1. + uRoll * (.12 * exp(-rd * rd) + .03 * sin(uTvT * 47
         }
       }));
       cands.sort((a, b) => a.score - b.score);
-      let best = cands.find(c => !blocked(c.pts, A, B, r)) || cands[0];
+      let best = cands.find(c => !blocked(c.pts, A, B, r, true)) || cands.find(c => !blocked(c.pts, A, B, r, false)) || cands[0];
       if (!best) { const S = portOf(A, fa[0]), E = portOf(B, fb[0]); best = { S, E, ka: fa[0], kb: fb[0], pts: [[S.x, S.z], [E.x, E.z]] }; }
       A.used[best.ka]++; B.used[best.kb]++;
       return best;
@@ -908,6 +945,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
     world.projects.forEach((p, i) => pipes.push(mkPipe(i, 1, PG.get(p).body, B_YOU, { p, g: PG.get(p) })));
     world.sessions.forEach((s, i) => pipes.push(mkPipe(NP + i, 2, SG.get(s).body, PG.get(s.parent).body, { s, next: pipes[world.projects.indexOf(s.parent)] })));
     world.subs.forEach((k, i) => pipes.push(mkPipe(NP + NS + i, 3, KG.get(k).body, SG.get(k.parent).body, { k, next: pipes[NP + world.sessions.indexOf(k.parent)] })));
+    const VALVE_AT = [.7, .78, .62, .86, .54, .92], RELIEF_AT = [.32, .24, .4, .16, .46, .1];
     function placeFittings(list) {
       let np = 0, nf = 0, nb = 0;
       for (const pp of list) {
@@ -917,10 +955,19 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
         if (pp.tier < 3) for (const e of P.elbows) if (nf < flangeM.count) setT(flangeM, nf++, e.x, 0, e.z, -Math.atan2(e.tz, e.tx), r);
         let avoid = [];
         if (pp.tier === 1) {
-          const rn = P.runs.reduce((a, b) => (b.s1 - b.s0 > a.s1 - a.s0 ? b : a)), L = rn.s1 - rn.s0, ry = -Math.atan2(rn.dz, rn.dx);
-          const at = f => ({ x: rn.x0 + (rn.x1 - rn.x0) * f, z: rn.z0 + (rn.z1 - rn.z0) * f, s: rn.s0 + L * f, ry });
-          pp.valve = at(.7); pp.relief = at(.32);
-          setT(valveM, pp.idx, pp.valve.x, 0, pp.valve.z, ry, r); setT(reliefM, pp.idx, pp.relief.x, 0, pp.relief.z, ry, r);
+          const runs = P.runs.filter(rn => rn.s1 - rn.s0 > 2).sort((u, v) => (v.s1 - v.s0) - (u.s1 - u.s0)), long = runs[0] || P.runs[0];
+          const at = (rn, f) => ({ x: rn.x0 + (rn.x1 - rn.x0) * f, z: rn.z0 + (rn.z1 - rn.z0) * f, s: rn.s0 + (rn.s1 - rn.s0) * f, ry: -Math.atan2(rn.dz, rn.dx) });
+          // The valve and the relief stack stand taller than a nameplate's lift: each takes the first of its spots clear of them all,
+          // on the longest run that has one, else any clear point on the line a fitting's length from a bend (and from the other one).
+          const under = q => PLATES_AT.some(b => !b[4] && q.x > b[0] - .5 && q.x < b[1] + .5 && q.z > b[2] - .5 && q.z < b[3] + .7);
+          const spotOn = (fs, not) => {
+            const ok = q => !under(q) && !(not && Math.abs(q.s - not.s) < .9);
+            for (const rn of runs) for (const f of fs) { const q = at(rn, f); if (ok(q)) return q; }
+            for (const rn of P.runs) for (let d = .6, L = rn.s1 - rn.s0; d < L - .6; d += .2) { const q = at(rn, d / L); if (ok(q)) return q; }
+            return at(long, fs[0]);
+          };
+          pp.valve = spotOn(VALVE_AT); pp.relief = spotOn(RELIEF_AT, pp.valve);
+          setT(valveM, pp.idx, pp.valve.x, 0, pp.valve.z, pp.valve.ry, r); setT(reliefM, pp.idx, pp.relief.x, 0, pp.relief.z, pp.relief.ry, r);
           P.joints.push(pp.relief.s / P.len); avoid = [pp.valve.s, pp.relief.s];
         }
         if (pp.tier < 3) for (const rn of P.runs) {
@@ -988,49 +1035,204 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
     // The disc's uv spans its diameter; this maps it back onto world x and -z in DECK units.
     const pinDeck = (cx, cz, r) => { deckTex.repeat.set(2 * r / DECK, 2 * r / DECK); deckTex.offset.set((cx - r) / DECK, -(cz + r) / DECK); };
 
-    // ── Layout. A junction per project off You, its machines fanned on the outer side, valves beside their machine. Every piece is a
-    // rectangle on the floor (machine, its stack's reach and its nameplate; junction and plate; You with board and boiler), and the
-    // fans and the ring are pushed out until no two overlap. Angles and distances carry a little of each id, so no two plants match. ──
+    // ── Layout. A hub per project round You, its machines round the hub, valves beside their machine. Every piece is a rectangle on
+    // the floor (machine with its stack's reach, valves, plate and televisor; hub and plate; You with board and boiler) and every pipe a
+    // straight line. The hubs go in first, each as near You as it fits on its ring angle, so their trunks to You are kept clear. Then
+    // the machines, one per cluster a round, each where it's nearest its hub, faces away from You and keeps the board's screen-shaped
+    // extent small. A tight board is a near camera: from the home view the machines are big enough to tell apart and their names fit
+    // on their plates. ──
     const hash = (seed, k) => kit.rng((seed + Math.imul(k, 0x9e3779b1)) >>> 0)();
-    const RS = [-PLATE.session.w / 2 - .15, PLATE.session.w / 2 + .15, -3, PLATE.session.z + .2], RTV = [RS[0], TV.x + TV.half + .15, RS[2], RS[3]], RJ = [-PLATE.project.w / 2 - .1, PLATE.project.w / 2 + .1, -JR * JS - .6, PLATE.project.z + .2], RY = [-BR - .25, BR + .25, -BR - .9, PLATE.you.z + .25];
-    const SUBROW = [-1.75, -.95, -2.55, -3.35];
+    const RS = [-PLATE.session.w / 2 - .15, PLATE.session.w / 2 + .15, -3, PLATE.session.z + .2], RTV = [RS[0], TV.x + TV.half * TV.k + .15, RS[2], RS[3]], RJ = [-PLATE.project.w / 2 - .1, PLATE.project.w / 2 + .1, -JR * JS - 1, PLATE.project.z + .15], RY = [-BR - .25, BR + .25, -BR - .9, PLATE.you.z + .25];
+    // Valves stand in a column left of their machine, front to back, a second column further left past four.
+    const SUB_X = -2.2, SUB_DX = -1, SUBROW = [-.6, -1.55, -2.5, -3.45];
     // Sessions laid out with room for a televisor: those with screenshots. When that changes the plant is laid out again.
     const hasTV = new Set(world.sessions.filter(s => ctx.shot?.(s)));
+    // A televisor's floor round its screen's centre, [x0, x1, z0, z1] from the node.
+    const TV_BOX = [TV.x - TV.half * TV.k, TV.x + TV.half * TV.k, TV.z - (TV.sh / 2 + .7) * TV.k, TV.z + (TV.sh / 2 + .2) * TV.k];
+    // A piece's room [x0, x1, z0, z1] round its node, and the solid parts in it a pipe must miss (body, televisor, valves): a pipe may
+    // pass behind a machine or under its plate, just not through it.
+    const KJ = [[-JR * JS - .1, JR * JS + .1, -JR * JS - .1, JR * JS + .1]], HUB = { R: RJ, K: KJ };
+    const pieceOf = s => {
+      const R = (hasTV.has(s) ? RTV : RS).slice(), m = s.subs.length, K = [[-1.6, 1.6, MZ - 1.6, MZ + 1.6]];
+      if (hasTV.has(s)) K.push(TV_BOX);
+      if (m) {
+        const xl = SUB_X + SUB_DX * ((m - 1) >> 2) - AK - .3, zb = SUBROW[Math.min(3, m - 1)] - AK - .3;
+        R[0] = Math.min(R[0], xl); R[2] = Math.min(R[2], zb); K.push([xl, SUB_X + AK + .1, zb, SUBROW[0] + AK + .1]);
+      }
+      return { R, K };
+    };
+    // Does the spoke a→b properly cross spoke q [ax, az, bx, bz]? Spokes meeting at an end (a hub's, You's) don't count.
+    function segX(ax, az, bx, bz, q) {
+      const dx = bx - ax, dz = bz - az, ex = q[2] - q[0], ez = q[3] - q[1], d = dx * ez - dz * ex;
+      if (Math.abs(d) < 1e-9) return false;
+      const fx = q[0] - ax, fz = q[1] - az, t = (fx * ez - fz * ex) / d, u = (fx * dz - fz * dx) / d;
+      return t > .03 && t < .97 && u > .03 && u < .97;
+    }
     function layout() {
-      // Stretch the ring to the screen's shape (the floor's depth shows foreshortened); the fans keep their own shape.
-      const k = Math.sqrt(ctx.size.w / Math.max(1, ctx.size.h) / .88 / 1.3), sx = clamp(k, .6, 1.25), sz = clamp(1 / k, .85, 1.7);
-      const cl = world.projects.map(p => {
-        const n = p.sessions.length, step = n < 2 ? 0 : Math.min(.85, 3.6 / (n - 1));
-        return { p, n, step, R: BR + JR * JS + 1.2, fr: Math.max(JR * JS + 3.4, step ? 5.1 / step : 0), spin: (hash(p.seed, 2) - .5) * .35, rects: [] };
+      // The screen's shape on the floor (fit spans x by the aspect, z foreshortened): N is a point's reach in screen terms.
+      const A = clamp(ctx.size.w / Math.max(1, ctx.size.h), .3, 4), KZ = Math.cos(.5) * 1.1, GAP = .25;
+      const N = (x, z) => Math.max(Math.abs(x) / A, Math.abs(z) * KZ);
+      const at = (x, z, R, s, K) => ({ s, x, z, x0: x + R[0], x1: x + R[1], z0: z + R[2], z1: z + R[3], k: K.map(b => [x + b[0], x + b[1], z + b[2], z + b[3]]) });
+      // trunks: You to each hub; branches: hub to each machine; lanes: on from each hub away from You, as long as its cluster needs to
+      // reach its far machines (while machines are placed; the close-up after drops them). A machine's solid parts keep off every
+      // trunk, branch and lane; a branch keeps off every solid part and crosses no trunk. Branches may cross each other, at a price.
+      // So no cluster is walled in, by its neighbours or by its own first machines.
+      const rects = [at(0, 0, RY, null, [RY])], trunks = [], branches = [], lanes = [];
+      const free = (x, z, { R, K }, own) => {
+        const x0 = x + R[0], x1 = x + R[1], z0 = z + R[2], z1 = z + R[3];
+        for (const r of rects) if (x0 < r.x1 + GAP && r.x0 < x1 + GAP && z0 < r.z1 + GAP && r.z0 < z1 + GAP) return false;
+        return !(onPipe(trunks, x, z, x0, x1, z0, z1, K, own, .15) || onPipe(branches, x, z, x0, x1, z0, z1, K, own, .15) || onPipe(lanes, x, z, x0, x1, z0, z1, K, own, .55));
+      };
+      function onPipe(L, x, z, x0, x1, z0, z1, K, own, m) {
+        for (const p of L) {
+          if (p === own || Math.min(p[0], p[2]) > x1 || Math.max(p[0], p[2]) < x0 || Math.min(p[1], p[3]) > z1 || Math.max(p[1], p[3]) < z0) continue;
+          for (const b of K) if (segRect(p[0], p[1], p[2], p[3], x + b[0] - m, x + b[1] + m, z + b[2] - m, z + b[3] + m)) return true;
+        }
+        return false;
+      }
+      // How many pipes the pipe a→b crosses, or -1 if it can't be laid at all.
+      const crossings = (ax, az, bx, bz, skip) => {
+        const lx = Math.min(ax, bx), hx = Math.max(ax, bx), lz = Math.min(az, bz), hz = Math.max(az, bz);
+        for (const r of rects) {
+          if (r === skip || r.x0 > hx || r.x1 < lx || r.z0 > hz || r.z1 < lz) continue;
+          for (const b of r.k) if (segRect(ax, az, bx, bz, b[0] - .15, b[1] + .15, b[2] - .15, b[3] + .15)) return -1;
+        }
+        for (const q of trunks) if (segX(ax, az, bx, bz, q)) return -1;
+        let n = 0; for (const q of branches) if (segX(ax, az, bx, bz, q)) n++;
+        return n;
+      };
+      const cl = world.projects.map(p => ({ p, x: 0, z: 0, dir: 0, hub: null, rects: [], pp: [], list: null, sp: null, order: null }));
+      const bySize = cl.slice().sort((a, b) => b.p.sessions.length - a.p.sessions.length || a.p.index - b.p.index);
+      // Ring angles in the projects' own order round You, each as wide as its cluster is big, turned to sit on their ring angles on
+      // average, then stretched to the screen's shape.
+      const W = cl.map(c => 1 + .6 * c.p.sessions.length), SW = W.reduce((u, v) => u + v, 0);
+      let acc = 0, rx = 0, rz = 0;
+      const th = W.map(w => (acc += w) - w / 2).map(v => v / SW * TAU);
+      cl.forEach((c, i) => { rx += Math.cos(c.p.angle - th[i]); rz += Math.sin(c.p.angle - th[i]); });
+      const rot = Math.atan2(rz, rx);
+      // Hubs. Each owns a ray from You, kept clear until its hub is placed and then cut back to the hub: so every hub keeps a straight
+      // way to You, and neighbours on close rays stagger in and out. Biggest first.
+      cl.forEach((c, i) => {
+        const a0 = th[i] + rot + (hash(c.p.seed, 2) - .5) * .1;
+        c.dir = Math.atan2(Math.sin(a0) / KZ, Math.cos(a0) * A); c.sp = [0, 0, Math.cos(c.dir) * 400, Math.sin(c.dir) * 400]; trunks.push(c.sp);
       });
-      const rect = (c, x, z, r, own, s) => c.rects.push({ c, own, s, x, z, x0: x + r[0], x1: x + r[1], z0: z + r[2], z1: z + r[3] });
-      const hit = (a, b) => a.x0 < b.x1 + .15 && b.x0 < a.x1 + .15 && a.z0 < b.z1 + .15 && b.z0 < a.z1 + .15;
-      const you = { x0: RY[0], x1: RY[1], z0: RY[2], z1: RY[3] };
-      for (let it = 0; it < 160; it++) {
+      for (const c of bySize) {
+        const cs = Math.cos(c.dir), sn = Math.sin(c.dir);
+        let D = 6 + 8 * Math.sqrt(c.p.sessions.length); while (D < 400 && !free(cs * D, sn * D, HUB, c.sp)) D += .25;
+        c.x = cs * D; c.z = sn * D; c.hub = at(c.x, c.z, RJ, null, KJ);
+        c.sp[0] = c.x; c.sp[1] = c.z; c.sp[2] = 0; c.sp[3] = 0;
+        c.hub.c = c; rects.push(c.hub); c.rects.push(c.hub);
+        const n = c.p.sessions.length, ln = n > 1 ? 2 + 3 * (n - 1) : 0;
+        if (ln) lanes.push([c.x + cs * (JR * JS + .3), c.z + sn * (JR * JS + .3), c.x + cs * (JR * JS + ln), c.z + sn * (JR * JS + ln)]);
+        c.list = c.p.sessions.map(s => ({ s, ...pieceOf(s) })).sort((u, v) => (v.R[1] - v.R[0] + v.R[3] - v.R[2]) - (u.R[1] - u.R[0] + u.R[3] - u.R[2]));
+      }
+      // Machines, a round at a time so no cluster takes all the room near it. A spot is scored by its distance from the hub, how far it
+      // turns back toward You, its reach in screen terms and the pipes its own pipe would cross. Each cluster sorts the same rings of
+      // spots once; a machine walks them best first until no later spot could win.
+      const OFF = [];
+      for (let r = 3; r < 26; r += .45) { const m = Math.ceil(TAU * r / .85); for (let j = 0; j < m; j++) OFF.push(r, Math.cos(TAU * j / m), Math.sin(TAU * j / m)); }
+      const K = OFF.length / 3, score = new Float64Array(K);
+      const base = (c, r, ca, sa) => r + .5 * N(c.x + ca * r, c.z + sa * r);
+      for (const c of cl) {
+        for (let k = 0; k < K; k++) score[k] = base(c, OFF[3 * k], OFF[3 * k + 1], OFF[3 * k + 2]);
+        c.order = new Uint32Array(K).map((_, k) => k).sort((u, v) => score[u] - score[v]);
+      }
+      const try1 = (c, it, r, ca, sa, best) => {
+        const x = c.x + ca * r, z = c.z + sa * r, f = base(c, r, ca, sa);
+        if (f >= best.cost || !free(x, z, it, null)) return;
+        const n = crossings(c.x, c.z, x, z + MZ, c.hub);
+        if (n >= 0 && f + 4 * n < best.cost) { best.cost = f + 4 * n; best.x = x; best.z = z; }
+      };
+      const seek = (c, it, best) => {
+        for (let i = 0; i < K; i++) {
+          const k = c.order[i];
+          if (base(c, OFF[3 * k], OFF[3 * k + 1], OFF[3 * k + 2]) >= best.cost) break;
+          try1(c, it, OFF[3 * k], OFF[3 * k + 1], OFF[3 * k + 2], best);
+        }
+      };
+      const put = (c, it, x, z) => {
+        const q = at(x, z, it.R, it.s, it.K), pp = [c.x, c.z, x, z + MZ];
+        q.c = pp.c = c; q.it = it; q.pp = pp;
+        rects.push(q); branches.push(pp); c.rects.push(q); c.pp.push(pp);
+        const g = SG.get(it.s); g.ox = x - c.x; g.oz = z - c.z;
+      };
+      // A cluster's screen reach moved by (dx, dz): the sum of its pieces' (so it counts every machine, not just the furthest).
+      const reach = (c, dx, dz) => { let v = 0; for (const r of c.rects) v += N(r.x + dx, r.z + dz); return v; };
+      const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [.7071, .7071], [.7071, -.7071], [-.7071, .7071], [-.7071, -.7071]], STEPS = [2, 1, .5, .25];
+      // Can cluster c move by (dx, dz)? Its pieces keep clear of the rest, and off every other pipe and trunk; its trunk, moved, misses
+      // every solid part on the way to You and crosses no pipe; its pipes cross no other trunk, pass no other piece, and cross no more
+      // pipes than they did.
+      const fits = (c, dx, dz) => {
+        const hx = c.x + dx, hz = c.z + dz, M = .15;
+        for (const r of c.rects) {
+          const x0 = r.x0 + dx, x1 = r.x1 + dx, z0 = r.z0 + dz, z1 = r.z1 + dz;
+          for (const o of rects) if (o.c !== c && x0 < o.x1 + GAP && o.x0 < x1 + GAP && z0 < o.z1 + GAP && o.z0 < z1 + GAP) return false;
+          for (const b of r.k) {
+            const bx0 = b[0] + dx - M, bx1 = b[1] + dx + M, bz0 = b[2] + dz - M, bz1 = b[3] + dz + M;
+            for (const q of trunks) if (q !== c.sp && segRect(q[0], q[1], q[2], q[3], bx0, bx1, bz0, bz1)) return false;
+            for (const q of branches) if (q.c !== c && segRect(q[0], q[1], q[2], q[3], bx0, bx1, bz0, bz1)) return false;
+            if (r !== c.hub && segRect(hx, hz, 0, 0, bx0, bx1, bz0, bz1)) return false;
+          }
+        }
+        const lx = Math.min(hx, 0), ux = Math.max(hx, 0), lz = Math.min(hz, 0), uz = Math.max(hz, 0);
+        for (const o of rects) {
+          if (o.c === c || o === rects[0] || o.x0 > ux || o.x1 < lx || o.z0 > uz || o.z1 < lz) continue;
+          for (const b of o.k) if (segRect(hx, hz, 0, 0, b[0] - M, b[1] + M, b[2] - M, b[3] + M)) return false;
+        }
+        let was = 0, now = 0;
+        for (const q of branches) if (q.c !== c && segX(hx, hz, 0, 0, q)) return false;
+        for (const p of c.pp) {
+          const ax = p[0] + dx, az = p[1] + dz, bx = p[2] + dx, bz = p[3] + dz;
+          for (const q of trunks) if (q !== c.sp && segX(ax, az, bx, bz, q)) return false;
+          for (const o of rects) {
+            if (o.c === c || o.x0 > Math.max(ax, bx) || o.x1 < Math.min(ax, bx) || o.z0 > Math.max(az, bz) || o.z1 < Math.min(az, bz)) continue;
+            for (const b of o.k) if (segRect(ax, az, bx, bz, b[0] - M, b[1] + M, b[2] - M, b[3] + M)) return false;
+          }
+          for (const q of branches) if (q.c !== c) { if (segX(p[0], p[1], p[2], p[3], q)) was++; if (segX(ax, az, bx, bz, q)) now++; }
+        }
+        return now <= was;
+      };
+      const shift = (c, dx, dz) => {
+        c.x += dx; c.z += dz; c.sp[0] = c.x; c.sp[1] = c.z;
+        for (const r of c.rects) { r.x += dx; r.z += dz; r.x0 += dx; r.x1 += dx; r.z0 += dz; r.z1 += dz; for (const b of r.k) { b[0] += dx; b[1] += dx; b[2] += dz; b[3] += dz; } }
+        for (const p of c.pp) { p[0] += dx; p[1] += dz; p[2] += dx; p[3] += dz; }
+      };
+      for (let round = 0, more = true; more; round++) {
+        more = false;
+        for (const c of bySize) {
+          const it = c.list[round]; if (!it) continue;
+          more = true;
+          const best = { cost: Infinity, x: NaN, z: 0 };
+          seek(c, it, best);
+          // Past the rings (never on a sane board): the nearest free spot further out.
+          for (let r = 26; Number.isNaN(best.x) && r < 160; r += 1) for (let j = 0, m = Math.ceil(TAU * r / 1.2); j < m; j++) try1(c, it, r, Math.cos(TAU * j / m), Math.sin(TAU * j / m), best);
+          if (Number.isNaN(best.x)) { best.x = c.x + Math.cos(c.dir) * 160; best.z = c.z + Math.sin(c.dir) * 160; }
+          put(c, it, best.x, best.z);
+        }
+      }
+      // Then the board closes up. Lanes have done their work (every machine has its spot); now each cluster in turn slides whole toward
+      // the middle of the screen while it fits, its trunk still straight to You, and each machine moves nearer its hub wherever room has
+      // opened. Till nothing moves.
+      lanes.length = 0;
+      for (let sweep = 0, moved = true; moved && sweep < 24; sweep++) {
+        moved = false;
         for (const c of cl) {
-          const jx = Math.cos(c.p.angle) * c.R * sx, jz = Math.sin(c.p.angle) * c.R * sz, base = Math.atan2(jz, jx) + c.spin;
-          c.x = jx; c.z = jz; c.rects.length = 0; rect(c, jx, jz, RJ, true);
-          c.p.sessions.forEach((s, i) => {
-            const a = base + (i - (c.n - 1) / 2 + (hash(s.seed, 1) - .5) * .2) * (c.step || .6), d = c.fr + (hash(s.seed, 2) - .5) * .8, g = SG.get(s);
-            g.a = a; g.ox = Math.cos(a) * d; g.oz = Math.sin(a) * d; rect(c, jx + g.ox, jz + g.oz, hasTV.has(s) ? RTV : RS, false, s);
-          });
+          let bx = 0, bz = 0, bs = reach(c, 0, 0) - .05;
+          for (const [ux, uz] of DIRS) for (const st of STEPS) { const v = reach(c, ux * st, uz * st); if (v < bs && fits(c, ux * st, uz * st)) { bs = v; bx = ux * st; bz = uz * st; break; } }
+          if (bx || bz) { shift(c, bx, bz); moved = true; }
         }
-        const grow = new Set(), fan = new Set();
-        for (const c of cl) for (const a of c.rects) if (hit(a, you)) grow.add(c);
-        const all = cl.flatMap(c => c.rects);
-        for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
-          const a = all[i], b = all[j];
-          if (!hit(a, b)) continue;
-          if (a.c === b.c) fan.add(a.c); else { grow.add(a.c); grow.add(b.c); }
+        if (moved && sweep % 3 === 2 || !moved) for (const c of cl) for (const q of c.rects.slice(1).sort((u, v) => Math.hypot(v.x - c.x, v.z - c.z) - Math.hypot(u.x - c.x, u.z - c.z))) {
+          const dx = q.x - c.x, dz = q.z - c.z, r = Math.hypot(dx, dz), it = q.it;
+          rects.splice(rects.indexOf(q), 1); branches.splice(branches.indexOf(q.pp), 1); c.rects.splice(c.rects.indexOf(q), 1); c.pp.splice(c.pp.indexOf(q.pp), 1);
+          const n = crossings(c.x, c.z, q.x, q.z + MZ, c.hub), best = { cost: base(c, r, dx / r, dz / r) + 4 * Math.max(0, n) - .3, x: NaN, z: 0 };
+          seek(c, it, best);
+          if (Number.isNaN(best.x)) put(c, it, q.x, q.z); else { put(c, it, best.x, best.z); moved = true; }
         }
-        if (!grow.size && !fan.size) break;
-        for (const c of grow) c.R *= 1.035;
-        for (const c of fan) c.fr *= 1.05;
       }
       const pos = new Map(cl.map(c => [c.p, [c.x, c.z]]));
       for (const k of world.subs) {
         const i = k.parent.subs.indexOf(k), g = KG.get(k);
-        g.ox = -2.1 + (i >> 2) * .9; g.oz = SUBROW[i % 4];
+        g.ox = SUB_X + SUB_DX * (i >> 2); g.oz = SUBROW[i % 4];
       }
       ctx.setLayout(n => {
         if (n.kind === 'you') n.rest.set(0, 0, 0);
@@ -1039,7 +1241,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
       });
       PLATES_AT.length = 0;
       let x0 = -BR, x1 = BR, z0 = -BR, z1 = BR;
-      for (const c of cl) for (const r of c.rects) { x0 = Math.min(x0, r.x0); x1 = Math.max(x1, r.x1); z0 = Math.min(z0, r.z0); z1 = Math.max(z1, r.z1); const P = r.own ? PLATE.project : PLATE.session; PLATES_AT.push([r.x - P.w / 2, r.x + P.w / 2, r.z + P.z - P.h * .88, r.z + P.z]); if (hasTV.has(r.s)) PLATES_AT.push([r.x + TV.x - TV.half, r.x + TV.x + TV.half, r.z + TV.z - TV.sh / 2 - .7, r.z + TV.z + TV.sh / 2 + .2]); }
+      for (const c of cl) for (const r of c.rects) { x0 = Math.min(x0, r.x0); x1 = Math.max(x1, r.x1); z0 = Math.min(z0, r.z0); z1 = Math.max(z1, r.z1); const P = r.s ? PLATE.session : PLATE.project; PLATES_AT.push([r.x - P.w / 2, r.x + P.w / 2, r.z + P.z - P.h * .88, r.z + P.z]); if (hasTV.has(r.s)) PLATES_AT.push([r.x + TV_BOX[0], r.x + TV_BOX[1], r.z + TV_BOX[2], r.z + TV_BOX[3], true]); }
       PLATES_AT.push([-PLATE.you.w / 2, PLATE.you.w / 2, PLATE.you.z - PLATE.you.h * .88, PLATE.you.z]);
       const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, ext = Math.max(x1 - x0, z1 - z0) / 2;
       floor.position.set(cx, 0, cz); floor.scale.setScalar(ext * 1.9 + 12); pinDeck(cx, cz, ext * 1.9 + 12);
@@ -1051,18 +1253,81 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
     layout();
     ctx.onResize(layout);
 
-    // ── Labels: the nameplates carry them. HTML labels (brass tags, see css) come back when the plates get too small to read. ──
-    // platePx is a full-size session name's height on screen. All plates hand over together (a mix of blank and engraved plates reads
-    // as broken); a name whose full fit came out small (two lines, or shrunk) shows its one-line cut until it would be at least LEGIBLE.
-    let platePx = 99;
-    const LEGIBLE = 10.5 * .84, tagged = () => platePx < 10.5;
-    ctx.setLabelRule(n => n.kind === 'sub' || tagged() ? undefined : false);
-    ctx.setLabelAnchor((n, out) => {
-      if (n.kind === 'you') return out.set(0, .3, PLATE.you.z - .5);
-      if (n.kind === 'project') { const g = PG.get(n); return out.set(g.x, .3, g.z + PLATE.project.z - .35); }
-      if (n.kind === 'session') { const g = SG.get(n); return out.set(g.sx, .3, g.sz + PLATE.session.z - .6); }
+    // ── Labels: the nameplates carry them. ──
+    // ppu is screen pixels to a board unit at the focus, platePx a full-size engraved session name's height. Close up the names are
+    // engraved on the plates, tickers and all. Further out the plates go blank and an HTML name lies on each one instead ('on', its
+    // brass face in the css), crisp at any size; past where a plate can hold one it's a brass tag beside its machine as in every look.
+    // All plates hand over together (a mix reads as broken); an engraved name whose full fit came out small (two lines, or shrunk)
+    // shows its one-line cut until it would be at least LEGIBLE. A project's name is its own: a black and gold tag on its hub, placed
+    // before any other label (the hubs are what a far board is found by), till the plate's engraving is as big as the tag (HUB_PX).
+    let ppu = 99, platePx = 99;
+    const ENGRAVE = 12.5, LEGIBLE = ENGRAVE * .84, ON = 80 / PLATE.session.w, HUB_PX = 12;
+    const engraved = () => platePx >= ENGRAVE, onPlate = () => !engraved() && ppu >= ON, hubTag = () => ppu * NAME.project.full * PLATE.project.h < HUB_PX;
+    ctx.setLabelRule(n => n.kind === 'sub' ? undefined : n.kind === 'project' ? hubTag() && 'on' : engraved() ? false : onPlate() ? 'on' : undefined);
+    // A name on its plate takes the whole plate (tw × th); the body round it, for picking and keeping subagents' names off, is the
+    // machine and the plate's middle, short of the valves at its side. Beside, the default circle keeps a tag close to its plate. A
+    // project's tag takes its own size (no th), up to a width no name reaches.
+    const SHAPE = { session: { hx: 1.6, hz: 2.4, y: 1.2, tw: PLATE.session.w, th: PLATE.session.h }, project: { hx: JR * JS + .2, hz: JR * JS + .2, y: 1.2, tw: PLATE.project.w, th: PLATE.project.h }, you: { hx: BR, hz: BR, y: 2, tw: PLATE.you.w, th: PLATE.you.h } };
+    SHAPE.project.tw = 60; SHAPE.project.th = 0;
+    ctx.setShape(n => n.kind === 'project' ? hubTag() ? SHAPE.project : null : onPlate() && SHAPE[n.kind] || null);
+    // A plate's face centre (y, z from its node) for a name on it; else a point on the plate's lower half, where a tag hangs from.
+    const MID = {}; for (const k in PLATE) { const P = PLATE[k]; MID[k] = [LIFT + P.h * .5 * Math.cos(LEAN), P.z - P.h * .5 * Math.sin(-LEAN)]; }
+    ctx.setLabelAnchor((n, out, on) => {
+      const m = MID[n.kind];
+      if (n.kind === 'you') return on ? out.set(0, m[0], m[1]) : out.set(0, LIFT + .2, PLATE.you.z - .5);
+      if (n.kind === 'project') { const g = PG.get(n); return out.set(g.x + g.tag.dx, m[0], g.z + m[1] + g.tag.dz); }
+      if (n.kind === 'session') { const g = SG.get(n); return on ? out.set(g.sx, m[0], g.sz + m[1]) : out.set(g.sx, LIFT + .2, g.sz + PLATE.session.z - .6); }
       const g = KG.get(n); return out.set(g.x, .4, g.z + .4);
     });
+    // Hub tags go up before every other label, and the board checks them against nothing, so they're kept apart here. The biggest
+    // hub's tag goes first; each takes its plate's middle when that's clear, else the step it had, else the nearest clear one. Clear
+    // of the names on plates too (engraved or 'on') only within a small step (STEP up to NEAR), then of the hub tags placed so far
+    // alone, as two tags on each other read as neither. Sizes come from the tag's css: 13.5px Cinzel caps, .06em apart, after a
+    // 1.38em folder, 7px padding. Steps: tag widths, tag heights.
+    const TAG_FS = 13.5, TAG_H = TAG_FS * 1.35 + 7;
+    const STEP = [0, 0, 0, -.6, 0, .6, .2, 0, -.2, 0, .2, -.6, -.2, -.6, .2, .6, -.2, .6, 0, -1.1, 0, 1.1, .4, 0, -.4, 0, 0, -1.7, 0, 1.7, .6, 0, -.6, 0], NEAR = 18;
+    const tagPen = document.createElement('canvas').getContext('2d'), hv = new THREE.Vector3(), SGS = world.sessions.map(s => SG.get(s));
+    const obst = new Float64Array((world.projects.length + world.sessions.length + 1) * 4);
+    const hubOrder = world.projects.map(p => PG.get(p)).sort((a, b) => world.projects[b.i].sessions.length - world.projects[a.i].sessions.length);
+    for (const g of hubOrder) g.tag = { dx: 0, dz: 0, w: 0, step: 0, name: null, fr: false };
+    let sx = 0, sy = 0, perX = 1, perZ = 1, nObst = 0, nPlates = 0;
+    // (x, y, z) on screen (sx, sy), and pixels to a unit of x and of z there.
+    function toPx(x, y, z) {
+      const W = ctx.size.w, H = ctx.size.h;
+      hv.set(x, y, z + 1).project(camera); const y1 = (1 - hv.y) * .5 * H;
+      hv.set(x, y, z).project(camera); sx = (hv.x + 1) * .5 * W; sy = (1 - hv.y) * .5 * H; perZ = Math.max(1, y1 - sy); perX = perZ / Math.cos(.5);
+    }
+    function addObst(x0, y0, x1, y1) { const b = nObst++ * 4; obst[b] = x0; obst[b + 1] = y0; obst[b + 2] = x1; obst[b + 3] = y1; }
+    function clearOf(x0, y0, x1, y1, from) { for (let j = from; j < nObst; j++) { const b = j * 4; if (x0 < obst[b + 2] && x1 > obst[b] && y0 < obst[b + 3] && y1 > obst[b + 1]) return false; } return true; }
+    // A step's left edge, slid in off the screen's sides while the tag still spans its hub (a phone's edge hubs).
+    const leftOf = (t, i) => Math.min(Math.max(Math.min(Math.max(sx + STEP[i] * t.w - t.w / 2, 4), ctx.size.w - 4 - t.w), sx - t.w + 12), sx - 12);
+    // The first step under `end` whose box at (sx, sy) clears obstacles from `from` on: the middle, the last one, then in order.
+    function stepFor(t, end, from) {
+      for (let a = -4; a < end; a += 2) {
+        const i = a === -4 ? 0 : a === -2 ? t.step : a;
+        if (a === -2 ? i === 0 || i >= end : a >= 0 && (i === 0 || i === t.step)) continue;
+        const x0 = leftOf(t, i), y0 = sy + STEP[i + 1] * TAG_H - TAG_H / 2;
+        if (clearOf(x0, y0, x0 + t.w, y0 + TAG_H, from)) return i;
+      }
+      return -1;
+    }
+    function placeHubTags() {
+      nObst = 0;
+      if (ppu >= ON) {
+        // A plate's lettered middle, short of its studded ends.
+        for (const g of SGS) { if (world.sessions[g.i].s.alive < .5) continue; toPx(g.sx, MID.session[0], g.sz + MID.session[1]); const hw = PLATE.session.w * perX * .35, hh = PLATE.session.h * perX * .3; addObst(sx - hw, sy - hh, sx + hw, sy + hh); }
+        toPx(0, MID.you[0], MID.you[1]); const hw = PLATE.you.w * perX * .35, hh = PLATE.you.h * perX * .3; addObst(sx - hw, sy - hh, sx + hw, sy + hh);
+      }
+      nPlates = nObst;
+      for (const g of hubOrder) {
+        const t = g.tag, name = world.projects[g.i].name;
+        if (t.name !== name || t.fr !== fontsReady) { t.name = name; t.fr = fontsReady; tagPen.font = `700 ${TAG_FS}px Cinzel, Georgia, serif`; const u = name.toUpperCase(); t.w = tagPen.measureText(u).width + u.length * TAG_FS * .06 + TAG_FS * 1.38 + 16; }
+        toPx(g.x, MID.project[0], g.z + MID.project[1]);
+        let best = stepFor(t, NEAR, 0); if (best < 0) best = stepFor(t, STEP.length, nPlates); if (best < 0) best = 0;
+        const x0 = leftOf(t, best), y0 = sy + STEP[best + 1] * TAG_H - TAG_H / 2; addObst(x0, y0, x0 + t.w, y0 + TAG_H);
+        t.step = best; t.dx = (x0 + t.w / 2 - sx) / perX; t.dz = STEP[best + 1] * TAG_H / perZ;
+      }
+    }
 
     // ── Nameplates ──
     const plateGeo = Object.fromEntries(Object.entries(PLATE).map(([k, P]) => [k, new THREE.PlaneGeometry(P.w, P.h)]));
@@ -1097,7 +1362,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
     }, () => {});
     // Place a plate with its bottom edge at (x, z) on the floor, grown by s; paint it if what it shows changed (a few a frame, the rest
     // next frame: pendingPaint keeps the pace up). A ticker whose only change is its wait clock repaints at most about once a second.
-    // While its brass tag is up the plate's name goes blank (its ticker keeps its colour), so no name shows twice.
+    // While its HTML name is up the plate's name goes blank (its ticker keeps its colour), so no name shows twice.
     let painted = 0, pendingPaint = false, tickWait = false;
     function showPlate(pl, x, z, s, text, line, tn, hl) {
       const { P, mesh } = pl, h = P.h * s;
@@ -1105,7 +1370,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
         pl.text = text; pl.fit = nameFit(pl.g, pl.kind, P.cw, P.ch, text); pl.painted = false;
         pl.fit1 = pl.fit.fs < .84 ? nameFit(pl.g, pl.kind, P.cw, P.ch, text, true) : pl.fit;
       }
-      const blank = tagged(), fit = blank ? null : platePx * pl.fit.fs >= LEGIBLE ? pl.fit : pl.fit1;
+      const blank = pl.kind === 'project' ? hubTag() : !engraved(), fit = blank ? null : platePx * pl.fit.fs >= LEGIBLE ? pl.fit : pl.fit1;
       if (blank) line = '';
       if (!pl.painted || pl.shown !== fit || pl.tn !== tn || pl.line !== line) {
         const tick = pl.painted && pl.shown === fit && pl.tn === tn, now = performance.now();
@@ -1117,7 +1382,7 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
         }
       }
       mesh.visible = pl.painted;
-      const cy = .1 * s + h * .5 * Math.cos(LEAN), cz = z - h * .5 * Math.sin(-LEAN);
+      const cy = LIFT * s + h * .5 * Math.cos(LEAN), cz = z - h * .5 * Math.sin(-LEAN);
       mesh.position.set(x, cy, cz); mesh.scale.setScalar(Math.max(1e-4, s)); mesh.material.emissiveIntensity = .12 + .3 * hl;
       setR(frames, pl.i, x, cy + .035 * s * Math.sin(LEAN), cz - .035 * s * Math.cos(LEAN), LEAN, 0, 0, (P.w + .1) * s, (P.h + .1) * s, .05 * s);
       const px = P.w * .36 * s; setT(posts, pl.i * 2, x - px, cy * .5, cz - .06, 0, s, cy, s); setT(posts, pl.i * 2 + 1, x + px, cy * .5, cz - .06, 0, s, cy, s);
@@ -1295,7 +1560,8 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
         const snap = first || reduced, pulse = reduced ? 1 : .72 + .28 * Math.sin(time * 5.5);
         tvT.value = time;
         if (world.usage !== usageRef) { usageRef = world.usage; syncBoard(); }
-        platePx = PLATE.session.h * .41 * ctx.size.h / (2 * Math.tan(camera.fov * PI / 360) * camera.position.y / Math.cos(.5));
+        ppu = ctx.size.h / (2 * Math.tan(camera.fov * PI / 360) * camera.position.y / Math.cos(.5)); platePx = PLATE.session.h * .41 * ppu;
+        if (hubTag()) placeHubTags();
         // Junctions: the governor spins with their machines' work; the gauge reads pressure, pinned in the red when a session needs you.
         let activity = 0;
         for (let pi = 0; pi < world.projects.length; pi++) {
@@ -1313,8 +1579,8 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
           const hl = Math.max(p.s.hover, p.s.select), X = g.x, Z = g.z;
           M4.makeScale(JS, JS, JS).setPosition(X, 0, Z); bMat(g.bid, M4); bCol(g.bid, V4.set(1 + .2 * hl, 1 + .2 * hl, 1 + .2 * hl, 0));
           const G = rig.governor, sp = clamp(g.w * 1.4, 0, 1);
-          setT(govs, g.i, X + G.x * JS, G.y * JS, Z + G.z * JS, g.gv, (.85 + .2 * sp) * JS, (.85 - .1 * sp) * JS, (.85 + .2 * sp) * JS);
-          if (!reduced && work > .05 && rnd() < dt * (.4 + .6 * work)) steam(X + G.x * JS, G.y * JS + .5, Z + G.z * JS, .3, .3);
+          setT(govs, g.i, X + G.x * JS, G.y * JS, Z + G.z * JS, g.gv, (1.3 + .3 * sp) * JS, (1.3 - .15 * sp) * JS, (1.3 + .3 * sp) * JS);
+          if (!reduced && work > .05 && rnd() < dt * (.4 + .6 * work)) steam(X + G.x * JS, G.y * JS + .7, Z + G.z * JS, .4, .35);
           const pr = need > .3 ? .86 + .12 * urg : err > .3 ? .99 : .08 + .17 * Math.min(3, work) + .08 * heat + .12 * think;
           g.pr = snap ? pr : ease(g.pr, pr, 3, dt, .002);
           gauge(g.gauge, rig.gauges[0], X, Z, JS, g.pr, tc.copy(DIAL).lerp(DIAL_NEED, need * (.55 + .45 * pulse)).lerp(DIAL_ERR, err * (need > .3 ? 0 : 1)));
@@ -1325,10 +1591,11 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
           const jq = g.q; jq.work = Math.min(1, work); jq.think = Math.min(1, think); jq.compact = 0; jq.need = need; jq.wait = 0; jq.error = err; jq.off = 0; jq.heat = heat;
           jq.idle = Math.max(0, 1 - jq.work - jq.think - need - err);
           glow(g.glow, jq, time, g.i * 1.7, reduced, urg);
-          for (let j = 0; j < rig.tubes.length; j++) { const t = rig.tubes[j]; tube(T_J + 2 * g.i + j, X + t[0] * JS, t[1] * JS, Z + t[2] * JS, .12 * JS, (j ? .5 : .68) * JS, g.glow); }
+          for (let j = 0; j < rig.tubes.length; j++) { const t = rig.tubes[j]; tube(T_J + 2 * g.i + j, X + t[0] * JS, t[1] * JS, Z + t[2] * JS, .15 * JS, .72 * JS, g.glow); }
           const nl = Math.min(6, p.sessions.length);
-          for (let j = 0; j < nl; j++) { const s2 = p.sessions[j], k = L_JB + g.jb + j; setT(lamps, k, X + (j - (nl - 1) / 2) * .14 * JS, .23 * JS, Z + .8 * JS, 0, .038 * JS * s2.s.alive); putC(lamps, k, bulb(s2.s, tc, pulse)); }
-          setT(pools, POOL_P + g.i, X, .02, Z, 0, 4 * JS); putC(pools, POOL_P + g.i, tc.copy(g.glow).multiplyScalar(.012).add(tc2.copy(YOU_GOLD).multiplyScalar(.02)));
+          const B = rig.bulbs;
+          for (let j = 0; j < nl; j++) { const s2 = p.sessions[j], k = L_JB + g.jb + j; setT(lamps, k, X + (j - (nl - 1) / 2) * B.dx * JS, B.y * JS, Z + B.z * JS, 0, B.r * JS * s2.s.alive); putC(lamps, k, bulb(s2.s, tc, pulse)); }
+          setT(pools, POOL_P + g.i, X, .02, Z, 0, 6.5 * JS); putC(pools, POOL_P + g.i, tc.copy(g.glow).multiplyScalar(.012).add(tc2.copy(YOU_GOLD).multiplyScalar(.02)));
           showPlate(g.plate, X, Z + PLATE.project.z, 1, p.name, '', '', hl);
         }
         // Machines: the node is the station; the machine stands MZ behind it, the nameplate in front.
@@ -1389,17 +1656,17 @@ totalEmissiveRadiance += vec3(1., .42, .15) * (spSum(uP[pk], pm.z) * 1.1 + pm.y)
           if (shot && grow > .01) {
             g.tv ||= makeTV();
             if (g.tv.shot !== shot) { g.tv.shot = shot; paintTV(g.tv.g, TV.cw, TV.ch, shot.bitmap, shot.count || 1); g.tv.tex.needsUpdate = true; }
-            const bx = SX + TV.x * grow, bz = SZ + TV.z * grow;
-            setT(tvWood, g.i, bx, 0, bz, 0, grow); setT(tvBrass, g.i, bx, 0, bz, 0, grow); setT(tvWire, g.i, bx, 0, bz, 0, grow);
-            g.tv.mesh.visible = true; g.tv.mesh.position.set(bx, .125 * grow, bz); g.tv.mesh.scale.setScalar(grow);
+            const bx = SX + TV.x * grow, bz = SZ + TV.z * grow, tg = grow * TV.k;
+            setT(tvWood, g.i, bx, 0, bz, 0, tg); setT(tvBrass, g.i, bx, 0, bz, 0, tg); setT(tvWire, g.i, bx, 0, bz, 0, tg);
+            g.tv.mesh.visible = true; g.tv.mesh.position.set(bx, .125 * tg, bz); g.tv.mesh.scale.setScalar(tg);
             g.tv.mesh.material.emissiveIntensity = TV_GLOW * (1 + .15 * hl); g.target?.pos.set(bx, .2, bz);
             const roll = reduced ? 0 : Math.max(q.work, q.think, q.compact, q.need, q.error);
             g.tv.roll.value = snap ? roll : ease(g.tv.roll.value, roll, 2, dt, .005);
             if (g.tv.roll.value > .005) want(30);
-            for (let j = 0; j < TV_TUBES.length; j++) { const t = TV_TUBES[j]; tube(T_TV + 4 * g.i + j, bx + t[0] * grow, CY * grow, bz + CZ * grow, t[1] * grow, t[2] * grow, j % 3 ? tc.copy(g.glow).multiplyScalar(.6) : g.glow); }
-            gauge(g.meters[0], TV_MC[0], bx, bz, grow, cx, METER); gauge(g.meters[1], TV_MC[1], bx, bz, grow, g.h2, METER);
+            for (let j = 0; j < TV_TUBES.length; j++) { const t = TV_TUBES[j]; tube(T_TV + 4 * g.i + j, bx + t[0] * tg, CY * tg, bz + CZ * tg, t[1] * tg, t[2] * tg, j % 3 ? tc.copy(g.glow).multiplyScalar(.6) : g.glow); }
+            gauge(g.meters[0], TV_MC[0], bx, bz, tg, cx, METER); gauge(g.meters[1], TV_MC[1], bx, bz, tg, g.h2, METER);
             tc.copy(AMB).multiplyScalar((.1 + .25 * q.work) * (1 - q.off));
-            for (let j = 0; j < 5; j++) { const k = L_TVB + 5 * g.i + j; setT(lamps, k, bx + (j - 2) * .2 * grow, (CY + .035) * grow, bz + (CZ - .17) * grow, 0, .035 * grow); putC(lamps, k, tc); }
+            for (let j = 0; j < 5; j++) { const k = L_TVB + 5 * g.i + j; setT(lamps, k, bx + (j - 2) * .2 * tg, (CY + .035) * tg, bz + (CZ - .17) * tg, 0, .035 * tg); putC(lamps, k, tc); }
           } else {
             hide(tvWood, g.i); hide(tvBrass, g.i); hide(tvWire, g.i); if (g.tv) g.tv.mesh.visible = false; g.target?.pos.set(0, -50, 0);
             for (let j = 0; j < 4; j++) hideTube(T_TV + 4 * g.i + j);

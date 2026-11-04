@@ -1,10 +1,11 @@
-// Synthetic: a dark circuit board. Sessions are chips with a dot-matrix display beside them (name over what it's doing),
-// projects small switches where their sessions' traces fan out (a port LED per session, toward it), You a reactor core with
-// its own display and an instrument card per account round it (seven-segment readouts over LED bars). Every chip is
-// generated from its id (package, pins, marking, footprint, passives), so a session keeps its chip on every screen. Traces
-// route at right angles with chamfered corners and parts are placed clear of them; every tool call fires a packet up the
-// copper to the core, a session that needs you lights its own line and its project's interrupt line amber and streams
-// interrupts along them, and a finish sends a shockwave through the board.
+// Synthetic: a dark circuit board. Sessions are wide chips with an LCD of their own on the face (name over what it's doing)
+// beside a die window whose pattern is the state; subagents are smaller chips of the same make; projects are square switches
+// with their name silkscreened beside them, their sessions banked in a column off them. You is a reactor core with its own
+// display and an instrument card per account round it (seven-segment readouts over LED bars). Every chip is generated from
+// its id (package, pins, marking, passives), so a session keeps its chip on every screen. Traces route at right angles with
+// chamfered corners in lanes that never cross; every tool call fires a packet up the copper to the core, a session that
+// needs you lights its own line and its project's interrupt line amber and streams interrupts along them, and a finish sends
+// a shockwave through the board.
 // Parts, faces, footprints, packets, vias, glows, rings and lamps are each one instanced draw; all traces are one dynamic mesh.
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -28,13 +29,26 @@ const needs = n => n.status === 'permission' || n.status === 'question';
 const NX = [1, 0, -1, 0], NZ = [0, 1, 0, -1], RY = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
 const SMD = { cap: [.075, .042, .05], res: [.075, .04, .035], tant: [.1, .06, .065], tiny: [.045, .024, .028] };
 const PREFIX = { claude: 'CL', codex: 'CX', opencode: 'OC' };
-// Dot-matrix displays: glass height in board units, and their canvases (two 32 px lines of 24 px mono, 14.4 px a character).
-const DISP_PX = 64, DISP_ADV = 14.4, NAME_EM = .78, YOU_W = 3.6, YOU_H = 1.55, GLASS_Y = .106;
-// One display per kind: glass height and width in board units, characters across (canvas width = view px).
-const glass = (h, chars) => ({ h, w: h * (chars * DISP_ADV + 24) / DISP_PX, view: chars * DISP_ADV + 24 });
-const DISPLAYS = { session: glass(1.8, 15), sub: glass(1.2, 12) };
+// Dot-matrix screens: canvases 64 px high (two 32 px lines of 24 px mono, or three of 20 px), `view` px of them wide. You's
+// own display, its glass height in board units; a switch's silkscreened name, its letter height (smaller for a long name).
+const DISP_PX = 64, NAME_EM = .9, YOU_W = 3.6, YOU_H = 1.55, GLASS_Y = .106;
+// Sessions and subagents come in one size each, landscape: the footprint (half sizes, leads and pads included), the face
+// (half sizes) and the LCD on it (board units, 4:1 so its canvas is 256 × 64). FACE_L lays out a face in face units (its half
+// depth is 1): the die window (half size, centre from the left end), the LCD between x0 from the left end and x1 from the
+// right, h its half depth. FACE_FRAG, drawMark and the LCD meshes all go by it.
+const SES = { foot: [4.2, 1.25], face: [3.96, 1] }, SUB = { foot: [2.12, .64], face: [1.98, .5] };
+const FACE_L = { session: { die: .78, dieX: .9, x0: 1.84, x1: .48, h: .7 }, sub: { die: .62, dieX: .72, x0: 1.5, x1: .42, h: .75 } };
+// What carries a chip's name, by how deep its LCD is on screen (px): the LCD's own dots from the first, an HTML label on the
+// glass from the second, else a label beside it.
+const LCD_AT = { session: [34, 11], sub: [26, 9] };
 // Screenshot modules: an LCD the shape of the 512×320 thumbnails (active area SHOT_W × SHOT_H) on its own board (LCD_W × LCD_D).
-const SHOT_W = 2.8, SHOT_H = 1.75, LCD_W = SHOT_W + .62, LCD_D = SHOT_H + .95, LCD_Z_REL = -LCD_D / 2 + .18 + SHOT_H / 2 + .12;
+const SHOT_W = 3.6, SHOT_H = 2.25, LCD_W = SHOT_W + .62, LCD_D = SHOT_H + .95, LCD_Z_REL = -LCD_D / 2 + .18 + SHOT_H / 2 + .12;
+// The planner (board units): a switch's half size and port ring at their largest; where its sessions' traces turn (the first
+// lane past the switch, then a lane apart, the farthest row nearest); a subagent's indent from its session's inner end; the gaps
+// between rows, after a subagent's row and before a screenshot module.
+const JB = 1.2, JR = JB + .32, LANE0 = JB + .5, LANE = .28, SUB_IN = 1.2, ROW_GAP = .65, SUB_GAP = .42, SHOT_GAP = .55, SHOT_HW = LCD_W / 2 + .12, SHOT_HD = LCD_D / 2 + .12;
+// Chips that have booted once (by id) come up lit when the board is rebuilt.
+const booted = new Set();
 const FONT = '"JetBrains Mono", ui-monospace, monospace', DISPLAY = '"Chakra Petch", "JetBrains Mono", ui-monospace, sans-serif';
 
 // Usage cards, one per account in You's corners: a row per window (and for spend) with a big seven-segment readout over a
@@ -110,8 +124,9 @@ void main() {
     float ctx = vC.x, pDone = vC.y, pTot = vC.z, prov = vC.w, mode = vD.x, urg = vD.y, sub = step(.5, kind);
     vec3 sc = vCol.rgb;
     float on = (1. - off) * powered;
-    vec2 wb = top > .5 ? ext - vec2(.12, .32) : ext - mix(vec2(.38, .5), vec2(.34, .44), sub);
-    vec2 wc = vec2(0., top > .5 ? 0. : mix(.03, .1, sub));
+    // FACE_L: the die window square at the left end, the LCD's bezel right of it, the LEDs in a column at the right end.
+    vec2 wb = vec2(mix(.78, .62, sub)), wc = vec2(-ext.x + mix(.9, .72, sub), 0.);
+    float lx0 = -ext.x + mix(1.84, 1.5, sub), lx1 = ext.x - mix(.48, .42, sub), lh = mix(.7, .75, sub), colX = ext.x - mix(.24, .21, sub);
     vec2 qa = (p - wc) / wb, q = (p - wc) / wb.y;
     float aq = aa / wb.y * 1.4;
     // Error: rows tear sideways in bursts.
@@ -147,29 +162,32 @@ void main() {
     e += sc * err * (.35 + lat * 1.1) * flick * (1. - clamp(mark, 0., 1.) * .92);
     e += vec3(.85, .75, 1.) * flash * 2.6 * (.4 + lat);
     col = mix(col, vec3(.005, .01, .013) + e * on, win);
-    // Near edge: the context LED bar, then an activity LED that flickers with each tool call and the power LED (a slow
-    // standby breath when idle).
-    float rowY = -ext.y + .18;
+    // The LCD's bezel (its glass is a mesh of its own, over the middle).
+    float bez = sdBox(p - vec2((lx0 + lx1) * .5, 0.), vec2((lx1 - lx0) * .5, lh) + .07, .06);
+    col = mix(col, vec3(.006, .009, .011), fill(bez, aa));
+    col += vec3(.05, .07, .08) * fill(abs(bez) - .014, aa) + uCyan * hl * .5 * fill(abs(bez) - .02, aa);
+    // The LED column: provider mark, mode, activity (flickers with each tool call) and power (a slow standby breath when idle).
     vec3 ledC = mix(sc * 1.5, vec3(.25, .75, 1.) * (.35 + .3 * sin(t * 1.3)), idle);
-    col += fill(length(p - vec2(ext.x - .18, rowY)) - mix(.065, .1, sub), aa) * on * ledC;
+    float pY = sub > .5 ? -.42 : -.62;
+    col += fill(length(p - vec2(colX, pY)) - mix(.09, .13, sub), aa) * on * ledC;
     if (sub < .5) {
       float blink = uMotion > .5 ? step(.4, h1(floor(t * 26.) + seed)) : 1.;
-      col += fill(length(p - vec2(ext.x - .4, rowY)) - .05, aa) * on * mix(vec3(.04, .03, .01), vec3(1.7, 1.2, .3), clamp(heat * 1.5, 0., 1.) * blink);
+      col += fill(length(p - vec2(colX, -.2)) - .07, aa) * on * mix(vec3(.04, .03, .01), vec3(1.7, 1.2, .3), clamp(heat * 1.5, 0., 1.) * blink);
+      col += vec3(.16, .2, .23) * glyph((p - vec2(colX, .62)) / .15, prov, aa / .15);
     }
-    float segN = mix(10., 5., sub), x0 = -ext.x + .3, x1 = ext.x - mix(.58, .34, sub);
+    if (mode > .5) { vec2 mq = p - vec2(colX, sub > .5 ? .42 : .22); col += (mode > 1.5 ? uRed : uBlue) * (fill(length(mq) - mix(.08, .1, sub), aa) * 2.2 + .3 * exp(-dot(mq, mq) * 70.)) * on; }
+    // Under the LCD the context LED bar; above it the plan LEDs, done lit, the next one blinking while working.
+    float rowY = -(lh + 1.) * .5, segN = mix(16., 10., sub), x0 = lx0, x1 = lx1;
     float bx = (p.x - x0) / (x1 - x0), sI = floor(bx * segN), sF = fract(bx * segN), sw = max(fwidth(bx * segN), 1e-4);
-    float inBar = step(0., bx) * step(bx, 1.) * fill(abs(p.y - rowY) - mix(.05, .08, sub), aa) * smoothstep(.14, .14 + sw, sF) * (1. - smoothstep(.86 - sw, .86, sF));
+    float inBar = step(0., bx) * step(bx, 1.) * fill(abs(p.y - rowY) - mix(.055, .06, sub), aa) * smoothstep(.12, .12 + sw, sF) * (1. - smoothstep(.88 - sw, .88, sF));
     vec3 segC = sI >= segN * .9 ? uRed : sI >= segN * .8 ? uAmber : uCyan;
     col += inBar * mix(vec3(.014, .02, .024), segC * .85, step((sI + .5) / segN, ctx) * on);
-    // Plan LEDs along the far edge: done lit, the next one blinks while working.
     if (pTot > .5) {
-      float sp = min(.19, (2. * ext.x - .9) / max(pTot - 1., 1.)), ii = clamp(floor(p.x / sp + (pTot - 1.) * .5 + .5), 0., pTot - 1.);
-      vec2 lq = p - vec2((ii - (pTot - 1.) * .5) * sp, ext.y - .18);
+      float lc0 = (lx0 + lx1) * .5, sp = min(.26, (lx1 - lx0 - .3) / max(pTot - 1., 1.)), ii = clamp(floor((p.x - lc0) / sp + (pTot - 1.) * .5 + .5), 0., pTot - 1.);
+      vec2 lq = p - vec2(lc0 + (ii - (pTot - 1.) * .5) * sp, (lh + 1.) * .5);
       vec3 lc = ii < pDone - .5 ? uCyan * 1.7 : abs(ii - pDone) < .5 ? uGreen * (.15 + 1.6 * work * (.5 + .5 * sin(t * 7.))) : vec3(.02, .028, .034);
-      col += fill(length(lq) - min(.055, sp * .32), aa) * mix(vec3(.02), lc, on);
+      col += fill(length(lq) - min(.07, sp * .32), aa) * mix(vec3(.02), lc, on);
     }
-    if (sub < .5) col += vec3(.16, .2, .23) * glyph((p - vec2(-ext.x + .2, ext.y - .2)) / .13, prov, aa / .13);
-    if (mode > .5) { vec2 mq = p - vec2(ext.x - .18, ext.y - .18); col += (mode > 1.5 ? uRed : uBlue) * (fill(length(mq) - .07, aa) * 2.2 + .3 * exp(-dot(mq, mq) * 70.)) * on; }
     col = mix(col, vec3(dot(col, vec3(.33))) * .55, off * .85);
   } else {
     // Ports pack (direction in 64ths of a turn) × 16 + state code + alive × .99.
@@ -312,9 +330,9 @@ void main() {
 
 const RING_VERT = /* glsl */`
 attribute vec2 iR;
-varying vec2 vUv; varying vec3 vC; varying vec2 vR;
+varying vec2 vUv; varying vec3 vC; varying vec2 vR, vS;
 void main() {
-  vUv = uv; vR = iR;
+  vUv = uv; vR = iR; vS = vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[2].xyz));
 #ifdef USE_INSTANCING_COLOR
   vC = instanceColor;
 #else
@@ -322,22 +340,28 @@ void main() {
 #endif
   gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.);
 }`;
-// iR: thickness (negative = dashed), alpha.
+// iR: thickness (negative = dashed), alpha. A ring scaled wider than deep is a stadium round a wide chip (a circle when square);
+// its thickness goes by the shorter half.
 const RING_FRAG = /* glsl */`
-varying vec2 vUv; varying vec3 vC; varying vec2 vR;
+varying vec2 vUv; varying vec3 vC; varying vec2 vR, vS;
 void main() {
-  vec2 p = vUv * 2. - 1.; float r = length(p), aa = max(fwidth(r), 1e-4) * 1.5, th = abs(vR.x);
+  vec2 p = vUv * 2. - 1., s = max(vS, vec2(1e-4)), b = p * s; float k = min(s.x, s.y);
+  vec2 q = abs(b) - s + k; float r = (length(max(q, 0.)) + min(max(q.x, q.y), 0.)) / k;
+  float aa = max(fwidth(r), 1e-4) * 1.5, th = abs(vR.x);
   float band = smoothstep(1. - th - aa, 1. - th, r) * (1. - smoothstep(1. - aa, 1., r));
   if (vR.x < 0.) band *= step(.35, fract(atan(p.y, abs(p.x) < 1e-5 ? 1e-5 : p.x) / 6.2831853 * 28.));
   gl_FragColor = vec4(vC * band * vR.y * 2.2, 1.);
 }`;
 
+// Corner brackets round a rectangle uHalf (board units) across: arms and thickness in board units, so a wide chip's are the
+// same weight as a square one's.
 const BRACKET_FRAG = /* glsl */`
-uniform vec3 uCol; uniform float uA; varying vec2 vUv;
+uniform vec3 uCol; uniform float uA; uniform vec2 uHalf; varying vec2 vUv;
 void main() {
-  vec2 p = abs(vUv * 2. - 1.); float m = max(p.x, p.y), aa = max(fwidth(m), 1e-4) * 1.5;
-  float frame = smoothstep(.94 - aa, .94, m) * (1. - smoothstep(1. - aa, 1., m));
-  gl_FragColor = vec4(uCol * frame * step(.62, min(p.x, p.y)) * uA * 1.15, 1.);
+  vec2 h = max(uHalf, vec2(1e-3)), p = abs(vUv * 2. - 1.) * h, e = h - p; float m = min(e.x, e.y), aa = max(fwidth(m), 1e-4) * 1.2;
+  float th = min(.09, min(h.x, h.y) * .08), arm = min(.8, min(h.x, h.y) * .45);
+  float frame = smoothstep(0., aa, m) * (1. - smoothstep(th - aa, th, m)) * step(h.x - arm, p.x) * step(h.y - arm, p.y);
+  gl_FragColor = vec4(uCol * frame * uA * 1.15, 1.);
 }`;
 
 const REACTOR_FRAG = /* glsl */`
@@ -419,6 +443,13 @@ body[data-look="synthetic"] .lbl.sub b { font: 400 10.5px/1.3 var(--mono); }
 body[data-look="synthetic"] .lbl.sub:not(.need, .error) b { color: #7fb9c6; }
 body[data-look="synthetic"] .lbl.project b { font: 600 12.5px/1.2 var(--display); text-transform: uppercase; letter-spacing: .16em; color: #9ff0ff; }
 body[data-look="synthetic"] .lbl.you b { font: 600 13px/1.2 var(--display); letter-spacing: .12em; text-transform: uppercase; }
+/* On a chip's LCD (too small for its own text): lit segments on the glass, no plate of its own. */
+body[data-look="synthetic"] .lbl.on { padding: 0; background: none; border: 0; box-shadow: none; text-shadow: 0 0 6px rgba(80, 220, 255, .55), 0 0 1px #000; }
+body[data-look="synthetic"] .lbl.on b { font: 500 12px/1.15 var(--mono); color: #d6f8ff; white-space: normal; text-wrap: balance; text-align: center;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+body[data-look="synthetic"] .lbl.on.sub b { font-size: 11px; color: #bfeaf5; }
+body[data-look="synthetic"] .lbl.on:is(.need, .error) b { color: var(--need); }
+body[data-look="synthetic"] .lbl.on.error b { color: var(--err); }
 body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spacing: .06em; }`,
 
   create(ctx) {
@@ -428,12 +459,125 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     ctx.setView({ tilt: .58, fov: 33 });
     ctx.setMotion(kit.RIGID);
     ctx.setSizes({ you: 2.0, project: .9, session: 1.3, sub: .55 });
-    // The engine's layout, opened out: session chips are big and carry displays, so fans and the ring get more room. The
-    // screen's shape is taken once here; placements below are worked out for it.
-    {
-      const aspect = ctx.size.w / ctx.size.h, tall = aspect < .8, sx = (aspect > 1.2 ? Math.min(1.4, aspect / 1.15) : tall ? .82 : 1) * 1.12, sz = (tall ? Math.min(1.7, .95 / aspect) : 1) * 1.12;
-      ctx.setLayout(n => { if (n.kind === 'project') { n.rest.x *= sx; n.rest.z *= sz; } else if (n.kind !== 'you') n.offset.multiplyScalar(1.35); });
+    // ── The layout: each project a switch with its sessions banked in rows off the side away from You (on a tall screen, in a
+    // column running away from You), each session's subagents in the rows under it and its screenshot module beside it (tall:
+    // under it). Projects go out from You along the engine's angle until their bank, their name and their bus to You are clear of
+    // You, its display, the usage cards' corners, the other banks and their buses. Session traces leave a bank in lanes beside
+    // the switch (the farthest row turning nearest it) and come in at taps along its side, so none cross. ──
+    const bank = new Map(), planned = new Map(), frameBoxes = [];
+    const NUDGE = [0, .07, -.07, .14, -.14, .21, -.21, .28, -.28];
+    const overlaps = (a, b, m) => a[0] < b[2] + m && a[2] > b[0] - m && a[1] < b[3] + m && a[3] > b[1] - m;
+    const cardCount = () => Math.min(MAXU, (world.usage || []).filter(a => a.windows.length || a.spend?.limit).length);
+    // What the plan was made for: the sessions with a screenshot and the number of cards. A change is planned and built again.
+    let planKey = '';
+    const shotKey = () => { let k = ''; for (const s of world.sessions) if (ctx.shot(s)) k += `${s.id} `; return `${k}|${cardCount()}`; };
+    // A bus to You, as its two legs: off the switch along one axis, then along You's (lanes and widths included).
+    const busLegs = (x, z, Y) => Math.abs(Y.x - x) >= Math.abs(Y.z - z)
+      ? [[x - .6, Math.min(z, Y.z), x + .6, Math.max(z, Y.z)], [Math.min(x, Y.x), Y.z - 1.8, Math.max(x, Y.x), Y.z + 1.8]]
+      : [[Math.min(x, Y.x), z - .6, Math.max(x, Y.x), z + .6], [Y.x - 1.8, Math.min(z, Y.z), Y.x + 1.8, Math.max(z, Y.z)]];
+    function plan() {
+      const tall = ctx.size.w / ctx.size.h < .8, Y = world.you.rest, xs = tall ? .3 : 1, MARGIN = .9;
+      planned.clear(); bank.clear(); frameBoxes.length = 0; planKey = shotKey();
+      const taken = [[Y.x - 2.4, Y.z - 2.4, Y.x + 2.4, Y.z + 2.4], [Y.x - YOU_W / 2 - .3, Y.z + 2.3, Y.x + YOU_W / 2 + .3, Y.z + 2.6 + YOU_H]];
+      for (let i = 0, nc = cardCount(); i < nc; i++) {
+        const sx = i % 2 ? 1 : -1, sz = (i >> 1) % 2 ? 1 : -1, ax = Y.x + sx * GAP, bx = Y.x + sx * (GAP + CARD_W * 1.4), az = Y.z + sz * GAP, bz = Y.z + sz * (GAP + CARD_DMAX * 1.4);
+        taken.push([Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz)]);
+      }
+      frameBoxes.push(...taken);
+      const legs = [];
+      const clusters = world.projects.map(p => {
+        const x0 = Y.x + (p.rest.x - Y.x) * xs, z0 = p.rest.z, sx = x0 >= Y.x ? 1 : -1, rows = [];
+        let rz = 0, shotEnd = -Infinity;
+        for (const s of p.sessions) {
+          const shot = !!ctx.shot(s), h = 2 * SES.foot[1] + ROW_GAP;
+          if (shot && !tall) rz = Math.max(rz, shotEnd + .3 + SHOT_HD - h / 2);
+          const row = { m: s, z: rz + h / 2, shot, subs: [] };
+          rows.push(row); rz += h;
+          if (shot && !tall) shotEnd = row.z + SHOT_HD;
+          if (shot && tall) { row.shotZ = rz - ROW_GAP / 2 + SHOT_GAP + SHOT_HD - row.z; rz += SHOT_GAP + 2 * SHOT_HD + ROW_GAP / 2; }
+          for (const u of s.subs) { const hu = 2 * SUB.foot[1] + SUB_GAP, r2 = { m: u, z: rz + hu / 2 - (row.subs.length ? 0 : ROW_GAP * .3) }; rows.push(r2); row.subs.push(r2); rz += hu; }
+        }
+        const total = Math.max(rz, shotEnd), top = !tall ? -total / 2 : z0 >= Y.z ? JR + .3 : -JR - .3 - total;
+        for (const r of rows) r.z += top;
+        // Taps along the switch's side in row order; lanes by distance, the farthest row on each side of its tap nearest the switch.
+        const ses = rows.filter(r => r.m.kind === 'session'), N = ses.length, tstep = Math.min(.34, 1.6 / Math.max(1, N - 1));
+        ses.forEach((r, i) => { r.tap = (i - (N - 1) / 2) * tstep; });
+        let nl = 1;
+        for (const side of [-1, 1]) {
+          const list = ses.filter(r => (r.z - r.tap) * side > .01).sort((a, b) => Math.abs(b.z - b.tap) - Math.abs(a.z - a.tap));
+          list.forEach((r, i) => { r.lane = LANE0 + i * LANE; }); nl = Math.max(nl, list.length);
+        }
+        for (const r of ses) r.lane ??= LANE0;
+        const inner = Math.max(JR + 1.1, LANE0 + nl * LANE + .35), at = new Map();
+        // Its box, as wide as its widest row, and as deep as its rows and switch.
+        const box = [-JR, -JR, JR, JR], grow = (x0b, z0b, x1b, z1b) => { box[0] = Math.min(box[0], x0b, x1b); box[2] = Math.max(box[2], x0b, x1b); box[1] = Math.min(box[1], z0b); box[3] = Math.max(box[3], z1b); };
+        for (const r of ses) {
+          const cx = sx * (inner + SES.foot[0]);
+          at.set(r.m, { x: cx, z: r.z, tap: r.tap, lane: sx * r.lane });
+          grow(sx * inner, r.z - SES.foot[1], sx * (inner + 2 * SES.foot[0]), r.z + SES.foot[1]);
+          if (r.shot) {
+            const sh = tall ? { x: sx * (SES.foot[0] - SHOT_HW), z: r.shotZ } : { x: sx * (SES.foot[0] + SHOT_GAP + SHOT_HW), z: 0 };
+            at.get(r.m).shot = sh; grow(cx + sh.x - SHOT_HW, r.z + sh.z - SHOT_HD, cx + sh.x + SHOT_HW, r.z + sh.z + SHOT_HD);
+          }
+          const step = Math.min(.25, .75 / Math.max(1, r.subs.length - 1));
+          r.subs.forEach((u, k) => {
+            at.set(u.m, { x: sx * (inner + SUB_IN + SUB.foot[0]), z: u.z, lane: sx * (inner + 1 - k * step) });
+            grow(sx * (inner + SUB_IN), u.z - SUB.foot[1], sx * (inner + SUB_IN + 2 * SUB.foot[0]), u.z + SUB.foot[1]);
+          });
+        }
+        return { p, x0, z0, sx, at, box, a: Math.atan2(z0 - Y.z, (x0 - Y.x) / xs), d: Math.hypot(x0 - Y.x, z0 - Y.z) };
+      });
+      // A switch's name: beside it toward You when its bus leaves along z, else above or below it, away from You.
+      const titleOf = (c, x, z) => {
+        const name = c.p.name.toUpperCase(), em = name.length > 18 ? NAME_EM * .78 : NAME_EM, w = measure(name, em) + .2, h = em * 1.2 + .1, R = JR + .1;
+        const vFirst = Math.abs(Y.x - x) >= Math.abs(Y.z - z), dz = Math.sign(z - Y.z) || -1;
+        return vFirst ? { x: -c.sx * (R + w / 2), z: 0, w, h, em, name } : { x: c.sx * (JB - w / 2), z: dz * (R + h / 2), w, h, em, name };
+      };
+      clusters.sort((a, b) => a.d - b.d);
+      const fall = [0, 0];
+      for (const c of clusters) {
+        let x = 0, z = 0, title = null, found = false, hasFall = false, cb = null, tb = null;
+        const clearOf = (b, own) => { for (const t of taken) if (t !== own && overlaps(b, t, MARGIN)) return false; for (const l of legs) if (overlaps(b, l, .2)) return false; return true; };
+        for (let step = 0; step < 500 && !found; step++) {
+          for (const da of NUDGE) {
+            const a = c.a + da, rr = 4 + step * .45;
+            x = Y.x + Math.cos(a) * rr * xs; z = Y.z + Math.sin(a) * rr;
+            title = titleOf(c, x, z);
+            cb = [x + c.box[0], z + c.box[1], x + c.box[2], z + c.box[3]];
+            tb = [x + title.x - title.w / 2, z + title.z - title.h / 2, x + title.x + title.w / 2, z + title.z + title.h / 2];
+            if (!clearOf(cb) || !clearOf(tb)) continue;
+            if (!hasFall) { hasFall = true; fall[0] = x; fall[1] = z; }
+            // Its bus to You mustn't cross a bank already placed (the switch's own end starts inside its own box).
+            const mine = busLegs(x, z, Y);
+            let cut = false;
+            for (let i = 2; i < taken.length && !cut; i++) for (const l of mine) if (overlaps(l, taken[i], 0)) { cut = true; break; }
+            if (!cut) { found = true; break; }
+          }
+        }
+        if (!found) {
+          x = fall[0]; z = fall[1]; title = titleOf(c, x, z);
+          cb = [x + c.box[0], z + c.box[1], x + c.box[2], z + c.box[3]];
+          tb = [x + title.x - title.w / 2, z + title.z - title.h / 2, x + title.x + title.w / 2, z + title.z + title.h / 2];
+        }
+        taken.push(cb, tb); frameBoxes.push(cb, tb);
+        legs.push(...busLegs(x, z, Y));
+        planned.set(c.p, [x, z]);
+        const at = new Map();
+        for (const [m, q] of c.at) at.set(m, { ...q, v: new THREE.Vector3(x + q.x, 0, z + q.z) });
+        bank.set(c.p, { sx: c.sx, at, title });
+      }
     }
+    function layout(n) {
+      if (n.kind === 'you') plan();
+      else if (n.kind === 'project') { const q = planned.get(n); if (q) n.rest.set(q[0], 0, q[1]); }
+      else if (n.kind === 'session' || n.kind === 'sub') {
+        const b = bank.get(n.project), q = b?.at.get(n), from = n.kind === 'sub' ? b?.at.get(n.parent)?.v : n.project.rest;
+        if (q && from) n.offset.subVectors(q.v, from).setY(0);
+      }
+    }
+    ctx.setLayout(layout);
+    ctx.onResize(() => ctx.setLayout(layout));
+    ctx.setFrame(add => { for (const b of frameBoxes) { add(b[0], b[1], 0); add(b[2], b[3], 0); } });
     ctx.addPass(kit.vignettePass({ darkness: .32, offset: 1.05, grain: .015 }));
     const C = hex => new THREE.Color(hex);
     const bg = C('#020608');
@@ -505,6 +649,10 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       const parent = n.kind === 'project' ? world.you : n.parent, bus = n.kind === 'project';
       const dx = parent.rest.x - n.rest.x, dz = parent.rest.z - n.rest.z;
       const link = { n, parent, bus, xFirst: (Math.abs(dx) >= Math.abs(dz)) !== bus, lane: 0, cmax: bus ? 3.4 : 1.6, P: v4(THREE), M: v4(THREE), traces: [], mid: null, ax: Infinity, az: 0, bx: 0, bz: 0, cx: 0, cz: 0, cr: 0 };
+      // A session's trace turns in its lane and comes in at its tap on the switch's side; a subagent's turns in its own lane by
+      // its session's inner end and ends under the session (offsets from the parent, as planned).
+      const b = !bus && bank.get(n.project), q = b && b.at.get(n);
+      if (q) link.fan = n.kind === 'session' ? { lane: q.lane, tap: q.tap, end: 0 } : { lane: q.lane - (b.at.get(n.parent)?.x ?? 0), tap: 0, end: 1 };
       if (bus) { const side = (link.xFirst ? 'z' : 'x') + Math.sign(link.xFirst ? dz : dx); if (!sides.has(side)) sides.set(side, []); sides.get(side).push(link); }
       const w = bus ? .06 : n.kind === 'session' ? .09 : .06;
       for (const o of bus ? [-.28, 0, .28] : [0]) { const tr = { link, o, w, base: traces.length * 8, idx: traces.length, q: v4(THREE), cum: new Float32Array(4), len: 0, cw: -1, g: -1, f: -1, via: false }; traces.push(tr); link.traces.push(tr); }
@@ -520,6 +668,11 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const CLEAR = GAP + CARD_W * SCALES[0] + .4;
     const routeOf = (L, P, a, b) => {
       if (L.shot) return route(P, a.x, a.z, a.x + L.shot.hp[0], a.z + L.shot.hp[1], L.xFirst, L.cmax);
+      if (L.fan) {
+        const f = L.fan, lx = b.x + f.lane, tz = b.z + f.tap;
+        P[0].set(a.x, 0, a.z); P[1].set(lx, 0, a.z); P[2].set(lx, 0, tz); P[3].set(f.end ? lx : b.x, 0, tz);
+        return;
+      }
       if (!L.bus) return route(P, a.x, a.z, b.x, b.z, L.xFirst, L.cmax);
       const cmax = Math.max(0, Math.min(L.cmax, (L.xFirst ? Math.abs(b.z - a.z) : Math.abs(b.x - a.x)) - CLEAR));
       route(P, a.x, a.z, b.x + (L.xFirst ? L.lane : 0), b.z + (L.xFirst ? 0 : L.lane), L.xFirst, cmax);
@@ -548,95 +701,45 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       if (grow) d.ext = [Math.min(d.ext[0], x0), Math.min(d.ext[1], z0), Math.max(d.ext[2], x1), Math.max(d.ext[3], z1)];
       return true;
     };
-    // Modules beside a chip (its display, its screenshot LCD): round the chip, nearest ring first and the side away from the
-    // parent first, with a clear run for the bus from the module's header to the chip; clear of traces if it can be.
+    // Each switch's silkscreened name and each screenshot module where the plan put them, kept clear of parts.
+    const keep = (v, x0, z0, x1, z1) => {
+      const d = v.d; blockers.push([v.n.rest.x + x0, v.n.rest.z + z0, v.n.rest.x + x1, v.n.rest.z + z1]);
+      d.ext = [Math.min(d.ext[0], x0), Math.min(d.ext[1], z0), Math.max(d.ext[2], x1), Math.max(d.ext[3], z1)];
+    };
     const P1 = v4(THREE);
-    const mount = (v, hw, hh, gaps, overs = [false, true]) => {
-      const { n, d } = v, [fx, fz] = d.foot, o = n.offset, cx = n.rest.x, cz = n.rest.z;
-      const own = blockers.find(b => b[0] === cx - fx && b[1] === cz - fz);
-      for (const over of overs) for (const g of gaps) {
-        const gx = fx + g, gz = fz + g;
-        const cand = [[gx + hw, 0], [-gx - hw, 0], [0, gz + hh], [0, -gz - hh], [gx + hw, gz * .7], [-gx - hw, gz * .7], [gx + hw, -gz * .7], [-gx - hw, -gz * .7]]
-          .sort((a, b) => (b[0] * o.x + b[1] * o.z) / Math.hypot(...b) - (a[0] * o.x + a[1] * o.z) / Math.hypot(...a));
-        for (const [x, z] of cand) {
-          const xFacing = Math.abs(x) - hw > Math.abs(z) - hh, hp = xFacing ? [x - Math.sign(x) * (hw - .06), z] : [x, z - Math.sign(z) * (hh - .06)];
-          const rect = [cx + x - hw, cz + z - hh, cx + x + hw, cz + z + hh];
-          if (blockers.some(b => rect[0] < b[2] && rect[2] > b[0] && rect[1] < b[3] && rect[3] > b[1]) || (!over && segs.some(sg => segBox(sg, rect)))) continue;
-          route(P1, cx, cz, cx + hp[0], cz + hp[1], !xFacing, .6);
-          const run = [0, 1, 2].map(i => [P1[i].x, P1[i].z, P1[i + 1].x, P1[i + 1].z, .16]);
-          if (run.some(sg => blockers.some(b => b !== own && segBox(sg, b)) || (!over && segs.some(t => segsCross(sg, t, own))))) continue;
-          blockers.push(rect); segs.push(...run);
-          return { x, z, hp, xFirst: !xFacing, header: xFacing ? [Math.sign(-x), 0] : [0, Math.sign(-z)], rect, run };
-        }
-      }
-      return null;
-    };
-    // Text first: every session's and subagent's display (one size per kind), and each switch's silkscreened name.
     for (const v of chips) {
-      const { n, d } = v;
-      if (n.kind === 'project') {
-        const fits = fitter(v), o = n.rest.clone().sub(you.rest), name = n.name.toUpperCase(), hw = measure(name, NAME_EM) / 2 + .1, hh = NAME_EM * .6 + .05, R = d.ring + .1;
-        for (const over of [false, true]) {
-          const at = [[0, R + hh], [0, -R - hh], [R + hw, 0], [-R - hw, 0]].sort((a, b) => (b[0] * o.x + b[1] * o.z) / Math.hypot(...b) - (a[0] * o.x + a[1] * o.z) / Math.hypot(...a))
-            .find(([x, z]) => fits([x - hw, z - hh, x + hw, z + hh], true, over));
-          if (at) { d.text.push([name, at[0], at[1], NAME_EM, 'center', DISPLAY, 'rgb(0,0,255)']); d.named = true; break; }
-        }
-        continue;
+      const { n, d } = v, b = bank.get(n.project);
+      if (n.kind === 'project' && b) {
+        const t = b.title;
+        d.text.push([t.name, t.x, t.z, t.em, 'center', DISPLAY, 'rgb(0,0,255)']); d.named = true;
+        keep(v, t.x - t.w / 2, t.z - t.h / 2, t.x + t.w / 2, t.z + t.h / 2);
       }
-      const spec = DISPLAYS[n.kind], m = mount(v, spec.w / 2 + .26, spec.h / 2 + .26, [.3, 1, 1.8]);
-      if (m) d.disp = { ...m, ...spec, w0: spec.w };
+      const sh = n.kind === 'session' && b?.at.get(n)?.shot;
+      if (!sh) continue;
+      // The pin header on the module's edge facing the chip: its end (wide) or its top (tall).
+      const xFacing = Math.abs(sh.z) < .01, sx = Math.sign(sh.x) || 1, cx = n.rest.x, cz = n.rest.z;
+      const hp = xFacing ? [sh.x - sx * (SHOT_HW - .06), 0] : [sh.x, sh.z - (SHOT_HD - .06)];
+      route(P1, cx, cz, cx + hp[0], cz + hp[1], !xFacing, .6);
+      const run = [0, 1, 2].map(i => [P1[i].x, P1[i].z, P1[i + 1].x, P1[i + 1].z, .16]), rect = [cx + sh.x - SHOT_HW, cz + sh.z - SHOT_HD, cx + sh.x + SHOT_HW, cz + sh.z + SHOT_HD];
+      blockers.push(rect); segs.push(...run);
+      d.shot = { x: sh.x, z: sh.z, hp, xFirst: !xFacing, header: xFacing ? [-sx, 0] : [0, -1], rect, run };
     }
-    // Then room for a screenshot module beside every session: screenshots arrive after the board is built, so the space is
-    // kept even while there are none.
-    for (const v of chips) if (v.n.kind === 'session') v.d.shot = mount(v, LCD_W / 2 + .12, LCD_D / 2 + .12, [.6, 1.4, 2.3, 3.3], [false]);
-    // Then wider glass for a long name, where the board leaves room (sessions first): wide enough for it on one line, else on
-    // two lines of the smaller type, else as wide as there's room for. A display grows away from the bus at its header, or
-    // either way when the bus comes in from above or below; its header stays where the bus meets it.
-    const hit = a => blockers.some(b => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1]);
-    const place = (dp, view) => {
-      const dw = dp.h * (view - dp.view) / DISP_PX, r = dp.rect; // r: the module's blocker, on the board
-      for (const sh of dp.header[0] ? [-dp.header[0] * dw / 2] : [0, dw / 2, -dw / 2]) {
-        const a = sh - dw / 2, b = sh + dw / 2, strips = [];
-        if (a < -1e-6) strips.push([r[0] + a, r[1], r[0], r[3]]);
-        if (b > 1e-6) strips.push([r[2], r[1], r[2] + b, r[3]]);
-        if (strips.some(st => hit(st) || segs.some(sg => !dp.run.includes(sg) && segBox(sg, st)))) continue;
-        r[0] += a; r[2] += b; dp.x += sh; dp.w += dw; dp.view = view;
-        return true;
-      }
-      return false;
-    };
-    for (const v of [...chips].sort((a, b) => order[a.n.kind] - order[b.n.kind])) {
-      const dp = v.d.disp, name = v.n.name.replace(/\s+/g, ' ').trim();
-      if (!dp || !name) continue;
-      const std = dp.view, w24 = mono(name, 24), maxV = v.n.kind === 'session' ? 372 : 300, two = view => {
-        const rows = wrap(name, view - 10, t => mono(t, 20), 2);
-        return mono(rows[rows.length - 1], 20) <= view - 10;
-      };
-      if (w24 <= std - 10) continue;
-      let views = [];
-      if (w24 + 10 <= std + 72) views = [Math.ceil(w24 + 10)];
-      else {
-        let fit = 0;
-        for (let view = std; view <= maxV && !fit; view += 12) if (two(view)) fit = view;
-        if (fit === std) continue;
-        for (let view = fit || maxV; view > std + 1; view -= 24) views.push(view);
-      }
-      views.some(view => place(dp, view));
-    }
-    for (const v of chips) if (v.d.disp) display(v.d, v.d.disp);
     for (const v of [...chips].sort((a, b) => order[a.n.kind] - order[b.n.kind])) {
       const { n, d } = v;
       furnish(d, n.kind, kit.rng(n.seed ^ 0x5bd1e995), fitter(v));
-      // Labels go on the side away from the parent, so they don't sit on it.
-      v.above = n.kind === 'project' ? n.rest.z - you.rest.z > 2 : n.offset.z < -Math.abs(n.offset.x) * .35;
-      // A switch's port LEDs point at its sessions (face y is board -z), in 64 steps.
-      if (n.kind === 'project') v.ports = n.sessions.slice(0, 8).map(x => Math.round(((Math.atan2(-x.offset.z, x.offset.x) / (Math.PI * 2)) % 1 + 1) % 1 * 64) % 64);
+      // A switch's port LEDs fan across the side its sessions' traces come in at, in tap order (face y is board -z), in 64ths.
+      const b = n.kind === 'project' && bank.get(n);
+      if (b) v.ports = n.sessions.slice(0, 8).map(x => {
+        const f = (b.at.get(x)?.tap ?? 0) / .8, a = b.sx > 0 ? -f * Math.PI / 3 : Math.PI + f * Math.PI / 3;
+        return Math.round(((a / TAU) % 1 + 1) % 1 * 64) % 64;
+      });
     }
     // The modules' buses join the traces (left out of linkOf: no packets ride them).
-    for (const v of chips) for (const [m, os, lcd] of [[v.d.disp, [-.07, .07], false], [v.d.shot, [-.1, 0, .1], true]]) {
+    for (const v of chips) {
+      const m = v.d.shot;
       if (!m) continue;
-      const link = { n: v.n, parent: v.n, shot: m, lcd, xFirst: m.xFirst, cmax: .6, P: v4(THREE), M: v4(THREE), traces: [], mid: null, ax: Infinity, az: 0, bx: 0, bz: 0, cx: 0, cz: 0, cr: 0 };
-      for (const o of os) { const tr = { link, o, w: .026, base: traces.length * 8, idx: traces.length, q: v4(THREE), cum: new Float32Array(4), len: 0, cw: -1, g: -1, f: -1, via: false }; traces.push(tr); link.traces.push(tr); }
+      const link = { n: v.n, parent: v.n, shot: m, lcd: true, xFirst: m.xFirst, cmax: .6, P: v4(THREE), M: v4(THREE), traces: [], mid: null, ax: Infinity, az: 0, bx: 0, bz: 0, cx: 0, cz: 0, cr: 0 };
+      for (const o of [-.1, 0, .1]) { const tr = { link, o, w: .026, base: traces.length * 8, idx: traces.length, q: v4(THREE), cum: new Float32Array(4), len: 0, cw: -1, g: -1, f: -1, via: false }; traces.push(tr); link.traces.push(tr); }
       link.mid = link.traces[0]; links.push(link);
     }
     const byNode = new Map(chips.map(v => [v.n, v]));
@@ -646,13 +749,13 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     // Footprints and markings, packed into one atlas.
     const cells = [];
     for (const v of chips) {
-      const d = v.d, E = Math.max(-d.ext[0], -d.ext[1], d.ext[2], d.ext[3]) + .32, f = d.face;
-      v.E = E;
-      cells.push({ v, decal: true, u: 2 * E, w: 0, h: 0 }, { v, decal: false, u: 2 * f.ext[0], ratio: f.ext[1] / f.ext[0], w: 0, h: 0 });
+      const d = v.d, Ex = Math.max(-d.ext[0], d.ext[2]) + .32, Ez = Math.max(-d.ext[1], d.ext[3]) + .32, f = d.face;
+      v.E = [Ex, Ez];
+      cells.push({ v, decal: true, u: 2 * Ex, ratio: Ez / Ex, w: 0, h: 0 }, { v, decal: false, u: 2 * f.ext[0], ratio: f.ext[1] / f.ext[0], w: 0, h: 0 });
     }
     let scale = 1, AW = 2048, AH = 0;
     do {
-      for (const c of cells) { const px = c.decal ? 46 : c.v.n.kind === 'project' ? 88 : 64; c.w = Math.ceil(c.u * px * scale) + 6; c.h = c.decal ? c.w : Math.ceil((c.w - 6) * c.ratio) + 6; }
+      for (const c of cells) { const px = c.decal ? 46 : c.v.n.kind === 'project' ? 88 : 64; c.w = Math.ceil(c.u * px * scale) + 6; c.h = Math.ceil((c.w - 6) * c.ratio) + 6; }
       AH = pack(cells, AW); scale *= .85;
     } while (AH > 2048);
     AH = Math.max(64, Math.ceil(AH / 4) * 4);
@@ -696,7 +799,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     for (const v of chips) {
       const { d, i } = v, f = d.face, o = i * 4;
       v.faceM = new THREE.Matrix4().compose(pv.set(0, f.y + .002, 0), qI, sv.set(f.w, 1, f.d));
-      v.decalM = new THREE.Matrix4().compose(pv.set(0, DECAL_Y, 0), qI, sv.set(v.E, 1, v.E));
+      v.decalM = new THREE.Matrix4().compose(pv.set(0, DECAL_Y, 0), qI, sv.set(v.E[0], 1, v.E[1]));
       fa.iF.array.set(v.markRect, o); fa.iG.array.set([f.ext[0], f.ext[1], f.top, 0], o); dRect.array.set(v.decalRect, o);
     }
     const instanced = [...partMesh, faces, decals];
@@ -704,20 +807,21 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     // Displays: a canvas each (wider for a widened glass), redrawn only when its text changes; the glass follows its chip.
     const glassGeo = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), displays = [];
     const screen = (w, h, view) => {
-      const cw = view > 250 ? 512 : 256, canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = DISP_PX;
+      const cw = view > 260 ? 512 : 256, canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = DISP_PX;
       const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.NoColorSpace; tex.anisotropy = 4;
       const u = { uTex: { value: tex }, uC1: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uView: { value: new THREE.Vector2(view / cw, 0) }, uSize: { value: new THREE.Vector2(cw, DISP_PX) },
         uOn: { value: 1 }, uShear: { value: 0 }, uSplit: { value: .5 } };
       const mesh = new THREE.Mesh(glassGeo, new THREE.ShaderMaterial({ uniforms: u, vertexShader: UV_VERT, fragmentShader: DISP_FRAG, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
       return { g: canvas.getContext('2d'), cw, tex, u, mesh, view, w, h, kName: undefined, kText: undefined, kWait: undefined };
     };
+    // An LCD on each session's and subagent's face, in FACE_L's bezel. It shows the name (and a session's status) while it's
+    // tall enough on screen to read (v.mode 2, from LCD_AT in update); smaller, the HTML label sits on it instead (mode 1).
     for (const v of chips) {
-      const dp = v.d.disp;
-      if (!dp) continue;
-      // The display shows the name, so clicking it opens the session like the chip does.
-      const x = Object.assign(screen(dp.w, dp.h, dp.view), { v, at: new THREE.Vector3(dp.x, GLASS_Y, dp.z), local: new THREE.Matrix4().compose(pv.set(dp.x, GLASS_Y, dp.z), qI, sv.set(dp.w / 2, 1, dp.h / 2)),
-        target: ctx.addTarget({ node: v.n, pos: new THREE.Vector3(), hx: dp.w / 2 + .16, hz: dp.h / 2 + .16, action: 'node' }) });
-      x.u.uC1.value.set('#d6f8ff').multiplyScalar(.85); x.mesh.matrixAutoUpdate = false; x.mesh.frustumCulled = false; root.add(x.mesh); displays.push(x);
+      const l = v.d.lcd;
+      v.mode = 0; v.ppx = v.ppz = 0;
+      if (!l) continue;
+      const y = v.d.face.y + .004, x = Object.assign(screen(l.w, l.d, l.w / l.d * DISP_PX), { v, at: new THREE.Vector3(l.x, y, l.z), local: new THREE.Matrix4().compose(pv.set(l.x, y, l.z), qI, sv.set(l.w / 2, 1, l.d / 2)) });
+      x.u.uC1.value.set('#d6f8ff').multiplyScalar(.85); x.mesh.matrixAutoUpdate = false; x.mesh.frustumCulled = false; root.add(x.mesh); displays.push(x); v.lcdX = x;
     }
     // Text drawn before the display font loaded is drawn again in it.
     let dead = false;
@@ -760,7 +864,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       }
       // Like the chips: a status LED in its session's colour, and corner brackets that lock on when it's hovered or selected.
       m.led = add(boxGeo, new THREE.MeshBasicMaterial({ color: '#000000' }), LCD_W / 2 - .3, .045, nz + .25, .05, .03, .05);
-      m.rim = add(glassGeo, new THREE.ShaderMaterial({ uniforms: { uCol: { value: C(CYAN) }, uA: { value: 0 } }, vertexShader: UV_VERT, fragmentShader: BRACKET_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 0, .14, 0, LCD_W / 2 + .14, 1, LCD_D / 2 + .14);
+      m.rim = add(glassGeo, new THREE.ShaderMaterial({ uniforms: { uCol: { value: C(CYAN) }, uA: { value: 0 }, uHalf: { value: new THREE.Vector2(LCD_W / 2 + .14, LCD_D / 2 + .14) } }, vertexShader: UV_VERT, fragmentShader: BRACKET_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 0, .14, 0, LCD_W / 2 + .14, 1, LCD_D / 2 + .14);
       m.rim.renderOrder = 7;
       group.matrixAutoUpdate = false; root.add(group);
     }
@@ -781,12 +885,21 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     // big size and the rest fits a line; else three lines of the smaller size, the name taking up to two of them (wrapped at
     // spaces and path breaks) and what it's doing the rest. uSplit tints the name's lines apart. What still doesn't fit ends
     // in an ellipsis.
-    const F24 = `400 24px ${FONT}`, F20 = `400 20px ${FONT}`;
-    function paintScreen(x, name, status) {
+    const F28 = `400 28px ${FONT}`, F24 = `400 24px ${FONT}`, F20 = `400 20px ${FONT}`;
+    function paintScreen(x, name, status, sub = false) {
       const g = x.g, W = x.view - 10, width = t => g.measureText(t).width;
       g.fillStyle = '#000'; g.fillRect(0, 0, x.cw, DISP_PX); x.tex.needsUpdate = true;
       if (name === null) return;
       g.fillStyle = '#fff'; g.textBaseline = 'middle';
+      // A subagent's: its name alone, a line of the biggest size or two of the next.
+      if (sub) {
+        x.u.uSplit.value = 0; g.font = F28;
+        if (width(name) <= W) { g.fillText(name, 5, DISP_PX / 2); return; }
+        g.font = F24;
+        const rows = wrap(name, W, width, 2);
+        for (let i = 0; i < rows.length; i++) g.fillText(clip(rows[i], W, width), 5, rows.length === 1 ? DISP_PX / 2 : 17 + i * 30);
+        return;
+      }
       g.font = F24;
       if (width(name) <= W) {
         const big = width(status) <= W;
@@ -968,7 +1081,7 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const ripples = Array.from({ length: 6 }, () => ({ t0: -99, dur: 1, x: 0, z: 0, r: 10, str: 0, w: 1.3, col: new THREE.Color() }));
 
     const bracketGeo = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2);
-    const bracket = col => { const m = new THREE.Mesh(bracketGeo, new THREE.ShaderMaterial({ uniforms: { uCol: { value: C(col) }, uA: { value: 0 } }, vertexShader: UV_VERT, fragmentShader: BRACKET_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); m.renderOrder = 7; m.visible = false; root.add(m); return m; };
+    const bracket = col => { const m = new THREE.Mesh(bracketGeo, new THREE.ShaderMaterial({ uniforms: { uCol: { value: C(col) }, uA: { value: 0 }, uHalf: { value: new THREE.Vector2(1, 1) } }, vertexShader: UV_VERT, fragmentShader: BRACKET_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); m.renderOrder = 7; m.visible = false; root.add(m); return m; };
     const selB = bracket(CYAN), hovB = bracket('#8ff3ff');
 
     // Only what changed goes to the GPU. A span gathers the lowest and highest element written into an attribute this frame
@@ -1006,29 +1119,43 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     const shearAt = (p, w, h) => { la.copy(p).project(camera); lb.copy(p); lb.z -= h / 2; lb.project(camera); lc.copy(p); lc.x += w / 2; lc.project(camera); return Math.abs(lc.x - la.x) > 1e-6 ? (lb.x - la.x) / (lc.x - la.x) : 0; };
     // Measured up the board (z), where flat text is foreshortened.
     const pxPerUnit = n => { la.copy(n.pos).project(camera); lb.copy(n.pos); lb.z -= 1; lb.project(camera); return Math.hypot((lb.x - la.x) * ctx.size.w, (lb.y - la.y) * ctx.size.h) / 2; };
-    let ppu = 20, far = false;
-    // Displays and silkscreen carry every node's text while they're big enough on screen to read; zoomed out further, the
-    // HTML labels take over for every node at once. A node that found no room for a display keeps its label.
+    // Per chip, px per board unit across (x) and up the board (z, foreshortened) where its LCD is.
+    const pxAt = (p, v) => {
+      la.copy(p).project(camera); lb.copy(p); lb.z -= 1; lb.project(camera); lc.copy(p); lc.x += 1; lc.project(camera);
+      v.ppz = Math.hypot((lb.x - la.x) * ctx.size.w, (lb.y - la.y) * ctx.size.h) / 2; v.ppx = Math.hypot((lc.x - la.x) * ctx.size.w, (lc.y - la.y) * ctx.size.h) / 2;
+    };
+    // Project names on the board's silkscreen while they're big enough to read (px, with a step between on and off so it doesn't
+    // flicker); an LCD's text from LCD_AT[kind][0] px tall, the HTML label on it from [1]; each holds on a little below.
+    // As the css sets .lbl.on b, to tell whether a name fits its LCD.
+    const meas = document.createElement('canvas').getContext('2d'), ON_FONT = '500 12px "JetBrains Mono", ui-monospace, monospace', ON_SUB_FONT = '500 11px "JetBrains Mono", ui-monospace, monospace';
+    let ppu = 20, names = true;
     ctx.setLabelRule(n => {
-      if (far) return undefined;
+      if (n.kind === 'you') return false;
       const v = byNode.get(n);
-      return n.kind === 'you' ? false : n.kind === 'project' ? !v?.d.named : !v?.d.disp;
+      if (!v) return undefined;
+      if (n.kind === 'project') return names && v.d.named ? false : undefined;
+      return v.mode === 2 ? false : v.mode === 1 && v.fit ? 'on' : undefined;
     });
-    // Labels sit below a chip, or above it when its parent is below, clear of the chip's parts either way.
-    const lray = new THREE.Raycaster(), lplane = new THREE.Plane(UP, 0), lndc = new THREE.Vector2(), lp = new THREE.Vector3();
-    ctx.setLabelAnchor((n, out) => {
+    // On the LCD for a name on the chip; else below the chip (the board places it round the footprint).
+    ctx.setLabelAnchor((n, out, on) => {
       const v = byNode.get(n);
       if (!v) return out.set(n.pos.x, 0, n.pos.z + 2.5);
-      const e = v.d.ext;
-      if (!v.above) return out.set(n.pos.x, 0, n.pos.z + e[3] + .1);
-      lp.set(n.pos.x, v.top, n.pos.z + e[1]).project(camera);
-      lndc.set(lp.x, lp.y + (n.kind === 'sub' ? 22 : 36) * 2 / ctx.size.h); lray.setFromCamera(lndc, camera);
-      return lray.ray.intersectPlane(lplane, out) || out.set(n.pos.x, 0, n.pos.z + e[1] - 1.5);
+      if (on && v.lcdX) return out.copy(v.lcdX.at).applyMatrix4(v.T);
+      return out.set(n.pos.x, 0, n.pos.z + v.d.ext[3] + .1);
+    });
+    // Footprints, for picking and for keeping labels off chips: the package, a project's ring; tw, th: the LCD a name on it fills
+    // (th across the view's scale, as the board measures it).
+    ctx.setShape(n => {
+      const v = byNode.get(n); if (!v) return null;
+      const f = v.shape || (v.shape = { hx: 0, hz: 0, y: 0, tw: 0, th: 0 }), d = v.d, sc = v.sc || 1;
+      if (d.lcd) { f.hx = d.foot[0] * sc; f.hz = d.foot[1] * sc; f.tw = (d.lcd.w - .3) * sc; f.th = d.lcd.d * sc * (v.ppx ? v.ppz / v.ppx : 1); }
+      else { f.hx = f.hz = (d.ring || d.foot[0]) * sc; f.tw = 2 * f.hx; f.th = 0; }
+      f.y = v.top ?? 0; return f;
     });
 
     // Power-on: chips boot outward from the core.
-    let lt = 0, lastTime = world.time, lastNow = performance.now(), beat = 3;
-    for (const v of chips) v.bootAt = .25 + v.n.rest.length() * .028 + (v.n.seed % 7) * .03;
+    let replanTick = 0, lt = 0, lastTime = world.time, lastNow = performance.now(), beat = 3;
+    for (const v of chips) v.bootAt = booted.has(v.n.id) ? -9 : .25 + v.n.rest.length() * .028 + (v.n.seed % 7) * .03;
 
     function launch(link, col, speed) {
       if (!link) return;
@@ -1104,10 +1231,11 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       // changed, and one more frame follows so the last step is caught.
       const camChanged = !camNear(camera.matrixWorld, camM) || !camNear(camera.projectionMatrix, camP) || camW !== ctx.size.w || camH !== ctx.size.h;
       if (camChanged) { camM.copy(camera.matrixWorld); camP.copy(camera.projectionMatrix); camW = ctx.size.w; camH = ctx.size.h; }
-      // Zoomed out too far to read the displays, the HTML labels come back (one board-wide decision, so it doesn't flicker
-      // chip by chip), and the displays and silkscreen go blank so no name shows twice.
+      // Project names on the silkscreen, or (too small to read) HTML labels: one board-wide decision so they don't flicker.
       ppu = pxPerUnit(you); zoom = kit.clamp(ppu / 16, .25, 8);
-      far = DISPLAYS.session.h * 20 / DISP_PX * ppu < 7; decalU.uNames.value = far ? 0 : 1;
+      names = NAME_EM * ppu >= (names ? 10 : 13); decalU.uNames.value = names ? 1 : 0;
+      // A screenshot appearing or going, or the cards changing, moves the plan: lay out and build again.
+      if (++replanTick % 30 === 0 && shotKey() !== planKey) { ctx.setLayout(layout); ctx.rebuild(); }
       let pace = 0;
 
       // You
@@ -1142,13 +1270,14 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
           for (const p of v.parts) { partMesh[p.t].setMatrixAt(p.i, m4.multiplyMatrices(v.T, p.m)); touch(partSp[p.t], p.i * 16, 16); }
           faces.setMatrixAt(i, m4.multiplyMatrices(v.T, v.faceM)); touch(faceSp, i * 16, 16);
           decals.setMatrixAt(i, m4.multiplyMatrices(v.T, v.decalM)); touch(decalSp, i * 16, 16);
-          const gs = v.S * 3.6 * sc;
-          glows.setMatrixAt(i, m4.compose(pv.set(v.x, .006, v.z), qI, sv.set(gs, 1, gs))); touch(glowMSp, i * 16, 16);
+          const gx = d.lcd ? (d.foot[0] + 1.5) * sc : v.S * 3.6 * sc, gz = d.lcd ? (d.foot[1] + 1.5) * sc : gx;
+          glows.setMatrixAt(i, m4.compose(pv.set(v.x, .006, v.z), qI, sv.set(gx, 1, gz))); touch(glowMSp, i * 16, 16);
           v.moved = true;
         } else v.moved = false;
         v.top = y + d.top * sc;
         if (v.flash > 0) v.flash = Math.max(0, v.flash - step * 1.6);
         const boot = v.boot = reduced ? 1 : kit.clamp((lt - v.bootAt) / .9, -1, 1);
+        if (boot >= 1 && !v.booted) { v.booted = true; booted.add(v.n.id); }
         let pads;
         if (n.kind === 'project') {
           let busy = 0, need = 0, err = 0, lit = false;
@@ -1193,15 +1322,23 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       // Displays: the name over what it's doing, in its state's colour, dimmer when idle; repainted only when the text does
       // change (a wait shown on it by the second, then the minute), blank while the labels have taken over.
       for (const x of displays) {
-        const { v } = x, n = v.n, s = n.s, name = far ? null : n.name, wk = !far && needs(n) ? waitKey(n.waitSec) : -1;
+        const { v } = x, n = v.n, s = n.s, sub = n.kind === 'sub';
+        if (v.moved) { x.mesh.matrix.multiplyMatrices(v.T, x.local); x.mesh.matrixWorldNeedsUpdate = true; }
+        if (v.moved || camChanged) { wp.copy(x.at).applyMatrix4(v.T); pxAt(wp, v); x.u.uShear.value = shearAt(wp, x.w, x.h); }
+        const h = v.ppz * x.h, at = LCD_AT[n.kind];
+        v.mode = h >= at[0] * (v.mode === 2 ? .88 : 1) ? 2 : h >= at[1] * (v.mode ? .85 : 1) ? 1 : 0;
+        // A label on the LCD only when the whole name fits it, on two lines once it's tall enough; else it goes beside the chip, whole.
+        if (v.mode === 1) {
+          if (v.nwFor !== n.name) { meas.font = sub ? ON_SUB_FONT : ON_FONT; v.nw = meas.measureText(n.name).width; v.nwFor = n.name; }
+          v.fit = v.nw <= (x.w - .3) * (v.sc || 1) * v.ppx * (h >= 30 ? 1.8 : 1) * (v.fit ? 1.06 : 1);
+        }
+        const name = v.mode === 2 ? n.name : null, wk = name !== null && !sub && needs(n) ? waitKey(n.waitSec) : -1;
         if (name !== x.kName || (name !== null && (n.text !== x.kText || wk !== x.kWait))) {
           x.kName = name; x.kText = n.text; x.kWait = wk;
-          paintScreen(x, name, name === null ? '' : wk >= 0 ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text);
+          paintScreen(x, name, name === null || sub ? '' : wk >= 0 ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text, sub);
         }
         x.u.uC2.value.copy(v.col).lerp(WHITE, .22);
         x.u.uOn.value = s.alive * (1 - s.off * .5) * (1 - s.idle * .35) * (v.boot > 0 ? 1 : .1);
-        if (v.moved) { x.mesh.matrix.multiplyMatrices(v.T, x.local); x.mesh.matrixWorldNeedsUpdate = true; x.target.pos.copy(x.at).applyMatrix4(v.T); }
-        if (v.moved || camChanged) x.u.uShear.value = shearAt(wp.copy(x.at).applyMatrix4(v.T), x.w, x.h);
       }
       if (youScreen.kName === undefined || youScreen.kText !== queue.length) {
         youScreen.kName = 'YOU'; youScreen.kText = queue.length;
@@ -1339,10 +1476,11 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
         const s = v.n.s;
         if (s.need < .02 || v.n.kind !== 'session') continue;
         tmpC.copy(amber).lerp(red, s.urgency * .7);
-        if (reduced) { putRing(v.x, .03, v.z, v.S * 1.55, -.06, .8 * s.need, tmpC); continue; }
+        const [fx, fz] = v.d.foot;
+        if (reduced) { putRing(v.x, .03, v.z, fx + .5, -.06, .8 * s.need, tmpC, fz + .5); continue; }
         for (let j = 0; j < 2; j++) {
-          const f = (lt * (.7 + s.urgency * 1.1) + j * .5) % 1;
-          putRing(v.x, .03, v.z, v.S * (1.2 + f * 1.4), -.05, (1 - f) * s.need * (.7 + s.urgency * .5), tmpC);
+          const f = (lt * (.7 + s.urgency * 1.1) + j * .5) % 1, g = .25 + f * 2;
+          putRing(v.x, .03, v.z, fx + g, -.05, (1 - f) * s.need * (.7 + s.urgency * .5), tmpC, fz + g);
         }
       }
       ringMesh.count = ri; ringMesh.visible = ri > 0;
@@ -1370,10 +1508,10 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
     // Rings are written in place, and only what changed goes up: a ring is a flat scale and a spot (matrix elements 0, 10, 12–14;
     // the rest stay identity).
     let ri = 0;
-    function putRing(x, y, z, radius, th, a, col) {
+    function putRing(x, y, z, radius, th, a, col, rz = radius) {
       if (ri >= MAXR) return;
       const M = ringMesh.instanceMatrix.array, o = ri * 16, R = ringAttr.array, k = ri * 2, f = Math.fround;
-      if (M[o] !== f(radius) || M[o + 12] !== f(x) || M[o + 13] !== f(y) || M[o + 14] !== f(z)) { M[o] = M[o + 10] = radius; M[o + 12] = x; M[o + 13] = y; M[o + 14] = z; touch(rMSp, o, 15); }
+      if (M[o] !== f(radius) || M[o + 10] !== f(rz) || M[o + 12] !== f(x) || M[o + 13] !== f(y) || M[o + 14] !== f(z)) { M[o] = radius; M[o + 10] = rz; M[o + 12] = x; M[o + 13] = y; M[o + 14] = z; touch(rMSp, o, 15); }
       set3(rCSp, ri * 3, col.r, col.g, col.b);
       if (R[k] !== f(th) || Math.abs(R[k + 1] - a) > 1e-3) { R[k] = th; R[k + 1] = a; touch(rASp, k, 2); }
       ri++;
@@ -1382,10 +1520,12 @@ body[data-look="synthetic"] .nodes-tip b { text-transform: uppercase; letter-spa
       mesh.visible = !!n;
       if (!n) return;
       const k = n.s[key];
-      let x = n.pos.x, y, z = n.pos.z, S;
-      if (n.kind === 'you') { y = youG.position.y + .36; S = 2.25; }
-      else { const v = byNode.get(n); x = v.x; z = v.z; y = v.top + .02; S = v.S * 1.15; }
-      mesh.position.set(x, y, z); mesh.scale.setScalar(S * (1.12 + (1 - k) * (ctx.reduced ? 0 : .5)));
+      // Rectangular round a package: it closes in from a little further out by the same amount on both axes.
+      let x = n.pos.x, y, z = n.pos.z, hx, hz;
+      const g = (1 - k) * (ctx.reduced ? 0 : 1);
+      if (n.kind === 'you') { y = youG.position.y + .36; hx = hz = 2.25 * (1.12 + g * .5); }
+      else { const v = byNode.get(n), sc = v.sc || 1; x = v.x; z = v.z; y = v.top + .02; hx = (v.d.foot[0] + .2) * sc + g * .9; hz = (v.d.foot[1] + .2) * sc + g * .9; }
+      mesh.position.set(x, y, z); mesh.scale.set(hx, 1, hz); mesh.material.uniforms.uHalf.value.set(hx, hz);
       mesh.material.uniforms.uA.value = k * a;
     }
 
@@ -1476,35 +1616,26 @@ function pack(items, W) {
 // height, half z, colour, turn], copper pads, silkscreen, the face its state shows on, the footprint (foot) and extent (ext).
 function design(n, r) {
   const pick = list => list[Math.floor(r() * list.length)], b36 = n.seed.toString(36).toUpperCase().padStart(7, '0');
-  const d = { parts: [], pads: [], silk: [], text: [], face: null, foot: [0, 0], top: 0, ext: [0, 0, 0, 0], name: '', notch: 0 };
+  const d = { parts: [], pads: [], silk: [], text: [], face: null, foot: [0, 0], top: 0, ext: [0, 0, 0, 0], name: '', notch: 0, lcd: null };
   d.part = n.kind === 'project' ? `AIC-${b36.slice(-4)}` : `${PREFIX[n.provider] || 'IC'}${b36.slice(-5)}`;
   d.date = `${21 + n.seed % 6}${String(1 + (n.seed >>> 6) % 52).padStart(2, '0')}`;
   d.ref = n.kind === 'project' ? `U${1 + n.seed % 9}` : n.kind === 'session' ? `U${10 + n.seed % 90}` : `U${100 + n.seed % 900}`;
   (n.kind === 'project' ? junction : n.kind === 'session' ? chip : small)(d, r, pick);
-  if (n.kind === 'session') grow(d, 1.4);
-  else if (n.kind === 'project') { grow(d, 1.3); d.ring *= 1.3; }
   const [fx, fz] = d.foot;
   d.ext = [-fx, -fz, fx, fz];
-  const big = n.kind === 'session' ? .19 : .13;
+  // The LCD on the face (board units, from the chip's centre), as FACE_L lays it out.
+  if (n.kind !== 'project') {
+    const L = FACE_L[n.kind], f = d.face, k = f.d, ex = f.ext[0], l = (-ex + L.x0) * k, rr = (ex - L.x1) * k;
+    d.lcd = { x: (l + rr) / 2, z: 0, w: rr - l, d: 2 * L.h * k };
+  }
+  const big = n.kind === 'session' ? .2 : .13;
   d.text.push([d.ref, -fx, -fz - big * .9, big, 'left']);
-  if (n.kind === 'project' || d.face.top === 1) d.text.push([d.part, -fx, fz + big * .9, big * .75, 'left']);
+  if (n.kind === 'project') d.text.push([d.part, -fx, fz + big * .9, big * .75, 'left']);
   d.ext[1] -= big * 1.5; if (d.text.length > 1) d.ext[3] += big * 1.4;
   if (d.ring) d.ext = d.ext.map((e, i) => i < 2 ? Math.min(e, -d.ring - .12) : Math.max(e, d.ring + .12));
   return d;
 }
 const put = (d, t, x, y, z, hx, h, hz, color, ry = 0, rx = 0) => d.parts.push([t, x, y, z, hx, h, hz, color, ry, rx]);
-// A display module: its own board with a bezel round the glass (the glass is drawn by the look) and a pin header on the
-// edge facing its chip, where its bus comes in (hp; a widened display's header stays its standard width).
-function display(d, { x, z, w, h, w0, hp, header: [hx, hz] }) {
-  put(d, BOX, x, 0, z, w / 2 + .16, .04, h / 2 + .16, 0x0a221c);
-  put(d, BOX, x, .04, z, w / 2 + .07, .06, h / 2 + .07, 0x040507);
-  const n = Math.max(3, Math.floor((hx ? h : w0) * .5 / .16));
-  for (let i = 0; i < n; i++) {
-    const t = (i - (n - 1) / 2) * .16;
-    if (hx) put(d, METAL, x + hx * (w / 2 + .14), 0, hp[1] + t, .05, .055, .035, TIN);
-    else put(d, METAL, hp[0] + t, 0, z + hz * (h / 2 + .14), .035, .055, .05, TIN);
-  }
-}
 let measurer = null;
 const measure = (s, em) => { measurer ||= document.createElement('canvas').getContext('2d'); measurer.font = `600 100px ${DISPLAY}`; return measurer.measureText(s).width / 100 * em; };
 // Display text width in canvas pixels, at px.
@@ -1533,13 +1664,6 @@ function clip(t, W, width) {
   let n = 0, hi = t.length - 1;
   while (n < hi) { const m = (n + hi + 1) >> 1; if (width(`${t.slice(0, m)}…`) <= W) n = m; else hi = m - 1; }
   return `${t.slice(0, n).trimEnd()}…`;
-}
-// Sessions are the focus: their packages come a size up.
-function grow(d, k) {
-  for (const p of d.parts) { p[1] *= k; p[3] *= k; p[4] *= k; p[6] *= k; }
-  for (const p of d.pads) for (let i = 0; i < 4; i++) p[i] *= k;
-  for (const op of d.silk) for (let i = 1; i < op.length; i++) op[i] *= k;
-  d.face.w *= k; d.face.d *= k; d.foot = d.foot.map(f => f * k);
 }
 // The face: its half size, height, top (0 moulded, 1 bare silicon, 2 nickel lid), and its size in face units.
 function face(d, w, dz, y, top) { d.face = { w, d: dz, y, top, ext: w >= dz ? [w / dz, 1] : [1, dz / w] }; d.top = y; }
@@ -1587,77 +1711,61 @@ function electrolytic(d, x, z, r0, h, sleeve) {
   d.silk.push(['rect', x, z, r0 + .06, r0 + .06], ['dot', x - r0 - .1, z - r0 + .02, .025]);
 }
 
-// A session: QFP, QFN, SOP, flip-chip BGA or a lidless SoC with a stiffener ring.
+// A session, landscape and one size (SES): a long TSOP or QFP, a lidded BGA, or a bare-die SoC with its caps on the substrate.
 function chip(d, r, pick) {
-  const pkg = pick(['qfp', 'qfp', 'qfn', 'bga', 'sop', 'soc']);
-  if (pkg === 'qfp' || pkg === 'qfn') {
-    const qfn = pkg === 'qfn', b = (qfn ? .56 : .58) + r() * .1, h = qfn ? .09 : .15, m = (qfn ? 5 : 6) + Math.floor(r() * 5);
-    put(d, EPOXY, 0, 0, 0, b, h, b, pick(MOLD));
-    for (let s = 0; s < 4; s++) qfn ? flatPads(d, s, m, b, b * .16) : leads(d, s, m, b, b, .17, h * .6, b * .14);
-    const f = b + (qfn ? .17 : .2);
-    face(d, b - .03, b - .03, h, 0); d.foot = [b + (qfn ? .12 : .17), b + (qfn ? .12 : .17)]; d.name = `${pkg.toUpperCase()}${4 * m}`;
-    d.silk.push(['corners', 0, 0, f, f], ['dot', -f - .06, -f - .06, .035]);
-  } else if (pkg === 'sop') {
-    const alongX = r() < .5, hl = .74 + r() * .14, hs = .36 + r() * .1, h = .15, m = 5 + Math.floor(r() * 6), bx = alongX ? hl : hs, bz = alongX ? hs : hl;
-    put(d, EPOXY, 0, 0, 0, bx, h, bz, r() < .35 ? pick(CERAMIC) : pick(MOLD));
-    for (const s of alongX ? [1, 3] : [0, 2]) leads(d, s, m, bx, bz, .17, h * .6, hl * .08);
-    face(d, bx - .03, bz - .03, h, 0); d.foot = alongX ? [bx, bz + .17] : [bx + .17, bz]; d.name = `SOP${2 * m}`; d.notch = 1;
-    d.silk.push(['rect', 0, 0, bx + .04, bz + .04], ['dot', alongX ? -bx - .1 : -bx - .26, alongX ? -bz - .26 : -bz - .1, .035]);
+  const pkg = pick(['sop', 'sop', 'qfp', 'qfp', 'bga', 'soc']), [fw, fd] = SES.face, [Fx, Fz] = SES.foot;
+  if (pkg === 'sop' || pkg === 'qfp') {
+    const qfp = pkg === 'qfp', bx = fw + .03, bz = fd + .03, h = .15, m = (qfp ? 16 : 18) + Math.floor(r() * 9);
+    put(d, EPOXY, 0, 0, 0, bx, h, bz, !qfp && r() < .3 ? pick(CERAMIC) : pick(MOLD));
+    for (const s of [1, 3]) leads(d, s, m, bx, bz, Fz - bz - .02, h * .6, .2);
+    const mx = qfp ? 3 + Math.floor(r() * 2) : 0;
+    if (qfp) for (const s of [0, 2]) leads(d, s, mx, bx, bz, Fx - bx - .01, h * .6, .14);
+    face(d, fw, fd, h, 0); d.foot = [Fx, Fz]; d.name = qfp ? `QFP${2 * (m + mx)}` : `TSOP${2 * m}`; d.notch = qfp ? 0 : 1;
+    d.silk.push(qfp ? ['corners', 0, 0, Fx + .05, Fz + .05] : ['rect', 0, 0, bx + .04, bz + .04], ['dot', -Fx - .1, -Fz + .05, .04]);
   } else {
-    const soc = pkg === 'soc', b = (soc ? .8 : .72) + r() * .08, sub = pick(SUBSTRATE), ds = (soc ? .3 : .36) + r() * (soc ? .1 : .14), dz = soc ? ds : ds * (.72 + r() * .28);
-    put(d, EPOXY, 0, 0, 0, b, .05, b, sub);
-    put(d, EPOXY, 0, .05, 0, ds, .04, dz, SILICON);
+    const soc = pkg === 'soc';
+    put(d, EPOXY, 0, 0, 0, Fx, .05, Fz, pick(SUBSTRATE));
     if (soc) {
-      const ring = b - .17, rc = r() < .5 ? NICKEL : COPPER;
-      for (const s of [-1, 1]) { put(d, METAL, 0, .05, s * (ring - .035), ring, .035, .035, rc); put(d, METAL, s * (ring - .035), .05, 0, .035, .035, ring - .07, rc); }
-    }
-    const rim = soc ? b - .085 : (Math.max(ds, dz) + b) / 2 + .02, used = new Set();
-    for (let k = 2 + Math.floor(r() * 5); k > 0; k--) {
-      const s = Math.floor(r() * 4), slot = Math.floor(r() * 5);
-      if (used.has(s * 5 + slot)) continue;
-      used.add(s * 5 + slot);
-      const t = (slot - 2) * (b - .16) / 2;
-      smd(d, 'tiny', NX[s] ? NX[s] * rim : t, .05, NZ[s] ? NZ[s] * rim : t, !NX[s], pick(CAPS));
-    }
-    face(d, ds - .008, dz - .008, .09, 1); d.foot = [b, b]; d.name = `${soc ? 'SOC' : 'BGA'}${64 + 16 * Math.floor(r() * 12)}`;
-    d.silk.push(['rect', 0, 0, b + .06, b + .06], ['chamfer', -b - .06, -b - .06, .18]);
+      put(d, EPOXY, 0, .05, 0, fw, .04, fd, SILICON);
+      for (const s of [-1, 1]) for (let k = 2 + Math.floor(r() * 4), i = 0; i < k; i++) smd(d, 'tiny', (r() * 2 - 1) * (Fx - .3), .05, s * (fd + Fz) / 2, true, pick(CAPS));
+    } else put(d, METAL, 0, .05, 0, fw, .07, fd, pick([NICKEL, NICKEL, GOLDLID]));
+    face(d, fw, fd, soc ? .09 : .12, soc ? 1 : 2); d.foot = [Fx, Fz]; d.name = `${soc ? 'SOC' : 'BGA'}${256 + 64 * Math.floor(r() * 12)}`;
+    d.silk.push(['rect', 0, 0, Fx + .06, Fz + .06], ['chamfer', -Fx - .06, -Fz - .06, .2]);
   }
 }
-// A subagent: SOT-23, SO-8 or a small QFN.
+// A subagent, one size (SUB): an SO or TSSOP, or a bare-die LGA.
 function small(d, r, pick) {
-  const pkg = pick(['sot', 'so', 'qfn']);
-  if (pkg === 'qfn') {
-    const b = .28, h = .07;
-    put(d, EPOXY, 0, 0, 0, b, h, b, pick(MOLD));
-    for (let s = 0; s < 4; s++) flatPads(d, s, 3, b, .05);
-    face(d, b - .02, b - .02, h, 0); d.foot = [b + .1, b + .1]; d.name = 'QFN12';
-    d.silk.push(['corners', 0, 0, b + .15, b + .15]);
+  const pkg = pick(['so', 'so', 'tssop', 'lga']), [fw, fd] = SUB.face, [Fx, Fz] = SUB.foot;
+  if (pkg === 'lga') {
+    put(d, EPOXY, 0, 0, 0, Fx, .04, Fz, pick(SUBSTRATE));
+    put(d, EPOXY, 0, .04, 0, fw, .035, fd, SILICON);
+    face(d, fw, fd, .075, 1); d.foot = [Fx, Fz]; d.name = `LGA${16 + 8 * Math.floor(r() * 6)}`;
+    d.silk.push(['rect', 0, 0, Fx + .04, Fz + .04]);
     return;
   }
-  const sot = pkg === 'sot', alongX = r() < .5, hl = sot ? .26 : .34, hs = sot ? .15 : .2, h = sot ? .1 : .11, bx = alongX ? hl : hs, bz = alongX ? hs : hl, L = sot ? .1 : .11;
+  const so = pkg === 'so', bx = fw + .03, bz = fd + .03, h = so ? .11 : .08, m = so ? 6 + Math.floor(r() * 4) : 10 + Math.floor(r() * 5);
   put(d, EPOXY, 0, 0, 0, bx, h, bz, pick(MOLD));
-  const [s1, s2] = alongX ? [1, 3] : [0, 2];
-  leads(d, s1, sot ? 3 : 4, bx, bz, L, h * .6, .04); leads(d, s2, sot ? 2 : 4, bx, bz, L, h * .6, sot ? .08 : .04);
-  face(d, bx - .02, bz - .02, h, 0); d.foot = alongX ? [bx, bz + L] : [bx + L, bz]; d.name = sot ? 'SOT23' : 'SO8';
+  for (const s of [1, 3]) leads(d, s, m, bx, bz, Fz - bz - .01, h * .6, .12);
+  face(d, fw, fd, h, 0); d.foot = [Fx, Fz]; d.name = `${so ? 'SO' : 'TSSOP'}${2 * m}`; d.notch = 1;
   d.silk.push(['rect', 0, 0, bx + .03, bz + .03]);
 }
-// A project: a small switch where its sessions' traces fan out, as a QFN, a leaded QFP or a lidded BGA, ringed by the vias
+// A project: a switch where its sessions' traces fan out, as a QFN, a leaded QFP or a lidded BGA, ringed by the vias
 // its traces drop through.
 function junction(d, r, pick) {
-  const pkg = pick(['qfn', 'qfp', 'bga']), b = .48 + r() * .08;
+  const pkg = pick(['qfn', 'qfp', 'bga']), b = .95 + r() * .1;
   if (pkg === 'bga') {
     put(d, EPOXY, 0, 0, 0, b + .08, .05, b + .08, pick(SUBSTRATE));
     put(d, METAL, 0, .05, 0, b - .05, .07, b - .05, pick([NICKEL, NICKEL, GOLDLID]));
     face(d, b - .07, b - .07, .12, 2); d.foot = [b + .08, b + .08]; d.name = `BGA${100 + 16 * Math.floor(r() * 8)}`;
     d.silk.push(['rect', 0, 0, b + .14, b + .14], ['chamfer', -b - .14, -b - .14, .14]);
   } else {
-    const qfn = pkg === 'qfn', h = qfn ? .09 : .13, m = 5 + Math.floor(r() * 4), f = b + (qfn ? .12 : .14);
+    const qfn = pkg === 'qfn', h = qfn ? .1 : .14, m = 8 + Math.floor(r() * 5), f = b + (qfn ? .12 : .14);
     put(d, EPOXY, 0, 0, 0, b, h, b, pick(MOLD));
     for (let s = 0; s < 4; s++) qfn ? flatPads(d, s, m, b, b * .16) : leads(d, s, m, b, b, .14, h * .6, b * .14);
     face(d, b - .03, b - .03, h, 0); d.foot = [f, f]; d.name = `${pkg.toUpperCase()}${4 * m}`;
     d.silk.push(['corners', 0, 0, f + .05, f + .05]);
   }
-  const k = 12 + 4 * Math.floor(r() * 3);
+  const k = 20 + 4 * Math.floor(r() * 3);
   d.ring = d.foot[0] + .32;
   for (let i = 0; i < k; i++) { const a = (i + .5) / k * TAU; d.silk.push(['via', Math.cos(a) * d.ring, Math.sin(a) * d.ring, .05]); }
 }
@@ -1723,8 +1831,10 @@ function drawMark(g, k, d, kind) {
   g.beginPath(); g.arc(-ex + .14, ey - .14, kind === 'sub' ? .07 : .04, 0, TAU); g.fill();
   if (d.notch) { g.beginPath(); ex > ey ? g.arc(-ex, 0, .13, 0, TAU) : g.arc(0, ey, .1, 0, TAU); g.fill(); }
   if (kind === 'sub' || d.face.top) return;
-  text(g, k, d.part, 0, -.66, .13, 'center', 700, FONT, ex * 1.3);
-  text(g, k, `${d.name} ${d.date}`, 0, .63, .1, 'center', 400, FONT, ex * 1.3);
+  // In the strips over and under the die window, clear of the LCD.
+  const L = FACE_L.session, x = -ex + L.dieX;
+  text(g, k, d.part, x, -.89, .13, 'center', 700, FONT, L.die * 2);
+  text(g, k, `${d.name} ${d.date}`, x, .89, .1, 'center', 400, FONT, L.die * 2);
 }
 
 // A screenshot module's board top: solder mask, outline, mounting holes, pads for the parts and the header, and its name.
