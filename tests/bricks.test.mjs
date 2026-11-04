@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { geometryFor } from '../client/bricks3d/parts.js';
 import { summary } from '../client/theme-console.js';
+import * as bond from '../client/bricks3d/bond.js';
 import { STUD, BRICK, PLATE, rng, layCourse, layWall, seamsOf, runOf, stackOf, buttonStuds, LENGTHS } from '../client/bricks3d/bond.js';
 
 const read = path => readFileSync(new URL(`../client/${path}`, import.meta.url), 'utf8');
@@ -33,6 +35,93 @@ test('runs, stacks and buttons are built of whole real pieces', () => {
   assert.deepEqual(stackOf(32), { bricks: 1, plates: 1, height: 32 });
   assert.equal(buttonStuds(30), 2); assert.equal(buttonStuds(41), 3); assert.equal(buttonStuds(100), 6); assert.equal(buttonStuds(170), 8);
   for (const width of [1, 19, 20, 21, 39, 61, 99, 101, 150, 160]) assert.ok(LENGTHS.includes(buttonStuds(width)) && buttonStuds(width) * STUD >= width);
+});
+
+test('masonry leaves openings clear using whole bricks and plates', () => {
+  assert.equal(typeof bond.masonry, 'function');
+  const openings = [{ x: 39, y: 7, w: 83, h: 35 }, { x: 100, y: 24, w: 80, h: 24 }];
+  const pieces = bond.masonry(200, 72, openings, 17);
+  assert.ok(pieces.length);
+  for (const p of pieces) {
+    assert.ok(LENGTHS.includes(p.length));
+    assert.ok([BRICK, PLATE].includes(p.height));
+    assert.ok(p.x >= 0 && p.x + p.length * STUD <= 200 && p.y >= 0 && p.y + p.height <= 72);
+    for (const hole of openings) assert.ok(p.x + p.length * STUD <= hole.x || p.x >= hole.x + hole.w || p.y + p.height <= hole.y || p.y >= hole.y + hole.h, JSON.stringify(p));
+  }
+  assert.deepEqual(bond.masonry(200, 72, openings, 17), pieces);
+  assert.deepEqual(bond.masonry(20, 24, [{ x: -10, y: -10, w: 40, h: 50 }]), []);
+});
+
+test('castle slopes have a sloping front profile and fit the brick grid', () => {
+  const geometry = geometryFor('1:24:20:slope');
+  geometry.computeBoundingBox();
+  assert.deepEqual(geometry.boundingBox.min.toArray(), [0, 0, 0]);
+  assert.deepEqual(geometry.boundingBox.max.toArray(), [20, 24, 20]);
+  const vertices = geometry.attributes.position;
+  let upperFront = 0, lowerFront = 0;
+  for (let i = 0; i < vertices.count; i++) {
+    if (vertices.getY(i) > 23) upperFront = Math.max(upperFront, vertices.getZ(i));
+    if (vertices.getY(i) < 1) lowerFront = Math.max(lowerFront, vertices.getZ(i));
+  }
+  assert.ok(upperFront < lowerFront / 2, `${upperFront} vs ${lowerFront}`);
+});
+
+test('nested surfaces build on the immediate parent face', () => {
+  assert.equal(typeof bond.surfaceBase, 'function');
+  assert.equal(bond.surfaceBase(0), 0);
+  assert.equal(bond.surfaceBase(0, 12), 12);
+  assert.equal(bond.surfaceBase(0, 24), 24);
+  assert.equal(bond.surfaceBase(80, 92), 92);
+});
+
+test('progress coins fill whole two-stud cells and clamp out-of-range values', () => {
+  assert.equal(typeof bond.meterCells, 'function');
+  assert.deepEqual(bond.meterCells(120, .5), [true, true, false]);
+  assert.deepEqual(bond.meterCells(80, -1), [false, false]);
+  assert.deepEqual(bond.meterCells(80, 2), [true, true]);
+  assert.deepEqual(bond.meterCells(19, .8), []);
+});
+
+test('side-stud bricks have connectors projecting from the brick face', () => {
+  const g = geometryFor('2:24:20:side'); g.computeBoundingBox();
+  assert.equal(g.boundingBox.min.z, 0);
+  assert.equal(g.boundingBox.max.z, 24);
+  const v = g.attributes.position; const centers = new Set();
+  for (let i = 0; i < v.count; i++) if (v.getZ(i) > 23.9) centers.add(v.getX(i) < 20 ? 0 : 1);
+  assert.deepEqual([...centers].sort(), [0, 1]);
+});
+
+test('round plates face outward and fit their mounting footprint', () => {
+  const g = geometryFor('1:20:4:round'); g.computeBoundingBox();
+  assert.deepEqual(g.boundingBox.min.toArray(), [0, 0, 0]);
+  assert.deepEqual(g.boundingBox.max.toArray(), [20, 20, 4]);
+  let closest = Infinity; const v = g.attributes.position;
+  for (let i = 0; i < v.count; i++) closest = Math.min(closest, Math.hypot(v.getX(i), v.getY(i)));
+  assert.ok(closest > 3, `round plate has a square corner: ${closest}`);
+});
+
+test('button hover keeps most of the brick in its opening', () => {
+  assert.equal(typeof bond.buttonHover, 'number');
+  assert.ok(bond.buttonHover > 0 && bond.buttonHover <= 3);
+});
+
+test('a pressed button has the same depth with or without hover', () => {
+  assert.equal(typeof bond.buttonDepth, 'function');
+  assert.equal(bond.buttonDepth(0, 1), bond.buttonDepth(bond.buttonHover, 1));
+  assert.equal(bond.buttonDepth(0, 1), -20);
+  assert.equal(bond.buttonDepth(0, 0), -10);
+  assert.equal(bond.buttonDepth(bond.buttonHover, 0), -10 + bond.buttonHover);
+});
+
+test('sticker placement is stable and stays close to the brick face', () => {
+  assert.equal(typeof bond.stickerPlacement, 'function');
+  const a = bond.stickerPlacement(123, 160, 32), b = bond.stickerPlacement(456, 160, 32);
+  assert.deepEqual(a, bond.stickerPlacement(123, 160, 32));
+  assert.notDeepEqual(a, b);
+  for (const p of [a, b, bond.stickerPlacement(12, 800, 100)]) {
+    assert.ok(Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1);
+    assert.ok(Math.abs(p.angle) <= .012);
+  }
 });
 
 test('every image the Brick Knights styles name is shipped', () => {

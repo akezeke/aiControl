@@ -115,10 +115,14 @@ function paintSvg(ctx, el, cs, r, onLoad) {
 
 const SKIP = 'input, textarea, select, option, .console-contact';
 // `own` tells whether an element is another sticker's root (painted on its own, so left out here).
-export function paint(root, { scale, own, onLoad }) {
+export function paint(root, { scale, sticker = false, own, onLoad }) {
   const box = root.getBoundingClientRect(), w = Math.max(1, Math.ceil(box.width)), h = Math.max(1, Math.ceil(box.height));
   const canvas = document.createElement('canvas'); canvas.width = Math.ceil(w * scale); canvas.height = Math.ceil(h * scale);
-  const ctx = canvas.getContext('2d'); ctx.scale(scale, scale); ctx.translate(-box.left, -box.top);
+  const ctx = canvas.getContext('2d'); ctx.scale(scale, scale);
+  // A faint clear label gives the printed button a visible sticker edge without
+  // obscuring its underlying colour or the text painted on top.
+  if (sticker && w > 8 && h > 8) { ctx.fillStyle = 'rgba(255, 250, 230, .12)'; ctx.fillRect(3, 3, w - 6, h - 6); ctx.strokeStyle = 'rgba(255, 255, 255, .2)'; ctx.lineWidth = .5; ctx.strokeRect(3, 3, w - 6, h - 6); }
+  ctx.translate(-box.left, -box.top);
   const walk = (el, clip) => {
     const cs = getComputedStyle(el);
     const parent = el.parentElement, shut = parent && parent.tagName === 'DETAILS' && !parent.open && el.tagName !== 'SUMMARY';
@@ -130,7 +134,7 @@ export function paint(root, { scale, own, onLoad }) {
     if (el instanceof SVGElement) { if (el.tagName === 'svg') paintSvg(ctx, el, cs, r, onLoad); ctx.restore(); return; }
     if (el.tagName === 'IMG') {
       const img = image(el.currentSrc || el.src, onLoad);
-      if (img) { const k = Math.max(r.width / img.naturalWidth, r.height / img.naturalHeight), dw = img.naturalWidth * k, dh = img.naturalHeight * k; ctx.save(); ctx.beginPath(); ctx.rect(r.left, r.top, r.width, r.height); ctx.clip(); ctx.drawImage(img, r.left + (r.width - dw) / 2, r.top + (r.height - dh) / 2, dw, dh); ctx.restore(); }
+      if (img) { const k = (cs.objectFit === 'contain' ? Math.min : Math.max)(r.width / img.naturalWidth, r.height / img.naturalHeight), dw = img.naturalWidth * k, dh = img.naturalHeight * k; ctx.save(); ctx.beginPath(); ctx.rect(r.left, r.top, r.width, r.height); ctx.clip(); ctx.drawImage(img, r.left + (r.width - dw) / 2, r.top + (r.height - dh) / 2, dw, dh); ctx.restore(); }
       ctx.restore(); return;
     }
     let inner = clip;

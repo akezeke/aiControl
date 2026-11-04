@@ -113,9 +113,9 @@ export class BrickLayer {
     return { pool, index: pool.add(this.matrix, colour(hex)), x, y, front, key };
   }
   // A picture of an element's content (see paint.js) as a plane on a face: DOM rect (x, y, w, h) at depth z, in front of the bricks there.
-  sticker(group, texture, x, y, w, h, z) {
+  sticker(group, texture, x, y, w, h, z, placement = { x: 0, y: 0, angle: 0 }) {
     const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, toneMapped: false });
-    const mesh = new THREE.Mesh(STICKER, material); mesh.scale.set(w, h, 1); mesh.position.set(x + w / 2, -(y + h / 2), z); mesh.renderOrder = 2; mesh.matrixAutoUpdate = true;
+    const mesh = new THREE.Mesh(STICKER, material); mesh.scale.set(w, h, 1); mesh.position.set(x + w / 2 + placement.x, -(y + h / 2 + placement.y), z); mesh.rotation.z = placement.angle; mesh.renderOrder = 2; mesh.matrixAutoUpdate = true;
     this.group(group).add(mesh); this.stickers.push(mesh);
     return { mesh, base: mesh.position.clone() };
   }
