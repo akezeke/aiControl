@@ -78,11 +78,11 @@ export function trustMenu(screen = '') {
 }
 // A captured screen's rows without what's drawn dim (SGR 2), which is how Claude draws its placeholder ('Try "…"').
 // Attributes run on from row to row; the colour codes' arguments (38;5;n, 38;2;r;g;b) are skipped, not read as codes.
-function undimmedRows(screen) {
+function undimmedRows(screen, dimOnly = false) {
   let dim = false;
   return screen.split('\n').map(row => row.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').split(/(\x1b\[[\d;:?]*[ -/]*[@-~])/).map(part => {
     const sgr = /^\x1b\[([\d;:]*)m$/.exec(part);
-    if (!sgr) return part.startsWith('\x1b') || dim ? '' : part;
+    if (!sgr) return part.startsWith('\x1b') || dim !== dimOnly ? '' : part;
     const codes = sgr[1].split(';');
     for (let i = 0; i < codes.length; i++) {
       const code = Number(codes[i] || 0);
@@ -211,6 +211,19 @@ export class ClaudeMessaging {
     const start = rows.findLastIndex((row, i) => rule(rows[i - 1]) && /^\s*[❯>]/.test(row) && rows.some((later, j) => j > i && rule(later))), end = rows.findIndex((row, i) => i > start && rule(row));
     if (start < 0 || end < 0) return null;
     return rows.slice(start, end).join('\n').replace(/^\s*[❯>]/, '').replaceAll('\u00a0', ' ').trim();
+  }
+  // Suggestions exist only in Claude's interactive screen, as dim text in an otherwise empty prompt.
+  async suggestion(record) {
+    if (!['idle', 'shell'].includes(record.status) || record.parkedJobId || record.waitingFor || !await this.alive(record.pid, record.procStart)) return '';
+    const pane = await this.verifiedPane(record);
+    if (!pane) return '';
+    const screen = await this.tmux(['capture-pane', '-p', '-e', '-J', '-t', pane]).catch(() => '');
+    const rows = undimmedRows(screen), dim = undimmedRows(screen, true), rule = row => /^\s*─/.test(row ?? '');
+    const start = rows.findLastIndex((row, i) => rule(rows[i - 1]) && /^\s*[❯>]/.test(row) && rows.some((later, j) => j > i && rule(later)));
+    const end = rows.findIndex((row, i) => i > start && rule(row));
+    if (start < 0 || end < 0 || rows.slice(start, end).join('').replace(/^\s*[❯>]/, '').replaceAll('\u00a0', ' ').trim()) return '';
+    const text = dim.slice(start, end).join('\n').replaceAll('\u00a0', ' ').trim();
+    return !text || /^Try ["“]/.test(text) || text.length > 12000 ? '' : text;
   }
   // Types a command only into an empty prompt. `recheck` runs once it shows there, just before Enter; if it throws, the
   // command is wiped again.

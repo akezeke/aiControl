@@ -49,6 +49,12 @@ export class ComposerInput {
     input.addEventListener('compositionend', this.onCompositionEnd);
   }
   cancel() { if (this.timer != null) this.clearTimer(this.timer); this.timer = null; }
+  acceptSuggestion(text) {
+    if (!text || this.input.value || this.composing) return false;
+    this.input.value = text;
+    this.onInput();
+    return true;
+  }
   flush() {
     this.cancel();
     if (this.dirty) { this.draft.text = this.input.value; this.dirty = false; }

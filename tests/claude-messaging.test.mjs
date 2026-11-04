@@ -293,6 +293,22 @@ test('the prompt reads empty under Claude’s dim placeholder, and only a prompt
   assert.equal(await read(['user@host:~$ ']), null);
 });
 
+test('only a verified idle Claude pane exposes its dim prompt suggestion', async () => {
+  const screen = text => `────\n❯\u00a0\x1b[2m${text}\x1b[0m\n────`;
+  let capture = screen('Run the tests and fix failures');
+  const { adapter } = tmuxFixture({ tmux: async args => args[0] === 'display-message' ? '100' : args[0] === 'capture-pane' ? capture : '' });
+  assert.equal(await adapter.suggestion(paneRecord), 'Run the tests and fix failures');
+  capture = screen('Try "write a test"');
+  assert.equal(await adapter.suggestion(paneRecord), '');
+  capture = '────\n❯ typed \x1b[2mcompletion\x1b[0m\n────';
+  assert.equal(await adapter.suggestion(paneRecord), '');
+  capture = screen('Run the tests');
+  assert.equal(await adapter.suggestion({ ...paneRecord, status: 'busy' }), '');
+  assert.equal(await adapter.suggestion({ ...paneRecord, parkedJobId: 'job' }), '');
+  adapter.parent = async () => 1;
+  assert.equal(await adapter.suggestion(paneRecord), '');
+});
+
 test('only commands Claude’s Bash tool started count as running, named by what they run', async () => {
   const processes = async () => [
     { pid: 123, ppid: 1, args: 'claude' },

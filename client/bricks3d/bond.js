@@ -66,3 +66,45 @@ export function buttonStuds(width) {
 
 export const snap = (value, unit = STUD) => Math.round(value / unit) * unit;
 export const snapUp = (value, unit = STUD) => Math.ceil((value - 1e-6) / unit) * unit;
+
+// Fill a rectangular surface without crossing its openings. Partly covered courses
+// become plate courses, and openings round outward to the stud/plate grid.
+export function masonry(width, height, openings = [], seed = 1) {
+  const cols = Math.floor(width / STUD), rows = Math.floor(height / PLATE), random = rng(seed), pieces = [];
+  const blocked = (c, r) => openings.some(h => c * STUD < h.x + h.w && (c + 1) * STUD > h.x && r * PLATE < h.y + h.h && (r + 1) * PLATE > h.y);
+  let row = 0, below = new Set();
+  while (row < rows) {
+    const whole = row + 3 <= rows && Array.from({ length: cols }, (_, c) => blocked(c, row) === blocked(c, row + 1) && blocked(c, row) === blocked(c, row + 2)).every(Boolean);
+    const count = whole ? 3 : 1, seams = new Set(); let col = 0;
+    while (col < cols) {
+      if (blocked(col, row)) { col++; continue; }
+      const start = col; while (col < cols && !blocked(col, row)) col++;
+      const avoid = new Set([...below].map(n => n - start)); let at = start;
+      for (const length of layCourse(col - start, random, avoid)) {
+        pieces.push({ x: at * STUD, y: row * PLATE, length, height: count * PLATE });
+        at += length; if (at < col) seams.add(at);
+      }
+    }
+    below = seams; row += count;
+  }
+  return pieces;
+}
+
+// A small movement keeps the rear of a button inside its opening on hover.
+export const buttonHover = 3;
+// At full pressure the brick is flush with the back regardless of hover.
+export const buttonDepth = (hover, pressure) => (-10 + hover) * (1 - pressure) - 20 * pressure;
+// Stable, restrained misalignment, bounded even on wide labels.
+export function stickerPlacement(seed, width, height) {
+  const random = rng(seed), limit = Math.min(.012, 2 / Math.max(width, height, 1));
+  return { x: (random() - .5) * 1.4, y: (random() - .5) * 1.4, angle: (random() * 2 - 1) * limit };
+}
+
+// Meters use two-stud cells, rounded to the nearest visible coin.
+export function meterCells(width, fill) {
+  const count = Math.max(0, Math.floor(width / (2 * STUD))), used = Math.round(count * Math.max(0, Math.min(1, fill)));
+  return Array.from({ length: count }, (_, i) => i < used);
+}
+
+// Children are mounted on their immediate tray's face, even through several levels.
+export const surfaceBase = (lift, parentFace) => parentFace ?? lift;

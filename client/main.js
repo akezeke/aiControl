@@ -20,6 +20,7 @@ import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
+import { populateOnOpen } from './lazy-details.js';
 import { placeShots } from './history-shots.js';
 import { ImagePanZoom } from './image-pan-zoom.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
@@ -802,6 +803,7 @@ function renderComposer(session) {
     const attach = button('', 'quiet-button composer-attach', () => files.click(), 'image'); attach.title = 'Attach images'; attach.setAttribute('aria-label', 'Attach images');
     const files = el('input'); files.type = 'file'; files.accept = 'image/*'; files.multiple = true; files.hidden = true;
     const previews = el('div', 'composer-images');
+    const suggestion = el('button', 'composer-suggestion'); suggestion.type = 'button';
     row.append(input, attach, submit);
     // Pasted, picked or dropped; large images are shrunk first, and each one shows above the input until sent.
     const add = async list => {
@@ -819,7 +821,16 @@ function renderComposer(session) {
     form.addEventListener('drop', event => { if (imageFiles(event.dataTransfer?.files).length) { event.preventDefault(); add(event.dataTransfer.files); } });
     const feedback = el('p', 'composer-feedback'); feedback.setAttribute('role', 'status');
     const draftInput = region.draftInput = new ComposerInput(input, draft, () => update());
-    input.onkeydown = event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } };
+    const acceptSuggestion = () => {
+      const text = region.currentSession.suggestion;
+      if (suggestion.hidden || draft.busy || !draftInput.acceptSuggestion(text)) return false;
+      draft.acceptedSuggestion = text; update(); input.focus(); return true;
+    };
+    suggestion.onclick = acceptSuggestion;
+    input.onkeydown = event => {
+      if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && acceptSuggestion()) event.preventDefault();
+      else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); form.requestSubmit(); }
+    };
     form.onsubmit = async event => {
       event.preventDefault();
       if (draftInput.composing) return;
@@ -844,12 +855,17 @@ function renderComposer(session) {
       } catch (error) { draft.error = error.message; }
       finally { draft.busy = false; update(); if (state.selected === session.id) document.querySelector('#message-composer')?.updateComposer?.(); }
     };
-    form.append(previews, row, files, feedback); region.append(queue, form);
+    form.append(previews, suggestion, row, files, feedback); region.append(queue, form);
     function update() {
       const current = region.currentSession;
       const unavailable = messagingUnavailableReason(current, state.snapshot);
       const available = current.messaging?.send && !unavailable;
       draftInput.syncReset();
+      if (current.suggestion && current.suggestion !== draft.acceptedSuggestion) draft.acceptedSuggestion = '';
+      const suggested = available && !draft.busy && !draftInput.hasText && !draft.images.length && current.suggestion && current.suggestion !== draft.acceptedSuggestion ? current.suggestion : '';
+      setProperty(suggestion, 'hidden', !suggested);
+      setProperty(suggestion, 'textContent', suggested || '');
+      suggestion.title = 'Use suggestion · Tab';
       region.messagingSeen ||= !!current.messaging?.send;
       const visible = region.messagingSeen || draftInput.hasText;
       setProperty(row, 'hidden', !visible);
@@ -1227,7 +1243,8 @@ function toolRun(run, open) {
   const details = el('details', 'tool-run'); details.open = open;
   const failed = run.filter(message => message.failed).length;
   const summary = el('summary'); summary.append(el('strong', '', `${run.length} tool calls`)); if (failed) summary.append(el('span', 'tool-run-failed', `${failed} failed`));
-  summary.append(el('code', 'tool-call', run.at(-1).text)); details.append(summary, ...run.map(toolLine));
+  summary.append(el('code', 'tool-call', run.at(-1).text)); details.append(summary);
+  populateOnOpen(details, () => run.map(toolLine));
   return details;
 }
 function messageNode(message, session, previous) {

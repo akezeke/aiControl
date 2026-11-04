@@ -16,8 +16,27 @@ const cache = new Map();
 export function geometryFor(key) {
   if (cache.has(key)) return cache.get(key);
   const [w, h, d, mode] = key.split(':'); const W = w * STUD, H = +h, D = +d;
-  const body = new RoundedBoxGeometry(W, H, D, 2, Math.min(1.4, H / 4, D / 4)); body.translate(W / 2, H / 2, D / 2);
+  let body;
+  if (mode === 'wedge-left' || mode === 'wedge-right') {
+    // Two-stud-wide diagonal timber brace, mirrored for the opposite corner.
+    const profile = new THREE.Shape();
+    if (mode === 'wedge-left') { profile.moveTo(0, 0); profile.lineTo(0, H); profile.lineTo(W, H); }
+    else { profile.moveTo(W, 0); profile.lineTo(0, H); profile.lineTo(W, H); }
+    profile.closePath(); body = new THREE.ExtrudeGeometry(profile, { depth: D, bevelEnabled: false });
+  } else if (mode === 'slope') {
+    // A 1 x n sloped brick, extruded across its width; the top recedes to the back.
+    const profile = new THREE.Shape(); profile.moveTo(0, 0); profile.lineTo(D, 0); profile.lineTo(D, H); profile.closePath();
+    body = new THREE.ExtrudeGeometry(profile, { depth: W, bevelEnabled: false }); body.rotateY(Math.PI / 2); body.translate(0, 0, D);
+  } else if (mode === 'round') {
+    body = new THREE.CylinderGeometry(Math.min(W, H) / 2, Math.min(W, H) / 2, D, 24); body.rotateX(Math.PI / 2); body.translate(W / 2, H / 2, D / 2);
+  } else { body = new RoundedBoxGeometry(W, H, D, 2, Math.min(1.4, H / 4, D / 4)); body.translate(W / 2, H / 2, D / 2); }
   const parts = [body];
+  if (mode === 'side') {
+    for (let i = 0; i < w; i++) {
+      const stud = new THREE.CylinderGeometry(STUD_R, STUD_R, 4, 24);
+      stud.rotateX(Math.PI / 2); stud.translate((i + .5) * STUD, H / 2, D + 2); parts.push(stud);
+    }
+  }
   if (mode === 's') {
     const lathe = [[0, 0], [STUD_R, 0], [STUD_R, STUD_H - 1], [STUD_R - 1, STUD_H], [0, STUD_H]].map(([x, y]) => new THREE.Vector2(x, y));
     const rows = Math.max(1, Math.round(D / STUD));
