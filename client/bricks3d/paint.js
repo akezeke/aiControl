@@ -16,6 +16,9 @@ function image(url, onLoad) {
   return entry.ready ? entry.img : null;
 }
 
+import { stickerPlacement } from './bond.js';
+import { labelRects, labelColour } from './stickers.js';
+
 const px = value => parseFloat(value) || 0;
 const clear = color => !color || color === 'transparent' || /^rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)$/.test(color);
 
@@ -72,8 +75,29 @@ function runsOf(node) {
 }
 function rectOf(node, a, b) { range.setStart(node, a); range.setEnd(node, b); return range.getBoundingClientRect(); }
 
-function paintText(ctx, node, el, cs, clip, scale) {
+// Apply each label with a tiny stable misalignment. Its rectangle is kept inside
+// the same clipping bounds as its text; dark and light printing retain contrast.
+function label(ctx, rects, colour, origin, clip, darkPaper) {
+  const visible = labelRects(rects, clip); if (!visible.length) return false;
+  const left = Math.min(...visible.map(r => r.left)), top = Math.min(...visible.map(r => r.top));
+  const right = Math.max(...visible.map(r => r.right)), bottom = Math.max(...visible.map(r => r.bottom));
+  const p = stickerPlacement(Math.round((left - origin.left) * 11 + (top - origin.top) * 17 + (right - left)), right - left, bottom - top);
+  const cx = (left + right) / 2, cy = (top + bottom) / 2;
+  ctx.translate(cx + p.x, cy + p.y); ctx.rotate(p.angle); ctx.translate(-cx, -cy);
+  const dark = labelColour(colour) === 'dark';
+  for (const r of visible) {
+    const w = r.right - r.left, h = r.bottom - r.top;
+    ctx.fillStyle = 'rgba(20, 15, 11, .20)'; ctx.fillRect(r.left + .8, r.top + 1, w, h);
+    ctx.fillStyle = dark ? (darkPaper || '#263952') : '#f0e5c8'; ctx.fillRect(r.left, r.top, w, h);
+    ctx.strokeStyle = dark ? '#7a7b6b' : '#b9aa87'; ctx.lineWidth = .5; ctx.strokeRect(r.left, r.top, w, h);
+  }
+  return true;
+}
+
+function paintText(ctx, node, el, cs, clip, scale, origin) {
   if (!node.data.trim()) return;
+  range.selectNodeContents(node); const rectangles = [...range.getClientRects()].filter(r => r.width && r.height);
+  ctx.save(); label(ctx, rectangles, cs.color, origin, clip, el.closest('.badge.amber, .badge.red') ? '#702620' : undefined);
   const font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; ctx.font = font; ctx.fillStyle = cs.color; ctx.textBaseline = 'alphabetic';
   if ('letterSpacing' in ctx) ctx.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
   const ascent = ctx.measureText('Mg').fontBoundingBoxAscent, shadow = shadowOf(cs.textShadow), upper = cs.textTransform;
@@ -97,6 +121,7 @@ function paintText(ctx, node, el, cs, clip, scale) {
   }
   ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = ctx.shadowOffsetY = 0;
   if (cs.textDecorationLine.includes('underline') && !clear(cs.textDecorationColor)) { const r = el.getBoundingClientRect(); ctx.fillStyle = cs.textDecorationColor; ctx.fillRect(r.left, r.bottom - 2, r.width, 1); }
+  ctx.restore();
 }
 
 function paintSvg(ctx, el, cs, r, onLoad) {
@@ -131,7 +156,7 @@ export function paint(root, { scale, sticker = false, own, onLoad }) {
     const r = el.getBoundingClientRect(); if (!r.width && !r.height && el.tagName !== 'svg') return;
     ctx.save(); ctx.globalAlpha *= opacity;
     paintBox(ctx, el, cs, r, scale, onLoad);
-    if (el instanceof SVGElement) { if (el.tagName === 'svg') paintSvg(ctx, el, cs, r, onLoad); ctx.restore(); return; }
+    if (el instanceof SVGElement) { if (el.tagName === 'svg') { if (el.classList.contains('icon')) label(ctx, [r], cs.color, box, clip); paintSvg(ctx, el, cs, r, onLoad); } ctx.restore(); return; }
     if (el.tagName === 'IMG') {
       const img = image(el.currentSrc || el.src, onLoad);
       if (img) { const k = (cs.objectFit === 'contain' ? Math.min : Math.max)(r.width / img.naturalWidth, r.height / img.naturalHeight), dw = img.naturalWidth * k, dh = img.naturalHeight * k; ctx.save(); ctx.beginPath(); ctx.rect(r.left, r.top, r.width, r.height); ctx.clip(); ctx.drawImage(img, r.left + (r.width - dw) / 2, r.top + (r.height - dh) / 2, dw, dh); ctx.restore(); }
@@ -144,7 +169,7 @@ export function paint(root, { scale, sticker = false, own, onLoad }) {
       ctx.beginPath(); ctx.rect(inner.left, inner.top, inner.right - inner.left, inner.bottom - inner.top); ctx.clip();
     }
     for (const node of el.childNodes) {
-      if (node.nodeType === 3) paintText(ctx, node, el, cs, inner, scale);
+      if (node.nodeType === 3) paintText(ctx, node, el, cs, inner, scale, box);
       else if (node.nodeType === 1) walk(node, inner);
     }
     ctx.restore();

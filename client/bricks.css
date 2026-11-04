@@ -61,7 +61,7 @@
   .badge.amber { background: #b38a30; color: #14161a; }
   .badge.red { background: #d9a69c; color: #5c100c; }
   .session-card.needs-input .badge.amber { background: #7d1d1a; color: #f6efe0; }
-  &[data-bricks3d] :is(.badge, .lost-state) { background: transparent; border-color: transparent; box-shadow: none; }
+  &[data-bricks3d] :is(.badge, .lost-state) { background: transparent !important; border-color: transparent; box-shadow: none; }
   .chip, .project-tag, .subagent-tag { border-radius: 0; font-weight: 700; }
   .project-tag { background: #1c3d70; color: #f2ecdc; }
   .subagent-tag { border: 0; background: #cfc4a3; color: var(--iron); }
@@ -78,11 +78,12 @@
   .nav-count { min-width: 24px; padding: 0 7px; border-radius: 0; background: var(--iron); color: #e2c273; font: 700 12px/20px var(--display); }
   .project-dot { color: #7d1d1a; }
   .no-projects { color: #e6dfcc; text-shadow: 0 1px 2px #000; }
-  .sidebar > .top-actions { border-top: 0; margin-top: auto; padding-top: 20px; gap: 0; justify-content: space-between; }
+  .sidebar > .top-actions { display: grid; grid-template-columns: repeat(4, 40px); border-top: 0; margin-top: auto; padding-top: 20px; gap: 16px 0; justify-content: space-between; justify-items: center; }
   .live-label { box-sizing: border-box; min-width: 20px; min-height: 32px; padding: 8px 5px 0; color: #f2ecdc; text-shadow: 0 1px 2px #000; }
   &[data-stickers-page] .live-label::before { display: none; }
   .live-label::before { background: #6fbf73; box-shadow: 0 0 0 3px #14161a; }
   .live-label.disconnected { color: #f6efe0; }
+  .sidebar > .top-actions > .live-label.disconnected { grid-column: 1 / -1; justify-self: stretch; }
   .lost { margin-bottom: 40px; }
   .lost details { border: 8px solid transparent; border-inline-width: 20px; border-radius: 0; background: none; box-shadow: none; overflow: visible; }
   .lost-summary { color: #714a10; }
@@ -229,13 +230,33 @@
   .request-code, .request-details pre { border: 0; border-radius: 0; background: #f6eecb; }
   .answer-option { border: 0; border-radius: 0; background: #f4eddb; box-shadow: inset 0 2px 0 #fff, 0 3px 0 #14161a; }
   .answer-option:has(input:checked) { background: #d6dce8; box-shadow: inset 0 0 0 3px #1c3d70, 0 3px 0 #14161a; }
-  .shot-viewer { border: 0; border-radius: 0; background: var(--paper); color: var(--iron); box-shadow: 0 0 0 4px #6b6d68, 0 20px 50px #000c; }
+  .shot-viewer { border: 8px solid #6b6d68; border-radius: 0; background: #302116; color: #f2ecdc; box-shadow: inset 0 0 0 4px #b38a30, 0 20px 50px #000c; }
+  .shot-viewer .shot-full { margin: 10px; border: 8px solid #79502a; background: #211a16; box-shadow: inset 0 0 0 3px #b38a30; }
+  .shot-viewer .shot-full img { border-radius: 0; }
+  .shot-viewer .shot-bar { padding: 4px 10px 8px; }
+  .shot-viewer .shot-meta { flex: 0 1 auto; margin-inline: auto; padding: 3px 9px; background: #e8dfc6; color: #292521; box-shadow: 1px 2px #0005; rotate: -.35deg; }
+  .shot-viewer .shot-button { box-sizing: border-box; padding: 0; border: 3px solid #565b58; background: #cdbb8b; color: #14161a; box-shadow: inset 0 2px #fff8, 0 3px #252826; font: 700 20px/1 var(--display); }
+  .shot-viewer .shot-button { position: relative; }
+  .shot-viewer .shot-button::before { content: ''; position: absolute; left: 3px; right: 3px; top: -7px; height: 6px; background: radial-gradient(ellipse at center, #aab0a9 0 48%, #59605b 52% 68%, transparent 72%) 0 0 / 16px 6px repeat-x; pointer-events: none; }
+  .shot-viewer .shot-button:disabled { opacity: .45; }
+  .shot-viewer .shot-thumb { border: 4px solid #79502a; border-radius: 0; background: #211a16; }
+  .shot-viewer .shot-thumb.current { border-color: #d9b45a; }
+  .doc-viewer .doc-body { padding: 16px; background: #e8dfc6; color: #14161a; }
 }
 #brick-panel { position: fixed; top: 0; right: 0; z-index: 10; pointer-events: none; }
 :root[data-theme=bricks]:not([data-bricks3d]) #brick-panel { display: none; }
 
+@media (min-width: 641px) and (max-width: 900px) {
+  :root[data-theme=bricks] { --sidebar-w: 80px; }
+  :root[data-theme=bricks] .sidebar .theme-console { display: none; }
+  :root[data-theme=bricks] .sidebar .nav-item { width: 40px; padding-inline: 0; }
+  :root[data-theme=bricks] .sidebar > .top-actions { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  :root[data-theme=bricks] .sidebar .live-label.disconnected { width: 40px; overflow: hidden; font-size: 0; }
+}
+
 /* Phones: the top bar is a row of bricks standing in front of the page; the column is whole studs and everything stacks. */
 @media (max-width: 640px) {
+  :root:root[data-theme=bricks] .chat-header { grid-template-areas: 'back . actions' 'identity identity identity' 'info info info'; }
   :root[data-theme=bricks] {
     .topbar { min-height: 64px; padding: 12px 20px; background: none; backdrop-filter: none; border: 0; box-shadow: none; }
     .topbar > .brand .brand-mark { width: 30px; height: 44px; }

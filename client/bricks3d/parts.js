@@ -17,7 +17,13 @@ export function geometryFor(key) {
   if (cache.has(key)) return cache.get(key);
   const [w, h, d, mode] = key.split(':'); const W = w * STUD, H = +h, D = +d;
   let body;
-  if (mode === 'slope') {
+  if (mode === 'wedge-left' || mode === 'wedge-right') {
+    // Two-stud-wide diagonal timber brace, mirrored for the opposite corner.
+    const profile = new THREE.Shape();
+    if (mode === 'wedge-left') { profile.moveTo(0, 0); profile.lineTo(0, H); profile.lineTo(W, H); }
+    else { profile.moveTo(W, 0); profile.lineTo(0, H); profile.lineTo(W, H); }
+    profile.closePath(); body = new THREE.ExtrudeGeometry(profile, { depth: D, bevelEnabled: false });
+  } else if (mode === 'slope') {
     // A 1 x n sloped brick, extruded across its width; the top recedes to the back.
     const profile = new THREE.Shape(); profile.moveTo(0, 0); profile.lineTo(D, 0); profile.lineTo(D, H); profile.closePath();
     body = new THREE.ExtrudeGeometry(profile, { depth: W, bevelEnabled: false }); body.rotateY(Math.PI / 2); body.translate(0, 0, D);

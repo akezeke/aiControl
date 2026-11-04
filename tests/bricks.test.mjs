@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { labelRects, labelColour } from '../client/bricks3d/stickers.js';
 import { geometryFor } from '../client/bricks3d/parts.js';
 import { summary } from '../client/theme-console.js';
 import * as bond from '../client/bricks3d/bond.js';
@@ -66,6 +67,14 @@ test('castle slopes have a sloping front profile and fit the brick grid', () => 
   assert.ok(upperFront < lowerFront / 2, `${upperFront} vs ${lowerFront}`);
 });
 
+test('timber braces are mirrored wedges that meet the stud grid', () => {
+  const left = geometryFor('2:48:20:wedge-left'), right = geometryFor('2:48:20:wedge-right');
+  for (const g of [left, right]) { g.computeBoundingBox(); assert.deepEqual(g.boundingBox.min.toArray(), [0, 0, 0]); assert.deepEqual(g.boundingBox.max.toArray(), [40, 48, 20]); }
+  const contains = (g, x, y) => { const a = g.attributes.position; for (let i = 0; i < a.count; i++) if (Math.abs(a.getX(i) - x) < .01 && Math.abs(a.getY(i) - y) < .01) return true; return false; };
+  assert.ok(contains(left, 0, 0)); assert.equal(contains(left, 40, 0), false);
+  assert.ok(contains(right, 40, 0)); assert.equal(contains(right, 0, 0), false);
+});
+
 test('nested surfaces build on the immediate parent face', () => {
   assert.equal(typeof bond.surfaceBase, 'function');
   assert.equal(bond.surfaceBase(0), 0);
@@ -122,6 +131,42 @@ test('sticker placement is stable and stays close to the brick face', () => {
     assert.ok(Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1);
     assert.ok(Math.abs(p.angle) <= .012);
   }
+});
+
+test('sticker labels stay inside their clipping region on wrapped text', () => {
+  const lines = [{ left: 5, top: 3, right: 55, bottom: 19 }, { left: 5, top: 23, right: 85, bottom: 39 }];
+  assert.deepEqual(labelRects(lines, { left: 4, top: 0, right: 70, bottom: 36 }), [
+    { left: 4, top: 2, right: 57, bottom: 20 }, { left: 4, top: 22, right: 70, bottom: 36 },
+  ]);
+  assert.deepEqual(labelRects(lines, { left: 100, top: 0, right: 120, bottom: 50 }), []);
+});
+
+test('sticker backing contrasts with dark and light printing', () => {
+  assert.equal(labelColour('rgb(25, 32, 42)'), 'light');
+  assert.equal(labelColour('rgb(240, 232, 210)'), 'dark');
+  assert.equal(labelColour('rgb(226, 194, 115)'), 'dark');
+});
+
+test('a status label gets a whole-stud plate wide enough for its text', async () => {
+  const previous = globalThis.document; globalThis.document = { createRange: () => ({}) };
+  try {
+    const { BrickUi } = await import('../client/bricks3d/ui.js');
+    const badge = { offsetWidth: 83, offsetHeight: 20, style: {} };
+    BrickUi.prototype.snapSizesNow.call({}, [{ el: badge, kind: 'badge' }]);
+    assert.equal(badge.style.minWidth, '100px'); assert.equal(badge.style.minHeight, '24px');
+  } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+});
+
+test('page scene leaves modal controls in the browser top layer', async () => {
+  const previous = globalThis.document;
+  globalThis.document = { createRange: () => ({}) };
+  try {
+    const { PAGE } = await import('../client/bricks3d/ui.js');
+    const withinDialog = { closest: selector => selector.split(',').map(s => s.trim()).includes('dialog') ? {} : null };
+    const ordinary = { closest: () => null };
+    assert.equal(PAGE.skip(withinDialog), true);
+    assert.equal(PAGE.skip(ordinary), false);
+  } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
 });
 
 test('every image the Brick Knights styles name is shipped', () => {

@@ -14,7 +14,7 @@ export const PAGE = {
   walls: '.sidebar, .topbar', plains: '.main-content', strips: '',
   trays: '.session-card, .group-heading, .usage-accounts, .spend-panel, .status-line, .search, .empty, .integrations, .theme-console, .login-card, .request-box, .lost > details',
   free: '.brand, .sidebar-label, .page-heading, .connection-error, .no-projects, .toast',
-  skip: el => !!el.closest('.detail-panel'),
+  skip: el => !!el.closest('.detail-panel, dialog'),
 };
 export const PANEL = {
   ...SHARED, fields: '.message-form textarea', badges: '.badge', name: 'panel', fixed: '', scrollers: ['.history-viewport', '.chat-requests'], windowScroll: false,
@@ -31,7 +31,7 @@ const KEEP = '.console-contact';
 const shut = el => { const d = el.closest('details:not([open])'); return !!d && d !== el && !el.closest('summary') ; };
 
 const PROJECTS = ['navy', 'crimson', 'timber', 'forest'];
-const RIM = 20, FACE_Z = 12, RIM_FRONT = 20, BLOCK_DEPTH = 20;
+const RIM = 20, FACE_Z = 12, RIM_FRONT = 16, BLOCK_DEPTH = 20;
 // A button's brick is a stud deep and is built fully out; at rest it sits half a stud out of its wall (REST is how far back it is pushed), hover brings it out
 // slightly forward, and a press pushes it flush against the back.
 const REST = -10;
@@ -77,11 +77,11 @@ export class BrickUi {
   // `scope` is the element the build lives in (the body, or the chat panel, whose own size and position the canvas takes).
   constructor(layer, config = PAGE, scope = document.body) {
     this.layer = layer; this.config = config; this.scope = scope; this.entries = []; this.sig = ''; this.arrivals = new Map(); this.byEl = new WeakMap(); this.byKey = new Map(); this.dzByKey = new Map(); this.queued = 0;
-    this.textures = new Map(); this.attribute = `data-stickers-${config.name}`; this.items = []; this.settle = 0;
+    this.textures = new Map(); this.nextTextureId = 0; this.attribute = `data-stickers-${config.name}`; this.items = []; this.settle = 0;
     this.watch = [config.trays, config.blocks, config.badges, config.fields, config.ground, config.meters, config.stacks, config.rails, config.walls, config.plains, config.strips, config.free, config.fixed].filter(Boolean).join(', ');
     this.hide = document.createElement('style'); const all = roots(config);
     // Once their stickers are up, the elements stop drawing themselves (they keep layout, focus and clicks); fields and the map's figures stay live.
-    const within = config.name === 'panel' ? '.detail-panel ' : '', outside = config.name === 'panel' ? '' : ':not(.detail-panel *)', live = `input, textarea, select, option, ${KEEP}, ${KEEP} *`;
+    const within = config.name === 'panel' ? '.detail-panel ' : '', outside = config.name === 'panel' ? '' : ':not(.detail-panel *, dialog *)', live = `input, textarea, select, option, ${KEEP}, ${KEEP} *`;
     this.hide.textContent = `:root[${this.attribute}] ${within}:is(${all})${outside}, :root[${this.attribute}] ${within}:is(${all}) *:not(${live})${outside} { color: transparent !important; background-color: transparent !important; background-image: none !important; border-color: transparent !important; box-shadow: none !important; text-shadow: none !important; outline-color: transparent !important; filter: none !important; text-decoration-color: transparent !important; }
 :root[${this.attribute}] ${within}:is(${all}) :is(svg, img)${outside} { visibility: hidden !important; }`;
     document.head.append(this.hide);
@@ -141,11 +141,12 @@ export class BrickUi {
     for (const [el, x, y] of scrolls) { if (el) { if (el.scrollTop !== y) el.scrollTop = y; if (el.scrollLeft !== x) el.scrollLeft = x; } else if (scrollY !== y || scrollX !== x) scrollTo(x, y); }
   }
   snapSizesNow(found) {
-    const sized = ({ kind }) => kind === 'block' || kind === 'tray' || kind === 'field' || kind === 'strip';
+    const sized = ({ kind }) => kind === 'block' || kind === 'badge' || kind === 'tray' || kind === 'field' || kind === 'strip';
     for (const f of found) if (sized(f)) { f.el.style.minWidth = ''; f.el.style.minHeight = ''; }
     const natural = found.map(f => sized(f) ? { width: f.el.offsetWidth, height: f.el.offsetHeight } : null);
     found.forEach(({ el, kind }, i) => {
       const r = natural[i]; if (!r) return;
+      if (kind === 'badge') { el.style.minWidth = `${Math.ceil(r.width / STUD) * STUD}px`; el.style.minHeight = `${BRICK}px`; return; }
       if (kind === 'block') { el.style.minWidth = `${buttonStuds(r.width) * STUD}px`; el.style.minHeight = `${Math.max(PLATE * 4, Math.ceil(r.height / PLATE) * PLATE)}px`; return; }
       if (kind === 'tray' || kind === 'field') el.style.minHeight = `${Math.max(BRICK * 2, Math.ceil(r.height / BRICK) * BRICK)}px`; else el.style.minHeight = `${Math.max(PLATE * 2, Math.ceil(r.height / PLATE) * PLATE)}px`;
       if (!el.matches('.session-card, .group-heading, .usage-accounts, .spend-panel, .status-line, .search, .empty, .integrations, .theme-console, .login-card, .lost > details')) el.style.minWidth = `${Math.ceil(r.width / STUD) * STUD}px`;
@@ -169,6 +170,8 @@ export class BrickUi {
       const px = up ? up.snap.x : 0, py = up ? up.snap.y : 0, wx = r.left + px, wy = r.top + py;
       let x = Math.round(wx / STUD) * STUD, y = wy;
       const w = Math.max(STUD, Math.round(wide / STUD) * STUD), h = Math.max(PLATE, Math.round(tall / PLATE) * PLATE);
+      // Keep an attached status plate on the face of its tray, clear of the side rim.
+      if (kind === 'badge' && nested && up.w >= w + 2 * RIM) x = Math.max(up.x + RIM, Math.min(x, up.x + up.w - RIM - w));
       if ((kind === 'tray' || kind === 'field') && !nested) y = Math.round(wy / BRICK) * BRICK; else if (kind === 'block' && !nested) y = Math.round((wy + h) / BRICK) * BRICK - h; else y = Math.round(wy / PLATE) * PLATE;
       if (kind === 'wall' || kind === 'plain') { x = Math.round(wx); y = Math.round(wy); }
       const item = { el, kind, group, x, y, w, h, nested, lx: r.left, ly: r.top, snap: { x: x - r.left, y: y - r.top }, up, key: el.dataset.sessionId || '', fill: 0, shares: null, z: 0, shift: { x: 0, y: 0 } };
@@ -201,7 +204,7 @@ export class BrickUi {
       const scale = Math.min(this.layer.renderer.getPixelRatio(), 4096 / Math.max(w, h));
       const { canvas } = paint(el, { scale, sticker: el.matches(this.config.blocks), own: node => node !== el && node.matches(roots(this.config)), onLoad: () => { this.sig = ''; this.schedule(); } });
       const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.generateMipmaps = false; texture.minFilter = THREE.LinearFilter; texture.anisotropy = 4;
-      hit = { texture, key }; this.textures.set(key, hit);
+      hit = { texture, key, id: ++this.nextTextureId }; this.textures.set(key, hit);
     }
     this.textures.delete(key); this.textures.set(key, hit); return hit;
   }
@@ -222,7 +225,7 @@ export class BrickUi {
     }
     root.setAttribute(attr, '');
     const sig = items.map(i => `${i.kind}${i.group}${i.x},${i.y},${i.w},${i.h}${i.nested}${i.fill.toFixed(2)}${i.shares ? i.shares.map(x => Math.round(x[1])) : ''}${look(i.el).rim}${blockColour(i.el)}`).join('|')
-      + `|${stickers.map(s => `${s.hit.key.length}${s.x},${s.y},${s.hit.key.slice(-40)}`).join(';')}|${L.size.width}x${L.size.height}`;
+      + `|${stickers.map(s => `${s.hit.id}:${s.x},${s.y}`).join(';')}|${L.size.width}x${L.size.height}`;
     // Same build, new DOM nodes (the lists are rebuilt on every poll): the entries just follow their elements.
     if (sig === this.sig) { items.forEach((item, i) => { const e = this.entries[i]; if (e) { e.el = item.el; this.byEl.set(item.el, e); if (item.key) this.byKey.set(item.key, e); } }); return; }
     // Animation state lives on the element (or the session it shows), not on the bricks, so it survives a rebuild; running tweens find the new entries.
@@ -314,8 +317,8 @@ function wall(L, { group, x, y, w, h, el, lift, openings }, handles, seed) {
     const top = y + row * BRICK, mode = row % 6 === 2 ? 'slope' : row % 6 === 5 ? 'side' : 't';
     for (const sx of [x, x + (Math.ceil(w / STUD) - 1) * STUD]) {
       put(L, handles, group, `1:${BRICK}:8:${mode}`, sx, top, lift + 8, shade('stone', random, .04));
-      if (row % 6 === 5) { // a round gold boss on a small connector, both attached to the corner stone
-        put(L, handles, group, '1:20:4:round', sx, top + 2, lift + 16, 'gold');
+      if (row % 12 === 5 && sx !== x) { // a shield boss, attached to the corner stone
+        put(L, handles, group, '1:20:4:round', sx, top + 2, lift + 16, 'iron');
       }
     }
   }
@@ -330,15 +333,26 @@ function plain(L, { group, x, y, w, h, el }, handles, seed) {
   }
   const posts = new Set([0, cols - 1]);
   for (let c = 12; c < cols - 1; c += 12) posts.add(c);
+  const uprights = [...posts].sort((a, b) => a - b), front = -8;
   for (let r = 0; r < rows; r++) {
-    if (r % 6 === 0) {
+    const beam = r % 6 === 0;
+    if (beam) {
       let start = 0;
-      for (const c of [...posts].sort((a, b) => a - b)) {
-        let at = start; for (const n of runOf(c - start)) { put(L, handles, group, `${n}:${BRICK}:${STUD}:t`, x + at * STUD, top + r * BRICK, 0, shade('timber', random, .08)); at += n; }
+      for (const c of uprights) {
+        let at = start; for (const n of runOf(c - start)) { put(L, handles, group, `${n}:${BRICK}:${STUD}:t`, x + at * STUD, top + r * BRICK, front, shade('timber', random, .08)); at += n; }
         start = c + 1;
       }
     }
-    for (const c of posts) put(L, handles, group, `1:${BRICK}:${STUD}:t`, x + c * STUD, top + r * BRICK, 0, shade('timber', random, .08));
+    for (const c of uprights) {
+      put(L, handles, group, `1:${BRICK}:${STUD}:${beam ? 'side' : 't'}`, x + c * STUD, top + r * BRICK, front, shade('timber', random, .08));
+      if (beam) put(L, handles, group, '1:20:4:round', x + c * STUD, top + r * BRICK + 2, 0, (r / 6 + c) % 3 === 0 ? 'gold' : 'iron');
+    }
+    // Wedge braces touch both post and beam; their recessed fronts leave every control clear.
+    if (r % 6 === 1 && r + 1 < rows) for (let i = 1; i < uprights.length; i++) {
+      const a = uprights[i - 1], b = uprights[i]; if (b - a < 5) continue;
+      put(L, handles, group, `2:${BRICK * 2}:${STUD}:wedge-left`, x + (a + 1) * STUD, top + r * BRICK, front, shade('timber', random, .05));
+      put(L, handles, group, `2:${BRICK * 2}:${STUD}:wedge-right`, x + (b - 2) * STUD, top + r * BRICK, front, shade('timber', random, .05));
+    }
   }
 }
 
@@ -355,7 +369,7 @@ function tray(L, { el, group, x, y, w, h, base, openings }, handles) {
   // The rim can also meet a control, so each side uses the same cutout rules.
   const rimSection = (dx, dy, width, height, studs = false) => {
     for (const p of masonry(width, height, openings.map(o => ({ ...o, x: o.x - dx, y: o.y - dy })), x + y + dx + dy))
-      put(L, handles, group, `${p.length}:${p.height}:${STUD}:${studs ? 's' : 't'}`, x + dx + p.x, y + dy + p.y, front, rimColour());
+      put(L, handles, group, `${p.length}:${p.height}:16:${studs ? 's' : 't'}`, x + dx + p.x, y + dy + p.y, front, rimColour());
   };
   rimSection(0, 0, w, PLATE, true); rimSection(0, h - PLATE, w, PLATE);
   rimSection(0, PLATE, RIM, h - 2 * PLATE); rimSection(w - RIM, PLATE, RIM, h - 2 * PLATE);
@@ -370,6 +384,7 @@ function block(L, { el, group, x, y, w, h, base }, handles) {
   const front = base + BLOCK_DEPTH, n = w / STUD, colourName = blockColour(el), random = rng(x + y), stack = stackOf(h);
   const colour = () => shade(colourName, random, .025);
   if (el.matches('.live-label') && !el.classList.contains('disconnected')) {
+    if (h > BRICK) put(L, handles, group, `1:${PLATE}:${BLOCK_DEPTH}:t`, x, y + h - BRICK - PLATE, front, 'stone');
     put(L, handles, group, `1:${BRICK}:${BLOCK_DEPTH}:side`, x, y + h - BRICK, front, 'stone');
     put(L, handles, group, '1:20:4:round', x, y + h - BRICK + 2, front + 8, 'forest');
     return;
@@ -384,11 +399,12 @@ function block(L, { el, group, x, y, w, h, base }, handles) {
 }
 
 // A status tile clipped to the outward studs of a slim bracket.
-function badge(L, { group, x, y, w, base }, handles) {
+function badge(L, { el, group, x, y, w, base }, handles) {
+  const tile = el.matches('.red, .amber') ? 'crimson' : el.matches('.green') ? 'forest' : 'tan';
   let at = 0;
   for (const n of runOf(w / STUD)) {
     put(L, handles, group, `${n}:${BRICK}:${PLATE}:side`, x + at * STUD, y, base + PLATE, 'stone');
-    put(L, handles, group, `${n}:${STUD}:${PLATE}:t`, x + at * STUD, y + 2, base + PLATE * 2 + 4, 'tan');
+    put(L, handles, group, `${n}:${STUD}:${PLATE}:t`, x + at * STUD, y + 2, base + PLATE * 2 + 4, tile);
     at += n;
   }
 }
