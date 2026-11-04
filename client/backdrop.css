@@ -7,4 +7,8 @@
 :root[data-theme=heroes] #pixel-backdrop::after { background: linear-gradient(90deg, #07102466, #07102422 65%, #07102408); }
 :root[data-theme=diablo] #pixel-backdrop { display: block; background-image: url('/diablo-bg.webp'); }
 :root[data-theme=diablo] #pixel-backdrop::after { background: linear-gradient(#0b07052b, #0b07054d); }
+/* Metropolis shows its building site behind the list only: its scene covers everything else. */
+:root[data-theme=city]:is([data-scene-list], [data-scene-fallback]) #pixel-backdrop { display: block; background-image: url('/city-bg.png'); background-position: center bottom; }
+:root[data-theme=city] #pixel-backdrop::after { background: linear-gradient(#0d0e1100, #0d0e1140); }
 @media (max-width: 640px) { :root[data-theme=heroes] #pixel-backdrop { background-position: 78% center; } }
+@media (max-width: 640px) { :root[data-theme=city] #pixel-backdrop { background-position: 24% bottom; } }

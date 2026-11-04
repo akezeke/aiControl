@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { bayer, coverLayout, findDripSites, hash, maskPixels } from '../client/backdrop/pixels.js';
 import { createPainter as heroes } from '../client/backdrop/heroes.js';
 import { createPainter as diablo } from '../client/backdrop/diablo.js';
+import { createPainter as city } from '../client/backdrop/city.js';
+import { CRANES, H as CITY_H, W as CITY_W, WELDS, drawStill, towerLights } from '../client/backdrop/city-still.js';
+import { readFileSync } from 'node:fs';
+import { inflateSync } from 'node:zlib';
 
 const solid = (w, h, [r, g, b]) => { const data = new Uint8ClampedArray(w * h * 4); for (let i = 0; i < w * h; i++) data.set([r, g, b, 255], i * 4); return { w, h, data }; };
 const paint = (sample, x, y, w, h, [r, g, b]) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) sample.data.set([r, g, b, 255], (j * sample.w + i) * 4); };
@@ -53,7 +57,7 @@ test('blood with nothing under it still drips, with nowhere to land', () => {
 });
 
 // Painters are functions of time over a small copy of the artwork.
-for (const [name, create, width, height] of [['heroes', heroes, 418, 236], ['diablo', diablo, 512, 342]]) {
+for (const [name, create, width, height] of [['heroes', heroes, 418, 236], ['diablo', diablo, 512, 342], ['city', city, CITY_W, CITY_H]]) {
   const noise = () => { const sample = solid(width, height, [0, 0, 0]); for (let i = 0; i < width * height; i++) sample.data.set([hash(i, 1) * 255, hash(i, 2) * 255, hash(i, 3) * 255, 255], i * 4); return sample; };
 
   test(`${name} draws something every frame with finite, in-range values`, () => {
@@ -76,3 +80,16 @@ for (const [name, create, width, height] of [['heroes', heroes, 418, 236], ['dia
     assert.doesNotThrow(() => { frame(ctx, 1); frame(ctx, 2); });
   });
 }
+
+test('the city wallpaper is drawn edge to edge, with everything the painter moves on it', () => {
+  const data = new Uint8ClampedArray(CITY_W * CITY_H * 4); drawStill(data);
+  for (let i = 3; i < data.length; i += 4) assert.equal(data[i], 255);
+  for (const [x, y] of [...WELDS, ...towerLights, ...CRANES.flatMap(c => [[c.reach, c.y], [c.back, c.y], [c.x, c.y - 13]])]) assert.ok(x >= 0 && x < CITY_W && y >= 0 && y < CITY_H, `${x},${y}`);
+});
+
+test('city-bg.png is up to date with the code that draws it (node scripts/city-art.mjs)', () => {
+  const png = readFileSync(new URL('../client/public/city-bg.png', import.meta.url)), chunks = [];
+  for (let at = 8; at < png.length;) { const length = png.readUInt32BE(at), type = png.toString('latin1', at + 4, at + 8); if (type === 'IDAT') chunks.push(png.subarray(at + 8, at + 8 + length)); at += length + 12; }
+  const rows = inflateSync(Buffer.concat(chunks)), data = new Uint8ClampedArray(CITY_W * CITY_H * 4); drawStill(data);
+  for (let y = 0; y < CITY_H; y++) assert.ok(rows.subarray(y * (CITY_W * 4 + 1) + 1, (y + 1) * (CITY_W * 4 + 1)).equals(Buffer.from(data.buffer, y * CITY_W * 4, CITY_W * 4)), `row ${y}`);
+});

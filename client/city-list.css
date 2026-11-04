@@ -4,15 +4,19 @@
   .city-portrait { display: block; width: var(--w); height: var(--h); overflow: hidden; flex: none; pointer-events: none; }
   .city-portrait canvas { display: block; height: 100%; image-rendering: pixelated; }
 
-  /* The ground: poured concrete, its form's joints and tie holes still showing. */
-  .main-content, .history-viewport { background: var(--bg) url('/city-formwork.svg') 0 0 / 96px 48px; }
-  body, .shell { background-color: var(--bg); }
+  /* The ground: the building site at night (client/backdrop), showing through behind the list. */
+  /* The list's own column is shaded down below its heading, so the site only glows through between cards; the heading and the margins show it whole. */
+  .main-content { background: linear-gradient(#14161b00 0 96px, #14161bd1 168px); }
+  body { background-color: var(--bg); }
+  /* The chat has the same site behind it, held still and shaded down so its messages read over it. */
+  .history-viewport { background: linear-gradient(#14161bb3, #14161bb3), var(--bg) url('/city-bg.png') center bottom / cover fixed; image-rendering: pixelated; }
+  .history-viewport > * { image-rendering: auto; }
 
   /* Plates are bolted on. */
   :is(.session-card, .usage-accounts, .nav-item, .stat, .login-card, .empty) { background-image: var(--rivet), var(--rivet), var(--rivet), var(--rivet); background-position: 3px 3px, calc(100% - 3px) 3px, 3px calc(100% - 3px), calc(100% - 3px) calc(100% - 3px); background-size: 4px 4px; background-repeat: no-repeat; }
 
-  /* The site behind the page's name, and the road barrier in front of it. */
-  &:is([data-scene-list], [data-scene-fallback]) .page-heading { position: relative; margin-inline: -24px; padding: 16px 24px 20px; background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, url('/city-skyline.svg') 0 calc(100% - 8px) / 640px 56px repeat-x; box-shadow: 0 2px 0 var(--ink); }
+  /* The road barrier in front of the page's name. */
+  &:is([data-scene-list], [data-scene-fallback]) .page-heading { position: relative; margin-inline: -24px; padding: 16px 24px 20px; background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x; box-shadow: 0 2px 0 var(--ink); }
 
   /* A phone has no page heading to stand on: the barrier runs under its top bar. */
   .topbar { background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, var(--panel); padding-bottom: 10px; box-shadow: 0 2px 0 var(--ink); }
@@ -42,6 +46,8 @@
   /* Tape round whatever needs you, and only that: it's the one place yellow goes. */
   .session-card.needs-input { position: relative; padding-bottom: 12px; }
   .session-card.needs-input::after { content: ''; position: absolute; inset: auto 0 0; height: 6px; background: url('/city-hazard.svg') 0 0 / 16px 8px repeat-x; pointer-events: none; }
+  /* And the game's alert sign over its building. */
+  .session-card.needs-input .agent-mark::after { content: ''; position: absolute; top: 2px; left: 2px; z-index: 2; width: 18px; height: 22px; background: url('/city-alert.svg') 0 0 / 100% 100%; pointer-events: none; }
   /* Going up: the bay's ground runs. */
   .session-card[data-status=working] .agent-mark { background: url('/city-busy.svg') 0 100% / 16px 8px repeat-x, var(--asphalt); }
   .session-card:is([data-status=idle], [data-status=offline]) { background-color: #3f4648; box-shadow: inset 2px 2px 0 #4d5456, inset -2px -2px 0 #33383a; --text: #d9e2dc; }
@@ -85,7 +91,7 @@
 
   /* The panel: the session's own tower at the kerb of its street. */
   .detail-panel { border-left: 2px solid var(--ink); }
-  .chat-header { padding-bottom: 18px; background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, url('/city-skyline.svg') 0 calc(100% - 8px) / 640px 56px repeat-x, var(--bg); box-shadow: 0 2px 0 var(--ink); position: relative; z-index: 1; }
+  .chat-header { padding-bottom: 18px; background: var(--barrier-edge) 0 calc(100% - 8px) / 100% 2px no-repeat, var(--barrier) 0 100% / 16px 8px repeat-x, var(--bg) url('/city-formwork.svg') 0 0 / 96px 48px; box-shadow: 0 2px 0 var(--ink); position: relative; z-index: 1; }
   /* Its tower stands in the header's mark, on the same bay as in the list, with the agent's tile at the corner. */
   .chat-header .agent-identity .agent-mark { display: flex; align-items: flex-end; justify-content: center; width: 46px; height: 54px; overflow: visible; border: 0; background: linear-gradient(#565e60 0 0) 0 100% / 100% 5px no-repeat, var(--asphalt); box-shadow: inset 2px 2px 0 var(--ink); }
   .chat-header .agent-mark .city-portrait { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); max-width: 46px; max-height: 64px; }
@@ -95,18 +101,14 @@
   .chat-header .plan-info { justify-self: start; max-width: 100%; padding: 1px 6px; background: var(--asphalt); }
   .chat-header .panel-title { font-family: var(--font); font-weight: 700; font-size: 17px; text-shadow: 2px 2px 0 var(--ink); }
 
-  /* What's said, in the map's speech bubbles: paper for the agent, a street sign for you. */
-  .recent-message:not(.tool, .notice) { position: relative; --text: #2e222f; --text-2: #3e3546; --text-3: #625565; --panel-2: #e3e6dc; --line-2: #9babb2; --accent: #165a4c; --sunken: #2e222f; border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background-color: var(--paper); background-clip: padding-box; color: var(--text); box-shadow: inset 0 -2px 0 var(--concrete); }
-  .recent-message.user:not(.tool, .notice) { --text: #fff; --text-2: #d9e2dc; --text-3: #c7dcd0; --panel-2: #0d3d33; --line-2: #239063; --accent: #8ff8e2; background-color: var(--sign); box-shadow: inset 0 -2px 0 #0d3d33; }
-  .recent-message:not(.tool, .notice)::before, .recent-message:not(.tool, .notice)::after { content: ''; position: absolute; top: 100%; left: 12px; width: 10px; height: 6px; margin-top: 2px; pointer-events: none; }
-  .recent-message:not(.tool, .notice)::before { background: var(--ink); clip-path: polygon(0 0, 10px 0, 10px 2px, 8px 2px, 8px 4px, 6px 4px, 6px 6px, 4px 6px, 4px 4px, 2px 4px, 2px 2px, 0 2px); }
-  .recent-message:not(.tool, .notice)::after { background: var(--paper); clip-path: polygon(2px 0, 8px 0, 8px 2px, 6px 2px, 6px 4px, 4px 4px, 4px 2px, 2px 2px); }
-  .recent-message.user:not(.tool, .notice)::before, .recent-message.user:not(.tool, .notice)::after { left: auto; right: 12px; }
-  .recent-message.user:not(.tool, .notice)::after { background: var(--sign); }
-  .recent-message:not(.tool, .notice) { margin-bottom: 8px; }
-  .recent-message:not(.tool, .notice) pre { --text: #fff; color: #fff; }
-  .recent-message:not(.tool, .notice) pre code { color: #fff; }
-  .recent-message:not(.tool, .notice) .message-table-card { background: var(--panel-2); }
+  /* What's said comes up in the game's message windows: a steel plate bolted at its foot, the speaker on a title bar, the agent's on asphalt in hi-vis and yours on a street sign. */
+  .recent-message:not(.tool, .notice) { position: relative; margin-bottom: 8px; border: 2px solid transparent; border-image: var(--px-line) 1 / 2px; background: var(--rivet) 3px calc(100% - 3px) / 4px 4px no-repeat, var(--rivet) calc(100% - 3px) calc(100% - 3px) / 4px 4px no-repeat, var(--panel); background-clip: padding-box; box-shadow: var(--px-raised); }
+  .recent-message.user:not(.tool, .notice) { background-color: var(--panel-2); }
+  .recent-message:not(.tool, .notice) .message-meta { margin: -9px -12px 8px; padding: 3px 10px 4px; background: var(--asphalt); box-shadow: inset 0 -2px 0 var(--ink); color: var(--text-3); }
+  .recent-message:not(.tool, .notice) .message-meta strong { font: 400 8px/1.6 var(--display); color: var(--accent); }
+  .recent-message.user:not(.tool, .notice) .message-meta { background: var(--sign); box-shadow: inset 2px 0 0 var(--sign-lit), inset 0 -2px 0 #0d3d33; color: var(--text-2); }
+  .recent-message.user:not(.tool, .notice) .message-meta strong { color: #fff; }
+  .recent-message:not(.tool, .notice) .message-table-card { background: var(--sunken); }
   .recent-message.tool { border-left: 2px solid var(--kerb); }
   .message-text code { border-radius: 0; }
 
@@ -118,6 +120,12 @@
   .request-box .answer-option:has(input:checked) { background: #c3dccb; border-color: var(--accent); }
   .request-box :is(button, input, textarea, select) { --text: #fff; --text-2: #d9e2dc; --text-3: #c7dcd0; --panel-2: #565e60; --accent-ink: #fff; }
   .request-box :is(input:not([type=radio], [type=checkbox]), textarea, select, pre, pre code) { color: #fff; }
+  /* Its answers on the game's coloured buttons: green to allow, blue for the whole session, red to deny. */
+  .request-box :is(.primary, [data-decision^=accept]) { background: #239063; color: #fff; box-shadow: inset 2px 2px 0 #1ebc73, inset -2px -2px 0 #165a4c; }
+  .request-box [data-decision=acceptForSession] { background: #4d65b4; box-shadow: inset 2px 2px 0 #4d9be6, inset -2px -2px 0 #323353; }
+  .request-box [data-decision=decline] { background: #ae2334; color: #fff; box-shadow: inset 2px 2px 0 #e83b3b, inset -2px -2px 0 #6e2727; }
+  .request-box :is(.primary, [data-decision^=accept], [data-decision=decline]):hover:not(:disabled) { filter: brightness(1.12); }
+  .request-box :is(.primary, [data-decision]):active { box-shadow: var(--px-sunk); }
   .message-composer { border-top: 2px solid var(--ink); position: relative; background-color: var(--panel); box-shadow: inset 0 2px 0 #6f787a; }
 }
 /* Between phone and desktop the sidebar is too narrow for a map, as in the other themes that have one. */
@@ -128,9 +136,12 @@
     .console-contact:is([data-status=question], [data-status=permission])::after { animation: city-contact 1s steps(1) infinite; }
     .console-contact[data-status=working]::after { animation: city-lamp 1.6s steps(1) infinite; }
     .session-card[data-status=working] .agent-mark { animation: city-site 1.6s steps(8) infinite; }
+    /* The alert bobs over its building. */
+    .session-card.needs-input .agent-mark::after { animation: city-alert 1s steps(1) infinite; animation-delay: var(--since-load, 0s); }
   }
 }
 @keyframes city-beats { to { transform: translateX(-100%); } }
 @keyframes city-contact { 50% { background: #fff; } }
 @keyframes city-lamp { 50% { opacity: .35; } }
 @keyframes city-site { to { background-position: 16px 100%, 0 0; } }
+@keyframes city-alert { 50% { translate: 0 -2px; } }

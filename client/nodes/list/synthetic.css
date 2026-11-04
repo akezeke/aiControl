@@ -1,0 +1,347 @@
+/* Nodes · Synthetic: the list and panel built as the board itself. The ground and every surface carry its copper; sessions, messages
+   and buttons are IC packages with pins and a notch, tool calls run on a trace, a request is a warning chip with LEDs, the decisions
+   are tactile switches and the composer is a display module. Text always sits on solid epoxy or glass, never on the pattern. */
+@font-face { font-family: 'Chakra Petch'; src: url('/fonts/chakra-petch-600.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/jetbrains-mono-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+:root[data-theme-choice=nodes-synthetic] {
+  color-scheme: dark;
+  --display: 'Chakra Petch', system-ui, sans-serif; --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --bg: #020608; --panel: #061114; --panel-2: #0b1c21; --sunken: #01050a;
+  --text: #d9f7ff; --text-2: #a3c6cf; --text-3: #6f939e;
+  --line: #12303a; --line-2: #1f4b56;
+  --accent: #26e6ff; --accent-2: #8ff3ff; --accent-ink: #011014; --accent-soft: #072a33;
+  --ok: #2dffa0; --ok-soft: #04241a; --warn: #ffab1a; --warn-soft: #2a1904; --warn-line: #8a5a0c; --danger: #ff4d64; --danger-soft: #2c0810;
+  --codex: #d9f7ff; --claude: #ff9a5c; --claude-soft: #2a140a;
+  --radius: 2px; --radius-sm: 2px; --shadow: none; --shadow-lg: 0 0 0 1px #1f4b56, 0 24px 60px -12px #000e; --focus: #8ff3ff;
+  --copper: #c8893e; --gold: #d6a64a; --silk: #c3dce2; --trace: #23697a; --frame: #27353c; --pin: #7d8b92;
+  --board: url('/nodes-synthetic-board.svg') 0 0 / 240px 240px;
+  /* A surface with the board showing through, dimmed so whatever sits on it stays the brightest thing there. */
+  --board-under: linear-gradient(#061114c4, #061114c4), var(--board), var(--panel);
+  --epoxy: linear-gradient(180deg, #121a1e, #0a0f12);
+  --notch: radial-gradient(circle at 0 50%, #030608 0 4px, var(--frame) 4.5px 5px, transparent 5.5px);
+  --pins-x: repeating-linear-gradient(90deg, var(--pin) 0 3px, transparent 3px 7px);
+  --pins-y: repeating-linear-gradient(180deg, var(--pin) 0 3px, transparent 3px 7px);
+  --holes: radial-gradient(circle at 7px 7px, #000 0 2px, var(--gold) 2.5px 3.5px, transparent 4px), radial-gradient(circle at calc(100% - 7px) 7px, #000 0 2px, var(--gold) 2.5px 3.5px, transparent 4px),
+    radial-gradient(circle at 7px calc(100% - 7px), #000 0 2px, var(--gold) 2.5px 3.5px, transparent 4px), radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), #000 0 2px, var(--gold) 2.5px 3.5px, transparent 4px);
+  --glass: #010507; --bezel: 0 0 0 3px #192328, 0 0 0 4px #34444c;
+  --led-off: #0d2329; --leds: repeating-linear-gradient(90deg, var(--led-off) 0 4px, transparent 4px 6px);
+  --codex-art: url('/providers/orbit-dark-codex.webp'); --claude-art: url('/providers/orbit-dark-claude.webp'); --opencode-art: url('/providers/orbit-dark-opencode.webp');
+  scrollbar-color: var(--line-2) var(--sunken);
+
+  /* ── Ground and frame ── */
+  body { background: var(--board), var(--bg); }
+  .history-viewport { background: linear-gradient(#020608a6, #020608a6), var(--board), var(--bg); background-attachment: local; }
+  .sidebar { background: var(--board-under); border-right: 1px solid var(--line-2); box-shadow: inset -3px 0 0 var(--panel), inset -4px 0 0 color-mix(in srgb, var(--copper) 45%, transparent); }
+  .topbar { background: var(--board-under); border-bottom: 1px solid var(--line-2); box-shadow: 0 1px 0 #000, 0 2px 0 color-mix(in srgb, var(--copper) 35%, transparent); }
+  .brand-variant.nodes .brand-name { font: 600 16px/1 var(--display); letter-spacing: .2em; text-transform: uppercase; }
+  /* Silkscreen sits on a cleared patch of mask. */
+  :is(.page-heading h1, .group-title, .project-path, .machine-label, .integrations) { background: var(--bg); }
+  .sidebar-label { font: 600 10.5px/1.2 var(--display); letter-spacing: .2em; color: var(--text-3); }
+  @media (min-width: 901px) {
+    .sidebar .sidebar-label { display: flex; align-items: center; gap: 8px; padding: 2px 0; background: var(--panel); }
+    .sidebar .sidebar-label::after { content: ''; flex: 1; height: 7px; background: radial-gradient(circle at calc(100% - 3.5px) 50%, transparent 1.5px, var(--line-2) 2px 3px, transparent 3.5px), linear-gradient(var(--line-2) 0 0) 0 50% / calc(100% - 6px) 1px no-repeat; }
+    /* Nav: parts on a bus, each tapped off it by a stub and a via; the picked one's tap is lit. */
+    :is(.main-nav, .project-nav) { position: relative; gap: 4px; padding-left: 14px; }
+    :is(.main-nav, .project-nav)::before { content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 2px; background: var(--trace); }
+    .sidebar .nav-item::before { content: ''; position: absolute; left: -11px; top: 50%; width: 11px; height: 9px; margin-top: -4.5px; pointer-events: none; background: radial-gradient(circle at 2px 50%, var(--bg) 0 1.5px, var(--tap, var(--gold)) 2px 3.5px, transparent 4px), linear-gradient(var(--tap, var(--trace)) 0 0) 3px 50% / 100% 1px no-repeat; }
+    .sidebar .nav-item.active { --tap: var(--accent); }
+  }
+  .nav-item { position: relative; border: 1px solid var(--frame); border-radius: 2px; background: var(--epoxy); }
+  .nav-item:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--frame)); background: linear-gradient(180deg, #16242a, #0c1418); }
+  .nav-item.active { border-color: var(--accent); background: linear-gradient(180deg, #0b2a32, #071c22); color: var(--accent-2); box-shadow: inset 2px 0 var(--accent), 0 0 12px -5px var(--accent); }
+  :is(.nav-count, .group-count) { border-radius: 1px; background: var(--glass); color: var(--accent); box-shadow: inset 0 0 0 1px var(--line-2); font: 11px/16px var(--mono); }
+  .nav-item.active .nav-count { background: var(--glass); }
+  .project-dot { min-width: 16px; padding: 0 4px; border-radius: 1px; background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-line), 0 0 8px -2px var(--warn); font: 11px/16px var(--mono); text-align: center; }
+
+  .page-heading { padding-bottom: 9px; background: radial-gradient(circle at 3.5px calc(100% - 3.5px), var(--bg) 1.5px, var(--accent) 2px 3px, transparent 3.5px), linear-gradient(var(--accent) 0 0) 7px calc(100% - 3px) / 56px 1px no-repeat, linear-gradient(var(--line-2) 0 0) 63px calc(100% - 3px) / calc(100% - 63px) 1px no-repeat; }
+  .page-heading h1 { padding-right: 10px; font: 600 20px/1.2 var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--silk); }
+  .machine-label { padding: 0 6px; border: 1px solid var(--line-2); }
+  .integrations { padding: 12px 8px 4px; }
+
+  /* ── Packages: buttons are ICs with pins top and bottom, a notch at pin 1's end ── */
+  :is(.quiet-button, .secondary:not(.decision-actions *), .stat, .doc-chip) { --line: var(--frame); border-color: var(--frame); border-radius: 2px; background: var(--notch), var(--epoxy); }
+  :is(.quiet-button, .secondary:not(.decision-actions *), .stat, .doc-chip):not(.history-latest) { position: relative; }
+  :is(.quiet-button, .secondary:not(.decision-actions *), .stat, .doc-chip, .toast)::before { content: ''; position: absolute; inset: -5px 7px; pointer-events: none; background: var(--pins-x) 0 0 / 100% 3px no-repeat, var(--pins-x) 0 100% / 100% 3px no-repeat; }
+  :is(.quiet-button, .secondary:not(.decision-actions *), .stat, .doc-chip):is(:hover, :focus-visible):not(:disabled) { --pin: #b4c2c8; border-color: var(--accent); background: var(--notch), linear-gradient(180deg, #16262c, #0c1519); color: var(--text); box-shadow: 0 0 12px -4px var(--accent); }
+  .filter-menu.filtered > summary { border-color: var(--accent); background: var(--notch), linear-gradient(180deg, #0b2a32, #071c22); }
+  :is(.fire-button, .clear-button).armed { background: var(--notch), var(--danger); }
+  .stat-number { font-family: var(--mono); font-weight: 400; }
+  .stat.selected { border-color: var(--accent); background: var(--notch), linear-gradient(180deg, #0b2a32, #071c22); color: var(--accent-2); }
+  .effort-select { border-color: var(--frame); border-radius: 2px; background: var(--glass); }
+  .toast { border: 1px solid var(--accent); border-radius: 2px; background: var(--notch), var(--epoxy); color: var(--text); box-shadow: 0 0 18px -6px var(--accent); font-family: var(--display); letter-spacing: .06em; }
+
+  /* Primary actions and decisions: tactile switches, a coloured cap in a steel frame on four legs. Green lets it go, red stops it. */
+  :is(.primary, .decision-actions button) { --cap: var(--accent); position: relative; padding-left: 40px; padding-right: 16px; border: 2px solid #7f8c93; border-radius: 3px;
+    background: radial-gradient(circle at 17px calc(50% - 4px), #ffffffa0 0 1.5px, transparent 3px), radial-gradient(circle at 20px 50%, var(--cap) 0 8px, #000 8.5px 10px, #2c383e 10.5px 11.5px, transparent 12px), linear-gradient(180deg, #182126, #0b1013);
+    color: var(--text); box-shadow: inset 0 0 0 1px #05080a, 0 2px 0 #000; font-family: var(--display); letter-spacing: .06em; }
+  :is(.primary, .decision-actions button, .shot-button)::before { content: ''; position: absolute; inset: 3px -6px; pointer-events: none; background: linear-gradient(#7f8c93 0 0) 0 0 / 4px 4px no-repeat, linear-gradient(#7f8c93 0 0) 100% 0 / 4px 4px no-repeat, linear-gradient(#7f8c93 0 0) 0 100% / 4px 4px no-repeat, linear-gradient(#7f8c93 0 0) 100% 100% / 4px 4px no-repeat; }
+  :is(.primary, .decision-actions button, .shot-button):hover:not(:disabled) { border-color: #b4c2c8; box-shadow: inset 0 0 0 1px #05080a, 0 2px 0 #000, 0 0 16px -5px var(--cap); }
+  :is(.primary, .decision-actions button, .shot-button):active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 0 0 1px #05080a, inset 0 2px 6px #000; }
+  .primary { color: var(--accent-2); letter-spacing: .12em; text-transform: uppercase; }
+  .decision-actions [data-decision^=accept] { --cap: var(--ok); }
+  .decision-actions [data-decision=decline] { --cap: var(--danger); }
+  .decision-actions [data-decision=cancel] { --cap: #6f939e; }
+  .decision-actions .primary { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, #7f8c93); }
+
+  /* Fields are display glass in a bezel. */
+  :is(.search, .custom-answer input, .message-form textarea, .new-session-form :is(input, select), .deny-reason, .setting-field, .login-form input, .access-form input:not([type=checkbox]), .office-folder) { border: 1px solid #000; border-radius: 2px; background: var(--glass); box-shadow: var(--bezel); }
+  :is(.search:focus-within, .setting-field:focus-within, :is(.custom-answer input, .message-form textarea, .new-session-form :is(input, select), .deny-reason, .login-form input, .access-form input, .office-folder):focus) { border-color: #000; box-shadow: 0 0 0 3px #192328, 0 0 0 4px var(--accent), 0 0 14px -3px var(--accent); }
+  .message-form textarea { color: #b5f5ff; font-family: var(--mono); caret-color: var(--accent); }
+  .message-form textarea::placeholder { color: color-mix(in srgb, var(--accent) 40%, var(--text-3)); }
+
+  /* Menus and dialogs: a small board in its mounting holes, the entries on solid mask. */
+  :is(.theme-options, .filter-options, .new-session-dialog) { border: 1px solid var(--line-2); border-radius: 2px; background: var(--holes), var(--board-under); }
+  :is(.theme-options, .filter-options) { padding: 12px 10px; }
+  :is(.tab, .theme-choice, .theme-sub) { border-radius: 2px; background: var(--panel); }
+  :is(.tab, .theme-choice, .theme-sub):hover { background: var(--panel-2); }
+  :is(.tab.active, .theme-choice[aria-pressed=true]) { background: var(--accent-soft); color: var(--accent-2); }
+  .live-label:not(.disconnected)::before, .connection-dot.online { box-shadow: 0 0 6px var(--ok); }
+  .empty { border-color: var(--line-2); border-radius: 2px; background: var(--panel); }
+  :is(.integrations h2, .eyebrow, .setting-label) { font-family: var(--display); font-weight: 600; letter-spacing: .16em; }
+
+  /* ── Usage: a module in its holes, LED bar graphs and readouts ── */
+  .usage-accounts { border-color: var(--line-2); background: var(--holes), var(--epoxy); }
+  .usage-account { padding-inline: 16px; }
+  .usage-account + .usage-account { border-top: 1px dashed var(--line); }
+  .usage-label { font: 600 10px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; }
+  .usage-percent { font: 400 11px/22px var(--mono); text-shadow: 0 0 6px color-mix(in srgb, currentColor 45%, transparent); }
+  :is(.usage-tag, .usage-reset) { font-family: var(--mono); }
+  /* A usage meter is an LED bar graph lit by position, as real ones are: cyan, amber from 80 %, red from 95 %. The element draws every
+     segment lit; the value bar is clear and its shadow (painted only outside it) dims the unlit rest to a faint glow of its colour. */
+  .usage-meter { height: 8px; border-radius: 0; background: repeating-linear-gradient(90deg, transparent 0 4px, var(--glass) 4px 6px), linear-gradient(90deg, var(--accent) 0 80%, var(--warn) 80% 95%, var(--danger) 95%); }
+  .usage-meter::-webkit-progress-bar { background: transparent; border-radius: 0; }
+  .usage-meter::-webkit-progress-value { background: transparent; border-radius: 0; box-shadow: 0 0 0 100vw #010507d4; }
+  .usage-meter::-moz-progress-bar { background: transparent; border-radius: 0; box-shadow: 0 0 0 100vw #010507d4; }
+  .usage-percent { padding: 0 4px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); line-height: 18px; }
+  .plan-meter { height: 6px; border-radius: 0; background: var(--leds); }
+  .plan-meter::-webkit-progress-bar { background: var(--leds); border-radius: 0; }
+  .plan-meter::-webkit-progress-value { background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); border-radius: 0; }
+  .plan-meter::-moz-progress-bar { background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 6px); border-radius: 0; }
+  .spend-panel { --spend-color: var(--accent); --spend-cache: var(--ok); border-color: var(--line-2); border-radius: 2px; background: var(--glass); }
+  .spend-heading { border-bottom: 1px dashed var(--line-2); font-family: var(--display); letter-spacing: .18em; }
+  :is(.spend-total, .spend-balance) strong { font-family: var(--mono); font-weight: 400; color: var(--accent-2); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent); }
+  .spend-emblem { background: url('/nodes-synthetic-cell.svg') center / contain no-repeat; filter: none; }
+  .spend-bar { max-width: 14px; border: 0; border-radius: 0; background: repeating-linear-gradient(0deg, var(--spend-color) 0 3px, transparent 3px 5px); box-shadow: none; }
+  .spend-day.spend-empty .spend-bar { background: repeating-linear-gradient(0deg, var(--line-2) 0 3px, transparent 3px 5px); }
+  .spend-reserve { border-radius: 0; background: var(--leds); box-shadow: none; }
+  .spend-reserve-fill { border-radius: 0; background: repeating-linear-gradient(90deg, var(--spend-color) 0 4px, transparent 4px 6px); }
+  .spend-token-rail { border-radius: 0; }
+
+  /* ── Projects: silkscreen beside a pad, a trace under it ── */
+  #groups { counter-reset: syn-u; }
+  .group-heading { padding-bottom: 6px; background: linear-gradient(var(--line-2) 0 0) 0 100% / 100% 1px no-repeat; }
+  .group-title { padding-right: 6px; }
+  .group-title::before { content: ''; flex: none; width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle, var(--bg) 0 2px, var(--gold) 2.5px 4.5px, transparent 5px); }
+  .group-title h2 { font: 600 13px/1.3 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--silk); }
+  .project-path { padding: 0 4px; font-family: var(--mono); }
+
+  /* ── Sessions: an EPROM-style package, pins on both ends, a notch and pin-1 dot, its designator printed on top.
+        The provider sits under a quartz window; the die lights with what it's doing. ── */
+  .session-list { --stack-gap: 8px; }
+  .session-card:not(.subagent) { counter-increment: syn-u; }
+  .session-card { --pin1: radial-gradient(circle at 8px calc(100% - 8px), #2f3d44 0 2px, transparent 2.5px); border-color: var(--frame); border-radius: 2px; background: var(--notch), var(--pin1), var(--epoxy); box-shadow: inset 0 1px 0 #ffffff0a; }
+  .session-card:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--frame)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), 0 0 18px -8px var(--accent); }
+  .session-card .session-body::before { content: ''; position: absolute; inset: 9px -6px; pointer-events: none; background: var(--pins-y) 0 0 / 4px 100% no-repeat, var(--pins-y) 100% 0 / 4px 100% no-repeat; }
+  .session-card.subagent .session-body::before { background: var(--pins-y) 100% 0 / 4px 100% no-repeat; }
+  .session-card:not(.subagent) .session-body::after { content: 'U' counter(syn-u); position: absolute; left: 12px; top: 2px; width: 36px; text-align: center; font: 9px/1 var(--mono); color: color-mix(in srgb, var(--silk) 40%, transparent); pointer-events: none; }
+  .session-title { font-family: var(--display); letter-spacing: .01em; }
+  .session-age { font: 10.5px var(--mono); }
+  .chip { border-radius: 0; border-color: var(--line-2); font: 10px/16px var(--mono); }
+  .plan-chip { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  :is(.subagent-tag, .project-tag) { border-radius: 0; font-family: var(--mono); font-weight: 400; }
+  .agent-mark, .agent-mark.claude, .session-card.subagent .agent-mark { --lit: transparent; border: 0; border-radius: 5px; background: radial-gradient(circle at 35% 30%, #173039, #050b0e 72%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--lit) 55%, #34434a), 0 0 0 3px #0a0f12, inset 0 0 6px #000, inset 0 0 12px -2px var(--lit), 0 0 14px -4px var(--lit); }
+  .agent-mark > .provider-icon { width: 82%; height: 82%; }
+  .unread-dot { z-index: 2; border-radius: 1px; background: var(--accent); box-shadow: 0 0 0 2px var(--bg), 0 0 8px var(--accent); }
+  .session-card[data-status=working] .agent-mark { --lit: var(--ok); }
+  .session-card.needs-input .agent-mark { --lit: var(--warn); }
+  .session-card[data-status=error] .agent-mark { --lit: var(--danger); }
+  .session-card[data-status=offline] .agent-mark > .provider-icon { filter: grayscale(1) brightness(.6); }
+  .session-card:is([data-status=idle], [data-status=offline]) .session-title { color: var(--text-2); }
+  .session-card.subagent { --connector: color-mix(in srgb, var(--copper) 55%, transparent); }
+  .session-card.subagent::before { border-bottom-left-radius: 0; }
+
+  /* Status: an LED and its silkscreen label; what needs you or failed gets a lit frame too. */
+  .badge { gap: 6px; padding: 2px 0; border-radius: 0; background: none; font: 600 10.5px/1.3 var(--display); letter-spacing: .14em; text-transform: uppercase; }
+  .badge .dot { width: 7px; height: 7px; box-shadow: 0 0 0 1px #000a, 0 0 7px currentColor; }
+  .badge:not(.green, .amber, .red) { color: var(--text-3); }
+  .badge:not(.green, .amber, .red) .dot { background: #1c2c32; box-shadow: inset 0 0 0 1px #34484f; }
+  .badge.green { background: none; }
+  .badge.green .dot::after { content: none; }
+  .badge:is(.amber, .red) { padding: 2px 7px; border: 1px solid currentColor; box-shadow: 0 0 10px -4px currentColor; }
+  .session-card.needs-input { border-color: var(--warn-line); background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 13%, transparent), transparent 45%), var(--notch), var(--pin1), var(--epoxy); box-shadow: inset 3px 0 var(--warn), 0 0 16px -8px var(--warn); }
+  .session-card[data-status=error] { border-color: color-mix(in srgb, var(--danger) 45%, var(--frame)); background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 12%, transparent), transparent 45%), var(--notch), var(--pin1), var(--epoxy); box-shadow: inset 3px 0 var(--danger); }
+  .session-card[data-status=working] { box-shadow: inset 2px 0 color-mix(in srgb, var(--ok) 70%, transparent); }
+  /* High-voltage stripes along the foot of what needs you; a trace along a working one's, lit at its start. */
+  .session-card.needs-input::after { content: ''; position: absolute; left: 3px; right: 0; bottom: 0; height: 4px; background: linear-gradient(-45deg, transparent 0 25%, var(--warn) 25% 50%, transparent 50% 75%, var(--warn) 75%) 0 0 / 8px 8px; opacity: .55; pointer-events: none; }
+  .session-card[data-status=working]::after { content: ''; position: absolute; left: 0; bottom: -1px; width: 100%; height: 1px; background: linear-gradient(90deg, var(--ok), transparent 55%); opacity: .6; pointer-events: none; }
+
+  /* ── The panel ── */
+  .detail-panel { background: var(--bg); border-left: 1px solid color-mix(in srgb, var(--copper) 55%, var(--line-2)); }
+  .panel-backdrop { background: #000a; }
+  .chat-header { background: var(--board-under); border-bottom: 1px solid var(--line-2); box-shadow: 0 1px 0 #000, 0 2px 0 color-mix(in srgb, var(--accent) 16%, transparent); }
+  .agent-heading { padding: 2px 8px 3px; border: 1px solid var(--frame); border-radius: 2px; background: var(--epoxy); }
+  .panel-title { font-family: var(--display); letter-spacing: .02em; }
+  :is(.chat-info > summary, .agent-byline) { font-family: var(--mono); font-size: 11px; }
+  .chat-info > summary { width: fit-content; max-width: 100%; padding-right: 6px; background: var(--panel); }
+  :is(.session-info, .plan-steps) { border: 1px solid var(--line); border-radius: 0; background: var(--glass); }
+  .session-info { font-family: var(--mono); font-size: 11.5px; }
+
+  /* Messages: packages with pins down both sides. Theirs in black epoxy with a notch, yours a ceramic body under a gold lid. */
+  .history-content { counter-reset: syn-msg; }
+  .recent-message:not(.tool, .notice) { counter-increment: syn-msg; position: relative; border: 1px solid var(--frame); border-radius: 2px; box-shadow: none;
+    background: radial-gradient(circle at 50% 0, #030608 0 5px, var(--frame) 5.5px 6px, transparent 6.5px), radial-gradient(circle at 7px calc(100% - 7px), #2f3d44 0 2px, transparent 2.5px), var(--epoxy); }
+  .recent-message:not(.tool, .notice)::before { content: ''; position: absolute; inset: 8px -6px; pointer-events: none; background: var(--pins-y) 0 0 / 4px 100% no-repeat, var(--pins-y) 100% 0 / 4px 100% no-repeat; }
+  .recent-message:not(.tool, .notice)::after { content: 'U' counter(syn-msg); position: absolute; left: 1px; bottom: 100%; margin-bottom: 1px; font: 8px/1 var(--mono); color: color-mix(in srgb, var(--silk) 40%, transparent); pointer-events: none; }
+  .recent-message.user:not(.tool, .notice)::after { left: auto; right: 1px; }
+  .recent-message .message-meta strong { font: 600 10px/1.4 var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--accent); }
+  .recent-message.user:not(.tool, .notice) { border-color: #3a3524; background: radial-gradient(circle at 7px calc(100% - 7px), #4a4330 0 2px, transparent 2.5px), linear-gradient(180deg, #1a1d1c, #101312); box-shadow: inset 0 0 0 3px #0e1110, inset 0 0 0 4px color-mix(in srgb, var(--gold) 45%, transparent); }
+  .recent-message.user .message-meta strong { color: var(--gold); }
+  .recent-message.user:not(.tool, .notice) { padding-inline: 14px; }
+  .message-text code { border-radius: 0; background: var(--glass); color: var(--accent-2); box-shadow: inset 0 0 0 1px var(--line); }
+  .message-text pre { border-radius: 0; border-color: var(--line-2); background: var(--glass); }
+  .message-text pre code { box-shadow: none; color: var(--text); }
+  .message-text :is(th, td) { border-color: var(--line-2); }
+  /* Tool calls run down a trace, a via at each; a folded run is a bus. */
+  .recent-message.tool { padding-left: 18px; border-left: 0; background: radial-gradient(circle, var(--bg) 0 1.5px, var(--tap, var(--gold)) 2px 3.5px, transparent 4px) 0 50% / 9px 9px no-repeat, linear-gradient(var(--trace) 0 0) 9px 50% / 6px 1px no-repeat, linear-gradient(var(--trace) 0 0) 3.5px 0 / 2px 100% no-repeat; }
+  .recent-message.tool.failed { --tap: var(--danger); }
+  .tool-call::before { content: none; }
+  .tool-run { padding-left: 16px; border-left: 0; background: repeating-linear-gradient(90deg, var(--trace) 0 1px, transparent 1px 3px) 1px 0 / 7px 100% no-repeat; }
+  .tool-run > .recent-message.tool { padding-left: 0; background: none; }
+
+  .chat-requests { background: var(--board-under); border-top: 1px solid var(--line-2); }
+  /* A request is a warning chip: amber frame, a row of LEDs along its top, pins down both sides. */
+  .request-box { position: relative; border: 1px solid var(--warn); border-radius: 2px; box-shadow: 0 0 22px -10px var(--warn);
+    background: radial-gradient(circle at 8px calc(100% - 8px), #4a3a1c 0 2px, transparent 2.5px), linear-gradient(180deg, color-mix(in srgb, var(--warn) 9%, #121a1e), #0a0f12); }
+  .request-box::before { content: ''; position: absolute; inset: 10px -6px; pointer-events: none; background: var(--pins-y) 0 0 / 4px 100% no-repeat, var(--pins-y) 100% 0 / 4px 100% no-repeat; }
+  .request-box::after { content: ''; position: absolute; top: 12px; right: 12px; width: 112px; height: 10px; pointer-events: none;
+    background: radial-gradient(circle at 7px 50%, var(--warn) 0 2.5px, transparent 3px) 0 0 / 28px 10px repeat-x, radial-gradient(circle at 7px 50%, #3a2606 0 2.5px, #000 3px 3.5px, transparent 4px) 0 0 / 14px 10px repeat-x;
+    filter: drop-shadow(0 0 3px color-mix(in srgb, var(--warn) 60%, transparent)); }
+  .request-box .eyebrow { font-size: 11px; letter-spacing: .2em; }
+  :is(.request-code, .request-details pre, .request-plan) { border-radius: 0; border-color: var(--line-2); background: var(--glass); }
+  .answer-option { border-color: var(--frame); border-radius: 2px; background: var(--epoxy); }
+  .answer-option:hover { border-color: var(--accent); }
+  .answer-option:has(input:checked) { background: linear-gradient(180deg, #0b2a32, #071c22); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 0 0 12px -4px var(--accent); }
+
+  /* The composer is a display module: glass in a bezel, mounting holes at the corners and its header pins up top. */
+  .message-composer { position: relative; padding-top: 14px; background: var(--holes), var(--board-under); border-top: 1px solid var(--line-2); }
+  .message-composer::before { content: ''; position: absolute; top: 3px; left: 50%; width: 41px; height: 5px; margin-left: -20px; pointer-events: none; background: radial-gradient(circle at 2.5px 2.5px, #000 0 1.2px, transparent 1.7px) 0 0 / 12px 5px repeat-x, linear-gradient(90deg, var(--gold) 0 5px, transparent 5px) 0 0 / 12px 5px repeat-x; }
+  .message-composer::after { content: 'DS1'; position: absolute; top: 2px; left: calc(50% + 26px); font: 7px/1 var(--mono); color: color-mix(in srgb, var(--silk) 45%, transparent); pointer-events: none; }
+
+  /* ── Sidebar session map, in the list: an LED matrix module, one LED per session lit by its state ── */
+  &:is([data-scene-list], [data-scene-fallback]) .theme-console { display: block; margin: 0 0 6px; padding: 8px 10px 6px; border: 1px solid var(--frame); border-radius: 2px; background: var(--holes), var(--epoxy); }
+  .console-lamps, .console-vector, .console-sweep, .console-signal, .console-power { display: none; }
+  .console-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 7px; font: 600 10px/1 var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--text-3); }
+  .console-count { padding: 2px 4px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); color: var(--accent); font: 12px/1 var(--mono); letter-spacing: .08em; text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 50%, transparent); }
+  .console-screen { position: relative; height: 104px; overflow: hidden; border: 1px solid #000; background: linear-gradient(#010507d9, #010507d9), var(--board), var(--glass); box-shadow: var(--bezel); }
+  .console-contacts { position: absolute; inset: 0; }
+  .console-contact { position: absolute; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: none; color: #1c2c32; transform: translate(-50%, -50%); }
+  .console-contact::before { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 1px #000, 0 0 8px currentColor; }
+  .console-contact:not([data-status=working], [data-status=question], [data-status=permission], [data-status=error])::before { box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #34484f; }
+  .console-contact[data-status=working] { color: var(--ok); }
+  .console-contact:is([data-status=question], [data-status=permission]) { color: var(--warn); }
+  .console-contact[data-status=error] { color: var(--danger); }
+  .console-contact:is(:hover, :focus-visible, [data-tracked]) { z-index: 1; outline: 1px solid var(--accent); outline-offset: 0; }
+  .console-readout { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 7px 4px 0; }
+  .console-track-label { flex: none; font: 600 9.5px/1.3 var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  .console-track-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px/1.3 var(--mono); color: var(--text-2); }
+  .console-readout:is([data-status=question], [data-status=permission]) .console-track-label { color: var(--warn); }
+  .console-readout:is([data-status=error], [data-status=offline]) .console-track-label { color: var(--danger); }
+  .console-empty { position: absolute; inset: 0; display: grid; place-items: center; background: #010507e0; color: var(--accent); font: 11px var(--mono); letter-spacing: .2em; }
+  .theme-console[data-disconnected=true] .console-contacts { opacity: .3; }
+
+  /* ── Lock: a secure element on its board, a keypad module beside the name, the PIN typed into display glass ── */
+  .login-screen { background: var(--board), var(--bg); }
+  .login-card { position: relative; border: 1px solid var(--frame); border-radius: 3px; background: radial-gradient(circle at 14px 14px, #2f3d44 0 3px, transparent 3.5px), var(--epoxy); box-shadow: 0 0 0 6px #061114, 0 0 0 7px var(--line-2), 0 24px 60px -10px #000; }
+  .login-card::before, .access-console::before { content: ''; position: absolute; inset: -6px 22px; pointer-events: none; background: var(--pins-x) 0 0 / 100% 4px no-repeat, var(--pins-x) 0 100% / 100% 4px no-repeat; }
+  .login-card::after, .access-console::after { content: ''; position: absolute; inset: 22px -6px; pointer-events: none; background: var(--pins-y) 0 0 / 4px 100% no-repeat, var(--pins-y) 100% 0 / 4px 100% no-repeat; }
+  .login-display { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .login-display::after { content: 'SE1 · SECURE ELEMENT'; font: 9px/1 var(--mono); letter-spacing: .14em; color: color-mix(in srgb, var(--silk) 45%, transparent); }
+  .login-card .brand { font: 600 18px/1 var(--display); letter-spacing: .2em; text-transform: uppercase; }
+  .login-symbol { width: 64px; height: 72px; border-radius: 0; background: url('/nodes-synthetic-keypad.svg') center / contain no-repeat; }
+  .login-symbol .icon { display: none; }
+  .login-form input { color: #b5f5ff; font-family: var(--mono); letter-spacing: .2em; text-align: center; caret-color: var(--accent); }
+  .login-form label { font-family: var(--display); letter-spacing: .12em; }
+  .login-card:has(.form-error:not(:empty)) { border-color: var(--danger); }
+  /* Changing the PIN: the same chip, in the panel. */
+  .access-console { display: block; position: relative; margin: 16px 6px 0; padding: 18px 20px 20px; border: 1px solid var(--frame); border-radius: 2px; background: var(--notch), var(--epoxy); }
+  .access-console .panel-title { margin-top: 0; }
+  .access-form label { font-family: var(--display); letter-spacing: .1em; }
+
+  /* ── Image viewer: the picture on an LCD module mounted on the board, switches under it, thumbnails as little display chips ── */
+  .shot-viewer { border: 0; background: var(--holes), linear-gradient(#020608e0, #020608e0), var(--board), var(--bg); color: var(--text); }
+  .shot-viewer::backdrop { background: #000d; }
+  .shot-full { margin: 8px; border: 8px solid; border-image: linear-gradient(160deg, #2c383e, #0b1013 35%, #0b1013 70%, #1a2328) 1; background: #000; box-shadow: 0 0 0 1px #000, 0 0 0 7px #08161b, 0 0 0 8px var(--line-2), inset 0 0 40px color-mix(in srgb, var(--accent) 6%, transparent); }
+  .shot-full img { border-radius: 0; }
+  .shot-bar { gap: 10px; padding: 8px 8px 2px; }
+  .shot-meta { font: 11.5px var(--mono); color: var(--text-2); }
+  .shot-button { --cap: #26333a; position: relative; border: 2px solid #7f8c93; border-radius: 3px; color: var(--text); font-size: 16px; box-shadow: inset 0 0 0 1px #05080a, 0 2px 0 #000;
+    background: radial-gradient(circle at 46% 40%, #ffffff30 0 2px, transparent 4px), radial-gradient(circle, var(--cap) 0 13px, #000 13.5px 15px, transparent 15.5px), linear-gradient(180deg, #182126, #0b1013); }
+  .shot-bar > .shot-button:last-child { --cap: #6a1424; }
+  .shot-strip { padding: 7px; }
+  .shot-thumb { border: 3px solid #0c1215; border-radius: 2px; background: #000; box-shadow: 0 0 0 1px #34444c; opacity: .6; }
+  .shot-thumb.current { border-color: #0c1215; box-shadow: 0 0 0 1px var(--accent), 0 0 12px -2px var(--accent); opacity: 1; }
+  /* A document reads as a datasheet: silkscreen headings, body on epoxy. */
+  .doc-viewer .doc-body { border: 1px solid var(--frame); border-radius: 2px; background: var(--epoxy); box-shadow: 0 0 0 4px #061114, 0 0 0 5px var(--line-2); }
+  .doc-body :is(h1, h2, h3) { font-family: var(--display); letter-spacing: .05em; color: var(--silk); }
+  .doc-body :is(h1, h2) { padding-bottom: 4px; border-bottom: 1px solid var(--line-2); }
+  .doc-body h1 { letter-spacing: .12em; text-transform: uppercase; }
+
+  /* ── Chat extras ── */
+  .history-shot { border: 3px solid #0c1215; border-radius: 2px; background: #000; box-shadow: 0 0 0 1px #34444c; }
+  .history-shot:is(:hover, :focus-visible) { border-color: #0c1215; box-shadow: 0 0 0 1px var(--accent), 0 0 12px -3px var(--accent); }
+  .doc-chip .icon { color: var(--accent); }
+  /* Queued messages wait in a FIFO, each with its pending LED. */
+  .message-queue { margin: 4px 4px 10px; padding: 2px 8px 4px; border: 1px solid #000; background: var(--glass); box-shadow: var(--bezel); }
+  .queue-heading { font: 600 10px/1.8 var(--display); letter-spacing: .18em; text-transform: uppercase; }
+  .queued-message { border-top: 1px dashed var(--line); }
+  .queued-message::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+  .queued-message p { color: #b5f5ff; font-family: var(--mono); }
+  .composer-image { border: 3px solid #0c1215; border-radius: 2px; background: #000; box-shadow: 0 0 0 1px #34444c; }
+  .composer-image img { border-radius: 0; }
+  .composer-image-remove { border: 1.5px solid #7f8c93; background: radial-gradient(circle, #b3243a 0 7px, #000 7.5px); color: #fff; box-shadow: 0 1px 0 #000; }
+  .composer-image-remove:hover:not(:disabled) { border-color: #b4c2c8; color: #fff; }
+  /* A connection error is a warning chip: amber frame, its LED lit. */
+  .connection-error { display: flex; align-items: center; gap: 8px; border-color: var(--warn); border-radius: 2px; background: linear-gradient(180deg, color-mix(in srgb, var(--warn) 9%, #121a1e), #0a0f12); }
+  .connection-error::before { content: ''; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 7px var(--warn); }
+  /* Lost sessions: a fault chip, amber framed, each lost one under its own glass. */
+  .lost details { border-color: var(--warn); border-radius: 2px; background: linear-gradient(180deg, color-mix(in srgb, var(--warn) 7%, #121a1e), #0a0f12); box-shadow: 0 0 18px -10px var(--warn); }
+  .lost-summary { font-family: var(--display); letter-spacing: .06em; }
+  .lost-list { border-top: 1px dashed var(--warn-line); }
+  .lost-row + .lost-row { border-top: 1px dashed var(--line); }
+  .lost-mark { width: 22px; height: 22px; border-radius: 4px; background: radial-gradient(circle at 35% 30%, #173039, #050b0e 72%); box-shadow: 0 0 0 2px #34434a, 0 0 0 3px #0a0f12; }
+  .lost-mark > .provider-icon { width: 80%; height: 80%; }
+  .lost-said, .lost-reply { font-family: var(--mono); }
+
+  /* Scrollbars thin and in the board's colours; focus is the probe's cyan ring. */
+  &, & * { scrollbar-width: thin; }
+  :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+}
+@media (min-width: 641px) and (max-width: 900px) { :root[data-theme-choice=nodes-synthetic] .theme-console { display: none; } }
+@media (max-width: 640px) {
+  :root[data-theme-choice=nodes-synthetic] {
+    .session-card:not(.subagent) .session-body::after { left: 10px; width: 32px; }
+    .stats { padding-block: 5px; }
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-choice=nodes-synthetic] {
+    /* LEDs: an activity light flickering while it works, amber blinking while it waits on you, the warning chip's row chasing; the stripes crawl. */
+    .badge.green .dot { animation: syn-activity 1.4s steps(1) infinite; animation-delay: var(--since-load, 0s); }
+    .badge.amber .dot { animation: syn-blink 1s steps(1) infinite; animation-delay: var(--since-load, 0s); }
+    .session-card.needs-input::after { animation: syn-stripes 1.2s steps(4) infinite; }
+    .request-box::after { animation: syn-chase .8s steps(1) infinite; }
+    .console-contact:is([data-status=question], [data-status=permission]) { animation: syn-blink 1s steps(1) infinite; }
+    .console-contact[data-status=working] { animation: syn-activity 1.4s steps(1) infinite; }
+    .connection-error::before, .queued-message::before { animation: syn-blink 1s steps(1) infinite; }
+    /* A packet runs the working card's trace, as tool calls run the board's. */
+    .session-card[data-status=working]::after { width: 22%; height: 2px; background: linear-gradient(90deg, transparent, var(--ok)); opacity: 1; animation: syn-packet 2.4s linear infinite; animation-delay: var(--since-load, 0s); }
+  }
+}
+@keyframes syn-activity { 0%, 30%, 52%, 86% { opacity: 1; } 18%, 44%, 74% { opacity: .25; box-shadow: none; } }
+@keyframes syn-blink { 50% { opacity: .2; box-shadow: none; } }
+@keyframes syn-stripes { to { background-position: 8px 0; } }
+@keyframes syn-chase { 50% { background-position: 14px 0, 0 0; } }
+@keyframes syn-packet { from { transform: translateX(-100%); } to { transform: translateX(455%); } }

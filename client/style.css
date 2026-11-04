@@ -183,6 +183,8 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* A scene takes the page; here rather than with the scene so the list doesn't show while its code loads. */
 :root[data-scene]:not([data-scene-fallback], [data-scene-list]) .main-content { max-width: none; padding: 0; height: 100dvh; }
 :root[data-scene]:not([data-scene-fallback], [data-scene-list]) .main-content > :not(.scene) { display: none; }
+/* A board zooms itself; a pinch on the bar above it would zoom the page out from under the board and its menus. Lists and the panel keep page zoom for reading. */
+:root[data-scene]:not([data-scene-fallback], [data-scene-list]) .topbar { touch-action: pan-x pan-y; }
 .connection-error { padding: 10px 12px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: var(--radius-sm); }
 
 /* Overview */
@@ -567,7 +569,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .doc-chip .icon { flex: none; width: 17px; height: 17px; color: var(--accent); }
 .doc-chip:hover, .doc-chip:focus-visible { border-color: var(--accent); }
 .doc-link { display: inline; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--accent); font: inherit; letter-spacing: inherit; text-align: start; text-transform: none; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; cursor: pointer; }
-.doc-viewer { width: min(860px, calc(100vw - 24px)); height: calc(100svh - 24px); touch-action: auto; }
+.doc-viewer { width: min(860px, calc(100vw - 24px)); height: calc(100svh - 24px); margin: auto; touch-action: auto; }
 .doc-viewer[open] { display: flex; flex-direction: column; }
 .doc-viewer .shot-bar { flex: none; margin: 0 0 8px; }
 .doc-viewer .shot-meta { text-align: start; font-weight: 600; }

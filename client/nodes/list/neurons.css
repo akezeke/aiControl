@@ -1,0 +1,285 @@
+/* Nodes · Neurons: the list and panel as the deep the neurons drift in. Out-of-focus cells behind everything, every surface a
+   membrane lit at its rim, buttons as vesicles, each session a soma whose core glows with what it's doing, axons with myelin for
+   meters, tool calls as action potentials, and a gold dendrite reaching out of whatever needs you. */
+@font-face { font-family: 'Sora'; src: url('/fonts/sora.woff2') format('woff2'); font-weight: 400 600; font-display: swap; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/ibm-plex-mono-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+:root[data-theme-choice=nodes-neurons] {
+  color-scheme: dark;
+  --font: Sora, system-ui, sans-serif; --display: Sora, system-ui, sans-serif; --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --bg: #04061a; --panel: #0a0e28; --panel-2: #111839; --sunken: #03040f;
+  --text: #e8eeff; --text-2: #b6c2e6; --text-3: #8592c0;
+  --line: #1b2350; --line-2: #2b376e;
+  --accent: #79c6ff; --accent-2: #c9e8ff; --accent-ink: #03101f; --accent-soft: #0f1f4a;
+  --ok: #5ff0c8; --ok-soft: #0b2a2a; --warn: #ffc93c; --warn-soft: #251c06; --warn-line: #8a6a1c; --danger: #ff4d6d; --danger-soft: #2a0b17;
+  --codex: #e8eeff; --claude: #ff9a6a; --claude-soft: #2a160f;
+  --radius: 16px; --radius-sm: 10px; --shadow: inset 0 1px 0 #ffffff07, 0 10px 24px -16px #000; --shadow-lg: 0 24px 60px -12px #000d; --focus: #9fd8ff;
+  --field: url('/nodes-neurons-field.svg') 0 0 / 480px 480px;
+  --deep: radial-gradient(90% 60% at 72% -12%, #1c2f8a55, transparent 62%), radial-gradient(70% 55% at -6% 104%, #3a145855, transparent 60%);
+  /* A membrane: dark cytoplasm, lit where it turns away from you, a little lopsided like anything alive. */
+  --rim: inset 0 0 0 1px #79c6ff14, inset 0 0 22px -12px #79c6ff55;
+  --cell: 18px 22px 20px 16px / 18px 16px 22px 20px;
+  --cytoplasm: radial-gradient(120% 90% at 28% 18%, #ffffff0d, transparent 45%), radial-gradient(90% 90% at 50% 60%, #121a46, #0a0e28 85%);
+  --core: #4a5f8c;
+  --spike: url('/nodes-neurons-spike.svg');
+  --twig: url('/nodes-neurons-twig.svg');
+  scrollbar-color: var(--line-2) var(--sunken);
+
+  body { background: var(--deep), var(--field), var(--bg); }
+  .history-viewport { background: linear-gradient(#04061acc, #04061acc), var(--field), var(--bg); background-attachment: local; }
+  /* The sidebar and top bar are the edge of a cell: a lit rim along the side that faces the page, faint neurons in the deep. */
+  .sidebar { background: radial-gradient(120% 40% at 0% 0%, #16205a66, transparent 70%), linear-gradient(#060820e6, #04061ae6), var(--field), var(--bg); border-right: 1px solid #000; box-shadow: inset -1px 0 0 #79c6ff26, inset -22px 0 32px -28px #79c6ff88; }
+  .topbar { background: linear-gradient(180deg, #070a22, #050719); border-bottom: 1px solid #000; box-shadow: inset 0 -1px 0 #79c6ff26, inset 0 -16px 24px -22px #79c6ff88; }
+  .brand-variant.nodes .brand-mark { -webkit-mask-image: url('/nodes-neurons-mark.svg'); mask-image: url('/nodes-neurons-mark.svg'); filter: drop-shadow(0 0 5px #79c6ff99); }
+  .brand-variant.nodes .brand-name { font: 600 17px/1 var(--display); letter-spacing: .01em; }
+
+  .sidebar-label { font: 600 10.5px/1.2 var(--display); letter-spacing: .16em; color: var(--text-3); }
+  .nav-item { border-radius: 99px; }
+  .nav-item:hover { background: #79c6ff0d; }
+  .nav-item.active { background: radial-gradient(60% 140% at 0% 50%, #79c6ff30, transparent 70%), var(--accent-soft); color: var(--accent-2); box-shadow: var(--rim), 0 0 18px -10px var(--accent); }
+  /* Counts are vesicles; a project's waiting count is a gold one. */
+  :is(.nav-count, .group-count) { border-radius: 99px; background: radial-gradient(circle at 40% 30%, #1d2860, #0a0e28 80%); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-2); font: 11px/16px var(--mono); }
+  .nav-item.active .nav-count { color: var(--accent-2); box-shadow: inset 0 0 0 1px #79c6ff55, 0 0 8px -2px var(--accent); }
+  .project-dot { min-width: 16px; padding: 0 4px; border-radius: 99px; background: radial-gradient(circle at 40% 30%, #4a3a10, var(--warn-soft) 80%); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn-line), 0 0 10px -2px var(--warn); font: 11px/16px var(--mono); text-align: center; }
+
+  /* The page's name on a soma, its axon running off under it. */
+  .page-heading { padding-bottom: 12px; background: radial-gradient(circle at 5px calc(100% - 5px), #ffe2b8 0 2px, #ff8a4a99 3px, transparent 6px), linear-gradient(90deg, #79c6ffaa, #79c6ff33 45%, transparent 75%) 9px calc(100% - 5px) / 70% 1.5px no-repeat; }
+  .page-heading h1 { font: 600 24px/1.15 var(--display); letter-spacing: -.01em; color: var(--text); text-shadow: 0 0 22px #79c6ff33; }
+  .machine-label { padding: 0 7px; border: 1px solid var(--line-2); border-radius: 99px; font-family: var(--mono); }
+
+  /* Usage: axons sheathed in myelin, the signal lit along them with a bright head. */
+  .usage-accounts { border-color: var(--line-2); border-radius: var(--cell); background: radial-gradient(80% 140% at 0% 0%, #16205a44, transparent 60%), linear-gradient(180deg, #0b1030, #070a20); box-shadow: var(--rim); }
+  .usage-account + .usage-account { border-top: 1px solid var(--line); }
+  .usage-percent { font: 400 11px/22px var(--mono); }
+  :is(.usage-tag, .usage-reset) { font-family: var(--mono); }
+  :is(.usage-meter, .plan-meter) { height: 5px; border-radius: 99px; background: repeating-linear-gradient(90deg, #ffffff0c 0 13px, transparent 13px 15px), var(--sunken); box-shadow: inset 0 1px 1px #000; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-bar { background: repeating-linear-gradient(90deg, #ffffff0c 0 13px, transparent 13px 15px), var(--sunken); border-radius: 99px; }
+  :is(.usage-meter, .plan-meter)::-webkit-progress-value { border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, currentColor 22%, transparent), currentColor 92%, #fff); box-shadow: 0 0 9px -1px currentColor; }
+  :is(.usage-meter, .plan-meter)::-moz-progress-bar { border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, currentColor 22%, transparent), currentColor 92%, #fff); box-shadow: 0 0 9px -1px currentColor; }
+  .spend-panel { --spend-color: #9c8cff; --spend-cache: var(--ok); border-color: var(--line-2); border-radius: var(--cell); background: linear-gradient(180deg, #0b1030, #070a20); box-shadow: var(--rim); }
+  .spend-heading { border-bottom: 1px solid var(--line); font: 600 10.5px var(--display); letter-spacing: .16em; }
+  :is(.spend-total, .spend-balance) strong { font: 600 1.15em var(--display); color: var(--accent-2); text-shadow: 0 0 12px #79c6ff55; }
+  .spend-emblem { background: var(--accent); -webkit-mask: url('/nodes-neurons-mark.svg') center / 72% no-repeat; mask: url('/nodes-neurons-mark.svg') center / 72% no-repeat; filter: drop-shadow(0 0 6px #79c6ff88); opacity: .85; }
+  .spend-bar { border-radius: 99px 99px 3px 3px; box-shadow: 0 0 12px -3px var(--spend-color); }
+
+  /* Buttons are vesicles: round, full of a lit cytoplasm, rimmed; square ones become little cells. The primary is a firing core. */
+  :is(.secondary, .quiet-button, .stat, .effort-select, .search, .history-latest, .doc-chip, .history-shot) { border-color: var(--line-2); }
+  :is(.secondary, .quiet-button) { border-radius: 99px; background: var(--cytoplasm); box-shadow: var(--rim); }
+  :is(.secondary, .quiet-button, .stat):hover:not(:disabled) { border-color: #79c6ff66; box-shadow: inset 0 0 0 1px #79c6ff22, inset 0 0 20px -8px #79c6ff88, 0 0 16px -8px var(--accent); }
+  .stat { border-radius: var(--cell); background: var(--cytoplasm); box-shadow: var(--rim); }
+  .primary { border-radius: 99px; background: radial-gradient(circle at 50% 130%, #ffc184, #ff7a3c 52%, #b9401c); color: #fff; box-shadow: 0 0 18px -6px #ff7a3c, inset 0 1px 0 #ffffff40, inset 0 -6px 12px -6px #6a1d08; font-weight: 600; text-shadow: 0 1px 2px #6a1d0855; }
+  .primary:hover:not(:disabled) { background: radial-gradient(circle at 50% 120%, #ffd6a6, #ff8c4f 52%, #c64b22); box-shadow: 0 0 24px -4px #ff7a3c, inset 0 1px 0 #ffffff40; }
+  .stop-button { color: var(--danger); box-shadow: inset 0 0 0 1px #ff4d6d33, inset 0 0 16px -8px var(--danger); }
+  .stat-number { font-family: var(--display); font-weight: 600; }
+  .stat.selected { background: radial-gradient(80% 120% at 30% 20%, #79c6ff22, transparent 60%), var(--accent-soft); border-color: #79c6ff55; color: var(--accent-2); box-shadow: var(--rim); }
+  /* Fields are wells in the membrane. */
+  .search { border-radius: 99px; background: var(--sunken); box-shadow: inset 0 2px 6px #000a, inset 0 0 0 1px #79c6ff0c; }
+  :is(.search:focus-within, .setting-field:focus-within, :is(.custom-answer input, .message-form textarea, .new-session-form :is(input, select), .deny-reason):focus) { border-color: #79c6ffaa; box-shadow: 0 0 0 3px #79c6ff22, 0 0 18px -6px var(--accent), inset 0 2px 6px #000a; }
+  :is(.custom-answer input, .message-form textarea, .new-session-form :is(input, select), .deny-reason, .setting-field) { border-color: var(--line-2); border-radius: 14px; background: var(--sunken); box-shadow: inset 0 2px 6px #000a; }
+  /* Menus and dialogs float up as cells of their own. */
+  :is(.theme-options, .filter-options, .new-session-dialog) { border-color: #79c6ff33; border-radius: var(--cell); background: radial-gradient(90% 60% at 20% 0%, #1b2a7044, transparent 70%), linear-gradient(#0b1030f2, #070a20f2), var(--field); box-shadow: var(--rim), 0 0 30px -12px #79c6ff55, var(--shadow-lg); }
+  :is(.tab.active, .theme-choice[aria-pressed=true]) { background: radial-gradient(80% 120% at 30% 20%, #79c6ff22, transparent 60%), var(--accent-soft); color: var(--accent-2); box-shadow: var(--rim); }
+  .toast { border: 1px solid #79c6ff44; border-radius: 99px; background: var(--cytoplasm); color: var(--text); box-shadow: var(--rim), 0 0 26px -10px var(--accent), var(--shadow-lg); }
+  .live-label:not(.disconnected)::before, .connection-dot.online { box-shadow: 0 0 8px var(--ok); }
+  .empty { border-color: var(--line-2); border-radius: var(--cell); }
+  :is(.integrations h2, .eyebrow, .setting-label) { font-family: var(--display); font-weight: 600; letter-spacing: .14em; }
+
+  /* A project is the ganglion its sessions branch from: the cell by its name, an axon running on under them. */
+  .group-heading { padding-bottom: 6px; background: linear-gradient(90deg, #79c6ff66, #79c6ff1a 50%, transparent) 0 100% / 100% 1px no-repeat; }
+  .group-title::before { content: ''; flex: none; width: 15px; height: 15px; background: var(--accent); -webkit-mask: url('/nodes-neurons-mark.svg') center / contain no-repeat; mask: url('/nodes-neurons-mark.svg') center / contain no-repeat; filter: drop-shadow(0 0 4px #79c6ffaa); }
+  .group-title h2 { font: 600 15px/1.25 var(--display); letter-spacing: .005em; color: var(--text); }
+  .project-path { font-family: var(--mono); color: var(--text-3); }
+
+  /* A session is a cell: a lopsided translucent membrane, its soma on the left with a core that glows with what it's doing. */
+  .session-list { --stack-gap: 7px; }
+  .session-card { border-color: #1f2a5e; border-radius: var(--cell); background: radial-gradient(90% 150% at 0% 50%, color-mix(in srgb, var(--core) 14%, transparent), transparent 55%), linear-gradient(180deg, #0b1030, #070a1f); box-shadow: var(--rim), 0 10px 22px -16px #000; }
+  .session-card:hover { border-color: #79c6ff55; box-shadow: inset 0 0 0 1px #79c6ff22, inset 0 0 26px -10px #79c6ff77, 0 0 22px -14px var(--accent); }
+  .session-title { font-weight: 600; }
+  .session-age { font: 10.5px var(--mono); }
+  .chip { border-radius: 99px; border-color: var(--line-2); font: 10px/16px var(--mono); }
+  :is(.subagent-tag, .project-tag) { border-radius: 99px; font-family: var(--mono); font-weight: 400; }
+  .agent-mark, .agent-mark.claude, .session-card.subagent .agent-mark { border: 0; border-radius: 47% 53% 50% 50% / 54% 46% 54% 46%; background: radial-gradient(circle at 50% 52%, color-mix(in srgb, var(--core) 55%, transparent) 0 22%, color-mix(in srgb, var(--core) 18%, #0b1030) 58%, #0a0e28 78%); box-shadow: inset 0 0 0 1px #79c6ff30, inset 0 0 8px -2px #79c6ff55, 0 0 14px -5px var(--core); }
+  .agent-mark > .provider-icon { position: relative; z-index: 1; filter: drop-shadow(0 0 3px #04061a); }
+  .unread-dot { z-index: 2; background: var(--accent); box-shadow: 0 0 0 2px var(--bg), 0 0 8px var(--accent); }
+  .session-card[data-status=working] { --core: #ff6a2a; border-color: #3a2c56; }
+  .session-card.needs-input { --core: var(--warn); }
+  .session-card[data-status=error] { --core: var(--danger); }
+  .session-card[data-status=offline] { --core: #151c2e; }
+  .session-card[data-status=offline] .agent-mark { filter: grayscale(.8) brightness(.7); }
+  .session-card:is([data-status=idle], [data-status=offline]) .session-title { color: var(--text-2); }
+  .session-card.subagent { --connector: #79c6ff55; }
+
+  /* Status: a glowing core and its word; whatever needs you or misfired gets a lit capsule. */
+  .badge { border-radius: 99px; background: #0a0e28; box-shadow: inset 0 0 0 1px var(--line); }
+  .badge .dot { box-shadow: 0 0 8px currentColor; }
+  .badge.green { background: var(--ok-soft); box-shadow: inset 0 0 0 1px #2a6a5c; }
+  .badge.amber { background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn-line), 0 0 14px -5px var(--warn); }
+  .badge.red { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 50%, transparent), 0 0 14px -5px var(--danger); }
+  /* Working: an axon along the foot of the card that action potentials run down. */
+  .session-card[data-status=working]::after { content: ''; position: absolute; left: 44px; right: 16px; bottom: 4px; height: 1px; background: linear-gradient(90deg, #ff8c4f88, #79c6ff22 70%, transparent); pointer-events: none; }
+  /* Whatever needs you: the core beats gold, and a gold dendrite reaches out of the soma along the card. */
+  .session-card.needs-input { padding-bottom: 14px; border-color: var(--warn-line); background: radial-gradient(70% 160% at 0% 50%, #ffc93c1f, transparent 70%), linear-gradient(180deg, #120f1a, #0b0a16); box-shadow: inset 3px 0 var(--warn), inset 0 0 22px -12px var(--warn), 0 0 24px -12px var(--warn); }
+  .session-card.needs-input::after { content: ''; position: absolute; left: 30px; right: 16px; bottom: 4px; height: 4px; background: linear-gradient(90deg, #ffe7a0, var(--warn) 30%, #ffc93c88 85%, #ffe7a0); clip-path: polygon(0 0, 100% 40%, 100% 60%, 0 100%); filter: drop-shadow(0 0 3px var(--warn)); opacity: .85; pointer-events: none; }
+  .session-card[data-status=error] { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); background: radial-gradient(70% 160% at 0% 50%, #ff4d6d1c, transparent 70%), linear-gradient(180deg, #120a1c, #0b0716); box-shadow: inset 3px 0 var(--danger), var(--rim); }
+
+  /* The panel: the same deep, its edge a lit membrane. */
+  .detail-panel { background: radial-gradient(70% 40% at 100% 0%, #1c2f8a33, transparent 70%), linear-gradient(#04061ae0, #04061ae0), var(--field), var(--bg); border-left: 1px solid #000; box-shadow: inset 1px 0 0 #79c6ff33, inset 22px 0 32px -28px #79c6ff88, var(--shadow-lg); }
+  .panel-backdrop { background: #01020acc; }
+  .chat-header { background: radial-gradient(60% 140% at 0% 0%, #16205a55, transparent 70%), linear-gradient(180deg, #080b24, #060820); border-bottom: 1px solid #000; box-shadow: inset 0 -1px 0 #79c6ff26, inset 0 -16px 22px -20px #79c6ff88; }
+  .panel-title { font: 600 18px/1.2 var(--display); letter-spacing: -.005em; }
+  :is(.chat-info > summary, .agent-byline) { font-family: var(--mono); font-size: 11px; }
+  :is(.session-info, .plan-steps) { border: 1px solid var(--line); border-radius: var(--cell); background: var(--sunken); box-shadow: inset 0 2px 8px #000a; }
+  .session-info { font-family: var(--mono); font-size: 11.5px; }
+  /* Messages are membranes. What the agent says grows a dendrite from its corner; what you say ends in a synapse. */
+  .recent-message { position: relative; border-color: #22306a; border-radius: 18px 22px 20px 6px / 18px 16px 22px 6px; background: radial-gradient(120% 100% at 0% 0%, #16205a55, transparent 60%), color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--rim), 0 8px 20px -16px #000; }
+  .recent-message:not(.user, .tool, .notice)::before { content: ''; position: absolute; left: 12px; top: -12px; width: 26px; height: 15px; background: var(--accent); -webkit-mask: var(--twig) 0 0 / 100% 100% no-repeat; mask: var(--twig) 0 0 / 100% 100% no-repeat; opacity: .45; filter: drop-shadow(0 0 3px var(--accent)); pointer-events: none; }
+  .recent-message .message-meta strong { font: 600 10.5px/1.3 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 10px #79c6ff55; }
+  .recent-message.user { border-color: #2b3c7a; border-radius: 22px 18px 6px 20px / 18px 22px 6px 18px; background: radial-gradient(90% 140% at 100% 0%, #1b2d7a66, transparent 70%), var(--accent-soft); }
+  .recent-message.user::after { content: ''; position: absolute; right: 16px; bottom: -5px; width: 9px; height: 9px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #e6f4ff, var(--accent) 55%, #2a5aa0); box-shadow: 0 0 10px var(--accent); pointer-events: none; }
+  .recent-message.user .message-meta strong { color: var(--accent-2); }
+  .recent-message.notice { border-radius: 99px; border-style: dashed; background: transparent; box-shadow: none; }
+  .recent-message.error { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); box-shadow: inset 0 0 22px -12px var(--danger); }
+  /* Tool calls are action potentials along an axon: a spike for each, firing orange, misfires red. */
+  .recent-message.tool { padding-left: 14px; border: 0; border-radius: 0; background: linear-gradient(#ff8c4f55, #79c6ff22) 0 0 / 1.5px 100% no-repeat; box-shadow: none; }
+  .recent-message.tool .tool-call::before, .tool-run > summary .tool-call::before { content: ''; display: inline-block; width: 16px; height: 8px; margin-right: 7px; background: #ff9a5a; -webkit-mask: var(--spike) center / contain no-repeat; mask: var(--spike) center / contain no-repeat; filter: drop-shadow(0 0 3px #ff8c4f); vertical-align: 0; }
+  .recent-message.tool.failed .tool-call { color: #ff9aac; }
+  .recent-message.tool.failed .tool-call::before { background: var(--danger); filter: drop-shadow(0 0 3px var(--danger)); }
+  .tool-run { border-left: 0; background: linear-gradient(#ff8c4f55, #79c6ff22) 0 0 / 1.5px 100% no-repeat; }
+  .tool-run > summary { padding: 4px 12px; border-radius: 99px; background: var(--cytoplasm); box-shadow: var(--rim); }
+  .tool-run > summary strong { font-family: var(--display); font-weight: 600; }
+  .message-text code { border-radius: 6px; background: var(--sunken); color: var(--accent-2); box-shadow: inset 0 0 0 1px var(--line); }
+  .message-text pre { border-color: var(--line-2); border-radius: 14px; background: var(--sunken); box-shadow: inset 0 2px 8px #000a; }
+  .message-text pre code { box-shadow: none; color: var(--text); }
+  .message-text :is(th, td) { border-color: var(--line-2); }
+  .chat-requests, .message-composer { background: radial-gradient(60% 120% at 50% 100%, #16205a44, transparent 70%), linear-gradient(180deg, #0a0e28, #070a1f); border-top: 1px solid #000; box-shadow: inset 0 1px 0 #79c6ff26, inset 0 16px 22px -20px #79c6ff88; }
+  .composer-row textarea { border-radius: 20px 22px 20px 18px; }
+  .composer-row .primary { border-radius: 50% 50% 48% 52% / 52% 48% 52% 48%; min-width: 56px; }
+  .queued-message { border-top-color: var(--line); }
+  /* A request is that gold dendrite arriving: it runs along the top of a membrane lit gold from inside. */
+  .request-box { position: relative; padding-top: 16px; border-color: var(--warn-line); border-radius: var(--cell); background: radial-gradient(90% 120% at 0% 0%, #ffc93c1c, transparent 70%), #100e1a; box-shadow: inset 0 0 22px -12px var(--warn), 0 0 26px -12px var(--warn); }
+  .request-box::before { content: ''; position: absolute; left: 14px; right: 14px; top: 6px; height: 4px; background: linear-gradient(90deg, #ffe7a0, var(--warn) 30%, #ffc93c88 85%, #ffe7a0); clip-path: polygon(0 0, 100% 40%, 100% 60%, 0 100%); filter: drop-shadow(0 0 3px var(--warn)); opacity: .85; pointer-events: none; }
+  .request-title { color: var(--warn); }
+  :is(.request-code, .request-details pre, .request-plan) { border-color: var(--line-2); border-radius: 14px; background: var(--sunken); box-shadow: inset 0 2px 8px #000a; }
+  .answer-option { border-color: var(--line-2); border-radius: var(--cell); background: var(--cytoplasm); box-shadow: var(--rim); }
+  .answer-option:hover { border-color: #79c6ff66; }
+  .answer-option:has(input:checked) { background: radial-gradient(80% 120% at 30% 20%, #79c6ff22, transparent 60%), var(--accent-soft); border-color: #79c6ff88; box-shadow: var(--rim), 0 0 14px -6px var(--accent); }
+}
+:root[data-theme-choice=nodes-neurons] {
+  /* Usage windows read as the gauge arcs round You: a ring filling clockwise from the lower left, cyan, amber when high, red when
+     full. The bar stays for screen readers. */
+  .usage-window { grid-template-columns: 22px max-content max-content minmax(0, 1fr); gap: 6px; }
+  .usage-window .usage-meter { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .usage-window { position: relative; }
+  .usage-window .usage-orb { display: block; order: -1; position: relative; width: 22px; height: 22px; color: var(--accent); --used: calc(1 - var(--remaining, 1));
+    background: conic-gradient(from 225deg, currentColor 0 calc(var(--used) * 270deg), #79c6ff1f 0 270deg, transparent 0);
+    -webkit-mask: radial-gradient(circle, transparent 0 52%, #000 56% 72%, transparent 76%); mask: radial-gradient(circle, transparent 0 52%, #000 56% 72%, transparent 76%);
+    filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 70%, transparent)); }
+  .usage-window .usage-orb > * { display: none; }
+  .usage-high .usage-orb { color: var(--warn); }
+  .usage-full .usage-orb { color: var(--danger); }
+  .usage-reset { justify-self: end; }
+  .usage-label { font-family: var(--mono); }
+
+  /* The OpenCode spend HUD: its reserve and token rail are axons in myelin; the days are vesicles rising off them. */
+  .spend-reserve { height: 6px; border-radius: 99px; background: repeating-linear-gradient(90deg, #ffffff0c 0 13px, transparent 13px 15px), var(--sunken); box-shadow: inset 0 1px 2px #000; }
+  .spend-reserve-fill { border-radius: 99px; box-shadow: 0 0 10px -2px var(--spend-color); }
+  .spend-token-rail { height: 3px; background: var(--sunken); }
+  .spend-bar { border-radius: 99px 99px 40% 40% / 14px 14px 4px 4px; background: radial-gradient(120% 60% at 40% 15%, #ffffff40, transparent 50%), linear-gradient(180deg, color-mix(in srgb, var(--spend-color) 90%, #fff), var(--spend-color)); }
+  .spend-caption { font-family: var(--display); letter-spacing: .14em; }
+
+  /* The image viewer: the picture held in a thick membrane over the deep, the strip of shots as small cells. */
+  .shot-viewer { border: 0; background: var(--deep), linear-gradient(#03041af2, #03041af2), var(--field), var(--bg); color: var(--text); font-family: var(--font); }
+  .shot-viewer::backdrop { background: #01020ae6; }
+  .shot-full img { border-radius: 30px 34px 32px 28px / 28px 30px 34px 32px; box-shadow: 0 0 0 1px #79c6ff55, 0 0 0 7px #0a0e28d9, 0 0 0 8px #79c6ff33, 0 0 46px -4px #79c6ff66, 0 30px 80px -20px #000; }
+  .shot-thumb { width: 72px; height: 48px; border: 0; border-radius: 47% 53% 50% 50% / 54% 46% 54% 46%; background: var(--sunken); opacity: .6; box-shadow: inset 0 0 0 1px #79c6ff33, inset 0 0 10px -2px #79c6ff66; }
+  .shot-thumb img { border-radius: inherit; }
+  .shot-thumb.current { opacity: 1; box-shadow: 0 0 0 2px var(--accent), 0 0 16px -2px var(--accent); }
+  .shot-bar { gap: 10px; }
+  .shot-meta { font: 12px/1.4 var(--mono); color: var(--text-2); }
+  .shot-button { border: 0; border-radius: 50%; background: var(--cytoplasm); color: var(--accent-2); box-shadow: var(--rim); }
+  .shot-button:hover:not(:disabled) { box-shadow: inset 0 0 0 1px #79c6ff44, inset 0 0 20px -8px #79c6ff99, 0 0 16px -6px var(--accent); }
+
+  /* A document opens as one big cell: a membrane page with its headings on axons and its code in wells. */
+  .doc-body { border-radius: 26px 30px 28px 24px / 24px 26px 30px 28px; background: radial-gradient(70% 30% at 0% 0%, #16205a55, transparent 70%), linear-gradient(180deg, #0b1030, #070a20); box-shadow: var(--rim), 0 0 40px -16px #79c6ff55; line-height: 1.6; }
+  .doc-body :is(h1, h2, h3) { font-family: var(--display); font-weight: 600; letter-spacing: -.005em; color: var(--text); }
+  .doc-body :is(h1, h2) { padding-bottom: 8px; background: radial-gradient(circle at 4px calc(100% - 4px), #ffe2b8 0 2px, #ff8a4a99 3px, transparent 6px), linear-gradient(90deg, #79c6ff99, #79c6ff22 50%, transparent 80%) 8px calc(100% - 4px) / 80% 1.5px no-repeat; }
+  .doc-body a { color: var(--accent); text-decoration-color: #79c6ff66; text-shadow: 0 0 10px #79c6ff44; }
+  .doc-body code { padding: 1px 5px; border-radius: 6px; background: var(--sunken); color: var(--accent-2); box-shadow: inset 0 0 0 1px var(--line); font-family: var(--mono); }
+  .doc-body pre { border: 1px solid var(--line-2); border-radius: 14px; background: var(--sunken); box-shadow: inset 0 2px 8px #000a; }
+  .doc-body pre code { box-shadow: none; background: none; color: var(--text); }
+  .doc-body :is(th, td) { border-color: var(--line-2); }
+  .doc-body th { background: var(--accent-soft); font-family: var(--display); }
+  .doc-body blockquote { border-left: 2px solid #79c6ff66; box-shadow: inset 12px 0 16px -14px #79c6ff88; color: var(--text-2); }
+  .doc-body hr { border: 0; height: 1px; background: linear-gradient(90deg, transparent, #79c6ff66, transparent); }
+
+  /* Locked: one cell alone in the deep, its soma glowing behind the lock. */
+  .login-screen { background: var(--deep), var(--field), var(--bg); }
+  .login-card { border-color: #79c6ff33; border-radius: 34px 40px 36px 30px / 30px 34px 40px 36px; background: radial-gradient(90% 60% at 50% 0%, #1b2a7055, transparent 70%), linear-gradient(#0b1030f2, #070a20f2); box-shadow: var(--rim), 0 0 60px -20px #79c6ff88, var(--shadow-lg); }
+  .login-symbol { width: 60px; height: 60px; border-radius: 47% 53% 50% 50% / 54% 46% 54% 46%; background: radial-gradient(circle, #ffe2b8 0 10%, #ff8a4a88 26%, #1a1f4a 62%, #0a0e28 80%); color: #fff4e6; box-shadow: inset 0 0 0 1px #79c6ff44, inset 0 0 12px -2px #79c6ff77, 0 0 26px -6px #ff8a4a; }
+  .login-form label, .access-form label { font-family: var(--display); letter-spacing: .04em; }
+  :is(.login-form input, .access-form input:not([type=checkbox])) { border-color: var(--line-2); border-radius: 99px; background: var(--sunken); box-shadow: inset 0 2px 6px #000a; }
+  :is(.login-form input, .access-form input:not([type=checkbox])):focus { border-color: #79c6ffaa; box-shadow: 0 0 0 3px #79c6ff22, 0 0 18px -6px var(--accent), inset 0 2px 6px #000a; }
+  .access-form input[type=checkbox] { accent-color: var(--accent); }
+
+  /* Sessions that went missing: a membrane lit gold, its rows on a faint axon. */
+  .lost details { border-color: var(--warn-line); border-radius: var(--cell); background: radial-gradient(70% 160% at 0% 0%, #ffc93c14, transparent 70%), linear-gradient(180deg, #0f0d1c, #0a0916); box-shadow: inset 0 0 22px -14px var(--warn), 0 0 22px -14px var(--warn); }
+  .lost-summary { font-family: var(--display); }
+  .lost-list { border-top-color: #ffc93c33; }
+  .lost-row + .lost-row { border-top-color: var(--line); }
+  .lost-said::before { color: var(--accent); text-shadow: 0 0 6px var(--accent); }
+
+  /* Menus and dialogs. */
+  :is(.new-agent-options, .account-options, .theme-picker) { border-color: #79c6ff33; border-radius: var(--cell); background: radial-gradient(90% 60% at 20% 0%, #1b2a7044, transparent 70%), linear-gradient(#0b1030f2, #070a20f2); box-shadow: var(--rim), 0 0 30px -12px #79c6ff55, var(--shadow-lg); }
+  .new-session-dialog::backdrop { background: #01020acc; }
+  .new-session-form h2 { font: 600 18px/1.2 var(--display); }
+  .new-agent-options .office-folder { border-radius: 99px; background: var(--sunken); box-shadow: inset 0 2px 6px #000a; }
+  :is(.theme-choice, .theme-sub, .new-agent-options button, .account-options button, .filter-options button) { border-radius: 99px; }
+  :is(.theme-choice, .theme-sub, .new-agent-options button, .account-options button, .filter-options button):hover { background: #79c6ff12; }
+  .theme-sub::before { border-radius: 50%; border-color: #79c6ff88; }
+  .theme-sub[aria-checked=true]::before { background: radial-gradient(circle, #e6f4ff, var(--accent) 60%); color: var(--accent-ink); box-shadow: 0 0 8px var(--accent); }
+
+  /* The session's header: its soma, the model and effort in wells. */
+  .agent-heading .panel-title { text-shadow: 0 0 18px #79c6ff33; }
+  .agent-provider { font-family: var(--display); color: var(--accent-2); }
+  .effort-select { border-radius: 14px; background: var(--sunken); box-shadow: inset 0 2px 6px #000a; }
+  .effort-select:hover { border-color: #79c6ff66; }
+
+  /* Chat extras: queued messages wait in vesicles, attachments and shots are small cells, docs are vesicle chips. */
+  .message-queue { padding: 2px 4px; }
+  .queued-message { margin: 4px 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 99px; background: var(--cytoplasm); box-shadow: var(--rim); }
+  .queued-message + .queued-message { border-top: 1px solid var(--line); }
+  .composer-image { border: 0; border-radius: 47% 53% 50% 50% / 54% 46% 54% 46%; box-shadow: inset 0 0 0 1px #79c6ff44, 0 0 12px -4px #79c6ff88; }
+  .composer-image-remove { background: var(--cytoplasm); box-shadow: var(--rim); }
+  .history-shot { border-radius: 22px 26px 24px 20px / 20px 22px 26px 24px; box-shadow: var(--rim), 0 0 18px -8px #79c6ff66; }
+  .history-shot:hover { box-shadow: inset 0 0 0 1px #79c6ff55, 0 0 22px -6px var(--accent); }
+  .doc-chip { border-radius: 99px; background: var(--cytoplasm); box-shadow: var(--rim); font-family: var(--mono); }
+  .doc-chip:hover { box-shadow: inset 0 0 0 1px #79c6ff44, 0 0 14px -6px var(--accent); }
+  .decision-actions button { border-radius: 99px; }
+
+  /* Odds and ends: a lost connection lit gold, scrollbars as thin glowing axons, focus as a lit rim, selection in cyan. */
+  .connection-error { border-radius: var(--cell); background: radial-gradient(70% 160% at 0% 50%, #ffc93c1c, transparent 70%), #100e1a; box-shadow: inset 0 0 18px -10px var(--warn); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 99px; background: linear-gradient(#79c6ff55, #79c6ff22) padding-box; box-shadow: inset 0 0 6px #79c6ff44; }
+  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(#79c6ff99, #79c6ff44) padding-box; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 14px -2px var(--accent); }
+  ::selection { background: #79c6ff55; color: #fff; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-choice=nodes-neurons] {
+    /* A working core flickers as it fires and action potentials run the axon; a core that needs you beats; one in error misfires;
+       gold runs down the reaching dendrite towards you, and a request breathes amber. */
+    .session-card[data-status=working] .agent-mark { animation: neu-fire 1.6s ease-in-out infinite; animation-delay: var(--since-load, 0s); }
+    .session-card[data-status=working]::after { background: linear-gradient(90deg, transparent, #ffd2a8 85%, #fff) 0 0 / 22% 100% no-repeat, linear-gradient(90deg, #ff8c4f66, #79c6ff22 70%, transparent); animation: neu-spike 2.4s cubic-bezier(.5, 0, .7, 1) infinite; animation-delay: var(--since-load, 0s); }
+    .session-card.needs-input .agent-mark { animation: neu-beat 1.3s ease-in-out infinite; }
+    .session-card.needs-input::after, .request-box::before { background-size: 200% 100%; background-image: linear-gradient(90deg, #ffc93c99, #fff2c8 6%, #ffc93c99 12%, #ffc93c99 50%, #fff2c8 56%, #ffc93c99 62%, #ffc93c99); animation: neu-flow 2.2s linear infinite; }
+    .request-box { animation: neu-breathe 2.6s ease-in-out infinite; }
+    .session-card[data-status=error] .agent-mark { animation: neu-misfire 2.2s steps(1) infinite; }
+  }
+}
+@keyframes neu-fire { 50% { box-shadow: inset 0 0 0 1px #79c6ff30, inset 0 0 8px -2px #79c6ff55, 0 0 20px -3px var(--core); } }
+@keyframes neu-spike { from { background-position: -30% 0, 0 0; } to { background-position: 130% 0, 0 0; } }
+@keyframes neu-beat { 0%, 40%, 100% { transform: scale(1); } 12% { transform: scale(1.12); box-shadow: inset 0 0 0 1px #ffc93c66, 0 0 22px -2px var(--warn); } 26% { transform: scale(1.04); } }
+@keyframes neu-flow { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes neu-breathe { 50% { box-shadow: inset 0 0 30px -10px var(--warn), 0 0 34px -8px var(--warn); border-color: #c9952a; } }
+@keyframes neu-misfire { 0%, 18%, 24%, 61%, 100% { opacity: 1; } 20%, 63% { opacity: .45; } }

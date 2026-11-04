@@ -6,10 +6,11 @@ import { coverLayout } from './pixels.js';
 const looks = {
   heroes: { src: '/heroes-bg.webp', grid: 4, painter: () => import('./heroes.js') },
   diablo: { src: '/diablo-bg.webp', grid: 3, painter: () => import('./diablo.js') },
+  city: { src: '/city-bg.png', grid: 1, painter: () => import('./city.js') },
 };
 const FPS = 12;
 const motion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
-let root, canvas, ctx, current, running, raf, last = 0, ticket = 0;
+let root, canvas, ctx, current, running, raf, last = 0, ticket = 0, shown = 0;
 
 function mount() {
   if (root) return;
@@ -34,6 +35,9 @@ function layout() {
 function tick(now) {
   raf = requestAnimationFrame(tick);
   if (now - last < 1000 / FPS) return;
+  // Hidden by its theme (Metropolis while its scene is up): nothing to paint, and laid out again when it shows.
+  const width = root.clientWidth; if (width !== shown) { shown = width; layout(); }
+  if (!width) return;
   last = now; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1;
   current.frame(ctx, now / 1000);
 }

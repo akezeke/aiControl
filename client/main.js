@@ -11,6 +11,7 @@ import './backdrop.css';
 import './city-list.css';
 import './fantasy-list.css';
 import './bridge-list.css';
+import './nodes-list.css';
 import './provider-icons.css';
 import './agent-header.css';
 import './lost.css';
@@ -130,6 +131,7 @@ const icons = {
   fantasy: '<path d="M14.500 17.500 3 6V3h3l11.500 11.500M13 19l6-6m-3 3 4 4m-1 1 2-2M9.500 17.500 21 6V3h-3L6.500 14.500M11 19l-6-6m3 3-4 4m1 1-2-2"/>',
   agents: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 7v10m0-5h10"/>',
   live: '<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7m7 0a5 5 0 0 0 0-7M5.6 5.6a9 9 0 0 0 0 12.8m12.8 0a9 9 0 0 0 0-12.8"/>',
+  nodes: '<path d="M15.600 4.860A8 8 0 0 1 19.990 12.450m-3.600 6.240a8 8 0 0 1-8.780 0M4.010 12.450A8 8 0 0 1 8.400 4.860" stroke-width="1.500"/><g fill="currentColor" stroke="none"><circle cx="12" cy="12" r="3.300"/><circle cx="12" cy="4" r="2.400"/><circle cx="18.930" cy="16" r="2.400"/><circle cx="5.070" cy="16" r="2.400"/></g>',
   office: '<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16m0-11h3a2 2 0 0 1 2 2v9M2 21h20M8 7h3m-3 4h3m-3 4h3"/>',
 };
 function icon(name) {
@@ -150,11 +152,14 @@ function uuid() {
 function chooseTheme(id) {
   applyTheme(id);
   for (const card of document.querySelectorAll('#groups .session-card')) delete card.dataset.sig; // A look may draw its cards differently.
-  for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(option.dataset.themeChoice === id));
+  for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(sameChoice(option.dataset.themeChoice, id)));
+  for (const option of document.querySelectorAll('.nodes-option')) option.setAttribute('aria-checked', String(option.dataset.nodeChoice === id));
   // Picking a scene theme opens its scene, even if its list was showing last.
   if (sceneFor(document.documentElement.dataset.theme) && sceneList) setSceneList(false); else syncScene();
   dressTheme();
 }
+// The menu's Nodes entry stands for all its looks.
+const sameChoice = (option, id) => option === id || (option === 'nodes' && !!id?.startsWith('nodes-'));
 function themeMenu() {
   const menu = el('details', 'theme-menu');
   const summary = el('summary', 'quiet-button'); summary.append(icon('theme')); summary.setAttribute('aria-label', 'Change theme'); summary.title = 'Change theme';
@@ -166,21 +171,32 @@ function themeMenu() {
     scene?.outlines?.(outlined);
   });
   outlines.setAttribute('role', 'checkbox'); outlines.setAttribute('aria-checked', String(outlined)); outlines.title = 'Off: only on what you point at';
+  const current = () => document.documentElement.dataset.themeChoice;
   for (const theme of themes) {
-    const choice = button(theme.name, 'theme-choice', () => { chooseTheme(theme.id); menu.open = false; summary.focus(); });
-    choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(document.documentElement.dataset.themeChoice === theme.id));
+    if (theme.node && theme.id !== 'nodes') continue;
+    // Nodes keeps the look you're on; its looks are listed under it while it's the theme.
+    const choice = button(theme.name, 'theme-choice', () => { chooseTheme(theme.id === 'nodes' && current()?.startsWith('nodes') ? current() : theme.id); menu.open = false; summary.focus(); });
+    choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(sameChoice(theme.id, current())));
     choice.prepend(el('i', `theme-swatch ${theme.id}`)); choices.append(choice);
     if (theme.id === 'office') choices.append(outlines);
+    if (theme.id === 'nodes') for (const look of themes.filter(other => other.node)) {
+      const sub = button(look.node, 'theme-sub nodes-option', () => { chooseTheme(look.id); menu.open = false; summary.focus(); });
+      sub.dataset.nodeChoice = look.id; sub.setAttribute('role', 'radio'); sub.setAttribute('aria-checked', String(current() === look.id)); choices.append(sub);
+    }
   }
   menu.append(summary, choices); placeMenu(menu, summary, choices); return menu;
 }
-// The sidebar scrolls and would clip the list, so open it against the viewport there.
+// The sidebar scrolls and would clip the list, so open it against the viewport there. A list longer than the room it has
+// scrolls inside itself (the page behind a scene doesn't scroll), opened at the current choice.
 function placeMenu(menu, summary, choices) {
   menu.ontoggle = () => {
     choices.removeAttribute('style');
-    if (!menu.open || !menu.closest('.sidebar')) return;
-    const r = summary.getBoundingClientRect();
-    Object.assign(choices.style, { position: 'fixed', top: 'auto', right: 'auto', left: `${Math.max(8, Math.min(r.left, innerWidth - choices.offsetWidth - 8))}px`, bottom: `${innerHeight - r.top + 6}px` });
+    if (!menu.open) return;
+    const r = summary.getBoundingClientRect(), up = !!menu.closest('.sidebar');
+    if (up) Object.assign(choices.style, { position: 'fixed', top: 'auto', right: 'auto', left: `${Math.max(8, Math.min(r.left, innerWidth - choices.offsetWidth - 8))}px`, bottom: `${innerHeight - r.top + 6}px` });
+    Object.assign(choices.style, { maxHeight: `${Math.max(160, (up ? r.top : innerHeight - r.bottom) - 14)}px`, overflowY: 'auto', overscrollBehavior: 'contain' });
+    const current = choices.querySelector('[aria-pressed=true]');
+    if (current && choices.scrollHeight > choices.clientHeight) choices.scrollTop = current.offsetTop - 6;
   };
 }
 // Opt-in notifications and the theme's sound; turning sound on plays it once.
@@ -203,7 +219,7 @@ function alertsMenu() {
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
 wearColours(paletteFor(savedColour()));
-const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle', bricks: 'Brick Knights' };
+const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle', bricks: 'Brick Knights', nodes: 'Nodes' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {
@@ -1526,7 +1542,7 @@ restoreLogin();
 function showThemePicker() {
   const dialog = el('dialog', 'theme-picker'); dialog.setAttribute('aria-label', 'Pick a theme');
   const grid = el('div', 'theme-picker-grid');
-  for (const theme of themes) {
+  for (const theme of themes.filter(theme => !theme.node || theme.id === 'nodes')) {
     const choice = button(theme.name, 'theme-picker-choice', () => { applyTheme(theme.id); dialog.close(); bootSequence(); });
     choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
   }

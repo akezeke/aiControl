@@ -3,6 +3,7 @@ const table = {
   office: { name: 'Office', load: () => import('./office/office.js').then(module => ({ webglAvailable: module.webglAvailable, mount: module.mountOffice })) },
   bridge: { name: 'Bridge', load: () => import('./bridge/bridge.js').then(module => ({ webglAvailable: module.webglAvailable, mount: module.mountBridge })) },
   city: { name: 'Metropolis', needs: 'Canvas', load: () => import('./city/city.js').then(module => ({ webglAvailable: module.webglAvailable, mount: module.mountCity })) },
+  nodes: { name: 'Nodes', load: () => import('./nodes/nodes.js').then(module => ({ webglAvailable: module.webglAvailable, mount: module.mountNodes })) },
   fantasy: { name: 'Fantasy Battle', load: () => import('./fantasy/fantasy.js').then(module => ({ webglAvailable: module.webglAvailable, mount: module.mountFantasy })) },
 };
 export const sceneFor = look => table[look] || null;
