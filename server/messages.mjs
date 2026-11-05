@@ -55,6 +55,7 @@ export const planSteps = steps => Array.isArray(steps) ? steps.slice(0, 50).map(
 const shortPath = path => path.split('/').filter(Boolean).slice(-2).join('/');
 function toolMessage(row, block) {
   const input = block.input ?? {}, string = value => typeof value === 'string' && value.trim() ? value : undefined;
+  if (block.name === 'SubagentHandback' && string(input.message)) return message(`${row.uuid}:${block.id}`, 'assistant', input.message, Date.parse(row.timestamp));
   const path = string(input.file_path) || string(input.path);
   const raw = string(input.command) || path || string(input.pattern) || string(input.url) || string(input.query) || string(input.prompt) || '';
   const label = string(input.description) || (path ? shortPath(path) : raw);

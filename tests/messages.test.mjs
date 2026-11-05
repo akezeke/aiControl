@@ -124,6 +124,12 @@ test('subagent transcripts include sidechain text and one line per tool call, an
   assert.equal(agentActivity([...lines, row('d', 'user', [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]), row('e', 'assistant', [{ type: 'text', text: 'Done.' }])]), 'reply');
 });
 
+test('Claude subagent handbacks show the full answer as a message', () => {
+  const lines = [row('answer', 'assistant', [{ type: 'tool_use', id: 'handback', name: 'SubagentHandback', input: { message: 'Found the issue.\n\n**Fix:** update the parser.' } }], { isSidechain: true })];
+  const messages = claudeMessages(lines, sessionId, new Set(), { agent: true });
+  assert.deepEqual(messages.map(m => [m.role, m.text, !!m.tool]), [['assistant', 'Found the issue.\n\n**Fix:** update the parser.', false]]);
+});
+
 test('a main session thinks once its model has been quiet a while', async () => {
   const { claudeStep, claudeActivity } = await import('../server/messages.mjs');
   const row = (type, content, extra = {}) => JSON.stringify({ type, message: { role: type, content }, ...extra });
