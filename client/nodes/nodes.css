@@ -15,7 +15,8 @@
   text-shadow: 0 0 6px var(--label-halo), 0 0 2px var(--label-halo); will-change: transform; transition: opacity .25s; }
 .nodes-scene .lbl b { font-weight: 600; font-size: 12px; font-family: var(--display); }
 .nodes-scene .lbl span { font-size: 11px; color: var(--label-sub); font-family: var(--mono); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
-.nodes-scene .lbl.project b { font-size: 11px; font-weight: 500; letter-spacing: .06em; color: var(--label-sub); }
+/* Projects head their cluster: the loudest name in it. */
+.nodes-scene .lbl.project b { font-size: 13px; font-weight: 650; letter-spacing: .04em; }
 .nodes-scene .lbl.session b { font-size: 12.5px; }
 .nodes-scene .lbl.you b { font-size: 13px; }
 .nodes-scene .lbl.need span { color: var(--need); }
@@ -31,6 +32,19 @@
 /* A subagent: its name alone, smaller and quieter than a session's, so it can't pass for one or for a session's status. Looks drop
    their bubble for it and keep this colour only while nothing's wrong (.lbl.sub:not(.need, .error) b). */
 .nodes-scene .lbl.sub b { font-size: 11px; font-weight: 500; color: var(--label-sub); }
+/* Each name's kind mark (nodes.js): a folder for a project, a session's status light, a branch for a subagent, so the three tell apart
+   from afar. Looks may restyle it; it's hidden on a node's own face (.on), where the node shows what it is. */
+.nodes-scene { --k-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 6.5A2.5 2.5 0 0 1 4.5 4h4.3l2.4 2.4h8.3A2.5 2.5 0 0 1 22 8.9v8.6a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 17.5z'/%3E%3C/svg%3E");
+  --k-branch: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3v8a4 4 0 0 0 4 4h11'/%3E%3Cpath d='m15 10 5 5-5 5'/%3E%3C/svg%3E"); }
+.nodes-scene .lbl .k { display: inline-block; flex: none; width: 1em; height: 1em; margin-right: .38em; vertical-align: -.14em; background: currentColor; }
+.nodes-scene .lbl.project .k { -webkit-mask: var(--k-folder) center / contain no-repeat; mask: var(--k-folder) center / contain no-repeat; opacity: .85; }
+.nodes-scene .lbl.sub .k { width: .9em; height: .9em; -webkit-mask: var(--k-branch) center / contain no-repeat; mask: var(--k-branch) center / contain no-repeat; }
+.nodes-scene .lbl.session .k { width: .62em; height: .62em; margin-right: .45em; vertical-align: .04em; border-radius: 50%; background: var(--dot, var(--muted)); box-shadow: 0 0 5px -1px var(--dot, transparent); }
+.nodes-scene .lbl:is([data-s=working], [data-s=thinking], [data-s=compacting]) { --dot: var(--work); }
+.nodes-scene .lbl:is([data-s=permission], [data-s=question]) { --dot: var(--need); }
+.nodes-scene .lbl[data-s=waiting] { --dot: var(--wait); }
+.nodes-scene .lbl[data-s=error] { --dot: var(--err); }
+.nodes-scene .lbl.on .k { display: none; }
 
 .nodes-tip { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; min-width: 180px; max-width: 280px; padding: 9px 11px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line);
   box-shadow: var(--shadow); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); display: grid; gap: 3px; }

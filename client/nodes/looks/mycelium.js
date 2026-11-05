@@ -1,5 +1,6 @@
-// Mycelium: a forest floor at dusk. Projects are clusters of glowing mushrooms, sessions single mushrooms, subagents pinheads,
-// and You an old stump in a fairy ring. Every project and session grows its own species from its seed.
+// Mycelium: a forest floor at dusk. Projects are fallen logs veined with foxfire and topped by a cluster of glowing mushrooms,
+// sessions single mushrooms filed down the log's side, subagents closed buds beside them, and You an old stump in a fairy ring.
+// Every project and session grows its own species from its seed.
 // One mycelium ties it together. Every hypha, from a cord's strands to the felt round a foot, is the same thin glowing thread:
 // a cord is a twisted bundle of them that fans out of its mushroom's bulb, merges into its parent's cord and fades into it, and
 // the trunks climb the stump's roots into its bark. A soft ribbon under each cord lights the soil.
@@ -15,23 +16,30 @@ const CSS = `
 body[data-look="mycelium"] { --bg: #060705; --fg: #ecf2e2; --muted: #93a08a; --panel: rgba(12, 15, 10, .84); --line: rgba(200, 236, 176, .14); --accent: #a4f0a0;
   --need: #ffb24a; --work: #6dffa8; --err: #ff6a4a; --wait: #82aaff; --font: "Figtree", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
   --display: "Fraunces", Georgia, serif; --radius: 12px; --label: #f3f7ea; --label-sub: #aebba4; --label-halo: rgba(3, 5, 2, .9); --shadow: 0 10px 34px rgba(0, 0, 0, .55); }
-body[data-look="mycelium"] .lbl.project b { font-size: 15px; font-style: italic; font-weight: 500; letter-spacing: .01em; }
 body[data-look="mycelium"] .lbl.you b { font-style: italic; font-weight: 500; }
+body[data-look="mycelium"] .lbl.you.on span { display: block; }
 body[data-look="mycelium"] :is(.lbl.session, .lbl.sub) b { font-family: var(--font); font-weight: 600; }
-/* Labels are little tags of loam, edged with a faint glow; amber when it needs you, ember when it failed. */
-body[data-look="mycelium"] .lbl { padding: 2px 9px 3px; border-radius: 10px 10px 10px 3px; text-shadow: none;
+/* Each name sits right of its body, flat edge toward it. A session's is a little tag of loam edged with a faint glow, led by its
+   status light; amber when it needs you, ember when it failed. A project's is a plank of bark in its display face, led by a folder;
+   a subagent's is bare, small and quiet, led by a branch. The widths here are the ones the layout reserves (TAG in create). */
+body[data-look="mycelium"] .lbl { padding: 2px 8px 3px; border-radius: 3px 10px 10px 3px; text-shadow: none;
   background: radial-gradient(130% 160% at 0% 0%, rgba(46, 72, 34, .45), transparent 55%), rgba(7, 10, 6, .86);
   box-shadow: inset 0 0 0 1px rgba(164, 240, 160, .15), 0 0 10px -3px rgba(110, 240, 150, .28), 0 3px 8px -3px #000; }
 body[data-look="mycelium"] .lbl b { font-size: 12.5px; line-height: 1.25; }
 body[data-look="mycelium"] .lbl span { font-size: 10.5px; line-height: 1.35; }
-body[data-look="mycelium"] .lbl.project { padding: 0 8px 1px; border-radius: 9px; background: rgba(7, 10, 6, .72); box-shadow: inset 0 0 0 1px rgba(164, 240, 160, .1); }
-body[data-look="mycelium"] .lbl.project b { font-size: 13.5px; color: var(--label-sub); }
+body[data-look="mycelium"] .lbl.on .k { display: inline-block; }
+body[data-look="mycelium"] .lbl.session .k { width: 7px; height: 7px; margin-right: 6px; vertical-align: 1px; }
+body[data-look="mycelium"] .lbl.project { padding: 1px 9px 2px; border-radius: 3px 9px 9px 3px;
+  background: linear-gradient(rgba(70, 48, 28, .55), rgba(24, 16, 9, .5)), rgba(11, 8, 5, .92); box-shadow: inset 0 0 0 1px rgba(214, 180, 120, .22), 0 3px 8px -3px #000; }
+body[data-look="mycelium"] .lbl.project b { font: italic 500 15px/1.2 var(--display); letter-spacing: 0; color: var(--fg); }
+body[data-look="mycelium"] .lbl.project .k { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; color: var(--accent); }
 body[data-look="mycelium"] .lbl.need { background: radial-gradient(130% 160% at 0% 0%, rgba(130, 78, 18, .5), transparent 60%), rgba(12, 9, 4, .9);
   box-shadow: inset 0 0 0 1px rgba(255, 178, 74, .6), 0 0 14px -3px rgba(255, 168, 60, .55), 0 3px 8px -3px #000; }
 body[data-look="mycelium"] .lbl.error { background: radial-gradient(130% 160% at 0% 0%, rgba(120, 30, 14, .5), transparent 60%), rgba(12, 6, 4, .9);
   box-shadow: inset 0 0 0 1px rgba(255, 106, 74, .55), 0 3px 8px -3px #000; }
-body[data-look="mycelium"] .lbl.sub { padding: 0 3px; background: none; box-shadow: none; text-shadow: 0 0 6px var(--label-halo), 0 0 2px var(--label-halo); }
+body[data-look="mycelium"] .lbl.sub { padding: 0 3px; background: none; box-shadow: none; text-shadow: 0 0 6px var(--label-halo), 0 0 2px var(--label-halo), 0 0 1px #000; }
 body[data-look="mycelium"] .lbl.sub b { font-size: 11px; font-weight: 500; }
+body[data-look="mycelium"] .lbl.sub .k { width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; }
 body[data-look="mycelium"] .lbl.sub:not(.need, .error) b { color: var(--label-sub); }
 body[data-look="mycelium"] .nodes-tip { border-color: rgba(164, 240, 160, .16); box-shadow: 0 0 0 1px rgba(0, 0, 0, .4), 0 14px 40px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(220, 255, 200, .05); }
 body[data-look="mycelium"] .nodes-tip b { font-style: italic; font-weight: 500; }
@@ -52,8 +60,14 @@ const TOOL_C = Object.fromEntries(Object.entries(TOOL).map(([k, v]) => [k, C(v)]
 const AMBER = C(PAL.need), EMBER = C('#ff5a24'), FOX = C('#7dffcf'), REPLY = C('#eaffd8'), WHITE = C('#f2ffe8'), SPORE = C('#e8dcc0');
 const PUFF = { work: C(PAL.work), compact: C(PAL.compact), soil: C('#8a6a48'), ash: C('#b8b0a0'), rot: C('#7a2a14') };
 
-const TETH = 6, BR = 7, FEED = 5; // samples in a cluster tether, an anastomosis bridge and a pinhead's feeding thread
+const BR = 7, FEED = 5; // samples in an anastomosis bridge and a pinhead's feeding thread
 const PK = 1.3; // how much larger a project's cluster grows than its species' base size
+const FAIRY = 48; // mushrooms in the fairy ring round the stump
+// A project's fallen log: length, radius and how high its axis lies (sunk a little into the litter); how far right of the log's
+// middle its sessions stand, and a subagent right of its session.
+const LOG_L = 3.4, LOG_R = .48, LOG_Y = .2, COL_X = .85, SUB_X = .95;
+// A screenshot body's cap (its face's width and height) and where it grows from its session: on the left, clear of the session's cap.
+const LENS_W = 3.1, LENS_H = LENS_W * 400 / 512, LENS_AT = [-2.6, -.3];
 // Per kind of cord: centre-line samples, glow width, strands in the bundle, bundle half-width, strand half-width, side branches,
 // meander, branch scale, samples carried on past the join, and how far the strands carry on into the parent before fading.
 const CFG = {
@@ -62,18 +76,20 @@ const CFG = {
   sub: { segs: 16, width: .04, strands: 3, bundle: .028, thread: .009, branches: 3, amp: .1, scale: .6, cont: 6, carry: 1.3 },
   need: { segs: 44, width: .06, strands: 4, bundle: .035, thread: .014, branches: 5, amp: .035, scale: .9, cont: 0 },
 };
-// Cap profiles (radius 1 at the rim): convex, conical, flat with a boss, funnel, bell. Caps are widened to taste per shape.
+// Cap profiles (radius 1 at the rim): convex, conical, flat with a boss, funnel, bell, and a subagent's closed bud. Caps are widened
+// to taste per shape.
 const CAP_SHAPES = [
   [[0, .07], [.3, .075], [.62, .055], [.88, .02], [1, 0], [1.03, .07], [.99, .2], [.91, .36], [.77, .5], [.57, .61], [.32, .67], [0, .69]],
   [[0, .15], [.35, .12], [.75, .04], [1, 0], [.95, .12], [.8, .38], [.6, .66], [.4, .92], [.22, 1.15], [.08, 1.32], [0, 1.36]],
   [[0, .06], [.35, .06], [.75, .035], [1, 0], [1.04, .06], [.98, .13], [.8, .19], [.55, .23], [.3, .26], [.13, .31], [0, .34]],
   [[0, 0], [.3, .01], [.6, .06], [.85, .14], [1, .22], [1.04, .3], [.98, .33], [.8, .26], [.55, .18], [.28, .13], [0, .11]],
   [[0, .1], [.4, .08], [.8, .02], [1, 0], [.98, .08], [.87, .26], [.7, .5], [.5, .74], [.3, .93], [.13, 1.05], [0, 1.09]],
+  [[0, .02], [.45, 0], [.8, .05], [.97, .2], [1, .38], [.95, .58], [.82, .76], [.6, .9], [.32, .98], [0, 1]],
 ];
 // Cords are sampled densely at both ends, where they fan out of a bulb and fold into another cord, and sparsely between.
 const warp = t => t - .62 * Math.sin(2 * Math.PI * t) / (2 * Math.PI);
 const near = (L, t) => { let i = 0; while (i < L.segs && L.tt[i + 1] <= t) i++; return i < L.segs && t - L.tt[i] > L.tt[i + 1] - t ? i + 1 : i; };
-const SHAPE_R = [1, .8, 1.1, 1, .86], SHAPE_SEAT = CAP_SHAPES.map(p => p[0][1] + .04), SHAPE_TOP = CAP_SHAPES.map(p => Math.max(...p.map(q => q[1])));
+const SHAPE_R = [1, .8, 1.1, 1, .86, 1], SHAPE_SEAT = CAP_SHAPES.map(p => p[0][1] + .04), SHAPE_TOP = CAP_SHAPES.map(p => Math.max(...p.map(q => q[1])));
 // A species from a seed: cap shape and colour, pattern on top (none, warts, scales, fibrils) plus 4 for pores under it
 // instead of gills, stem colour and build.
 function speciesOf(r, shapes = [0, 1, 2, 3, 4]) {
@@ -91,11 +107,238 @@ function create(ctx) {
   ctx.setPost({ bloom: { strength: .8, radius: .55, threshold: .6 }, exposure: 1 });
   ctx.addPass(vignettePass({ darkness: .62, offset: 1, grain: .022, tint: '#f6f1e6' }));
   scene.background = C('#050604');
-  // Sessions are the bodies to look at; a project is only the knot where their cords meet.
-  ctx.setSizes({ project: .7 * PK, session: 1.5, sub: .55 });
-  // Below the foot, or when that's taken, above the crown of the cap.
-  ctx.setLabelAnchor((n, out) => { out.y = 0; out.z += n.kind === 'you' ? 4.1 : n.kind === 'project' ? .95 * PK : n.kind === 'session' ? 1.6 : .75; },
-    (n, out) => { const m = n.kind === 'you' ? null : n.kind === 'project' ? clusters.get(n)?.[0] : mushOf.get(n); if (m) out.set(m.top.x, m.crown + .12, m.top.z); else out.y = 1.5; });
+  // ── Layout: each project a fallen log with its sessions filed down its right, every name beside its own body ──
+  // It reads like a list: the log and its name on top, then its sessions, their subagents indented. plan() packs these blocks into
+  // columns round You and the usage signs, spacing rows so names clear each other at the home view, and keeps whichever column
+  // count lets the camera come closest. The sizes are what the camera's fit reserves round each node.
+  ctx.setSizes({ project: 1, session: .5, sub: .3 });
+  const SIN_T = Math.sin(.9), COS_T = Math.cos(.9), TAN15 = Math.tan(Math.PI / 12), phone = () => size.w < 700;
+  // Per kind of name: its font, the mark's and padding's widths (the CSS above), half its height, the longest it may grow and the
+  // shortest it may be cut to (px, about six letters), and where it sits: how high (board units) and how far right of the node's
+  // middle its body ends.
+  const TAG = {
+    project: { font: 'italic 500 15px Fraunces, Georgia, serif', mark: 20, pad: 18, hh: 10.5, slot: 170, cut: 84, y: .35, right: LOG_L / 2 },
+    session: { font: '600 12.5px Figtree, system-ui, sans-serif', mark: 13, pad: 16, hh: 10.5, slot: 200, cut: 75, y: 0, right: 0 },
+    sub: { font: '500 11px Figtree, system-ui, sans-serif', mark: 14, pad: 6, hh: 7, slot: 200, cut: 62, y: .3, right: .3 },
+  };
+  // A session's species and build are drawn here, before the layout, which spaces its rows by them.
+  const kin = new Map();
+  for (const s of world.sessions) { const r = rng(s.seed), sp = speciesOf(r); kin.set(s, { r, sp, h: clamp(1.5 * sp.tall, 1.3, 1.85), R: clamp(.8 * sp.wide, .62, .95), jx: (r() - .5) * .4 }); }
+  const pen = document.createElement('canvas').getContext('2d'), tags = new Map();
+  for (const n of world.nodes) {
+    if (n.kind === 'you') continue;
+    const K = TAG[n.kind], k = kin.get(n);
+    tags.set(n, { n, K, name: null, w: 0, cw: 0, pw: 0, right: k ? k.R * 1.12 + .08 : K.right, y: k ? .7 * k.h : K.y, ppu: 1, ok: false, was: false, rise: 1, sx: 0, sy: 0, shape: { hx: 0, hz: 0, y: 0, tw: 0 } });
+  }
+  const tagList = [...tags.values()];
+  // You's name, centred under the stump: its two lines' fonts and its height (px), as the CSS draws them; w follows what it says.
+  const YOU_B = 'italic 500 12.5px Fraunces, Georgia, serif', YOU_S = '10.5px "JetBrains Mono", ui-monospace, monospace', YOU_H = 35;
+  const youT = { n: world.you, q: -1, w: 72, ppu: 1, ok: true, was: true, shape: { hx: 1.7, hz: 1.7, y: .82, tw: 0, th: 0 } };
+  let tagsStale = true, disposed = false;
+  // Each name's width on screen as the CSS draws it, cut to its slot (narrower on a phone), padding and mark included.
+  function measureTags() {
+    tagsStale = false;
+    for (const t of tagList) { const K = t.K; t.name = t.n.name; pen.font = K.font; t.cw = t.w = Math.min(Math.ceil(pen.measureText(t.name).width) + K.mark, Math.round(K.slot * (phone() ? .75 : 1))) + K.pad; }
+    youT.q = -1;
+  }
+  function measureYou(q) {
+    youT.q = q; pen.font = YOU_B; const b = pen.measureText('You').width; pen.font = YOU_S;
+    youT.w = Math.ceil(Math.max(b, pen.measureText(q ? `${q} waiting` : 'all clear').width)) + 18;
+  }
+  measureTags();
+  for (const f of [...Object.values(TAG).map(K => K.font), YOU_B, YOU_S]) document.fonts?.load?.(f).then(() => { if (!disposed) { tagsStale = true; ctx.wake?.(); } }, () => {});
+
+  // Rows of a block, top to bottom: the least step (board units) from a row of one kind to the next (0 project, 1 session, 2 subagent),
+  // so a cap never hides the foot of the row behind it; blocks are GAP_Z apart in a column, columns GAP_X.
+  const MINP = [[0, 3.6, 3.6], [2.15, 3.4, 1.7], [1.95, 3.2, 1.6]], GAP_Z = .6, GAP_X = .3, FIT_R = { you: 3.3, project: 2.6, session: 2.1, sub: 1.9 };
+  const at = new Map(), planBox = { x0: -4, z0: -4, x1: 4, z1: 4, ex0: -4, ex1: 4, ez: 0, zE: 4 };
+  let planKey = '', planHs = Infinity, planUsage = null, replanned = null, shotKey = 0;
+  const shotsKey = () => { let k = 0; for (const s of world.sessions) if (ctx.shot?.(s)) k = Math.imul(k ^ s.seed, 0x9e3779b1) + 1 | 0; return k; }; // which sessions have screenshots, hashed
+  const usageWins = () => world.usage.map(a => a.windows.length + (a.spend?.limit > 0 ? 1 : 0)).filter(w => w);
+  // How many signs stand in the taller of the two columns beside the ring (each account's sign goes on the side of its arc, as updateUsage lays them).
+  function signRows(wins) {
+    const runs = wins.reduce((a, b) => a + b, 0), n = Math.max(1, Math.floor((FAIRY - 1 - runs - wins.length) / Math.max(1, runs)));
+    let len = 1, l = 0, r = 0;
+    for (const w of wins) { const from = len; len += w * (n + 1); if (Math.cos(Math.PI / 2 + ((from + len - 2) / 2 + .5) / FAIRY * Math.PI * 2) < 0) l++; else r++; len++; }
+    return Math.max(l, r);
+  }
+  // The stump, its ring and the signs, at s pixels a unit (You's name at sl, the scale it really comes to): You at its origin.
+  function bandOf(s, wins, sl) {
+    const lbl = 3.3 + (YOU_H + 3) / (COS_T * sl);
+    if (!wins.length) return { band: true, x0: -3.6, x1: 3.6, z0: -4.4, z1: lbl, w: 7.2, h: lbl + 4.4, hs: Infinity, ax: 0, az: 0 };
+    const hs = Math.min(Math.max(.95, (phone() ? 24 : 34) / s), 56 / s), ws = hs * 512 / 150, G = 1.65 * COS_T * hs - hs, nS = signRows(wins), E = nS * hs + (nS - 1) * G;
+    const hw = Math.max(3.6, 3.3 + ws + .4), z0 = -Math.max(4.4, (E / 2 + SIN_T * .55 * hs) / COS_T + .3), z1 = Math.max(lbl, (E / 2 - SIN_T * .55 * hs) / COS_T + .3);
+    return { band: true, x0: -hw, x1: hw, z0, z1, w: 2 * hw, h: z1 - z0, hs, ax: 0, az: 0 };
+  }
+  // A block's rows from the top, each a step below the last: far enough that the bodies clear (MINP) and the names clear by more
+  // than thinNames asks of a name coming back (3 px) and the idle wander (about 2), as the view V shows them. Once the last round
+  // has placed the block (B.az), that's the home view's perspective: a row nearer the camera is drawn bigger and further from the
+  // middle of the screen, so above the middle rows close up and below it they spread. Before that, or stopped at S_MIN, it's
+  // V.s pixels a unit (but for a project's name, see below). r.ar is where the row's name starts (board units from the block's left) and r.pw how wide it is (px).
+  function stack(B, V) {
+    const R = B.rows;
+    for (let i = 0; i < R.length; i++) {
+      const r = R[i], t = tags.get(r.n);
+      if (i) { const a = R[i - 1], ta = tags.get(a.n); r.z = a.z + Math.max(MINP[a.k][r.k], below(B, V, a.z, ta.y, t.y, ta.K.hh + t.K.hh + (a.k === 2 && r.k === 2 ? 6 : 9), a.k === 0)); }
+      r.ar = r.x + t.right; r.pw = 6 + t.w;
+    }
+    // The next block in the column starts with a project's name, as clear of this one's last.
+    const L = R[R.length - 1], tl = tags.get(L.n);
+    B.z1 = L.z + Math.max(.9, below(B, V, L.z, tl.y, TAG.project.y, tl.K.hh + TAG.project.hh + 9, true) - GAP_Z + B.z0); B.h = B.z1 - B.z0;
+    widen(B, V);
+  }
+  // How far below a name (row z, at height ya) the next (at yb) must stand to be g px lower on screen. Stopped at S_MIN the rows
+  // are spaced for it, too close for the scale the home view comes to, and thinNames shows those that fit; but a project's name
+  // is spaced for the real thing (once a round has found it), so the board's projects all show.
+  function below(B, V, z, ya, yb, g, proj) {
+    if (!V.persp && !(proj && V.floor)) return (g / V.s + SIN_T * (yb - ya)) / COS_T;
+    // The name above sits U/d up the screen (times k px), U its height above the aim across the screen, d its depth; the one
+    // below must be g px lower: solved for its z.
+    const wa = B.az + z - V.hz, Q = (SIN_T * ya - COS_T * wa) / Math.max(.5 * V.D, V.D - COS_T * ya - SIN_T * wa) - g / V.k;
+    return (Q * (V.D - COS_T * yb) - SIN_T * yb) / (SIN_T * Q - COS_T) + V.hz - B.az - z;
+  }
+  // A block's width, its names included: as wide as they show from the home view, in its perspective, or flat at V.s px a unit.
+  // Stopped at S_MIN, the project's name gets room for the least it may be cut to at the scale it really comes to, as below.
+  function widen(B, V) {
+    const R = B.rows; let x1 = 0;
+    for (let i = 0; i < R.length; i++) {
+      const r = R[i], top = V.floor && !i, p = V.persp || top ? V.k / Math.max(.5 * V.D, V.D - SIN_T * (B.az + r.z - V.hz)) : V.s;
+      x1 = Math.max(x1, r.ar + (top ? Math.max(r.pw / V.s, Math.min(r.pw, 6 + TAG.project.cut) / p) : r.pw / p));
+    }
+    B.x1 = x1 + .8; B.w = B.x1 - B.x0;
+  }
+  // Splits items, in order, into 1..k columns so the tallest is as short as it goes: best[c][j] the tallest of c columns over the
+  // first j items, cut[c][j] where the last of them starts.
+  function partition(items) {
+    const k = items.length, pre = [0];
+    for (const it of items) pre.push(pre[pre.length - 1] + it.h);
+    const hOf = (i, j) => pre[j] - pre[i] + GAP_Z * (j - i - 1);
+    const best = [[0, ...items.map(() => Infinity)]], cut = [[]];
+    for (let c = 1; c <= k; c++) {
+      const b = [Infinity], ct = [0];
+      for (let j = 1; j <= k; j++) { let v = Infinity, at0 = 0; for (let i = c - 1; i < j; i++) { const m = Math.max(best[c - 1][i], hOf(i, j)); if (m < v) { v = m; at0 = i; } } b.push(v); ct.push(at0); }
+      best.push(b); cut.push(ct);
+    }
+    return C => { const cols = []; let j = k; for (let c = C; c > 0; c--) { const i = cut[c][j]; cols.unshift(items.slice(i, j)); j = i; } return cols; };
+  }
+  // Lays columns out left to right, each centred on z = 0, blocks flush left and the band centred, then moves You to the origin;
+  // returns how far the camera's fit would stand back (as nodes.js works it out, with setFrame's points) and where it would aim.
+  function arrange(cols, aspect, out) {
+    let x = 0;
+    for (const col of cols) {
+      let W = 0, H = -GAP_Z; for (const it of col) { W = Math.max(W, it.w); H += it.h + GAP_Z; }
+      let top = -H / 2;
+      for (const it of col) { it.ax = it.band ? x + W / 2 : x - it.x0; it.az = top - it.z0; top += it.h + GAP_Z; }
+      x += W + GAP_X;
+    }
+    let band = null; for (const col of cols) for (const it of col) if (it.band) band = it;
+    const dx = band.ax, dz = band.az;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+    const add = (px, pz, r) => { x0 = Math.min(x0, px - r); x1 = Math.max(x1, px + r); z0 = Math.min(z0, pz - r); z1 = Math.max(z1, pz + r + .8); };
+    for (const col of cols) for (const it of col) {
+      it.ax -= dx; it.az -= dz;
+      bx0 = Math.min(bx0, it.ax + it.x0); bx1 = Math.max(bx1, it.ax + it.x1); bz0 = Math.min(bz0, it.az + it.z0); bz1 = Math.max(bz1, it.az + it.z1);
+      if (it.band) add(0, 0, FIT_R.you); else for (const r of it.rows) add(it.ax + r.x, it.az + r.z, FIT_R[r.n.kind]);
+    }
+    add(bx0, bz0, 0); add(bx1, bz1, 0);
+    // The fit measures the board's width at its aim, but rows nearer the camera spread wider and their names are as wide as ever:
+    // ex0..ex1 is the width it would have to be there to look as wide as it does, which setFrame hands the fit.
+    // It takes the board as flat, too, but the near edge draws lower than that (nearer, so bigger): zE is a point below the board,
+    // as far down as it takes for the board's foot to draw on screen, which moves the aim down to match (found by halving).
+    const k = size.h / (2 * TAN15), fitOf = (a, b, e) => Math.max(((e - z0) / 2 * COS_T * 1.1 + 2.5) / TAN15, (b - a) / 2 / (TAN15 * aspect)) * 1.04;
+    const low = e => { const h = (z0 + e) / 2 + 1, d = fitOf(ex0, ex1, e), w = bz1 - h; return COS_T * w * k / Math.max(.5 * d, d - SIN_T * w) > size.h / 2 - 10; };
+    let ex0 = x0, ex1 = x1, zE = z1, hz = (z0 + z1) / 2 + 1, D = fitOf(x0, x1, z1);
+    for (let it = 0; it < 2; it++) {
+      const cx = (ex0 + ex1) / 2; let a0 = x0, a1 = x1;
+      for (const col of cols) for (const B of col) if (B.band) {
+        // The stump's band at its near edge, where it spreads widest (its far edge draws narrower than the fit has it anyway).
+        const f = D / Math.max(.5 * D, D + SIN_T * (hz - B.az - B.z1));
+        a0 = Math.min(a0, cx + (B.ax + B.x0 - cx) * f); a1 = Math.max(a1, cx + (B.ax + B.x1 - cx) * f);
+      } else for (const r of B.rows) {
+        const f = D / Math.max(.5 * D, D + SIN_T * (hz - B.az - r.z)), x = B.ax + r.x, R = FIT_R[r.n.kind];
+        a0 = Math.min(a0, cx + (x - R - cx) * f);
+        a1 = Math.max(a1, cx + (x + R - cx) * f, cx + (B.ax + r.ar - cx) * f + r.pw * D / k);
+      }
+      ex0 = a0; ex1 = a1; zE = z1;
+      if (low(z1)) { let lo = z1, hi = 2 * z1 - z0; for (let i = 0; i < 10; i++) { const m = (lo + hi) / 2; if (low(m)) lo = m; else hi = m; } zE = hi; }
+      hz = (z0 + zE) / 2 + 1; D = fitOf(ex0, ex1, zE);
+    }
+    out.dist = D; out.homeZ = hz; out.ex0 = ex0; out.ex1 = ex1; out.ez = (z0 + z1) / 2; out.zE = zE;
+    out.x0 = bx0; out.x1 = bx1; out.z0 = bz0; out.z1 = bz1;
+    return out;
+  }
+  function plan() {
+    if (tagsStale) measureTags();
+    const wins = usageWins(), aspect = size.w / size.h, blocks = [];
+    planUsage = world.usage; planKey = wins.join(); shotKey = shotsKey();
+    for (const t of tagList) t.pw = t.w;
+    for (const p of world.projects) {
+      const rows = [{ n: p, k: 0, x: 0, z: 0, ar: 0, pw: 0 }];
+      for (const s of p.sessions) { const x = COL_X + kin.get(s).jx; rows.push({ n: s, k: 1, x, z: 0, ar: 0, pw: 0 }); for (const b of s.subs) rows.push({ n: b, k: 2, x: x + SUB_X, z: 0, ar: 0, pw: 0 }); }
+      // A screenshot body left of a session may reach past the block's usual left edge.
+      let x0 = -2.6;
+      for (const s of p.sessions) if (ctx.shot?.(s)) x0 = Math.min(x0, COL_X + kin.get(s).jx + LENS_AT[0] - LENS_W / 2 - .2);
+      blocks.push({ band: false, rows, x0, z0: -2.4, x1: 0, z1: 0, w: 0, h: 0, ax: 0, az: 0 });
+    }
+    // The scale and perspective the home view will show depend on the layout, and the layout on them: four rounds settle it. Names are
+    // as wide at any scale, so on a board too busy for them all to fit the scale only shrinks round by round: it stops at S_MIN,
+    // the home view then shows the names that fit (thinNames) and the rest come in as you zoom to it.
+    const k = size.h / (2 * TAN15), S_MIN = phone() ? 9 : 11, V = { persp: false, floor: false, s: phone() ? 12 : 18, D: 0, hz: 0, k };
+    let band = null, pick = null;
+    const fit = {}, mid = Math.floor(blocks.length / 2);
+    for (let pass = 0; pass < 4; pass++) {
+      for (const B of blocks) stack(B, V);
+      band = bandOf(V.s, wins, V.floor ? Math.min(V.s, k / V.D) : V.s);
+      // Either You's band stands in a column of its own in the middle, or it takes its turn in the middle of the run of blocks.
+      const alone = partition(blocks), shared = partition([...blocks.slice(0, mid), band, ...blocks.slice(mid)]);
+      let bestD = Infinity;
+      const tryCols = cols => { arrange(cols, aspect, fit); if (fit.dist < bestD - 1e-6) { bestD = fit.dist; pick = { cols, ...fit }; } };
+      if (!blocks.length) tryCols([[band]]);
+      for (let C = 1; C <= blocks.length; C++) { const cols = alone(C), m = Math.ceil(C / 2); tryCols([...cols.slice(0, m), [band], ...cols.slice(m)]); }
+      for (let C = 1; C <= blocks.length + 1; C++) tryCols(shared(C));
+      arrange(pick.cols, aspect, fit);
+      const got = k / pick.dist;
+      V.floor = got < S_MIN; V.s = Math.max(S_MIN, got); V.persp = !V.floor; V.D = pick.dist; V.hz = pick.homeZ;
+    }
+    at.clear();
+    for (const B of blocks) {
+      let sx = 0, sz = 0;
+      for (const r of B.rows) {
+        if (r.k === 0) at.set(r.n, { x: B.ax, z: B.az });
+        else if (r.k === 1) { at.set(r.n, { x: r.x, z: r.z }); sx = r.x; sz = r.z; }
+        else at.set(r.n, { x: r.x - sx, z: r.z - sz });
+      }
+    }
+    planBox.x0 = pick.x0; planBox.x1 = pick.x1; planBox.z0 = pick.z0; planBox.z1 = pick.z1; planBox.ex0 = pick.ex0; planBox.ex1 = pick.ex1; planBox.ez = pick.ez; planBox.zE = pick.zE; planHs = band.hs;
+    replanned?.();
+  }
+  function layout(n) {
+    if (n.kind === 'you') { plan(); n.rest.set(0, 0, 0); return; }
+    const a = at.get(n); if (!a) return;
+    if (n.kind === 'project') n.rest.set(a.x, 0, a.z); else n.offset.set(a.x, 0, a.z);
+  }
+  ctx.setLayout(layout);
+  ctx.onResize(() => ctx.setLayout(layout));
+  ctx.setFrame(add => { add(planBox.x0, planBox.z0, 0); add(planBox.x1, planBox.z1, 0); add(planBox.ex0, planBox.ez, 0); add(planBox.ex1, planBox.ez, 0); add(planBox.x0, planBox.zE - .8, 0); });
+  // A name on its node ('on'): right of its body, as wide as it measures; You's centred below the stump, its top 3.3 in front.
+  ctx.setLabelAnchor((n, out, on) => {
+    if (n.kind === 'you') { out.y = 0; out.z += 3.3 + (on ? YOU_H / 2 / (youT.ppu * COS_T) : 0); return; }
+    const t = tags.get(n);
+    if (on && t) { out.x += t.right + (6 + t.cw / 2) / t.ppu; out.y = t.y; return; }
+    out.y = 0; out.z += n.kind === 'you' ? 3.3 : n.kind === 'project' ? .9 : n.kind === 'session' ? 1.2 : .6;
+  }, (n, out) => { const m = n.kind === 'you' ? null : n.kind === 'project' ? clusters.get(n)?.[0] : mushOf.get(n); if (m) out.set(m.top.x, m.crown + .12, m.top.z); else out.y = 1.5; });
+  // Every name shows on its node unless thinNames, each frame, finds it would cover another name or body.
+  ctx.setLabelRule(n => { const t = n.kind === 'you' ? youT : tags.get(n); return t ? (t.ok ? 'on' : false) : undefined; });
+  // Footprints for picking and for keeping other names off: the stump, the log, a cap, a bud.
+  ctx.setShape(n => {
+    if (n.kind === 'you') { const S = youT.shape; S.tw = (youT.w + 4) / youT.ppu; S.th = YOU_H / youT.ppu; return S; }
+    const t = tags.get(n); if (!t) return null;
+    const S = t.shape; S.tw = (t.cw < t.w ? t.cw : t.w + 4) / t.ppu;
+    if (n.kind === 'project') { S.hx = LOG_L / 2; S.hz = .68; S.y = 1.4; }
+    else if (n.kind === 'session') { const m = mushOf.get(n); S.hx = Math.max(.3, m?.R0 || .8); S.hz = S.hx * .6; S.y = Math.max(.5, m?.crown || 1.5); }
+    else { S.hx = .35; S.hz = .3; S.y = .5; }
+    return S;
+  });
 
   // T is the look's clock; T0, the shaders', stands still in reduced motion, so nothing on the GPU moves by itself then.
   // busy and springy gather, each frame, what update's pace needs: something fading or flowing, or a spring still bouncing.
@@ -105,7 +348,7 @@ function create(ctx) {
   // ── Soil: leaf litter lit by the glow pools around every mushroom ──
   // The pools are splatted as soft quads into a small light map over the box they cover, redrawn only when one changes, so the
   // ground reads one texel a pixel.
-  const EXTENT = 110, LIGHTS = 40, LM = 512;
+  const EXTENT = 110, LIGHTS = 96, LM = 512;
   const lData = new Float32Array(LIGHTS * 4), lCol = new Float32Array(LIGHTS * 3), lSeenD = new Float32Array(LIGHTS * 4), lSeenC = new Float32Array(LIGHTS * 3);
   let lSeenN = -1;
   const lmRT = new THREE.WebGLRenderTarget(LM, LM, { type: THREE.HalfFloatType, depthBuffer: false });
@@ -122,20 +365,30 @@ function create(ctx) {
   const lmScene = new THREE.Scene(), lmCam = new THREE.Camera(), lmMesh = new THREE.Mesh(lmGeo, lmMat);
   lmMesh.frustumCulled = false; lmScene.add(lmMesh);
   const groundMat = new THREE.ShaderMaterial({
-    uniforms: { uSoil: { value: soilTexture() }, uLM: { value: lmRT.texture }, uLB: { value: LB }, uExtent: { value: EXTENT }, uCenter: { value: new THREE.Vector2(0, 1.5) } },
+    uniforms: { uSoil: { value: soilTexture() }, uLM: { value: lmRT.texture }, uLB: { value: LB }, uExtent: { value: EXTENT }, uBox: { value: new THREE.Vector4() } },
     vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: `${NOISE_GLSL}
-      uniform sampler2D uSoil, uLM; uniform float uExtent; uniform vec4 uLB; uniform vec2 uCenter; varying vec3 vW;
+      uniform sampler2D uSoil, uLM; uniform float uExtent; uniform vec4 uLB, uBox; varying vec3 vW;
       void main(){
         vec3 soil = texture2D(uSoil, vW.xz / uExtent + .5).rgb;
         soil *= .82 + .36 * (snoise(vec3(vW.xz * 2.7, 0.0)) * .5 + .5);
         vec3 light = texture2D(uLM, (vW.xz - uLB.xy) * uLB.zw).rgb;
         vec3 col = soil * (vec3(.46, .5, .6) + light * 2.3) + light * .03;
-        col *= smoothstep(58.0, 24.0, length(vW.xz - uCenter));
+        col *= smoothstep(30.0, 8.0, length(max(abs(vW.xz - uBox.xy) - uBox.zw, 0.0)));
         gl_FragColor = vec4(col, 1.0);
       }`,
   });
-  root.add(new THREE.Mesh(new THREE.PlaneGeometry(170, 170).rotateX(-Math.PI / 2), groundMat));
+  // The litter covers the board's box (uBox: its middle and half sizes) and fades out within 30 units of it; it follows the layout.
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), groundMat);
+  root.add(ground);
+  function fitGround() {
+    const B = planBox, hx = (B.x1 - B.x0) / 2, hz = (B.z1 - B.z0) / 2;
+    groundMat.uniforms.uBox.value.set(B.x0 + hx, B.z0 + hz, hx, hz);
+    ground.position.set(B.x0 + hx, 0, B.z0 + hz); ground.scale.set(2 * hx + 64, 1, 2 * hz + 64);
+  }
+  fitGround(); replanned = fitGround;
+  // The spores and the mat beneath the litter cover the board as laid out at build time and a margin round it.
+  const SB = { x0: planBox.x0 - 12, x1: planBox.x1 + 12, z0: planBox.z0 - 10, z1: planBox.z1 + 8 }, SW = SB.x1 - SB.x0;
 
   // ── Mushrooms: five cap shapes and one stem, all instanced, shaded by hand ──
   const lathe = pts => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 36);
@@ -227,7 +480,7 @@ function create(ctx) {
       ox: 0, oz: 0, dx: 1, dz: 0, lx: 0, lz: 0, rise: 1, step: 0, grown: 0, hue: null, phase: 0, dist: 0, angle: 0, fi: 0, lit: 1, run: -2, rk: 0, rn: 1, body: null,
       capSlot: 0, stemSlot: mush.length, col: new THREE.Color(), flash: 0, top: new THREE.Vector3(), R0: 0, bulb: 0, crown: 0, exit: null,
       bowX: Math.cos(a) * bow, bowZ: Math.sin(a) * bow, sway: { session: .05, sub: .075, cluster: .04, fairy: .06, plan: .03, shot: .03 }[rec.role],
-      sq: 0, sqv: 0, kv: 0, kt: 0, k: 105 + ((rec.seed * 5.3) % 1) * 70, hovOn: false, selOn: false, bx: 0, bz: 0, wx: 0, wz: 0, hh: 0, swx: 0, swz: 0 };
+      sq: 0, sqv: 0, kv: 0, kt: 0, k: 105 + ((rec.seed * 5.3) % 1) * 70, hovOn: false, selOn: false, bx: 0, bz: 0, by: 0, lead: false, wx: 0, wz: 0, hh: 0, swx: 0, swz: 0 };
     for (const k in rec) m[k] = rec[k];
     m.capSlot = counts[m.shape]++;
     mush.push(m); return m;
@@ -237,37 +490,29 @@ function create(ctx) {
   const PALE = C('#d8d2bc');
   // Sessions, their plan's pinheads and their subagents
   for (const s of world.sessions) {
-    const r = rng(s.seed), sp = speciesOf(r);
-    const a = (r() < .5 ? 0 : Math.PI) + (r() - .5) * .7; // offline caps flop sideways, so the silhouette stays readable
-    // Sessions are the big bodies; a cap never grows into a neighbour's.
-    let room = 1.45;
-    for (const o of world.nodes) if (o !== s && o.kind !== 'you') { const d = Math.hypot(o.rest.x - s.rest.x, o.rest.z - s.rest.z); room = Math.min(room, o.kind === 'session' ? d * .5 : d - (o.kind === 'sub' ? .6 : .5)); }
-    mushOf.set(s, addMushroom({ node: s, role: 'session', ...sp, h: 2.3 * sp.tall, R: Math.max(.9, Math.min(1.4 * sp.wide, room / 1.08)), seed: r() * 10, dx: Math.cos(a), dz: Math.sin(a), lx: (r() - .5) * .3 * sp.lean, lz: (r() - .5) * .3 * sp.lean, rise: s.present ? 1 : 0 }));
+    const { r, sp, h, R } = kin.get(s);
+    const a = Math.PI + (r() - .5) * .7; // offline caps flop to the left, away from the name
+    // Sessions stand nearly upright so a cap stays over its own row, and the size the layout spaced the rows for.
+    mushOf.set(s, addMushroom({ node: s, role: 'session', ...sp, h, R, seed: r() * 10, dx: Math.cos(a), dz: Math.sin(a), lx: (r() - .5) * .15 * sp.lean, lz: (r() - .5) * .15 * sp.lean, rise: s.present ? 1 : 0 }));
     if (s.plan?.total) {
       const list = [], n = s.plan.total;
-      // Pinheads round the back of the foot, one per step from left to right, grown and lit when done; the label sits in front.
-      for (let i = 0; i < n; i++) { const pa = Math.PI * (1.06 + .88 * (i + .5) / n), d = 1.4 + (r() - .5) * .12; list.push(addMushroom({ node: s, role: 'plan', shape: 0, alb: PALE, stem: PALE, pat: 0, ox: Math.cos(pa) * d, oz: Math.sin(pa) * d, h: .3, R: .1, ys: 1.3, seed: r() * 10, lx: Math.cos(pa) * .2, lz: Math.sin(pa) * .2, step: i, grown: 0 })); }
+      // Pinheads round the left and back of the foot, one per step from front to back, grown and lit when done; the name sits right.
+      for (let i = 0; i < n; i++) { const pa = Math.PI * (1 + .55 * (i + .5) / n), d = R + .45 + (r() - .5) * .12; list.push(addMushroom({ node: s, role: 'plan', shape: 0, alb: PALE, stem: PALE, pat: 0, ox: Math.cos(pa) * d, oz: Math.sin(pa) * d, h: .3, R: .1, ys: 1.3, seed: r() * 10, lx: Math.cos(pa) * .2, lz: Math.sin(pa) * .2, step: i, grown: 0 })); }
       plans.set(s, list);
     }
     for (const k of s.subs) {
-      const rk = rng(k.seed), sk = speciesOf(rk, [0, 1, 4]), a2 = rk() * 6.28;
-      mushOf.set(k, addMushroom({ node: k, role: 'sub', ...sk, h: .85 * sk.tall, R: .44 * sk.wide, ys: 1.15, seed: rk() * 10, dx: Math.cos(a2), dz: Math.sin(a2), lx: (rk() - .5) * .36, lz: (rk() - .5) * .36, rise: k.present ? 1 : 0 }));
+      // A subagent is a closed bud on a short stem: no session has that shape, so it can't pass for one even from afar.
+      const rk = rng(k.seed), sk = speciesOf(rk, [5]), a2 = rk() * 6.28;
+      mushOf.set(k, addMushroom({ node: k, role: 'sub', ...sk, h: .24 + (sk.tall - .82) * .133, R: .24 * sk.wide, ys: 1.35, seed: rk() * 10, dx: Math.cos(a2), dz: Math.sin(a2), lx: (rk() - .5) * .16, lz: (rk() - .5) * .16, rise: k.present ? 1 : 0 }));
     }
   }
   // Screenshots: a pale fruiting body beside each session whose round cap holds its newest screenshot, a spore on it for
-  // each one taken, fed by a few threads from the session's foot. It grows beside or behind the session wherever there's most room
-  // from other nodes and the session's own cord, and only while there's a screenshot; a click opens them.
-  const SPOTS = [[2.9, -.4], [-2.9, -.4], [2.2, -2.2], [-2.2, -2.2]], shotBodies = [], LENS_W = 2.3, LENS_H = LENS_W * 400 / 512;
+  // each one taken, fed by a few threads from the session's foot. It grows on the session's left, where its row leaves room (the
+  // name is on the right), and only while there's a screenshot; a click opens them.
+  const shotBodies = [], best = LENS_AT;
   for (const s of world.sessions) {
-    const toKnot = new THREE.Vector3().subVectors(s.parent.rest, s.rest).setY(0).normalize(), r = rng(s.seed ^ 0x51);
-    let best = SPOTS[0], room = -Infinity;
-    for (const [ox, oz] of SPOTS) {
-      const x = s.rest.x + ox, z = s.rest.z + oz;
-      let near = Math.hypot(x - s.rest.x - toKnot.x * 1.8, z - s.rest.z - toKnot.z * 1.8);
-      for (const o of world.nodes) if (o !== s) near = Math.min(near, Math.hypot(o.rest.x - x, o.rest.z - z) - (o.kind === 'you' ? 3 : o.kind === 'session' ? .6 : 0));
-      if (near > room + .05) { room = near; best = [ox, oz]; }
-    }
-    const m = addMushroom({ node: s, role: 'shot', shape: 2, alb: C('#d6d0bd'), stem: C('#e2dccb'), pat: 0, ox: best[0], oz: best[1], h: 1.25, R: .14, ys: .7, seed: r() * 10, lx: -Math.sign(best[0]) * .1, lz: -.05, rise: 0 });
+    const r = rng(s.seed ^ 0x51);
+    const m = addMushroom({ node: s, role: 'shot', shape: 2, alb: C('#d6d0bd'), stem: C('#e2dccb'), pat: 0, ox: best[0], oz: best[1], h: 1.45, R: .16, ys: .7, seed: r() * 10, lx: -Math.sign(best[0]) * .1, lz: -.05, rise: 0 });
     const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 400;
     const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
     const lens = new THREE.Mesh(new THREE.PlaneGeometry(LENS_W, LENS_H), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: .03 }));
@@ -277,22 +522,26 @@ function create(ctx) {
     m.body = { s, m, lens, canvas, tex, pos, shot: null, wob: [r() * 6.28, r() * 6.28], threads: [] };
     shotBodies.push(m.body);
   }
-  // Projects are knots where the cords meet: a fat-footed primordium of the project's own species on a felted mound, and a
-  // tuft, crescent or ring of pinheads round it, all lit in the project's colour and grown PK times larger: it is
-  // the button for a new session.
-  const clusters = new Map();
+  // Projects are fallen logs, each a little askew (logYaw), veined with foxfire in the project's colour, with a clump of its own
+  // species fruiting along the left of its top: a lead primordium, the button for a new session, and a few pinheads either side.
+  // Their offsets are turned with the log; by seats each foot on the bark (the log tapers 10% to its ends).
+  const clusters = new Map(), logYaw = new Float32Array(Math.max(1, world.projects.length));
+  const onLog = (x, z) => LOG_Y + Math.sqrt(Math.max(0, (LOG_R * (1 - .1 * (x / (LOG_L / 2)) ** 2)) ** 2 - z * z)) - .05;
   world.projects.forEach((p, pi) => {
-    const r = rng(p.seed ^ 0x9e37), sp = speciesOf(r, [0, 1, 4]), list = [], hue = C(HUES[pi % HUES.length]);
-    list.push(addMushroom({ node: p, role: 'cluster', ...sp, ox: 0, oz: 0, h: .62 * PK * Math.sqrt(sp.tall), R: .34 * PK * sp.wide, seed: r() * 10, lx: 0, lz: 0, hue, thick: 1.5 }));
-    const form = Math.floor(r() * 3), n = 3 + Math.floor(r() * 3), a0 = r() * 6.28;
+    const r = rng(p.seed ^ 0x9e37), sp = speciesOf(r, [0, 1, 4]), list = [], hue = C(HUES[pi % HUES.length]), yaw = logYaw[pi] = (r() - .5) * .16;
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), put = (x, z, rec) => { rec.ox = x * cy + z * sy; rec.oz = -x * sy + z * cy; rec.by = onLog(x, z); return addMushroom(rec); };
+    const lx0 = -.9 + (r() - .5) * .3, lz0 = (r() < .5 ? -1 : 1) * (.15 + r() * .05);
+    list.push(put(lx0, lz0, { node: p, role: 'cluster', ...sp, lead: true, h: .62 * PK * Math.sqrt(sp.tall), R: .34 * PK * sp.wide, seed: r() * 10, lx: 0, lz: 0, hue, thick: 1.5 }));
+    const n = 3 + Math.floor(r() * 3);
     for (let i = 0; i < n; i++) {
-      const a = form === 0 ? a0 + (r() - .5) * 1.4 : form === 1 ? a0 + (i / Math.max(1, n - 1) - .5) * 2.4 : a0 + i / n * Math.PI * 2 + (r() - .5) * .6, d = (.3 + r() * .22) * PK, big = r();
-      list.push(addMushroom({ node: p, role: 'cluster', ...sp, alb: sp.alb.clone().offsetHSL(0, 0, (r() - .5) * .08), ox: Math.cos(a) * d, oz: Math.sin(a) * d, h: (.14 + big * .24) * PK * sp.tall, R: (.06 + big * .08) * PK * sp.wide, seed: r() * 10, lx: Math.cos(a) * .45 * PK, lz: Math.sin(a) * .45 * PK, hue, phase: r() * 6.28, dist: d }));
+      let x = -1.5 + r() * 1.2; if (Math.abs(x - lx0) < .18) x = lx0 + (x < lx0 ? -.18 : .18);
+      const z = (i % 2 ? 1 : -1) * Math.sign(lz0 || 1) * -(.15 + r() * .05), big = r(), side = Math.sign(x - lx0) || 1;
+      list.push(put(x, z, { node: p, role: 'cluster', ...sp, alb: sp.alb.clone().offsetHSL(0, 0, (r() - .5) * .08), h: (.14 + big * .24) * PK * sp.tall, R: (.06 + big * .08) * PK * sp.wide, seed: r() * 10, lx: side * (.3 + r() * .3), lz: z * 1.5, hue, phase: r() * 6.28, dist: Math.abs(x - lx0) }));
     }
     clusters.set(p, list);
   });
   // Fairy ring round the stump: the usage gauge, starting and ending at the front (see updateUsage).
-  const fairy = [], FAIRY = 48;
+  const fairy = [];
   for (let i = 0; i < FAIRY; i++) {
     const r = rng(9001 + i), a = Math.PI / 2 + (i + .5) / FAIRY * Math.PI * 2 + (r() - .5) * .03, d = 2.75 + (r() - .5) * .16;
     fairy.push(addMushroom({ node: world.you, role: 'fairy', shape: 0, alb: C('#cfc6ac'), stem: C('#ddd6c2'), pat: 0, ox: Math.cos(a) * d, oz: Math.sin(a) * d, h: .24 + r() * .12, R: .1 + r() * .04, ys: 1.15, seed: r() * 10, lx: Math.cos(a) * .12, lz: Math.sin(a) * .12, angle: a, fi: i, lit: 1, run: -2, rk: 0, rn: 1 }));
@@ -309,9 +558,52 @@ function create(ctx) {
   stems.geometry.setAttribute('aB', bendAttr);
   caps.forEach((m, i) => { m.count = counts[i]; root.add(m); });
   for (const m of mush) { m.alb.toArray(caps[m.shape].geometry.attributes.aA.array, m.capSlot * 3); m.stem.toArray(stems.geometry.attributes.aA.array, m.stemSlot * 3); }
-  const instMeshes = [...caps, stems], pstat = new Map(world.projects.map(p => [p, { act: 0 }]));
+  const instMeshes = [...caps, stems], pstat = new Map(world.projects.map(p => [p, { act: 0, glow: -1, rim: -1, act0: -1, x: NaN, z: NaN }]));
 
   root.add(stems);
+  // The logs: one instanced cylinder along x, tapering to its ends, lumpy, ridged with bark and mossed on top, with foxfire veins
+  // in the project's colour (aH) that pulse slowly and carry travelling pulses while its sessions work, and growth rings on the cut
+  // ends. aG: glow, activity, seed, hover rim.
+  const logGeo = new THREE.CylinderGeometry(LOG_R, LOG_R, LOG_L, 28, 8).rotateZ(Math.PI / 2), NLOG = Math.max(1, world.projects.length);
+  const aH = new THREE.InstancedBufferAttribute(new Float32Array(NLOG * 3), 3), aG = new THREE.InstancedBufferAttribute(new Float32Array(NLOG * 4), 4).setUsage(THREE.DynamicDrawUsage);
+  logGeo.setAttribute('aH', aH); logGeo.setAttribute('aG', aG);
+  const logs = new THREE.InstancedMesh(logGeo, new THREE.ShaderMaterial({
+    uniforms: { uTime: T0 },
+    vertexShader: `${NOISE_GLSL}
+      attribute vec3 aH; attribute vec4 aG; varying vec3 vN, vW, vL, vH; varying vec4 vG; varying float vE;
+      void main(){
+        vec3 p = position; float u = p.x / ${(LOG_L / 2).toFixed(3)}, rad = length(p.yz);
+        p.yz *= 1.0 - .1 * u * u;
+        p.yz += p.yz / max(rad, 1e-4) * .04 * snoise(vec3(p.x * 1.3, atan(p.y, p.z) * 1.1, aG.z)) * smoothstep(0.0, ${LOG_R.toFixed(3)}, rad);
+        vec4 w = modelMatrix * instanceMatrix * vec4(p, 1.0);
+        vL = p; vE = abs(normal.x); vH = aH; vG = aG; vW = w.xyz; vN = normalize(mat3(modelMatrix * instanceMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `${NOISE_GLSL}
+      uniform float uTime; varying vec3 vN, vW, vL, vH; varying vec4 vG; varying float vE;
+      void main(){
+        vec3 N = normalize(vN), V = normalize(cameraPosition - vW), Ld = normalize(vec3(-.35, .85, .45));
+        float glow = vG.x, act = vG.y, seed = vG.z, rim = vG.w, ang = atan(vL.y, vL.z), rad = length(vL.yz) / ${LOG_R.toFixed(3)};
+        float fres = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 2.0), diff = max(dot(N, Ld), 0.0) * .6 + .22 + .18 * max(N.y, 0.0);
+        float n1 = snoise(vec3(vL.x * .9, ang * 2.0, seed)), ridge = .5 + .5 * sin(ang * 22.0 + 2.6 * n1);
+        vec3 alb = mix(vec3(.06, .045, .03), vec3(.21, .15, .095), ridge * (.7 + .3 * snoise(vL * 3.0 + seed)));
+        float moss = smoothstep(.3, .85, N.y + .3 * snoise(vL * 2.2 + seed)) * (1.0 - vE);
+        alb = mix(alb, vec3(.13, .2, .07) * (.8 + .4 * snoise(vL * 9.0)), moss * .85);
+        // Foxfire: a net of veins along the noise's zero line, under the moss less.
+        float vn = snoise(vec3(vL.x * 1.5, ang * 1.3, seed * 3.0)), vein = smoothstep(.08, .0, abs(vn)) * (1.0 - moss * .6) * (1.0 - vE);
+        float pulse = .7 + .3 * sin(uTime * 1.2 + vL.x * 1.7 + seed * 4.0) + 1.1 * act * smoothstep(.75, 1.0, sin(uTime * 2.4 - vL.x * 2.2 + seed));
+        vec3 em = vH * glow * (vein * pulse * 1.15 + .035 * (1.0 - moss));
+        // The cut ends: growth rings round a dark heart, the bark round their rim, a faint glow in the sapwood.
+        float rings = .5 + .5 * sin(rad * 34.0 + 2.5 * snoise(vec3(vL.yz * 3.0, seed)));
+        vec3 wood = mix(vec3(.2, .14, .08), vec3(.36, .26, .15), rings) * mix(.35, 1.0, smoothstep(.1, .5, rad));
+        alb = mix(alb, mix(wood, vec3(.08, .055, .035), smoothstep(.86, .95, rad)), vE);
+        em += vH * glow * vE * .18 * smoothstep(.55, .9, rad) * (1.0 - smoothstep(.9, .95, rad));
+        vec3 col = alb * diff * vec3(.6, .66, .8);
+        em += vec3(.7, 1.0, .75) * rim * (fres * .55 + .04);
+        gl_FragColor = vec4(col + em, 1.0);
+      }`,
+  }), NLOG);
+  logs.count = world.projects.length; logs.frustumCulled = false; logs.instanceMatrix.setUsage(THREE.DynamicDrawUsage); root.add(logs);
+  world.projects.forEach((p, pi) => { clusters.get(p)[0].hue.toArray(aH.array, pi * 3); aG.array[pi * 4 + 2] = (p.seed % 997) / 97; });
   const modeSessions = world.sessions.filter(s => s.mode);
   const skirts = new THREE.InstancedMesh(skirtGeo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }), Math.max(1, modeSessions.length));
   skirts.frustumCulled = false; skirts.count = modeSessions.length; root.add(skirts);
@@ -417,13 +709,13 @@ function create(ctx) {
     for (const st of L.strands) { const n = L.segs + L.c.cont; run(n + 1); for (let k = 0; k <= n; k++) smp(L.tb, 0, k, st.ph, st.a, st.f, st.p, st.sp, st.b, st.y, st.ca, st.sa); }
     for (const br of L.branches) walk(L.tb, 1, br.pts, br.b, br.i0, br.t0);
   }
-  // Felt: a mat of short, curling rhizoids round every foot. Ring mushrooms in a cluster get a little felt and a thread back to
-  // the mother's foot, and each plan pinhead a thread from its session's foot, so each reads as one organism.
+  // Felt: a mat of short, curling rhizoids round the foot of every session and subagent (the felt lies on the soil, so a
+  // project's clump, up on its log, has none), and each plan pinhead a thread from its session's foot, so each reads as one organism.
   const fuzz = [];
   for (const m of mush) {
-    if (m.role === 'fairy' || m.role === 'plan' || m.role === 'shot') continue;
-    const ring = m.role === 'cluster' && m.ox !== 0, r = rng((m.node.seed ^ 0x77) + Math.floor(m.seed * 997));
-    const n = ring ? 4 : m.role === 'cluster' ? 22 : m.role === 'session' ? 24 : 10, len = ring ? .3 * PK : m.role === 'cluster' ? .9 * PK : m.role === 'session' ? .95 : .42, F = { m, rb: dAlloc(2), teth: -1 };
+    if (m.role !== 'session' && m.role !== 'sub') continue;
+    const r = rng((m.node.seed ^ 0x77) + Math.floor(m.seed * 997));
+    const n = m.role === 'session' ? 24 : 10, len = m.role === 'session' ? .7 : .3, F = { m, rb: dAlloc(2) };
     // Two kinds: short curling felt scattered over a disc round the foot, and a few longer rhizoids reaching out from it.
     for (let i = 0; i < n; i++) {
       const felt = i % 5 < 3; let a = r() * 6.28, x, z;
@@ -433,7 +725,6 @@ function create(ctx) {
       for (let k = 0; k < 4; k++) { a += curl + (r() - .5) * .9; x += Math.cos(a) * step; z += Math.sin(a) * step; pts.push(x, z); }
       walk(F.rb, 4, pts, (felt ? .5 + .5 * (1 - r0 / (len * .42)) : .55) * (.5 + r() * .5), 0, 0);
     }
-    if (ring) { const bow = (r() - .5) * .7, ph = r() * 6.28; F.teth = dAlloc(3); span(F.teth, 2, TETH, bow * .35, .05, 8, ph, .03, .009, 1, 0); }
     fuzz.push(F);
   }
   const SHOT_SEG = 10;
@@ -459,7 +750,6 @@ function create(ctx) {
   // the far end (1) of every span that runs all the way.
   const rows = Math.max(1, Math.ceil(texN / TW)), Wd = new Float32Array(rows * TW * 4), Dd = new Float32Array(rows * TW * 4);
   for (const L of links) { const o = L.tb * 4 + 16, c = L.c; Wd[o] = KIND[L.kind]; Wd[o + 1] = L.segs; Wd[o + 2] = c.cont; Wd[o + 3] = c.carry || 0; Wd[o + 4] = c.bundle; Wd[o + 5] = c.thread; Wd[o + 6] = c.width; Wd[o + 7] = L.joins.length; }
-  for (const F of fuzz) if (F.teth >= 0) Wd[F.teth * 4 + 9] = 1;
   for (const F of feeders) Wd[F.rb * 4 + 9] = 1;
   for (const X of bridges) Wd[X.rb * 4 + 9] = 1;
   let dataUp = false;
@@ -631,10 +921,11 @@ function create(ctx) {
     return { p, g, a, n };
   }
   // aSp: the phases of the drift's x, y and z waves, and the spore's speed. Each wave is integrated, so where a spore is follows from uTau.
-  const spores = points(520, [['position', 3], ['aColor', 3], ['aSize', 1], ['aPhase', 1], ['aSp', 4]], 'attribute float aSize, aPhase; attribute vec4 aSp;', `
+  // They drift over SB, wrapping across its width, about one per 7.5 square units.
+  const spores = points(Math.round(clamp((SB.x1 - SB.x0) * (SB.z1 - SB.z0) * .133, 300, 1400)), [['position', 3], ['aColor', 3], ['aSize', 1], ['aPhase', 1], ['aSp', 4]], 'attribute float aSize, aPhase; attribute vec4 aSp;', `
     float sp = aSp.w, w1 = .23 * sp, w3 = .19 * sp, t = uTau;
     p += vec3(.05 * t - .12 / w1 * (cos(w1 * t + aSp.x) - cos(aSp.x)), sp * (.06 * t - .1 * (cos(.5 * t + aSp.y) - cos(aSp.y))), .12 / w3 * (sin(w3 * t + aSp.z) - sin(aSp.z)));
-    p.x = mod(p.x + 35.0, 70.0) - 35.0; p.y = .15 + mod(p.y - .15, 4.65);
+    p.x = ${SB.x0.toFixed(3)} + mod(p.x - ${SB.x0.toFixed(3)}, ${SW.toFixed(3)}); p.y = .15 + mod(p.y - .15, 4.65);
     tw = .9 + .6 * sin(uTime * 2.1 + aPhase * 6.283); sz = aSize;`);
   // aV: the puff's velocity when let go and its birth; aS: its size and life. Drag slows it, and it rises a little as it goes.
   const puffs = points(1100, [['position', 3, 1], ['aColor', 3, 1], ['aV', 4, 1], ['aS', 2, 1]], 'attribute vec4 aV; attribute vec2 aS;', `
@@ -648,7 +939,7 @@ function create(ctx) {
 
   { const r = rng(4242), P = spores.a.position.array, K = spores.a.aColor.array, Z = spores.a.aSize.array, F = spores.a.aPhase.array, V = spores.a.aSp.array, SC = [C('#d9ffd0'), C('#ffe9b0'), C('#a8f4ff')];
     for (let i = 0; i < spores.n; i++) {
-      P[i * 3] = (r() - .5) * 70; P[i * 3 + 1] = .2 + r() * 4.5; P[i * 3 + 2] = (r() - .5) * 56 + 1.5;
+      P[i * 3] = SB.x0 + r() * SW; P[i * 3 + 1] = .2 + r() * 4.5; P[i * 3 + 2] = SB.z0 + r() * (SB.z1 - SB.z0);
       const c = SC[Math.floor(r() * 3)], b = .25 + r() * .5;
       K[i * 3] = c.r * b; K[i * 3 + 1] = c.g * b; K[i * 3 + 2] = c.b * b; Z[i] = .05 + r() * .09; F[i] = r();
       const ph = r() * 6.28, sp = .5 + r(), ph3 = r() * 6.28; V[i * 4] = V[i * 4 + 1] = ph; V[i * 4 + 2] = ph3; V[i * 4 + 3] = sp;
@@ -659,7 +950,7 @@ function create(ctx) {
     for (let i = 0; i < spores.n; i++) {
       const k = i * 3, o = i * 4, sp = V[o + 3], w1 = .23 * sp, w3 = .19 * sp, a = V[o], b = V[o + 1], c = V[o + 2];
       const x = P[k] + .05 * t - .12 / w1 * (Math.cos(w1 * t + a) - Math.cos(a)), y = P[k + 1] + sp * (.06 * t - .1 * (Math.cos(.5 * t + b) - Math.cos(b)));
-      P[k] = ((x + 35) % 70 + 70) % 70 - 35; P[k + 1] = .15 + ((y - .15) % 4.65 + 4.65) % 4.65; P[k + 2] += .12 / w3 * (Math.sin(w3 * t + c) - Math.sin(c));
+      P[k] = SB.x0 + ((x - SB.x0) % SW + SW) % SW; P[k + 1] = .15 + ((y - .15) % 4.65 + 4.65) % 4.65; P[k + 2] += .12 / w3 * (Math.sin(w3 * t + c) - Math.sin(c));
       V[o] = (a + w1 * t) % TAU2; V[o + 1] = (b + .5 * t) % TAU2; V[o + 2] = (c + w3 * t) % TAU2;
     }
     TAU.value = 0; spores.a.position.needsUpdate = spores.a.aSp.needsUpdate = true;
@@ -765,7 +1056,7 @@ function create(ctx) {
   const stA = stems.geometry.attributes;
   function place(m) {
     const P = PL, h = P.h, R = P.R, sq = P.sq, col = m.col;
-    base.set(P.bx, 0, P.bz);
+    base.set(P.bx, m.by, P.bz);
     const bxv = P.lx * h * .8, bzv = P.lz * h * .8, bl = Math.sqrt(bxv * bxv + bzv * bzv) / Math.max(h, .01);
     const hh = h * (1 - .3 * Math.min(1, bl * bl)) * (1 + sq);
     const r = .11 * Math.max(.6, R / .6) ** .5 * (m.role === 'session' || m.role === 'cluster' ? 1 : .7) * m.thick * Math.min(1, h / Math.max(.01, m.h)) * (1 - .35 * sq);
@@ -778,7 +1069,7 @@ function create(ctx) {
     a = stA.aQ.array; a[k * 4] = m.seed; a[k * 4 + 1] = 0; a[k * 4 + 2] = m.exit ? 1 : 0; a[k * 4 + 3] = m.exit ? Math.atan2(m.exit.x, -m.exit.y) : 0;
     m.bx = bxv; m.bz = bzv; m.wx = m.bowX * h; m.wz = m.bowZ * h; m.hh = hh;
     const b = bendAttr.array, o = m.stemSlot * 4; b[o] = bxv; b[o + 1] = bzv; b[o + 2] = m.wx; b[o + 3] = m.wz;
-    m.top.set(P.bx + bxv, hh, P.bz + bzv);
+    m.top.set(P.bx + bxv, hh + m.by, P.bz + bzv);
     // The bow is flat at both ends, so the tip's direction comes from the lean alone.
     const tx = 2 * bxv, tz = 2 * bzv, tl = Math.sqrt(tx * tx + tz * tz), tilt = Math.atan2(tl, Math.max(hh, .001)) + P.droop;
     let dx = m.dx ?? 1, dz = m.dz ?? 0; if (tl > 1e-4) { dx = tx / tl; dz = tz / tl; }
@@ -830,7 +1121,7 @@ function create(ctx) {
   // All of it is worked out again only when world.usage changes (it is replaced, never edited) or the fonts arrive.
   const usageCol = new THREE.Color(), signs = [], mids = [], SIGN_W = 512, SIGN_H = 150, TC = Math.cos(.9);
   let runs = [], accts = [], cols = [[], []], usageShape = null, usageRef = null, usageStale = true, layHs = NaN, layX = NaN, layZ = NaN;
-  const refont = () => { usageStale = true; for (const S of signs) S.text = null; ctx.wake?.(); };
+  const refont = () => { usageStale = tagsStale = true; for (const S of signs) S.text = null; ctx.wake?.(); };
   document.fonts?.addEventListener?.('loadingdone', refont);
   function fairyState(m) {
     if (m.run === -2) { m.lit = 1; return FOX; }
@@ -955,10 +1246,11 @@ function create(ctx) {
       for (const col of cols) col.sort((p, q) => Math.sin(mids[p]) - Math.sin(mids[q]));
       for (let j = accts.length; j < signs.length; j++) signs[j].s.visible = false;
     }
-    // Signs in two columns beside the ring, each on the side of its arc, kept between a readable and a modest size on screen,
-    // stacked by their heights as they show on screen (TC: how much the tilted ground shortens depth there).
+    // Signs in two columns beside the ring, each on the side of its arc, kept between a readable and a modest size on screen but
+    // no bigger than the room the layout left them (planHs), stacked by their heights as they show on screen (TC: how much the
+    // tilted ground shortens depth there).
     const Y = world.you.pos, ppu = size.h / (2 * Math.tan(camera.fov * Math.PI / 360) * camera.position.distanceTo(tmpV.set(Y.x, 0, Y.z)));
-    const hs = Math.min(Math.max(.95, (size.w < 700 ? 24 : 34) / ppu), 56 / ppu);
+    const hs = Math.min(Math.max(.95, (size.w < 700 ? 24 : 34) / ppu), 56 / ppu, planHs * 1.05);
     if (hs === layHs && Y.x === layX && Y.z === layZ) return;
     layHs = hs; layX = Y.x; layZ = Y.z;
     const ws = hs * SIGN_W / SIGN_H, G = 1.65 * TC * hs - hs;
@@ -1053,14 +1345,14 @@ function create(ctx) {
         const glow = (.42 + .6 * act + .35 * s.hover + .25 * s.select) * (.85 + .2 * breath) + m.flash;
         if (m.flash > 0) { m.flash = Math.max(0, m.flash - dt * 2); busy = true; }
         const hop = clamp(n.pos.y * .25, -.3, .6);
-        pokes(m, s, m.ox === 0 ? 0 : .05 + m.dist * .07);
+        pokes(m, s, m.lead ? 0 : .05 + m.dist * .07);
         swayOf(m);
         P.sq = spring(m, dt);
         P.bx = n.pos.x + m.ox; P.bz = n.pos.z + m.oz; P.h = m.h * (1 + hop + .1 * s.hover); P.R = m.R * (1 - .04 * hop);
         P.lx = m.lx + m.swx + clamp(n.vel.x * .045, -.6, .6); P.lz = m.lz + m.swz + clamp(n.vel.z * .045, -.6, .6); P.droop = 0;
-        P.glow = glow; P.ctx = -1; P.rot = 0; P.wither = 0; P.rim = m.ox === 0 ? Math.max(s.hover, s.select) : s.hover * .5;
+        P.glow = glow; P.ctx = -1; P.rot = 0; P.wither = 0; P.rim = m.lead ? Math.max(s.hover, s.select) : s.hover * .5;
         place(m);
-        if (m.ox === 0) { light(n.pos.x, n.pos.z, 1.7, .22 + .3 * act + .15 * s.hover, m.col); glint(m.top.x, m.top.y + .2, m.top.z, m.col, glow * .06, 2.5); }
+        if (m.lead) glint(m.top.x, m.top.y + .2, m.top.z, m.col, glow * .06, 2.5);
       } else {
         const a = m.angle, wave = still ? .6 : .5 + .5 * Math.sin(a * 3 - T * 1.6);
         m.col.copy(fairyState(m)).add(tmpC.copy(fairyFlash).multiplyScalar(.6));
@@ -1082,6 +1374,20 @@ function create(ctx) {
       for (let k = 0; k < INST_ATTRS.length; k++) { const a = at[INST_ATTRS[k]]; sync(a, mesh.count * a.itemSize); }
     }
     sync(bendAttr, mush.length * 4);
+    // The logs: where each lies and how bright its veins are, sent up only when that changed; each lights the litter round it.
+    let logM = false, logG = false;
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i], st = pstat.get(p), s = p.s, lead = clusters.get(p)[0];
+      if (p.pos.x !== st.x || p.pos.z !== st.z) {
+        st.x = p.pos.x; st.z = p.pos.z; logM = true;
+        logs.setMatrixAt(i, m4.compose(base.set(st.x, LOG_Y, st.z), q.setFromAxisAngle(axis.set(0, 1, 0), logYaw[i]), sc.set(1, 1, 1)));
+      }
+      const glow = .35 + .6 * st.act + .35 * s.hover + .25 * s.select + lead.flash, rim = Math.max(s.hover, s.select);
+      if (glow !== st.glow || rim !== st.rim || st.act !== st.act0) { const o = i * 4; aG.array[o] = st.glow = glow; aG.array[o + 1] = st.act0 = st.act; aG.array[o + 3] = st.rim = rim; logG = true; }
+      light(p.pos.x, p.pos.z, 2.4, .22 + .3 * st.act + .15 * s.hover, lead.hue);
+    }
+    if (logM) logs.instanceMatrix.needsUpdate = true;
+    if (logG) aG.needsUpdate = true;
     // Skirts mark the mode
     for (let i = 0; i < modeSessions.length; i++) {
       const s = modeSessions[i], m = mushOf.get(s), rs = m.rise <= 0 ? 0 : easeOutBack(m.rise, 2.4), r = .17 * Math.max(.001, rs) * m.thick;
@@ -1226,7 +1532,7 @@ function create(ctx) {
       if (L.pulses.list.length && L.kind !== 'need') busy = true;
       layoutLink(L); // even when unseen: others may join it
       // The cord leaves its foot this way; the stem's shader runs the strands up the bulb there.
-      if (L.kind !== 'need' && L.foot) { L.foot.exit ||= new THREE.Vector2(); L.foot.exit.set(L.P[2] - L.P[0], L.P[3] - L.P[1]); }
+      if (L.kind !== 'need' && L.kind !== 'proj' && L.foot) { L.foot.exit ||= new THREE.Vector2(); L.foot.exit.set(L.P[2] - L.P[0], L.P[3] - L.P[1]); }
       if (L.grow <= 0) { Wd[L.tb * 4 + 3] = 0; continue; }
       writeLinkData(L);
       // Growing tips
@@ -1295,20 +1601,14 @@ function create(ctx) {
       rootDir[NP + i].set(mx, mz);
     }
   }
-  // Felt, tethers, the screenshot body's threads and feeding threads: where their ends are and how bright.
+  // Felt, the screenshot body's threads and feeding threads: where their ends are and how bright.
   function updateFuzz() {
     const W = Wd;
     for (let i = 0; i < fuzz.length; i++) {
-      const F = fuzz[i], m = F.m, n = m.node, s = n.s, cl = m.role === 'cluster', rise = cl ? 1 : m.rise, L = linkOf.get(n);
+      const F = fuzz[i], m = F.m, n = m.node, s = n.s, rise = m.rise, L = linkOf.get(n);
       // The felt is the foot's own strands: the same colour and brightness as the cord where it leaves.
-      const col = tmpC.copy(m.col).lerp(WHITE, .2), ox = n.pos.x + (m.ox || 0), oz = n.pos.z + (m.oz || 0), sc = cl ? 1 : Math.min(1, rise * 1.3);
-      const b = rise * (cl ? .55 : .35 + .45 * Math.min(1.4, L ? L.bright * 1.3 : .5)) * (cl ? .5 + .5 * (m.ox === 0 ? 1 : .6) : 1 - .7 * s.off);
-      let o = F.rb * 4;
-      W[o] = ox; W[o + 1] = oz; W[o + 2] = sc; W[o + 4] = col.r * b; W[o + 5] = col.g * b; W[o + 6] = col.b * b;
-      if (F.teth >= 0) {
-        const f = b * .8; o = F.teth * 4;
-        W[o] = ox; W[o + 1] = oz; W[o + 2] = n.pos.x - ox; W[o + 3] = n.pos.z - oz; W[o + 4] = m.col.r * f; W[o + 5] = m.col.g * f; W[o + 6] = m.col.b * f;
-      }
+      const col = tmpC.copy(m.col).lerp(WHITE, .2), b = rise * (.35 + .45 * Math.min(1.4, L ? L.bright * 1.3 : .5)) * (1 - .7 * s.off), o = F.rb * 4;
+      W[o] = n.pos.x; W[o + 1] = n.pos.z; W[o + 2] = Math.min(1, rise * 1.3); W[o + 4] = col.r * b; W[o + 5] = col.g * b; W[o + 6] = col.b * b;
     }
     // From inside the session's bulb to inside the stalk's, drawn out as the body grows, gathered at both ends.
     for (let i = 0; i < shotBodies.length; i++) {
@@ -1364,8 +1664,81 @@ function create(ctx) {
     for (let i = 0; i < 2; i++) {
       const ring = i ? selRing : hoverRing, n = i ? sel : h, target = n ? (i ? .7 : .35) : 0, mat = ring.material;
       if (Math.abs(target - mat.opacity) > .002) { mat.opacity += (target - mat.opacity) * (1 - Math.exp(-dt * 10)); busy = true; } else mat.opacity = target;
-      if (n) { const r = n.kind === 'you' ? 3.2 : n.kind === 'project' ? .8 * PK : n.kind === 'session' ? 1.35 : .55; ring.position.x = n.pos.x; ring.position.z = n.pos.z; ring.scale.setScalar(r * (1 + (reduced() ? 0 : .04 * Math.sin(T * 3)))); }
+      if (n) { const r = n.kind === 'you' ? 3.2 : n.kind === 'project' ? 1.9 : n.kind === 'session' ? 1 : .4; ring.position.x = n.pos.x; ring.position.z = n.pos.z; ring.scale.setScalar(r * (1 + (reduced() ? 0 : .04 * Math.sin(T * 3)))); }
     }
+  }
+
+  // ── Names on their nodes: which show ──
+  // The layout keeps names clear of each other at the home view; zoomed out they'd pile up, so each frame, most important first
+  // (what's selected, hovered or needs you, then projects, then You's, then what failed or is busy, then sessions, then
+  // subagents), a name shows only if it clears the names already shown, by a few pixels more if it wasn't showing (so none
+  // flicker), and, below a project, every log, cap and the stump. What's hovered or selected always shows. You's name is the
+  // last entry (NTG) of the name arrays, the stump the last of the bodies. All in preallocated arrays: nothing is allocated per frame.
+  const NTG = tagList.length, tOrd = new Int32Array(NTG + 1), tPri = new Float32Array(NTG + 1), tBox = new Float32Array((NTG + 1) * 4), bBox = new Float32Array((NTG + 1) * 4), tOk = new Int32Array(NTG + 1);
+  const tv = new THREE.Vector3(), scr = (x, y, z) => { tv.set(x, y, z).project(camera); tv.x = (tv.x + 1) * size.w / 2; tv.y = (1 - tv.y) * size.h / 2; };
+  function thinNames() {
+    const k = size.h / (2 * Math.tan(camera.fov * Math.PI / 360)), inv = camera.matrixWorldInverse;
+    let nOrd = 0;
+    for (let i = 0; i < NTG; i++) {
+      const t = tagList[i], n = t.n, s = n.s, proj = n.kind === 'project', m = proj ? clusters.get(n)[0] : mushOf.get(n), o = i * 4;
+      const d = -tv.copy(n.pos).applyMatrix4(inv).z;
+      bBox[o] = bBox[o + 2] = NaN;
+      if (d < .5 || s.alive <= .5 || (!proj && m.rise <= .5)) { t.ok = false; continue; }
+      const ppu = t.ppu = k / d, R = m.R0 || m.R, hw = (proj ? LOG_L / 2 : R) * ppu;
+      // The body: a log from its clump's crown down to its near side on the ground; a mushroom's cap, crown to front rim (a stem
+      // is too thin to hide behind a name, and a cap's width at its foot would keep the name below off for nothing).
+      if (proj) scr(n.pos.x, 0, n.pos.z + LOG_R); else scr(m.top.x, m.top.y, m.top.z + R * .9);
+      const fx = tv.x, fy = tv.y;
+      scr(m.top.x, m.crown, m.top.z);
+      bBox[o] = fx - hw; bBox[o + 1] = tv.y; bBox[o + 2] = fx + hw; bBox[o + 3] = fy;
+      // The name: its box right of the body, as labelAnchor puts it.
+      scr(n.pos.x + t.right + (6 + t.w / 2) / ppu, t.y, n.pos.z);
+      tBox[o] = tv.x - t.w / 2; tBox[o + 1] = tv.y - t.K.hh; tBox[o + 2] = tv.x + t.w / 2; tBox[o + 3] = tv.y + t.K.hh;
+      tPri[i] = n.selected ? 11 : n.hovered ? 10 : s.need > .5 ? 9 : proj ? 8 : n.status === 'error' ? 5 : BUSY.has(n.status) ? 4.5 : n.kind === 'session' ? 4 : 1;
+      // Insertion into the order, highest first; of equals the one further right, so the other, in its way, is cut short rather than hidden.
+      let j = nOrd++; while (j > 0 && (tPri[tOrd[j - 1]] < tPri[i] || tPri[tOrd[j - 1]] === tPri[i] && tBox[tOrd[j - 1] * 4] < tBox[o])) { tOrd[j] = tOrd[j - 1]; j--; } tOrd[j] = i;
+    }
+    {
+      const Y = world.you.pos, o = NTG * 4, ppu = youT.ppu = k / Math.max(.5, -tv.copy(Y).applyMatrix4(inv).z), q = world.queue().length, hw = 1.8 * ppu;
+      if (q !== youT.q) measureYou(q);
+      scr(Y.x, 0, Y.z + 1.8); const fx = tv.x, fy = tv.y; scr(Y.x, 1, Y.z); bBox[o] = fx - hw; bBox[o + 1] = tv.y; bBox[o + 2] = fx + hw; bBox[o + 3] = fy;
+      scr(Y.x, 0, Y.z + 3.3 + YOU_H / 2 / (ppu * COS_T));
+      tBox[o] = tv.x - youT.w / 2; tBox[o + 1] = tv.y - YOU_H / 2; tBox[o + 2] = tv.x + youT.w / 2; tBox[o + 3] = tv.y + YOU_H / 2;
+      tPri[NTG] = world.you.selected ? 11 : world.you.hovered ? 10 : 6;
+      let j = nOrd++; while (j > 0 && (tPri[tOrd[j - 1]] < tPri[NTG] || tPri[tOrd[j - 1]] === tPri[NTG] && tBox[tOrd[j - 1] * 4] < tBox[o])) { tOrd[j] = tOrd[j - 1]; j--; } tOrd[j] = NTG;
+    }
+    let nOk = 0;
+    for (let a = 0; a < nOrd; a++) {
+      const i = tOrd[a], t = i < NTG ? tagList[i] : youT, o = i * 4, x0 = tBox[o], y0 = tBox[o + 1], y1 = tBox[o + 3];
+      let x1 = tBox[o + 2], ok = t.n.hovered || t.n.selected;
+      if (!ok) {
+        // What's in the way further right than the least of the name worth showing cuts it short there instead (You's is whole or none).
+        const pad = t.was ? 0 : 3, cut = i < NTG ? x0 + Math.min(t.w, t.K.cut) : x1; ok = true;
+        for (let b = 0; b < nOk && ok; b++) { const p = tOk[b] * 4; if (x0 - pad < tBox[p + 2] && x1 + pad > tBox[p] && y0 - pad < tBox[p + 3] && y1 + pad > tBox[p + 1]) { if (tBox[p] - pad >= cut) x1 = tBox[p] - pad; else ok = false; } }
+        if (ok && tPri[i] < 8) for (let b = 0; b <= NTG && ok; b++) { const p = b * 4; if (b !== i && bBox[p] === bBox[p] && x0 < bBox[p + 2] && x1 > bBox[p] && y0 < bBox[p + 3] && y1 > bBox[p + 1]) { if (bBox[p] >= cut) x1 = bBox[p]; else ok = false; } }
+      }
+      if (ok && i < NTG) {
+        // A cut name keeps its length while it fits and isn't much shorter than it could be, so its end doesn't creep with the wander.
+        // (Uncut, x1 - x0 is t.w give or take the boxes' float32 rounding.)
+        let w = x1 - x0;
+        if (w < t.w - .5) w = t.was && t.cw <= w && t.cw > w - 12 ? t.cw : Math.max(Math.min(t.w, t.K.cut), 8 * Math.floor(w / 8));
+        else w = t.w;
+        t.cw = w; tBox[o + 2] = x0 + w;
+      }
+      t.ok = ok; if (ok) tOk[nOk++] = i;
+    }
+    for (let i = 0; i < NTG; i++) tagList[i].was = tagList[i].ok;
+    youT.was = youT.ok;
+  }
+  // Names that changed, a font that loaded, or usage that grew or lost a sign: re-measure, and lay the board out again if the room
+  // it needs has changed.
+  function checkTags() {
+    let re = world.usage !== planUsage && usageWins().join() !== planKey;
+    if (shotsKey() !== shotKey) re = true; // a screenshot body that came or went changes how wide its block is
+    planUsage = world.usage;
+    if (!tagsStale) for (let i = 0; i < NTG; i++) if (tagList[i].name !== tagList[i].n.name) { tagsStale = true; break; }
+    if (tagsStale) { measureTags(); for (let i = 0; i < NTG && !re; i++) if (Math.abs(tagList[i].w - tagList[i].pw) > 8) re = true; }
+    if (re) ctx.setLayout(layout);
   }
 
   return {
@@ -1376,8 +1749,10 @@ function create(ctx) {
       T += dt; if (!still) { T0.value += dt; TAU.value += dt; }
       MOVE.value = still ? 0 : 1; PT.value += dt;
       busy = springy = false; lightN = 0; glintN = 0;
+      checkTags();
       updateUsage();
       updateMushrooms(dt);
+      thinNames();
       updateLinks(dt);
       updateBridges();
       updateRoots(dt);
@@ -1408,7 +1783,7 @@ function create(ctx) {
       else if (type === 'answer') { const L = needOf.get(n); if (L && L.grow > .2 && !still) L.pulses.add(7 / L.len, 1.8, { col: REPLY, rev: true }); else if (m) { m.flash = 1; kick(m, 1.6); } }
       else if (type === 'state' && data.to === 'error' && m) { kick(m, -1.8); emit(m.top.x, m.top.y, m.top.z, PUFF.rot, 34, { speed: 1.4, up: .5, size: .2, life: 2.4 }); }
     },
-    dispose() { document.fonts?.removeEventListener?.('loadingdone', refont); lmRT.dispose(); lmGeo.dispose(); lmMat.dispose(); dataTex.dispose(); },
+    dispose() { disposed = true; document.fonts?.removeEventListener?.('loadingdone', refont); lmRT.dispose(); lmGeo.dispose(); lmMat.dispose(); dataTex.dispose(); },
   };
 
   // ── Builders ──
@@ -1447,7 +1822,9 @@ function create(ctx) {
   }
 
   function matLines() {
-    const { pos, col, ph } = matCache ||= matWalks();
+    const key = [SB.x0, SB.z0, SB.x1, SB.z1].map(v => Math.round(v)).join();
+    if (matCache?.key !== key) matCache = matWalks(SB, key);
+    const { pos, col, ph } = matCache;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('aPh', new THREE.Float32BufferAttribute(ph, 1));
     const mat = new THREE.ShaderMaterial({ ...additive, uniforms: { uTime: T0 },
@@ -1457,17 +1834,18 @@ function create(ctx) {
   }
 }
 
-// The faint mycelial mat under the whole floor: random walks that branch, the same on every build.
+// The faint mycelial mat under the whole floor (B): random walks that branch, one about every 24 square units, the same on every
+// build of a board that size.
 let matCache = null;
-function matWalks() {
-  const r = rng(31337), pos = [], col = [], ph = [];
-  for (let w = 0; w < 140; w++) {
-    const x = (r() - .5) * 64, z = (r() - .5) * 52 + 1.5, a = r() * 6.28, steps = 10 + Math.floor(r() * 22), b = .014 + r() * .03, p = r() * 6.28;
+function matWalks(B, key) {
+  const r = rng(31337), pos = [], col = [], ph = [], W = B.x1 - B.x0, D = B.z1 - B.z0, N = Math.round(clamp(W * D * .042, 140, 700));
+  for (let w = 0; w < N; w++) {
+    const x = B.x0 + r() * W, z = B.z0 + r() * D, a = r() * 6.28, steps = 10 + Math.floor(r() * 22), b = .014 + r() * .03, p = r() * 6.28;
     const walk = (x, z, a, steps, b) => { for (let k = 0; k < steps; k++) { a += (r() - .5) * .9; const nx = x + Math.cos(a) * .35, nz = z + Math.sin(a) * .35; pos.push(x, .012, z, nx, .012, nz); for (let e = 0; e < 2; e++) { col.push(b * .75, b, b * .7); ph.push(p + k * .3); }
       x = nx; z = nz; if (r() < .12 && steps > 4) walk(x, z, a + (r() < .5 ? -1 : 1) * (.6 + r() * .6), Math.floor(steps * .5), b * .8); } };
     walk(x, z, a, steps, b);
   }
-  return { pos: new Float32Array(pos), col: new Float32Array(col), ph: new Float32Array(ph) };
+  return { key, pos: new Float32Array(pos), col: new Float32Array(col), ph: new Float32Array(ph) };
 }
 
 // Leaf litter, twigs and grit, drawn once into a big canvas covering the board and kept for every rebuild.
@@ -1498,7 +1876,7 @@ function soilTexture() {
     }
     for (let i = 0; i < 9000; i++) { const v = 30 + r() * 60; g.fillStyle = `rgba(${v},${v * .85},${v * .7},${.2 + r() * .4})`; g.fillRect(r() * S, r() * S, 1 + r() * 1.5, 1 + r() * 1.5); }
   }
-  if (!soilTex) { soilTex = new THREE.CanvasTexture(soilCanvas); soilTex.colorSpace = THREE.SRGBColorSpace; soilTex.anisotropy = 8; soilTex.userData.keep = true; }
+  if (!soilTex) { soilTex = new THREE.CanvasTexture(soilCanvas); soilTex.colorSpace = THREE.SRGBColorSpace; soilTex.anisotropy = 8; soilTex.wrapS = soilTex.wrapT = THREE.MirroredRepeatWrapping; soilTex.userData.keep = true; }
   return soilTex;
 }
 

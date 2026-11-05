@@ -15,17 +15,19 @@ const ACT = { work: 1, think: .7, compact: .45, need: 1, wait: .5, idle: .14, er
 const RIM = pal({ work: '#cfe0ff', think: '#d4e2ff', compact: '#c8bcff', need: '#ffe3a6', wait: '#b8dcff', idle: '#8fa7d6', error: '#ffb3c0', off: '#7d8bab' });
 // The same, in KEYS order, for the per-frame mixes.
 const CORE_L = KEYS.map(k => CORE[k]), RIM_L = KEYS.map(k => RIM[k]), ACT_L = Float64Array.from(KEYS, k => ACT[k]);
+// A cell's mark from afar, in the colours the label's status dot uses (nodes.css), so the two read as one.
+const DOT_L = KEYS.map(k => new THREE.Color({ work: '#ff8c4f', think: '#ff8c4f', compact: '#ff8c4f', need: '#ffc93c', wait: '#5cb8ff', idle: '#8a9cc4', error: '#ff4d6d', off: '#3a4560' }[k]));
 const PULSE = pal({ edit: '#ffb46a', read: '#a6dbff', search: '#d2a6ff', bash: '#ffe07a', web: '#7dffd8', agent: '#ff9ad6', '': '#ffd0a0' });
 const C = { white: new THREE.Color('#fff4e6'), cyan: new THREE.Color('#7fe6ff'), gold: new THREE.Color('#ffb21f'), violet: new THREE.Color('#b99cff'), red: new THREE.Color('#ff3355'),
-  bulb: new THREE.Color('#4fdcff'), youCalm: new THREE.Color('#8fd0ff'), rimProject: new THREE.Color('#d6e6ff'), plan: new THREE.Color('#5fe0ff'), bypass: new THREE.Color('#ff4fd8'),
+  bulb: new THREE.Color('#4fdcff'), gang: new THREE.Color('#cfe4ff'), gangNuc: new THREE.Color('#1c2c48'), youCalm: new THREE.Color('#8fd0ff'), rimProject: new THREE.Color('#d6e6ff'), plan: new THREE.Color('#5fe0ff'), bypass: new THREE.Color('#ff4fd8'),
   beadOn: new THREE.Color('#ffa24a'), ash: new THREE.Color('#1d2436'), beadOff: new THREE.Color('#34558f').multiplyScalar(.7) };
 const Y = new THREE.Vector3(0, 1, 0);
 
-// Soma radius, dendrite count, length, branching depth and crackle filaments per kind; providers vary the shape. Sessions are
-// the bodies that matter; a project is only the ganglion where the trunk from You splits towards them.
+// Soma radius, dendrite count, length, branching depth and crackle filaments per kind; providers vary the shape. A project is the
+// ganglion its sessions' fibres fuse into: the biggest body in its cluster, with a knot of nuclei rather than one.
 const SHAPE = {
   you: { R: 1.25, count: 10, len: 5.8, depth: 2, filaments: 18 },
-  project: { R: .64, count: 3, len: 2, depth: 1, filaments: 8 },
+  project: { R: 1, count: 3, len: 2.2, depth: 1, filaments: 10 },
   session: { R: .72, count: 6, len: 2.8, depth: 2, filaments: 12 },
   sub: { R: .36, count: 4, len: 1.2, depth: 1, filaments: 5 },
 };
@@ -220,6 +222,59 @@ void main() {
 const HALO_FRAG = /* glsl */`
 varying vec2 vP; varying vec3 vCol;
 void main() { float r = length(vP); if (r > 1.) discard; float f = pow(max(1. - r, 0.), 2.4) + .5 * exp(-r * r * 30.); gl_FragColor = vec4(vCol * f, 1.); }`;
+// What a cell is, from across the board: a flat mark over each soma, never smaller on screen than its kind's minimum (aMark.y, CSS
+// px) and gone once the cell itself is big enough to read. A session is a lit nucleus in its status colour, the dot its label opens
+// with; a project a ganglion, a ring of nuclei round a bright one in a pale envelope; a subagent a hollow bud. Each sits on a dark
+// rim of its own so it holds against the glow behind it. Premultiplied: colour past alpha glows (and blooms).
+const MARK_VERT = /* glsl */`
+attribute vec3 aMark; attribute vec2 aDyn;
+uniform float uPx, uMin;
+varying vec2 vP; varying vec3 vCol; varying float vKind, vSeed, vPx, vA, vAcc;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(instanceMatrix[3].xyz, 1.);
+  float d = max(-mv.z, 1e-3), nat = length(instanceMatrix[0].xyz) * uPx / d, lo = aMark.y * uMin, px = max(nat, lo);
+  vA = aDyn.x * (1. - smoothstep(lo * 1.6, lo * 3.2, nat));
+  if (vA < .004) { gl_Position = vec4(0., 0., 2., 1.); return; }
+  vP = position.xy * 1.3; vCol = instanceColor; vKind = aMark.x; vSeed = aMark.z; vPx = px; vAcc = aDyn.y;
+  mv.xy += vP * px * d / uPx;
+  gl_Position = projectionMatrix * mv;
+}`;
+const MARK_FRAG = /* glsl */`
+varying vec2 vP; varying vec3 vCol; varying float vKind, vSeed, vPx, vA, vAcc;
+vec4 acc;
+// One layer over what's there: c its colour (past 1 glows), a its coverage.
+void over(vec3 c, float a) { acc = acc * (1. - a) + vec4(c * a, a); }
+float disc(float r, float at, float aa) { return 1. - smoothstep(at - aa, at + aa, r); }
+float ring(float r, float at, float w, float aa) { return 1. - smoothstep(w * .5 - aa, w * .5 + aa, abs(r - at)); }
+void main() {
+  float r = length(vP), aa = .75 / vPx;
+  if (r > 1.3) discard;
+  acc = vec4(0.);
+  over(vec3(0.), (1. - smoothstep(.95, 1.28, r)) * .5);
+  vec3 pale = mix(vCol, vec3(1.), .35);
+  if (vKind < .5) {
+    over(vCol * .5, disc(r, .92, aa) * .3);
+    over(vCol * .85, ring(r, .92, 1.2 / vPx, aa) * .8);
+    over(vCol * (1.05 + .9 * exp(-r * r * 22.)), disc(r, .62, aa));
+  } else if (vKind < 1.5) {
+    over(vCol * .4, disc(r, .93, aa) * .22);
+    over(vCol * .9, ring(r, .93, 1.8 / vPx, aa) * .9);
+    // Six nuclei on a ring round the centre one, each a little off its place.
+    float sat = 0.;
+    for (int k = 0; k < 6; k++) {
+      float fk = float(k), a = fk * 1.0472 + vSeed + .35 * sin(fk * 2.3 + vSeed * 3.), rr = .6 + .07 * sin(fk * 1.7 + vSeed * 5.);
+      sat = max(sat, disc(length(vP - rr * vec2(cos(a), sin(a))), .155, aa));
+    }
+    over(vCol * vec3(.8, .95, 1.1), sat);
+    over(vCol * (1.15 + .5 * exp(-r * r * 40.)), disc(r, .3, aa));
+  } else {
+    over(vCol * .5, disc(r, .8, aa) * .2);
+    over(pale, ring(r, .8, 1.4 / vPx, aa) * .95);
+  }
+  // Hovered or selected: a second, outer ring.
+  over(vec3(.85, .93, 1.) * 1.2, ring(r, 1.16, 1.2 / vPx, aa) * vAcc);
+  gl_FragColor = acc * vA;
+}`;
 const CRACKLE_VERT = /* glsl */`
 attribute float along, phase; varying float vAlong, vPhase;
 void main() { vAlong = along; vPhase = phase; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`;
@@ -445,9 +500,7 @@ function create(ctx) {
   ctx.setPost({ bloom: { strength: .85, radius: .55, threshold: .34 }, exposure: 1 });
   ctx.addPass(kit.vignettePass({ darkness: 1.05, offset: 1.05, grain: .028, tint: '#e2eaff' }));
   ctx.setView({ tilt: .56 });
-  ctx.setSizes({ project: 1.05, session: 1.05 });
-  // A label hangs just clear of its soma's front: the body leans out towards the camera by about 1.3 radii on screen.
-  ctx.setLabelAnchor((n, out) => { const e = neurons.get(n); out.z += (e ? e.R * e.sc : .7) * 1.55 + (n.kind === 'you' ? .5 : .28); out.y = 0; });
+  ctx.setSizes({ project: 1.4, session: 1.05 });
   scene.background = new THREE.Color('#02050f');
 
   const tmp = new THREE.Vector3(), tmpC = new THREE.Color();
@@ -480,7 +533,7 @@ function create(ctx) {
   for (let i = 0; i < 34; i++) {
     const depth = br(), far = depth > .5, core = br() < .4;
     const t = far ? (core ? 2 : 3) : (core ? 0 : br() < .5 ? 1 : 4);
-    bgCol.setHSL(.6 + br() * .06, .7, .55 + br() * .2).multiplyScalar(far ? .16 + br() * .16 : .22 + br() * .22);
+    bgCol.setHSL(.6 + br() * .06, .7, .55 + br() * .2).multiplyScalar(far ? .1 + br() * .1 : .13 + br() * .13);
     const sz = far ? 26 + br() * 26 : 14 + br() * 14;
     bgObj.scale.set(sz, 1, sz); bgObj.rotation.y = br() * Math.PI * 2;
     bgObj.position.set((br() - .5) * 220, -14 - depth * 36, -150 + br() * 200); bgObj.updateMatrix();
@@ -498,7 +551,7 @@ function create(ctx) {
     const near = i < 40, col = new THREE.Color(br() < .32 ? (br() < .5 ? '#ff8a5a' : '#ff6f9a') : br() < .6 ? '#5fb6ff' : '#7fe6ff');
     bp[i * 3] = (br() - .5) * (near ? 70 : 220); bp[i * 3 + 1] = near ? -1.5 - br() * 4 : -6 - br() * 40; bp[i * 3 + 2] = (near ? -35 : -170) + br() * (near ? 70 : 230);
     bs[i] = near ? .05 + br() * .09 : .6 + br() * 2.4; bseed[i] = br();
-    col.multiplyScalar(near ? .4 + br() * .5 : .1 + br() * .25); bc.set([col.r, col.g, col.b], i * 3);
+    col.multiplyScalar(near ? .4 + br() * .5 : .06 + br() * .14); bc.set([col.r, col.g, col.b], i * 3);
   }
   const bokehGeo = new THREE.BufferGeometry();
   bokehGeo.setAttribute('position', new THREE.BufferAttribute(bp, 3)); bokehGeo.setAttribute('aSize', new THREE.BufferAttribute(bs, 1));
@@ -587,11 +640,11 @@ function create(ctx) {
   // latest inside. It points up the screen (away from the label), where the cell's other arms and its neighbours leave most room.
   // The vesicle faces the camera, whose tilt is fixed, so the neck where the dendrite fuses into it is known here: the dendrite's
   // resting shape ends exactly at the neck's tip, arriving along it.
-  const OVAL = new THREE.Vector2(1.35, 1), camX = new THREE.Vector3(1, 0, 0), camY = new THREE.Vector3(0, Math.sin(.56), -Math.cos(.56));
+  const OVAL = new THREE.Vector2(1.82, 1.35), camX = new THREE.Vector3(1, 0, 0), camY = new THREE.Vector3(0, Math.sin(.56), -Math.cos(.56));
   const shotSpecs = [];
   for (const n of world.sessions) {
     const P = shapeOf(n), taken = P.roots.map(o => Math.atan2(o.d.z, o.d.x));
-    for (const m of world.sessions) if (m !== n && m.rest.distanceTo(n.rest) < 7) taken.push(Math.atan2(m.rest.z - n.rest.z, m.rest.x - n.rest.x));
+    for (const m of world.sessions) if (m !== n && m.rest.distanceTo(n.rest) < 7.5) taken.push(Math.atan2(m.rest.z - n.rest.z, m.rest.x - n.rest.x));
     let ang = -Math.PI / 2, room = -1;
     for (let i = 0; i <= 16; i++) {
       const a = -Math.PI / 2 + (i / 16 - .5) * 2.6;
@@ -600,7 +653,7 @@ function create(ctx) {
     }
     const flat = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang)), d = flat.clone().setY(.16).normalize();
     P.roots.push({ d, w: 1 });
-    const V0 = n.rest.clone().addScaledVector(flat, 5).setY(1.1), S = arm(P, d).multiplyScalar(P.R * 1.35).add(n.rest);
+    const V0 = n.rest.clone().addScaledVector(flat, 5.5).setY(1.1), S = arm(P, d).multiplyScalar(P.R * 1.35).add(n.rest);
     const to = new THREE.Vector3().subVectors(S, V0), neck = new THREE.Vector2(to.dot(camX), to.dot(camY)).normalize();
     const tip = neck.clone().multiplyScalar(1 / neck.clone().divide(OVAL).length() + .38);
     const E = V0.clone().addScaledVector(camX, tip.x).addScaledVector(camY, tip.y), L0 = S.distanceTo(E), out = camX.clone().multiplyScalar(neck.x).addScaledVector(camY, neck.y);
@@ -612,13 +665,26 @@ function create(ctx) {
   const glowTex = kit.glowTexture([[0, 'rgba(255,255,255,1)'], [.2, 'rgba(255,255,255,.45)'], [.5, 'rgba(255,255,255,.12)'], [1, 'rgba(255,255,255,0)']]);
   // Every nucleus is one instance of a granular sphere and every halo one instance of a camera-facing quad: two draw calls in all.
   // Instance colour carries the core colour already scaled by its strength.
-  const NN = world.nodes.length;
+  // A project's ganglion has GANG more nuclei round its own, after every cell's one.
+  const NN = world.nodes.length, GANG = 4;
   const nuclei = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 4), new THREE.ShaderMaterial({ vertexShader: NUCLEUS_VERT, fragmentShader: NUCLEUS_FRAG, uniforms: { uTime: time },
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), NN);
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), NN + world.projects.length * GANG);
   const halos = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ vertexShader: HALO_VERT, fragmentShader: HALO_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), NN);
-  for (const im of [nuclei, halos]) { im.renderOrder = 2; im.frustumCulled = false; for (let i = 0; i < NN; i++) im.setColorAt(i, C.white); root.add(im); }
+  for (const im of [nuclei, halos]) { im.renderOrder = 2; im.frustumCulled = false; for (let i = 0; i < im.count; i++) im.setColorAt(i, C.white); root.add(im); }
+  // Marks: kind (0 session, 1 project, 2 subagent, 3 none), least radius on screen, seed; and per frame, opacity and the hover ring.
+  const markMat = new THREE.ShaderMaterial({ vertexShader: MARK_VERT, fragmentShader: MARK_FRAG, uniforms: { uPx: { value: 600 }, uMin: { value: 1 } },
+    transparent: true, depthWrite: false, depthTest: false, premultipliedAlpha: true });
+  const marks = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2), markMat, NN), markDyn = new THREE.InstancedBufferAttribute(new Float32Array(NN * 2), 2);
+  const MARK = { session: [0, 7], project: [1, 14], sub: [2, 4.5], you: [3, 0] };
+  marks.geometry.setAttribute('aMark', new THREE.InstancedBufferAttribute(Float32Array.from(world.nodes.flatMap(n => [...MARK[n.kind], (n.seed % 628) / 100])), 3));
+  marks.geometry.setAttribute('aDyn', markDyn);
+  marks.renderOrder = 3.5; marks.frustumCulled = false; for (let i = 0; i < NN; i++) marks.setColorAt(i, C.white); root.add(marks);
+  // Screen pixels (CSS) per world unit at unit depth; a phone's marks are a little smaller, its cells being closer together.
+  const pxMark = () => { markMat.uniforms.uPx.value = ctx.size.h / (2 * Math.tan(THREE.MathUtils.degToRad(ctx.camera.fov / 2))); markMat.uniforms.uMin.value = ctx.size.w < 700 ? .8 : 1; };
+  pxMark(); ctx.onResize(pxMark);
   const ringGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   const neurons = new Map(), list = [];
+  let gangNext = NN;
 
   function buildNeuron(n) {
     const P = shapeOf(n), r = kit.rng(n.seed), R = P.R, curl = P.curl, extra = P.extra;
@@ -724,12 +790,59 @@ function create(ctx) {
     root.add(group);
     const alive = n.s.alive, target = n.kind === 'you' || n.kind === 'project' ? 1 : alive;
     const e = { n, R, i: list.length, nucR: R * .5, group, mesh, mat, lines, lineMat, ring, core: new THREE.Color(), rim: new THREE.Color(), amt: 0, base: 0, flash: 0, grow: target, front: 0,
-      vis: n.pos.clone(), sc: 1, seedF: (n.seed % 1000) / 159 };
+      vis: n.pos.clone(), sc: 1, seedF: (n.seed % 1000) / 159, gang: null, dot: new THREE.Color(), markB: 0, dyn0: -1, dyn1: -1 };
+    // A ganglion's other nuclei, packed round its own inside the soma.
+    if (n.kind === 'project') e.gang = Array.from({ length: GANG }, (_, k) => {
+      const a = (k + r() * .5) / GANG * Math.PI * 2, d = R * (.48 + r() * .1);
+      return { i: gangNext++, off: new THREE.Vector3(Math.cos(a) * d, (r() - .5) * R * .2 * P.squash, Math.sin(a) * d), r: R * (.17 + r() * .05) };
+    });
     neurons.set(n, e); list.push(e);
     return e;
   }
   for (const n of world.nodes) buildNeuron(n);
   const order = [...list.filter(e => e.n.kind === 'sub'), ...list.filter(e => e.n.kind === 'session'), ...list.filter(e => e.n.kind === 'project'), ...list.filter(e => e.n.kind === 'you')];
+
+  // ── Labels: a name hangs just under its cell, clear of the soma or its mark, whichever is bigger on screen ──
+  // Screen pixels per world unit at p, and the board's foreshortening down the screen at this tilt.
+  const viewP = new THREE.Vector3(), COS_T = Math.cos(.56);
+  const ppuAt = p => markMat.uniforms.uPx.value / Math.max(1e-3, -viewP.copy(p).applyMatrix4(ctx.camera.matrixWorldInverse).z);
+  // How far a cell reaches out from its centre on screen, px: its mark, or the soma with its arms once that is bigger.
+  const reachPx = (n, e, ppu) => Math.max(MARK[n.kind][1] * markMat.uniforms.uMin.value, e.R * e.sc * (n.kind === 'project' ? 1.15 : 1) * 1.2 * ppu);
+  // A project's name is shown first, centred just off its ganglion on the side away from its sessions (their names then fit round
+  // it), unless it would cover another project's (a small screen, far out): then it takes its turn like any label. A session's or
+  // subagent's hangs from the cell's lower edge, the same small gap at any zoom.
+  const nameUp = new Set(world.projects.filter(p => { let dx = 0, dz = 0; for (const s of p.sessions) { dx += s.rest.x - p.rest.x; dz += s.rest.z - p.rest.z; } return dz > Math.abs(dx) * .5; }));
+  const onAt = (n, e, out) => { const ppu = ppuAt(n.pos); out.z += (reachPx(n, e, ppu) + 13) / (ppu * COS_T) * (nameUp.has(n) ? -1 : 1); out.y = 0; return out; };
+  const pills = new Float64Array(world.projects.length * 4), onWas = new Set(), pillP = new THREE.Vector3();
+  let pillN = 0;
+  ctx.setLabelRule(n => {
+    if (n.kind !== 'project') return undefined;
+    if (n === world.projects[0]) pillN = 0; // the board asks in node order, so the first project starts the frame's set
+    const e = neurons.get(n); if (!e || n.s.alive <= .5) return undefined;
+    onAt(n, e, pillP.copy(n.pos)).project(ctx.camera);
+    // The pill's size from its name (nodes.css: 13px text, a folder, padding); kept a little apart, more to come back than to stay.
+    const x = (pillP.x + 1) / 2 * ctx.size.w, y = (1 - pillP.y) / 2 * ctx.size.h, w = Math.min(260, n.name.length * 7.3 + 36) / 2 + (onWas.has(n) ? 2 : 8), h = 13 + (onWas.has(n) ? 2 : 6);
+    for (let i = 0; i < pillN; i += 4) if (x - w < pills[i + 2] && x + w > pills[i] && y - h < pills[i + 3] && y + h > pills[i + 1]) { onWas.delete(n); return undefined; }
+    pills[pillN] = x - w; pills[pillN + 1] = y - h; pills[pillN + 2] = x + w; pills[pillN + 3] = y + h; pillN += 4;
+    onWas.add(n); return 'on';
+  });
+  ctx.setLabelAnchor((n, out, on) => {
+    const e = neurons.get(n);
+    if (!e || n.kind === 'you') { out.z += (e ? e.R * e.sc : .7) * 1.55 + .5; out.y = 0; return; }
+    if (on) { onAt(n, e, out); return; }
+    const ppu = ppuAt(n.pos);
+    out.z += (reachPx(n, e, ppu) + 3) / (ppu * COS_T); out.y = 0;
+  });
+  // The same reach is the footprint other labels keep off and a click finds; a project's name may run to 260px.
+  const feet = new Map();
+  ctx.setShape(n => {
+    const e = neurons.get(n);
+    if (!e || n.kind === 'you') return null;
+    let f = feet.get(n); if (!f) feet.set(n, f = { hx: 0, hz: 0, y: 0, tw: 0 });
+    const ppu = ppuAt(n.pos), px = reachPx(n, e, ppu);
+    f.hx = px / ppu; f.hz = px / (ppu * COS_T); f.tw = n.kind === 'project' ? 260 / ppu : 0;
+    return f;
+  });
 
   // A fibre reads both of its cells' uniforms directly, so it always matches them where it joins.
   const fibreMaterial = (ua, ub, extra, reach) => {
@@ -871,9 +984,15 @@ function create(ctx) {
     sh.cell = new THREE.Mesh(cardGeo, new THREE.ShaderMaterial({ vertexShader: VESICLE_VERT, fragmentShader: VESICLE_FRAG, transparent: true, depthWrite: false,
       uniforms: { uCenter: { value: pos }, uOval: { value: OVAL }, uImg: { value: sh.img }, uOff: { value: sh.off }, uNeck: { value: neck }, uRim: ua.uRim, uHi: ua.uHi, uAmt: { value: 0 }, uTime: ua.uTime, uSeed: ua.uSeed, uMap: { value: null } } }));
     sh.cell.renderOrder = .9; sh.cell.frustumCulled = false; sh.cell.visible = false; root.add(sh.cell);
-    ctx.addTarget({ node: n, pos, radius: 1.4, action: 'shots' });
+    ctx.addTarget({ node: n, pos, radius: 1.9, action: 'shots' });
     return sh;
   });
+  // The board frames the vesicles that hold screenshots along with the cells, so one at its edge isn't cut off, and frames again when
+  // which sessions have some changes. On the floor a vesicle's middle, 1.1 up, is .7 further back, and its height across the tilt.
+  const VZ = 1.1 * Math.tan(.56), VR = Math.max(OVAL.x, OVAL.y / Math.cos(.56)) + .2;
+  let shotKey = 0;
+  const frameShots = add => { for (const sh of shots) if (ctx.shot(sh.n)) add(sh.V0.x, sh.V0.z - VZ, VR); };
+  ctx.setFrame(frameShots);
   // The usage tags and the screenshot count are drawn in Sora and IBM Plex Mono: checked once here, and if they are still on their
   // way, drawn again when they land, with the board woken to show it (it doesn't draw otherwise).
   let disposed = false;
@@ -902,12 +1021,13 @@ function create(ctx) {
     sh.img.set(W * k / 2, H * k / 2); sh.off.set(0, -Math.max(0, sh.img.y - OVAL.y * .95));
     if (shot.count > 1) {
       const ux = (OVAL.x * .55 * .93 - sh.off.x) / (2 * sh.img.x), uy = (-OVAL.y * .5 * .93 - sh.off.y) / (2 * sh.img.y);
-      const r = Math.round(Math.min(W / sh.img.x, H / sh.img.y) * .13), x = W * (.5 + ux), y = H * (.5 - uy);
+      const r = Math.round(Math.min(W / sh.img.x, H / sh.img.y) * .13 * OVAL.y), x = W * (.5 + ux), y = H * (.5 - uy);
       g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = 'rgba(4, 7, 26, .82)'; g.fill(); g.lineWidth = Math.max(2, r * .12); g.strokeStyle = '#79c6ff'; g.stroke();
       g.fillStyle = '#e8f4ff'; g.font = `500 ${Math.round(r * 1.1)}px "IBM Plex Mono", ui-monospace, monospace`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(shot.count), x, y + r * .06);
     }
     sh.tex.needsUpdate = true;
   }
+  // Returns whether it has screenshots.
   function updateShot(sh, dt) {
     const n = sh.n, e = sh.a, shot = ctx.shot(n), u = sh.mat.uniforms;
     if (shot && shot !== sh.last) { drawShot(sh, shot); sh.last = shot; }
@@ -920,8 +1040,8 @@ function create(ctx) {
     sideOf(sh); u.uSide.value.copy(sh.side);
     const k = kit.easeOutCubic(sh.k); sv(u.uReach, k);
     sh.cell.visible = k > .01 && e.group.visible && !!sh.tex;
-    if (!sh.cell.visible) return;
-    sv(sh.cell.material.uniforms.uAmt, k * Math.min(1, n.s.alive * 1.4));
+    if (sh.cell.visible) sv(sh.cell.material.uniforms.uAmt, k * Math.min(1, n.s.alive * 1.4));
+    return !!shot;
   }
 
   // ── Ripples: finish, compaction, answers, spawns and errors ──
@@ -947,6 +1067,11 @@ function create(ctx) {
     if (m[o] !== fs || m[o + 12] !== fx || m[o + 13] !== fy || m[o + 14] !== fz) { m[o] = m[o + 5] = m[o + 10] = fs; m[o + 12] = fx; m[o + 13] = fy; m[o + 14] = fz; im.instanceMatrix.needsUpdate = true; }
     if (c[q] !== fr || c[q + 1] !== fg || c[q + 2] !== fb) { c[q] = fr; c[q + 1] = fg; c[q + 2] = fb; im.instanceColor.needsUpdate = true; }
   }
+  function dyn(e, a, ring) {
+    const fa = Math.fround(a), fr = Math.fround(ring);
+    if (e.dyn0 === fa && e.dyn1 === fr) return;
+    e.dyn0 = fa; e.dyn1 = fr; markDyn.array[e.i * 2] = fa; markDyn.array[e.i * 2 + 1] = fr; markDyn.needsUpdate = true;
+  }
   function updateNeuron(e, dt) {
     const { n, mat, lineMat } = e, s = n.s, reduced = ctx.reduced, u = mat.uniforms, lu = lineMat.uniforms;
     const alive = s.alive;
@@ -954,15 +1079,17 @@ function create(ctx) {
     let crackle = 0, rate = 12;
     if (n.kind === 'session' || n.kind === 'sub') {
       const w = weigh(s);
-      blend(w, CORE_L, e.core); blend(w, RIM_L, e.rim);
-      let amt = activity(w);
+      blend(w, CORE_L, e.core); blend(w, RIM_L, e.rim); blend(w, DOT_L, e.dot);
+      let amt = activity(w), beat = .5;
       e.base = amt;
       if (!reduced) {
         amt *= 1 + s.wait * (.5 * Math.sin(anim * 2.4 + e.seedF) - .1);
         if (s.error > .3) amt *= hash(Math.floor(anim * 15) + e.seedF) > .45 ? 1.2 : .2;
-        const beat = Math.pow(.5 + .5 * Math.sin(anim * (3 + s.urgency * 5) + e.seedF), 4);
+        beat = Math.pow(.5 + .5 * Math.sin(anim * (3 + s.urgency * 5) + e.seedF), 4);
         amt += s.need * beat * .5 * (1 + s.urgency * .8);
       } else amt += s.need * .25 * (1 + s.urgency);
+      // The mark stays lit even idle (it's how the cell is found); work, and a beating need, light it further.
+      e.markB = .9 + .3 * Math.min(1, e.base) + s.need * beat * .5;
       amt += s.heat * .2;
       crackle = s.work * 1 + s.error * 1.1 + s.think * .35 + s.need * .55 + s.compact * .2;
       rate = 11 + s.error * 18 + s.heat * 6;
@@ -985,7 +1112,9 @@ function create(ctx) {
       e.rim.copy(C.rimProject).lerp(RIM.need, need * .5);
       e.amt = .2 + Math.min(.8, sum * .32);
       crackle = Math.min(1, sum * .3);
-      e.nucR = e.R * .5;
+      e.nucR = e.R * .34;
+      // A ganglion's mark is pale whatever its sessions do, so projects read as one kind; it warms only when one of them needs you.
+      e.dot.copy(C.gang).lerp(CORE.need, need * .45); e.markB = .95 + Math.min(.25, sum * .1);
     } else {
       let need = 0, urg = 0;
       for (let i = 0; i < world.sessions.length; i++) { const ss = world.sessions[i]; if (ss.s.alive > .5) { need = Math.max(need, ss.s.need); urg = Math.max(urg, ss.s.urgency * ss.s.need); } }
@@ -1014,6 +1143,11 @@ function create(ctx) {
     lu.uColor.value.copy(e.core).lerp(C.gold, s.error > .5 ? 0 : .45); sv(lu.uAmt, crackle * alive);
     sv(lu.uRate, rate); sv(lu.uStatic, reduced ? 1 : 0); e.lines.visible = crackle > .02;
     inst(nuclei, e.i, e.vis, Math.max(1e-4, e.nucR * e.sc), tmpC.copy(e.core).multiplyScalar(e.amt * (1 - s.off)).lerp(C.ash, s.off));
+    if (e.gang) for (let k = 0; k < e.gang.length; k++) { const g = e.gang[k]; inst(nuclei, g.i, tmp.copy(g.off).multiplyScalar(e.sc).add(e.vis), g.r * e.sc, tmpC.copy(e.core).multiplyScalar(e.amt * .8).add(C.gangNuc)); }
+    if (n.kind !== 'you') {
+      inst(marks, e.i, e.vis, e.R * e.sc * (n.kind === 'project' ? 1.15 : 1), tmpC.copy(e.dot).multiplyScalar(e.markB * (1 + hi * .4)));
+      dyn(e, (n.kind === 'sub' ? Math.min(1, alive * 1.4) : n.kind === 'session' ? kit.smoothstep(.1, .7, alive) : 1) * (1 - .4 * s.off), Math.min(1, s.hover + s.select));
+    }
     inst(halos, e.i, e.vis, e.R * (2.6 + 1.4 * Math.min(e.amt, 1.5)) * .5 * (e.group.visible ? 1 : 0) + 1e-4,
       tmpC.copy(e.core).multiplyScalar(Math.min(.6, e.amt * .2 + hi * .15) * alive * (1 - s.off)));
     if (e.ring) sv(e.ring.material.uniforms.uAmt, alive * (.5 + hi) * (1 - s.off * .6));
@@ -1091,7 +1225,9 @@ function create(ctx) {
       for (let i = 0; i < order.length; i++) updateNeuron(order[i], dt);
       for (let i = 0; i < links.length; i++) updateLink(links[i], dt);
       for (let i = 0; i < reaches.length; i++) updateReach(reaches[i], dt);
-      for (let i = 0; i < shots.length; i++) updateShot(shots[i], dt);
+      let key = 0;
+      for (let i = 0; i < shots.length; i++) if (updateShot(shots[i], dt)) key = Math.imul(key ^ shots[i].n.seed, 0x9e3779b1) + 1 | 0;
+      if (key !== shotKey) { shotKey = key; ctx.setFrame(frameShots); }
       updateUsage();
       updateRipples(dt);
       return reduced ? (moving || easing ? 30 : 0) : moving ? 60 : 30;
@@ -1134,7 +1270,11 @@ body[data-look="neurons"] .nodes-tip .dot { box-shadow: 0 0 8px var(--c, var(--n
 body[data-look="neurons"] .lbl { gap: 1px; padding: 3px 10px 4px; border-radius: 13px 15px 14px 12px / 12px 11px 14px 13px; background: radial-gradient(120% 120% at 30% 0%, rgba(44, 70, 170, .32), transparent 65%), rgba(4, 7, 26, .74);
   box-shadow: inset 0 0 0 1px rgba(121, 198, 255, .16), inset 0 0 12px -5px rgba(121, 198, 255, .4), 0 4px 14px -6px rgba(0, 0, 0, .8); text-shadow: none; }
 body[data-look="neurons"] .lbl b { font-weight: 500; letter-spacing: .01em; }
-body[data-look="neurons"] .lbl.project { padding: 1px 8px 2px; border-radius: 99px; background: rgba(4, 7, 26, .6); box-shadow: inset 0 0 0 1px rgba(121, 198, 255, .1); }
+/* A project's name heads its ganglion: a pale pill, its folder kept although it sits on the node (nodes.css hides kind marks there). */
+body[data-look="neurons"] .lbl.project { padding: 1px 9px 2px 8px; border-radius: 99px; background: rgba(4, 7, 26, .74); box-shadow: inset 0 0 0 1px rgba(207, 228, 255, .3), 0 0 12px -4px rgba(150, 200, 255, .4); }
+body[data-look="neurons"] .lbl.project b { color: #e2eeff; }
+body[data-look="neurons"] .lbl.project .k { color: #a9d4ff; }
+body[data-look="neurons"] .lbl.project.on .k { display: inline-block; }
 body[data-look="neurons"] .lbl.you { background: radial-gradient(120% 120% at 50% 0%, rgba(255, 190, 110, .2), transparent 65%), rgba(4, 7, 26, .74); box-shadow: inset 0 0 0 1px rgba(255, 214, 150, .22), inset 0 0 12px -5px rgba(255, 190, 110, .4), 0 4px 14px -6px rgba(0, 0, 0, .8); }
 body[data-look="neurons"] .lbl.you b { color: #ffe6b0; }
 body[data-look="neurons"] .lbl.need { background: radial-gradient(120% 120% at 30% 0%, rgba(255, 201, 60, .2), transparent 65%), rgba(12, 9, 20, .8); box-shadow: inset 0 0 0 1px rgba(255, 201, 60, .45), inset 0 0 12px -4px rgba(255, 201, 60, .45), 0 0 16px -6px rgba(255, 201, 60, .6); }

@@ -164,7 +164,8 @@ export function mountNodes(container, hooks = {}) {
   // Screen pixels to a world unit across the view at p.
   function pxPer(p) { camRight.setFromMatrixColumn(camera.matrixWorld, 0).add(p); toScreen(p, pa); toScreen(camRight, pb); return Math.hypot(pb.x - pa.x, pb.y - pa.y); }
   const pxRadius = n => pxPer(n.pos) * sizes[n.kind];
-  // A footprint, from ctx.setShape: { hx, hz, y } half extents round its centre on the plane at height y. Rect tests on that plane:
+  // A footprint, from ctx.setShape: { hx, hz, y } half extents round its centre on the plane at height y, and for a name on the
+  // node ('on' from the label rule) the width and height of the space it has there (tw, th, board units). Rect tests on that plane:
   // how far (x, y) on screen is into it (under 1 is inside, `pad` world units of slack round it), and its box on screen.
   const lift = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3(), corner = new THREE.Vector3();
   // A raised footprint is its top face and its base both, and the sides between: the nearer of the two planes counts.
@@ -528,18 +529,20 @@ export function mountNodes(container, hooks = {}) {
       if (el._name !== n.name || el._text !== n.text || el._tick !== tick) {
         el._name = n.name; el._text = n.text; el._tick = tick;
         let html;
+        // Each name opens with its kind's mark (.k in nodes.css), so a project, a session and a subagent tell apart from afar.
         if (n.kind === 'you') html = `<b>You</b><span>${q ? `${q} waiting` : 'all clear'}</span>`;
         // A subagent's name alone, quieter (nodes.css), so it doesn't read as its session's status; what it's doing is in the tooltip.
-        else if (n.kind === 'project' || n.kind === 'sub') html = `<b>${esc(n.name)}</b>`;
-        else html = `<b>${esc(n.name)}</b><span>${esc(statusLine(n))}</span>`;
+        else if (n.kind === 'project' || n.kind === 'sub') html = `<b><i class="k"></i>${esc(n.name)}</b>`;
+        else html = `<b><i class="k"></i>${esc(n.name)}</b><span>${esc(statusLine(n))}</span>`;
         if (el._html !== html) { el.innerHTML = el._html = html; measure(el); }
       }
+      if (el._s !== n.status && n.kind !== 'project' && n.kind !== 'you') { el._s = n.status; el.dataset.s = n.status; }
       if (el._need !== need) { el._need = need; el.classList.toggle('need', need); }
       if (el._error !== error) { el._error = error; el.classList.toggle('error', error); }
       const c = pool[cn] || (pool[cn] = {}); cn++;
       c.el = el; c.on = on; c.x = sp.x; c.y = sp.y; c.z = sp.z; c.rank = labelRank(n, need); c.sub = n.kind === 'sub';
       // 'on': the name on the node itself, as wide as the look allows. Else beside the node: the box round a footprint, or the circle.
-      if (on) { c.tw = (f?.tw ?? sizes[n.kind] * 1.6) * pxPer(below); cand.push(c); continue; }
+      if (on) { const k = pxPer(below); c.tw = (f?.tw ?? sizes[n.kind] * 1.6) * k; c.th = f?.th ? f.th * k : 0; cand.push(c); continue; }
       if (f) { c.nx = (foot[0] + foot[2]) / 2; c.ny = (foot[1] + foot[3]) / 2; c.gap = 6; c.rx = foot[2] + 6; c.lx = foot[0] - 6; c.ay = Math.min(foot[1], top ?? Infinity) - 3; }
       else { toScreen(n.pos, at); const r = pxRadius(n); c.nx = at.x; c.ny = at.y; c.gap = r * .9 + 6; c.rx = at.x + c.gap; c.lx = at.x - c.gap; c.ay = top; }
       cand.push(c);
@@ -551,7 +554,8 @@ export function mountNodes(container, hooks = {}) {
     for (const c of cand) {
       const { el } = c;
       if (c.on) {
-        const w = Math.min(el._ew + el._nw, c.tw), h = el._bh, mw = Math.round(Math.max(0, c.tw));
+        // It holds the whole space the look gives it (th), so a name wrapped or as wide as its plate keeps others off.
+        const w = c.th ? c.tw : Math.min(el._ew + el._nw, c.tw), h = Math.max(el._bh, c.th), mw = Math.round(Math.max(0, c.tw));
         if (el._mw !== mw) { el._mw = mw; el.style.maxWidth = `${mw}px`; }
         showLabel(el, 3, 0);
         placed.push(rect(el._x0 = c.x - w / 2, el._y0 = c.y - h / 2, el._x1 = c.x + w / 2, el._y1 = c.y + h / 2));
@@ -680,8 +684,8 @@ export function mountNodes(container, hooks = {}) {
       // The newest screenshot a session looked at, { bitmap: ImageBitmap (fitted to 512×320), count }, or null. The same object
       // until it changes, so a look can compare it each frame and redraw only then.
       shot: n => shotOf.get(n.id) || null,
-      // A node's footprint, for picking and for keeping labels off it: fn(n) returns { hx, hz, y, tw? }, half extents round n.pos on
-      // the plane at height y (tw: the width a name on it may take, for 'on' labels), or null for the circle of its size.
+      // A node's footprint, for picking and for keeping labels off it: fn(n) returns { hx, hz, y, tw?, th? }, half extents round n.pos
+      // on the plane at height y (tw, th: the space a name on it may take, for 'on' labels), or null for the circle of its size.
       setShape(fn) { shapeOf = fn; },
       // Make something on a node clickable: { node, pos (a Vector3 the look keeps up to date), radius (world units), action: 'shots' };
       // hx and hz instead of radius make it a rectangle round pos, at pos.y.
@@ -691,6 +695,8 @@ export function mountNodes(container, hooks = {}) {
       setLayout(fn) { customLayout = fn; relayout(); refit(); },
       // Draw the next frame, for a change made outside update (a font or an image loaded): the board otherwise keeps to its pace.
       wake,
+      // Build the look again next frame, for a layout that turns on more than the nodes (a screenshot coming, a usage card more).
+      rebuild() { built = ''; wake(); },
     };
     try { look = mod.create(ctx); look.update(0, world.time); } catch (e) { console.error(e); look = null; }
     refit(); resizeHooks.forEach(fn => fn(size));
