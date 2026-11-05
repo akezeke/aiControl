@@ -110,12 +110,12 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
           const limit = Math.min(1000, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
           json(res, 200, await messages.history(id, limit), req); return;
         }
-        const result = action === 'messages' ? await messages.send(id, await body(req, uploadBodyLimit)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id) : action === 'clear' ? await messages.clear(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
+        const result = action === 'messages' ? await messages.send(id, await body(req, uploadBodyLimit)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id, await body(req)) : action === 'clear' ? await messages.clear(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
         auth.touch(session); json(res, 200, result); return;
       }
       const match = /^\/api\/requests\/([a-f0-9-]{36})\/respond$/.exec(path);
       if (match && req.method === 'POST') { await store.respond(match[1], await body(req)); auth.touch(session); json(res, 200, { ok: true }); return; }
       throw fail('Not found.', 404);
-    } catch (error) { if (!res.headersSent) json(res, error.status || 500, { error: error.status ? error.message : 'The server could not complete this request.' }); else res.end(); }
+    } catch (error) { if (!res.headersSent) json(res, error.status || 500, { error: error.status ? error.message : 'The server could not complete this request.', ...(error.code === 'force_available' ? { code: error.code } : {}) }); else res.end(); }
   };
 }

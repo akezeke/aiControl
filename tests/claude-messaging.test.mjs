@@ -460,3 +460,33 @@ test('Claude adapter fires only a session that is quiet: idle a while, no subage
   assert.deepEqual(await adapter.fire(record.sessionId), { ok: true });
   assert.deepEqual(fired, [record.pid]);
 });
+
+test('force firing a Claude session checks its identity and escalates if SIGTERM does not stop it', async () => {
+  const calls = [];
+  let alive = true;
+  const { adapter } = fixture({ alive: async () => alive, exitMs: 1, pollMs: 1, signal: (pid, name) => { calls.push([pid, name]); if (name === 'SIGKILL') alive = false; } });
+  assert.deepEqual(await adapter.forceFire({ ...paneRecord, kind: 'interactive', status: 'shell' }, async () => { calls.push('recheck'); }), { ok: true });
+  assert.deepEqual(calls, ['recheck', [record.pid, 'SIGTERM'], 'recheck', [record.pid, 'SIGKILL']]);
+  calls.length = 0; alive = true;
+  await assert.rejects(adapter.forceFire({ ...paneRecord, kind: 'interactive' }, async () => { throw new Error('changed'); }), /changed/);
+  assert.deepEqual(calls, []);
+  let checks = 0;
+  await assert.rejects(adapter.forceFire({ ...paneRecord, kind: 'interactive' }, async () => { if (++checks === 2) throw new Error('changed'); }), /changed/);
+  assert.deepEqual(calls, [[record.pid, 'SIGTERM']]);
+});
+
+test('force firing bypasses a shell block but still checks the live registration', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'aicontrol-claude-force-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const path = join(dir, `${record.pid}.json`);
+  await writeFile(path, JSON.stringify({ ...record, cwd: '/work/project', kind: 'interactive', status: 'shell' }));
+  let fired = 0;
+  const adapter = new ClaudeAdapter(new RequestStore(), '/unused.sock', { sessionsDir: dir, projectsDir: dir, alive: async () => true, messaging: {
+    available: async () => 'tmux', stop() {}, forceFire: async (live, recheck) => { await recheck(); fired++; return { ok: true }; },
+  } });
+  await adapter.refresh();
+  await assert.rejects(adapter.fire(record.sessionId), e => e.code === 'force_available' && /Background shells/.test(e.message));
+  assert.deepEqual(await adapter.fire(record.sessionId, { force: true }), { ok: true });
+  await writeFile(path, JSON.stringify({ ...record, sessionId: 'different' }));
+  await assert.rejects(adapter.fire(record.sessionId, { force: true }), /changed/);
+  assert.equal(fired, 1);
+});

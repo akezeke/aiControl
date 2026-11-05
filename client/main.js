@@ -244,7 +244,7 @@ async function api(path, body, options = {}) {
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 401 && path !== 'login') showLogin();
-    throw new Error(data.error || 'Could not connect to AI Control.');
+    throw Object.assign(new Error(data.error || 'Could not connect to AI Control.'), { code: data.code });
   }
   return data;
 }
@@ -710,7 +710,16 @@ function armed(control) {
 async function fireSession(session, control) {
   if (state.error || !armed(control)) return;
   control.disabled = true;
-  try { await api(`sessions/${encodeURIComponent(session.id)}/fire`, {}); toast('Fired'); scene?.fire(session.id); closePanel(); await refresh(); }
+  try {
+    const path = `sessions/${encodeURIComponent(session.id)}/fire`;
+    try { await api(path, {}); }
+    catch (error) {
+      if (error.code !== 'force_available') throw error;
+      if (!window.confirm(`${error.message}\n\nForce close this session? Active work may be interrupted, and background processes may keep running.`)) { control.disabled = false; return; }
+      await api(path, { force: true });
+    }
+    toast('Fired'); scene?.fire(session.id); closePanel(); await refresh();
+  }
   catch (error) { toast(error.message); control.disabled = false; }
 }
 // /clear gives the session a new id, so the panel moves to it. Until a snapshot has it, a missing session doesn't close the panel.

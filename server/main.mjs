@@ -85,7 +85,7 @@ export async function startServer({ host, hostname, tls = null }) {
     send: (id, body) => openCodeId(id) ? opencode.sendMessage(openCodeId(id), body) : claudeId(id) ? claude.sendMessage(claudeId(id), body) : codex.sendMessage(messageTarget(id), body),
     cancel: (id, queuedId) => openCodeId(id) ? unsupportedOpenCode() : codex.cancelQueuedMessage(messageTarget(id), queuedId),
     interrupt: id => openCodeId(id) ? opencode.interrupt(openCodeId(id)) : claudeId(id) ? claude.interrupt(claudeId(id)) : codex.interrupt(messageTarget(id)),
-    fire: id => openCodeId(id) ? opencode.fire(openCodeId(id)) : claudeId(id) ? claude.fire(claudeId(id)) : codex.fire(messageTarget(id)),
+    fire: (id, options) => openCodeId(id) ? opencode.fire(openCodeId(id)) : claudeId(id) ? claude.fire(claudeId(id), options) : codex.fire(messageTarget(id)),
     clear: id => claudeId(id) ? claude.clear(claudeId(id)) : Promise.reject(fail('Only Claude sessions can be cleared for now.', 409)),
     models: id => { const [adapter, nativeId] = settingTarget(id); return adapter.modelOptions(nativeId); },
     model: (id, body) => setAgentSetting(id, 'model', body?.model),

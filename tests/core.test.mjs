@@ -168,6 +168,7 @@ test('model catalogs require login and model, effort, Fire require origin and CS
     }
   }
   assert.equal(calls.length, 12);
+  assert.deepEqual(calls.filter(call => call.kind === 'fire').map(call => call.body), Array(3).fill({ fire: 'selected' }));
 });
 
 test('weekly budget edits require login, same origin and CSRF', async t => {

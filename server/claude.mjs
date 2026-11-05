@@ -245,7 +245,7 @@ export class ClaudeAdapter {
     const { record: previous, account } = this.registrations.get(sessionId) || {};
     if (!previous) throw fail('This Claude session is no longer available.', 409);
     const record = JSON.parse(await readFile(join(account.sessionsDir, `${previous.pid}.json`), 'utf8').catch(() => '{}'));
-    if (record.sessionId !== sessionId || record.procStart !== previous.procStart) throw fail('This Claude session changed. Refresh before sending.', 409);
+    if (record.sessionId !== sessionId || record.pid !== previous.pid || record.procStart !== previous.procStart) throw fail('This Claude session changed. Refresh before sending.', 409);
     if (this.store.list().some(request => request.sessionId === `claude:${sessionId}`)) throw fail('Answer the pending question or permission first.', 409);
     return record;
   }
@@ -281,16 +281,23 @@ export class ClaudeAdapter {
   // All of it is checked again just before Enter (with /exit typed) or the signal.
   async quiet(sessionId) {
     const record = await this.record(sessionId), parked = !!record.parkedJobId, hook = parked ? null : this.hooks.get(sessionId), transcript = this.paths.get(`claude:${sessionId}`);
-    if (!parked && record.status === 'shell') throw fail('Background shells are still running. Stop them first.', 409);
+    if (!parked && record.status === 'shell') throw Object.assign(fail('Background shells are still running. Stop them first.', 409), { code: 'force_available' });
     if ((!parked && record.status !== 'idle') || (hook && hook.status !== 'idle') || hook?.compacting) throw fail('Claude is working. Stop it first.', 409);
     if (Date.now() - Math.max(record.statusUpdatedAt || record.updatedAt || 0, hook?.updatedAt || 0) < QUIET_MS) throw fail('Claude only just finished. Try again in a moment.', 409);
     if (transcript && (await this.subagents(record, transcript, new Map())).some(agent => agent.status === 'working')) throw fail('A subagent is still working.', 409);
     const commands = await this.messaging.commands(record.pid);
-    if (commands.length) throw fail(`Still running: ${commands[0].slice(0, 60)}${commands.length > 1 ? ` (+${commands.length - 1})` : ''}. Stop it first.`, 409);
+    if (commands.length) throw Object.assign(fail(`Still running: ${commands[0].slice(0, 60)}${commands.length > 1 ? ` (+${commands.length - 1})` : ''}. Stop it first.`, 409), { code: 'force_available' });
     return record;
   }
-  async fire(sessionId) {
-    const result = await this.messaging.fire(await this.quiet(sessionId), () => this.quiet(sessionId));
+  async fire(sessionId, options = {}) {
+    let result;
+    if (options?.force === true) {
+      const record = await this.record(sessionId);
+      result = await this.messaging.forceFire(record, async () => {
+        const fresh = await this.record(sessionId);
+        if (fresh.pid !== record.pid || fresh.procStart !== record.procStart) throw fail('This Claude session changed. Refresh before firing.', 409);
+      });
+    } else result = await this.messaging.fire(await this.quiet(sessionId), () => this.quiet(sessionId));
     this.ended(sessionId, 'fired');
     return result;
   }

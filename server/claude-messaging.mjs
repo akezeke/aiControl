@@ -268,6 +268,19 @@ export class ClaudeMessaging {
       return { ok: true };
     });
   }
+  // An explicit force close signals only the verified Claude process, never its process group.
+  async forceFire(record, recheck) {
+    if (record.kind !== 'interactive' && !tmuxPaneId(record)) throw fail('Only terminal sessions can be fired.', 409);
+    await recheck();
+    if (!await this.alive(record.pid, record.procStart)) return { ok: true };
+    try { this.signal(record.pid, 'SIGTERM'); } catch { throw fail('Could not signal Claude.', 503); }
+    if (await this.until(async () => !await this.alive(record.pid, record.procStart), this.exitMs)) return { ok: true };
+    await recheck();
+    if (!await this.alive(record.pid, record.procStart)) return { ok: true };
+    try { this.signal(record.pid, 'SIGKILL'); } catch { throw fail('Could not force close Claude.', 503); }
+    if (!await this.until(async () => !await this.alive(record.pid, record.procStart), this.exitMs)) throw fail('Claude is still running after force close. Check its terminal.', 504);
+    return { ok: true };
+  }
   async paste(pane, text, id) {
     const buffer = `ai-control-${id}`;
     try {
