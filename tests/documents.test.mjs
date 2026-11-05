@@ -77,7 +77,8 @@ test('a long transcript is read whole, in pieces, across lines longer than a pie
 
 test('a name from the top of a repository is found from a folder inside it, and goes no further', async t => {
   const { dir, cwd } = await repo(t), inner = join(cwd, 'packages/game');
-  await mkdir(join(cwd, '.git')); await mkdir(inner, { recursive: true });
+  await mkdir(join(dir, '.git')); // An unrelated empty marker above the project is not a repository.
+  await mkdir(join(cwd, '.git')); await writeFile(join(cwd, '.git/HEAD'), 'ref: refs/heads/main\n'); await mkdir(inner, { recursive: true });
   await writeFile(join(cwd, 'docs/plan.md'), '# plan'); await writeFile(join(inner, 'near.md'), '# near'); await writeFile(join(cwd, 'near.md'), '# far'); await writeFile(join(dir, 'above.md'), '# above');
   const entry = name => ({ path: resolve(inner, name), root: inner, at: 1, written: false });
   const docs = await readableDocuments([entry('docs/plan.md'), entry('near.md'), entry('above.md'), entry('../../../above.md'), entry(join(cwd, 'docs/plan.md'))]);

@@ -75,7 +75,8 @@ async function projectFolders(root) {
   const folders = [];
   for (let folder = root; ; folder = dirname(folder)) {
     folders.push(folder);
-    if (await stat(join(folder, '.git')).catch(() => null)) return folders;
+    const marker = await stat(join(folder, '.git')).catch(() => null);
+    if (marker?.isFile() || (marker?.isDirectory() && await stat(join(folder, '.git', 'HEAD')).catch(() => null))) return folders;
     if (dirname(folder) === folder) return [root];
   }
 }
