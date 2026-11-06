@@ -76,6 +76,29 @@ export function trustMenu(screen = '') {
   const menu = { yes: options.findIndex(([, , label]) => label.startsWith('Yes')), no: options.findIndex(([, , label]) => label.startsWith('No')), selected: options.findIndex(([, mark]) => mark) };
   return Object.values(menu).every(row => row >= 0) ? menu : null;
 }
+// A numbered dialog on Claude's screen ("Do you want to proceed?  ❯ 1. Yes  2. No  Esc to cancel"), as { question, details,
+// options }, or null. The options are the numbered rows above the Esc footer (Ink wraps a long one onto indented rows),
+// the question is the row above them and the details what the dialog shows above that, up to its top rule.
+export function terminalDialog(screen = '') {
+  const rows = screen.split('\n').map(row => row.replaceAll(' ', ' ').trimEnd()), option = row => /^\s*(?:❯\s*)?(\d)\.\s+(\S.*)$/.exec(row);
+  const footer = rows.findLastIndex(row => /\bEsc to (?:cancel|exit)\b/i.test(row)), first = rows.findLastIndex((row, i) => i < footer && option(row)?.[1] === '1');
+  if (first < 0) return null;
+  const options = [];
+  for (const row of rows.slice(first, footer)) {
+    const match = option(row);
+    if (match && Number(match[1]) !== options.length + 1) return null;
+    if (match) options.push(match[2].trim());
+    else if (row.trim()) options[options.length - 1] += ` ${row.trim()}`;
+  }
+  let at = first - 1;
+  while (at >= 0 && !rows[at].trim()) at--;
+  const question = rows[at]?.trim(), rule = row => /^\s*[─╌]{8,}\s*$/.test(row);
+  if (options.length < 2 || !question || rule(rows[at])) return null;
+  const top = Math.max(rows.findLastIndex((row, i) => i < at && /^\s*─{8,}\s*$/.test(row)), at - 21);
+  const details = rows.slice(top + 1, at).filter(row => row.trim() && !rule(row)).map(row => row.replace(/^\s*│\s?/, '').trim()).join('\n').slice(0, 4000);
+  return { question: question.slice(0, 300), details, options };
+}
+export const dialogKey = dialog => JSON.stringify([dialog.question, dialog.details, dialog.options]);
 // A captured screen's rows without what's drawn dim (SGR 2), which is how Claude draws its placeholder ('Try "…"').
 // Attributes run on from row to row; the colour codes' arguments (38;5;n, 38;2;r;g;b) are skipped, not read as codes.
 function undimmedRows(screen, dimOnly = false) {
@@ -211,6 +234,21 @@ export class ClaudeMessaging {
     const start = rows.findLastIndex((row, i) => rule(rows[i - 1]) && /^\s*[❯>]/.test(row) && rows.some((later, j) => j > i && rule(later))), end = rows.findIndex((row, i) => i > start && rule(row));
     if (start < 0 || end < 0) return null;
     return rows.slice(start, end).join('\n').replace(/^\s*[❯>]/, '').replaceAll('\u00a0', ' ').trim();
+  }
+  // The numbered dialog showing in a verified pane, or null.
+  async dialog(record) {
+    if (record.parkedJobId || !await this.alive(record.pid, record.procStart)) return null;
+    const pane = await this.verifiedPane(record), screen = pane && await this.tmux(['capture-pane', '-p', '-J', '-t', pane]).catch(() => null);
+    const dialog = screen && terminalDialog(screen);
+    return dialog ? { ...dialog, pane } : null;
+  }
+  // Picks a dialog's option with its number key, only while that same dialog still shows.
+  async choose(record, dialog, number) {
+    const now = await this.dialog(record);
+    if (!now || now.pane !== dialog.pane || dialogKey(now) !== dialogKey(dialog)) throw fail('That prompt is no longer showing. Check Claude’s terminal.', 409);
+    if (!Number.isInteger(number) || number < 1 || number > now.options.length) throw fail('Invalid decision.');
+    try { await this.tmux(['send-keys', '-t', now.pane, String(number)]); } catch { throw fail('Could not reach Claude’s tmux pane.', 503); }
+    return { ok: true };
   }
   // Suggestions exist only in Claude's interactive screen, as dim text in an otherwise empty prompt.
   async suggestion(record) {

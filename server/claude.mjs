@@ -7,7 +7,7 @@ import { fail } from './requests.mjs';
 import { TranscriptReader, claudeSessionTitle, claudeActivity, claudeWaitingOn, turnTool } from './messages.mjs';
 import { TranscriptImages, imageLimit } from './images.mjs';
 import { TranscriptDocuments, readableDocuments, readDocument } from './documents.mjs';
-import { ClaudeMessaging, claudeEfforts } from './claude-messaging.mjs';
+import { ClaudeMessaging, claudeEfforts, dialogKey } from './claude-messaging.mjs';
 import { claudeModels } from './claude-models.mjs';
 import { processMatches } from './processes.mjs';
 export { processMatches } from './processes.mjs';
@@ -61,6 +61,8 @@ export class ClaudeAdapter {
   workflowNames = new Map();
   paths = new Map();
   stoppedAgents = new Set();
+  terminalPrompts = new Map();
+  answeredPrompts = new Map();
   clearMs = 8000;
   clearPollMs = 200;
   connected = false;
@@ -96,6 +98,7 @@ export class ClaudeAdapter {
           registrations.set(record.sessionId, { record, account }); owners.set(record.sessionId, account);
           paths.set(`claude:${record.sessionId}`, transcript);
           const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux', agents = await this.subagents(record, transcript, paths);
+          if (tmux) await this.terminalPrompt(record, status).catch(() => {});
           const suggestion = status === 'idle' && tmux ? await this.messaging.suggestion?.(record).catch(() => '') : '';
           sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, waitingOn: claudeWaitingOn(status, record, agents), parked: !!record.parkedJobId, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: status === 'working' && !hook?.compacting && turnTool(history.messages) || hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, images: tmux, interrupt: tmux, effort: tmux, fire: tmux || record.kind === 'interactive', clear: tmux && !record.parkedJobId }, suggestion, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
           for (const agent of agents) sessions.set(agent.id, agent);
@@ -112,6 +115,8 @@ export class ClaudeAdapter {
         }
         else { this.hooks.delete(id); this.store.removeSession(`claude:${id}`); }
       }
+      for (const id of this.terminalPrompts.keys()) if (!registrations.has(id)) this.dropTerminalPrompt(id);
+      for (const id of this.answeredPrompts.keys()) if (!registrations.has(id)) this.answeredPrompts.delete(id);
       this.sessions = sessions;
       this.registrations = registrations;
       this.owners = owners;
@@ -204,7 +209,7 @@ export class ClaudeAdapter {
         if (e.hook_event_name === 'Notification') { state.status = { permission_prompt: 'permission', idle_prompt: 'idle', elicitation_dialog: 'question' }[e.notification_type] || previous?.status || 'unknown'; state.detail = e.message || ''; }
         if (e.hook_event_name === 'SessionEnd') { this.ended(e.session_id, e.reason, envelope.tmux); this.hooks.delete(e.session_id); this.store.removeSession(`claude:${e.session_id}`); socket.end('{}\n'); return; }
         const request = claudeRequest(e);
-        if (request) state.status = request.view.kind;
+        if (request) { state.status = request.view.kind; this.dropTerminalPrompt(e.session_id); }
         this.hooks.set(e.session_id, state);
         if (!request) { socket.end('{}\n'); this.refresh().catch(() => {}); return; }
         sourceKey = `claude:${randomUUID()}`;
@@ -240,13 +245,35 @@ export class ClaudeAdapter {
     const latest = this.list().filter(session => session.cwd === cwd && !session.parentId).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     return this.owners.get(latest?.nativeId) || this.accounts[0];
   }
+  // A numbered dialog Claude draws with no hook behind it (EnterWorktree's permission-root check, for one) becomes a request
+  // answered with its number key in the tmux pane. Hook requests come first: Claude draws their dialog too. An answered
+  // dialog can stay on screen a moment, so the same one isn't offered again for a few seconds.
+  async terminalPrompt(record, status) {
+    const id = record.sessionId, current = this.terminalPrompts.get(id), answered = this.answeredPrompts.get(id);
+    const waiting = ['permission', 'question'].includes(status) || record.status === 'waiting' || !!record.waitingFor;
+    const hooked = this.store.list().some(request => request.sessionId === `claude:${id}` && request.id !== current?.requestId);
+    const dialog = waiting && !hooked ? await this.messaging.dialog(record) : null, key = dialog ? dialogKey(dialog) : null;
+    if (current?.key === key && this.store.list().some(request => request.id === current.requestId)) return;
+    this.dropTerminalPrompt(id);
+    if (!dialog || (answered?.key === key && Date.now() - answered.at < 5000)) return;
+    const source = `claude-tty:${randomUUID()}`, actions = dialog.options.map((label, i) => ({ value: String(i + 1), label: label.slice(0, 80), ...(i ? {} : { primary: true }) }));
+    const requestId = this.store.add({ provider: 'claude', sessionId: `claude:${id}`, kind: 'permission', title: dialog.question, details: dialog.details, actions }, async answer => {
+      await this.messaging.choose(await this.record(id, true), dialog, Number(answer.decision));
+      this.terminalPrompts.delete(id); this.answeredPrompts.set(id, { key, at: Date.now() });
+    }, source);
+    this.terminalPrompts.set(id, { key, source, requestId });
+  }
+  dropTerminalPrompt(sessionId) {
+    const current = this.terminalPrompts.get(sessionId);
+    if (current) { this.store.removeSource(current.source); this.terminalPrompts.delete(sessionId); }
+  }
   // The live registration, re-read so keys never reach a pane that changed hands.
-  async record(sessionId) {
+  async record(sessionId, answering = false) {
     const { record: previous, account } = this.registrations.get(sessionId) || {};
     if (!previous) throw fail('This Claude session is no longer available.', 409);
     const record = JSON.parse(await readFile(join(account.sessionsDir, `${previous.pid}.json`), 'utf8').catch(() => '{}'));
     if (record.sessionId !== sessionId || record.pid !== previous.pid || record.procStart !== previous.procStart) throw fail('This Claude session changed. Refresh before sending.', 409);
-    if (this.store.list().some(request => request.sessionId === `claude:${sessionId}`)) throw fail('Answer the pending question or permission first.', 409);
+    if (!answering && this.store.list().some(request => request.sessionId === `claude:${sessionId}`)) throw fail('Answer the pending question or permission first.', 409);
     return record;
   }
   async sendMessage(sessionId, body) {

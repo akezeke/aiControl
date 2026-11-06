@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ClaudeMessaging, spawnAgent, updateCodex } from '../server/claude-messaging.mjs';
+import { ClaudeMessaging, spawnAgent, updateCodex, terminalDialog } from '../server/claude-messaging.mjs';
 import { ClaudeAdapter } from '../server/claude.mjs';
 import { RequestStore, slashCommand } from '../server/requests.mjs';
 
@@ -490,4 +490,52 @@ test('force firing bypasses a shell block but still checks the live registration
   await writeFile(path, JSON.stringify({ ...record, sessionId: 'different' }));
   await assert.rejects(adapter.fire(record.sessionId, { force: true }), /changed/);
   assert.equal(fired, 1);
+});
+
+const worktreeDialog = ['● Agent finished', '────────────────', ' Tool use', ' │ Creates an isolated worktree', '╌╌╌╌╌╌╌╌╌╌', ' Entering worktree(/work/.worktrees/fix)', '╌╌╌╌╌╌╌╌╌╌',
+  ' │ permission-root relocation to "/work/.worktrees/fix" — a model-supplied worktree outside .claude/worktrees/', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. No', ' Esc to cancel · Tab to amend'].join('\n');
+
+test('a numbered dialog on Claude’s screen reads as its question, details and options', () => {
+  assert.deepEqual(terminalDialog(worktreeDialog), { question: 'Do you want to proceed?', options: ['Yes', 'No'],
+    details: 'Tool use\nCreates an isolated worktree\nEntering worktree(/work/.worktrees/fix)\npermission-root relocation to "/work/.worktrees/fix" — a model-supplied worktree outside .claude/worktrees/' });
+  // A long option wraps onto an indented row.
+  assert.deepEqual(terminalDialog(['────────', ' Bash command', '   npm test', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. Yes, and don’t ask again for npm test commands in', '      /work/project', '   3. No, and tell Claude what to do differently (esc)', '', ' Esc to cancel'].join('\n')).options,
+    ['Yes', 'Yes, and don’t ask again for npm test commands in /work/project', 'No, and tell Claude what to do differently (esc)']);
+  for (const screen of ['────\n❯ \n────', 'Steps:\n1. Build\n2. Test', 'Pick one\n❯ 1. Yes\n  3. No\nEsc to cancel', '────────\n❯ 1. Only\nEsc to cancel']) assert.equal(terminalDialog(screen), null);
+});
+
+test('a dialog Claude draws without a hook is offered from its tmux pane and answered with its number key', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'aicontrol-claude-dialog-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  await mkdir(join(dir, 'sessions'));
+  await writeFile(join(dir, 'sessions', `${record.pid}.json`), JSON.stringify({ ...paneRecord, cwd: '/work/project', status: 'busy' }));
+  let screen = worktreeDialog;
+  const keys = [], { adapter: messaging } = tmuxFixture({ tmux: async args => {
+    if (args[0] === 'send-keys') { keys.push(args.at(-1)); screen = '────\n❯ \n────'; }
+    return args[0] === 'display-message' ? '100\n' : args[0] === 'capture-pane' ? screen : '';
+  } });
+  const store = new RequestStore(), adapter = new ClaudeAdapter(store, '/unused.sock', { sessionsDir: join(dir, 'sessions'), alive: async () => true, messaging });
+  await adapter.refresh();
+  assert.equal(store.list().length, 0, 'a working session’s screen is not read');
+  adapter.hooks.set(record.sessionId, { status: 'permission', updatedAt: Date.now() });
+  await adapter.refresh(); await adapter.refresh();
+  const [request, ...more] = store.list();
+  assert.equal(more.length, 0);
+  assert.equal(request.title, 'Do you want to proceed?');
+  assert.deepEqual(request.actions, [{ value: '1', label: 'Yes', primary: true }, { value: '2', label: 'No' }]);
+  await store.respond(request.id, { decision: '1' });
+  assert.deepEqual(keys, ['1']);
+  await adapter.refresh();
+  assert.equal(store.list().length, 0);
+  // A dialog that changed since it was offered gets no key.
+  screen = worktreeDialog.replaceAll('fix', 'other');
+  await adapter.refresh();
+  screen = worktreeDialog.replaceAll('fix', 'third');
+  await assert.rejects(store.respond(store.list()[0].id, { decision: '1' }), e => e.status === 409);
+  assert.deepEqual(keys, ['1']);
+  // A hook request for the session takes over from the screen.
+  await adapter.refresh();
+  assert.equal(store.list()[0].title, 'Do you want to proceed?');
+  store.add({ sessionId: `claude:${record.sessionId}`, provider: 'claude', kind: 'permission', title: 'Allow Bash?', actions: [{ value: 'accept' }] }, () => {}, 'hook');
+  await adapter.refresh();
+  assert.deepEqual(store.list().map(r => r.title), ['Allow Bash?']);
 });

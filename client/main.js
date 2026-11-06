@@ -782,7 +782,7 @@ function renderSessionRequests(requests, session) {
       // Claude takes a reason with a denial; Enter in the field denies with it.
       const reason = request.denyMessage && el('input', 'deny-reason');
       const decide = value => respond(request, { decision: value, ...(value === 'decline' && reason?.value.trim() ? { message: reason.value.trim() } : {}) }, box, error);
-      for (const action of request.actions) { const b = button(action.label, action.value === 'accept' ? 'primary' : 'secondary', () => decide(action.value)); b.title = action.label; b.dataset.decision = action.value; b.disabled = !!state.error || request.sending; actions.append(b); }
+      for (const action of request.actions) { const b = button(action.label, action.value === 'accept' || action.primary ? 'primary' : 'secondary', () => decide(action.value)); b.title = action.label; b.dataset.decision = action.value; b.disabled = !!state.error || request.sending; actions.append(b); }
       box.append(error, actions);
       if (reason) { reason.type = 'text'; reason.maxLength = 2000; reason.placeholder = 'Deny with a reason…'; reason.setAttribute('aria-label', 'Reason for denying'); reason.disabled = !!state.error || request.sending; reason.onkeydown = event => { if (event.key === 'Enter' && reason.value.trim()) { event.preventDefault(); decide('decline'); } }; box.append(reason); }
     } else box.append(el('p', 'muted', request.note || 'Answer this request in the original client.'));
