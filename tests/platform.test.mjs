@@ -59,17 +59,16 @@ test('native process inspection recognizes this process and its command on Linux
   assert.ok((await listProcesses()).some(row => row.pid === process.pid && row.ppid === process.ppid));
 });
 
-test('port checks catch IPv4 and IPv6 listeners, not connections or similar port numbers', () => {
-  const output = `Active Internet connections (including servers)
-Proto Recv-Q Send-Q Local Address Foreign Address (state)
-tcp4 0 0 127.0.0.1.47841 *.* LISTEN
-tcp6 0 0 ::1.47842 *.* LISTEN
-tcp46 0 0 *.47843 *.* LISTEN
-tcp4 0 0 127.0.0.1.47844 127.0.0.1.60000 ESTABLISHED
-tcp4 0 0 127.0.0.1.478450 *.* LISTEN`;
-  const options = { platform: 'darwin', exec: (file, args) => { assert.equal(file, '/usr/sbin/netstat'); assert.deepEqual(args, ['-an', '-p', 'tcp']); return output; } };
-  for (const port of [47841, 47842, 47843]) assert.equal(portInUse(port, options), true);
-  for (const port of [47844, 47845]) assert.equal(portInUse(port, options), false);
+test('macOS port checks query only TCP listeners and distinguish no matches from errors', () => {
+  const options = { platform: 'darwin', exec: (file, args) => {
+    assert.equal(file, '/usr/sbin/lsof');
+    assert.deepEqual(args, ['-nP', '-iTCP:47841', '-sTCP:LISTEN', '-t']);
+    return '123\n';
+  } };
+  assert.equal(portInUse(47841, options), true);
+  assert.equal(portInUse(47841, { platform: 'darwin', exec: () => { throw Object.assign(new Error('no matches'), { status: 1, stdout: '', stderr: '' }); } }), false);
+  assert.throws(() => portInUse(47841, { platform: 'darwin', exec: () => { throw Object.assign(new Error('permission denied'), { status: 1, stdout: '', stderr: 'permission denied' }); } }), /permission denied/);
+  assert.throws(() => portInUse(47841, { platform: 'darwin', exec: () => { throw Object.assign(new Error('timed out'), { status: null, code: 'ETIMEDOUT' }); } }), /timed out/);
   assert.equal(portInUse(47841, { platform: 'linux', exec: () => 'LISTEN 0 128 [::1]:47841 [::]:*' }), true);
   assert.throws(() => portInUse(47841, { exec: () => { throw new Error('inspection failed'); } }), /inspection failed/);
 });
