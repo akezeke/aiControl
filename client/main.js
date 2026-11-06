@@ -242,7 +242,7 @@ const needsInput = session => ['permission', 'question'].includes(session.status
 // The sidebar's filter and project as a test on a session; null while it's all of them. The list shows who passes, the
 // office outlines them.
 const picked = () => state.filter === 'all' && !state.project ? null
-  : s => (!state.project || (s.cwd || s.project) === state.project) && (state.filter === 'all' || (state.filter === 'attention' ? needsInput(s) : s.status === state.filter));
+  : s => (!state.project || (s.cwd || s.project) === state.project) && (state.filter === 'all' || (state.filter === 'active' ? needsInput(s) || s.status === 'working' : state.filter === 'attention' ? needsInput(s) : s.status === state.filter));
 const providerName = provider => ({ codex: 'Codex', claude: 'Claude Code', opencode: 'OpenCode' })[provider] || provider;
 function age(time) { if (!time) return 'No activity time'; const seconds = Math.max(0, (Date.now() - time) / 1000); return seconds < 60 ? 'Just now' : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`; }
 
@@ -452,9 +452,10 @@ function renderData() {
   renderLost(document.querySelector('#lost'), state.snapshot.lost || [], state.snapshot.lostChecking || 0);
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
+  const active = state.filter === 'active', flat = active || state.grouping === 'flat';
   const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); scene?.pick(picked(), true); };
   // Desktop filters live here; the stat row below replaces them on phones.
-  syncList(document.querySelector('#navigation'), [['all', 'All sessions', 'grid', sessions.length], ['attention', 'Needs you', 'bell', count], ['working', 'Working', 'activity', working], ['idle', 'Idle', 'moon', idle]]
+  syncList(document.querySelector('#navigation'), [['all', 'All sessions', 'grid', sessions.length], ['active', 'Active', 'play', count + working], ['attention', 'Needs you', 'bell', count], ['working', 'Working', 'activity', working], ['idle', 'Idle', 'moon', idle]]
     .map(([value, label, glyph, number]) => [value, [value, label, glyph, number, state.filter === value && !state.project]]),
     ([value, label, glyph, number, active]) => { const b = button(label, `nav-item ${active ? 'active' : ''}`, setFilter(value), glyph); b.append(el('span', 'nav-count', number)); return b; });
   setProperty(document.querySelector('.feed-nav .nav-count'), 'textContent', working || '');
@@ -467,6 +468,7 @@ function renderData() {
     });
   syncList(document.querySelector('#stats'), [
     ['all', 'All', sessions.length, `${projects.size} projects on this computer`, ''],
+    ['active', 'Active', count + working, 'Needs you and working', ''],
     ['attention', 'Needs you', count, count ? 'A quick decision keeps things moving' : 'You’re all caught up', 'amber'],
     ['working', 'Working', working, 'Agents making progress', 'green'],
     ['idle', 'Idle', idle, 'Ready for the next task', 'gray'],
@@ -476,14 +478,17 @@ function renderData() {
     b.replaceChildren(el('span', 'stat-title', title), digits, el('span', 'stat-detail', detail)); return b;
   });
   for (const tab of document.querySelectorAll('[data-provider]')) { tab.classList.toggle('active', tab.dataset.provider === state.provider); tab.setAttribute('aria-pressed', String(tab.dataset.provider === state.provider)); }
-  for (const tab of document.querySelectorAll('[data-grouping]')) { tab.classList.toggle('active', tab.dataset.grouping === state.grouping); tab.setAttribute('aria-pressed', String(tab.dataset.grouping === state.grouping)); }
+  for (const tab of document.querySelectorAll('[data-grouping]')) {
+    const selected = tab.dataset.grouping === (flat ? 'flat' : 'project');
+    tab.classList.toggle('active', selected); tab.setAttribute('aria-pressed', String(selected));
+    tab.disabled = active; tab.title = active ? 'Active sessions are ordered by status' : '';
+  }
   const filterMenu = document.querySelector('#agent-filter-menu'); filterMenu.classList.toggle('filtered', state.provider !== 'all'); filterMenu.querySelector('summary').setAttribute('aria-label', `Session options: ${state.provider === 'all' ? 'All agents' : providerName(state.provider)}`);
   const focusedSession = document.activeElement?.classList.contains('session-card') ? document.activeElement.dataset.sessionId : null;
   const groups = document.querySelector('#groups');
   const pick = picked(), visible = sessions.filter(s => (!pick || pick(s)) && (state.provider === 'all' || s.provider === state.provider) && `${s.title} ${s.project} ${s.cwd} ${s.model}`.toLowerCase().includes(state.search.toLowerCase()));
   const visibleGroups = new Map(); for (const session of visible) { const key = session.cwd || session.project; if (!visibleGroups.has(key)) visibleGroups.set(key, []); visibleGroups.get(key).push(session); }
-  // Flat: one list in status order, with a project label on each card.
-  const flat = state.grouping === 'flat';
+  // Active always uses one status-ordered list so every session needing input comes first.
   const sorted = flat ? (visible.length ? [['', visible]] : []) : [...visibleGroups].sort(compareProjects);
   const before = flipPositions(groups);
   syncList(groups, visible.length ? sorted.map(([cwd]) => [cwd, null]) : [['empty', [state.filter === 'attention', sessions.length]]], data => {
@@ -502,13 +507,14 @@ function renderData() {
       const title = el('div', 'group-title'); title.append(el('h2', '', list[0].project), el('span', 'group-count', list.length));
       header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')), spawnButtons(cwd));
     }
-    // Subagents sit directly under their parent; orphans keep their own place.
+    // Outside Active, subagents sit directly under their parent; orphans keep their own place.
     const ordered = list.sort(compareSessions), ids = new Set(ordered.map(s => s.id));
     const withChildren = s => [s, ...ordered.filter(child => child.parentId === s.id).flatMap(withChildren)];
-    syncList(group.lastChild, ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren).map(session => {
+    const cards = active ? ordered : ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren);
+    syncList(group.lastChild, cards.map(session => {
       sessionsById.set(session.id, session);
       const lastMessage = session.messages?.at(-1);
-      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), waitingOn: session.waitingOn, detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
+      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, nested: !!session.parentId && !active, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && (active || !session.parentId) ? session.project : '', needs: needsInput(session), waitingOn: session.waitingOn, detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
         plan: planProgress(session), mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), compacting: compacting(session), unread: unread(session) }];
     }), renderCard);
   }
@@ -552,7 +558,7 @@ function sessionFacts(session) {
 const tokens = n => n >= 1e6 ? `${Number((n / 1e6).toFixed(1))}M` : `${Math.round(n / 1000)}k`;
 function chip(text, className, title) { const node = el('span', `chip ${className}`, text); if (title) node.title = title; return node; }
 function renderCard(session, previous) {
-  const card = el('button', `session-card ${session.needs ? 'needs-input' : ''} ${session.parentId ? 'subagent' : ''}`); card.type = 'button'; card.onclick = () => openPanel(session.id);
+  const card = el('button', `session-card ${session.needs ? 'needs-input' : ''} ${session.nested ? 'subagent' : ''}`); card.type = 'button'; card.onclick = () => openPanel(session.id);
   // Long card loops run on a page-wide clock, so a rebuilt card continues them instead of restarting.
   card.style.setProperty('--since-load', `${-Math.round(performance.now())}ms`); card.dataset.sessionId = session.id; card.dataset.status = session.status; card.setAttribute('aria-label', `${session.title}, ${providerName(session.provider)}, ${(statuses[session.status] || statuses.unknown)[0]}`);
   const mark = el('span', `agent-mark ${session.provider}`); mark.append(providerIcon(session.provider)); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
