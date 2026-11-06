@@ -48,6 +48,23 @@ async function connected(t, options, adapterOptions = {}) {
 }
 const message = (text, mode = 'send') => ({ text, mode, clientMessageId: randomUUID() });
 
+test('Codex subagents reference their parents by dashboard session ID after each refresh', async t => {
+  const { adapter, server } = await connected(t, { status: 'idle' });
+  server.startedThreads.push(
+    { ...server.thread, id: 'child-thread', parentThreadId: 'live-thread' },
+    { ...server.thread, id: 'nested-thread', parentThreadId: 'child-thread' },
+    { ...server.thread, id: 'other-thread', parentThreadId: null },
+  );
+  for (let i = 0; i < 2; i++) {
+    await adapter.refresh();
+    const sessions = new Map(adapter.list().map(session => [session.id, session]));
+    assert.equal(sessions.get('codex:child-thread').parentId, 'codex:live-thread');
+    assert.equal(sessions.get('codex:nested-thread').parentId, 'codex:child-thread');
+    assert.ok(!sessions.get('codex:live-thread').parentId);
+    assert.ok(!sessions.get('codex:other-thread').parentId);
+  }
+});
+
 test('model and effort updates use thread settings and native defaults without changing permissions', async t => {
   const { adapter, server } = await connected(t, { status: 'idle' });
   server.models = [{ id: 'new', model: 'new', displayName: 'New model', supportedReasoningEfforts: [{ reasoningEffort: 'high' }], defaultReasoningEffort: 'high' }];
