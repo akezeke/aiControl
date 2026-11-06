@@ -15,6 +15,7 @@ export const themes = [
   { id: 'simpsons', scheme: 'light', name: 'Springfield', color: '#86cbed' },
   { id: 'diablo', scheme: 'dark', name: 'Sanctuary', color: '#100d0b' },
   { id: 'heroes', scheme: 'dark', name: 'Heroes', color: '#172749' },
+  { id: 'zelda', scheme: 'dark', name: 'Zelda', color: '#183a29' },
   // The office replaces the list with a 3D scene; the chrome around it is paper pinned to a corkboard.
   { id: 'office', scheme: 'light', name: 'Office', color: '#dcc6a3' },
   // The bridge is a 3D scene too; its colours are chosen on the bridge itself.

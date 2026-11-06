@@ -13,3 +13,7 @@ test('radar contacts close in on the centre the longer they wait for you', () =>
   assert.ok(Math.abs(distance('c') - home('c') * .2) < 1e-9);
 });
 test('city has its own wording', () => { assert.equal(summary([{ status: 'working' }, { status: 'permission' }]).city, '1 WAITING · 1 BUILDING'); assert.equal(summary([]).city, 'ALL QUIET'); });
+test('Zelda status keeps waiting sessions visible alongside active quests', () => {
+  assert.equal(summary([{ status: 'working' }, { status: 'permission' }, { status: 'question' }]).zelda, '2 need you · 1 exploring');
+  assert.equal(summary([]).zelda, 'All is peaceful');
+});

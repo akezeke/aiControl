@@ -1,0 +1,142 @@
+/* A pocket overworld and the dark, gold-edged menus of a 16-bit adventure. */
+.theme-swatch.zelda { border: 0; border-radius: 0; background: url('/zelda-crest.svg') center / contain no-repeat; image-rendering: pixelated; }
+:root[data-theme=zelda] {
+  color-scheme: dark;
+  --display: 'Silkscreen', ui-monospace, monospace;
+  --font: 'Nunito', system-ui, sans-serif;
+  --bg: #12291d; --panel: #1b392a; --panel-2: #274b35; --sunken: #10251a;
+  --text: #fff2cf; --text-2: #e0dfbd; --text-3: #b7c9a6;
+  --line: #4b7049; --line-2: #b7a05c;
+  --accent: #f1d474; --accent-2: #ffe9a0; --accent-ink: #21351f; --accent-soft: #385539;
+  --ok: #a8e889; --ok-soft: #234a2e; --warn: #ffdd78; --warn-soft: #554726; --warn-line: #e9bd59; --danger: #ff9b8b; --danger-soft: #58302b;
+  --codex: #e7f4ce; --claude: #ffc58f; --claude-soft: #4e3829;
+  --radius: 2px; --radius-sm: 2px; --focus: #ffe89a;
+  --shadow: 0 3px 0 #0b1c13, inset 0 1px #78936155;
+  --shadow-lg: 0 0 0 3px #12291d, 0 0 0 5px #c3a95f, 0 12px 30px #0009;
+  --z-frame: inset 0 0 0 2px #19331f, inset 0 0 0 3px #9a8a51;
+
+  body { background: var(--bg); }
+  .brand-variant.zelda, .status-text.zelda { display: flex; }
+  .brand-mark { width: 38px; height: 38px; padding: 0; border-radius: 0; background: url('/zelda-crest.svg') center / contain no-repeat; image-rendering: pixelated; box-shadow: none; }
+  .brand-name { color: #f6dc88; font: 400 18px/1 var(--display); letter-spacing: -.04em; text-shadow: 2px 2px #112417; }
+  .sidebar { border-right: 4px solid #0a1e13; background: linear-gradient(90deg, #1e412b, #254d30 75%, #1c3d29); box-shadow: inset -3px 0 #8c8850; }
+  .sidebar .brand { margin-left: 3px; }
+  .sidebar-label { color: #c5d6a1; font: 400 10px var(--display); letter-spacing: 0; }
+  .nav-item { border: 1px solid transparent; border-radius: 2px; color: #e1e8c7; }
+  .nav-item:hover { background: #365d38; color: #fff4d0; }
+  .nav-item.active { border-color: #c3aa5c; background: #163622; color: #ffe49a; box-shadow: inset 0 0 0 1px #152819; }
+  .nav-count, .nav-item.active .nav-count { color: #e9e6c3; background: #10291a; }
+  .sidebar > .top-actions { border-color: #75905b; }
+  .workspace { position: relative; background: radial-gradient(ellipse at 82% 0, #315a36 0, transparent 43%), #12291d; }
+  .workspace::before { content: ''; position: fixed; pointer-events: none; image-rendering: pixelated; }
+  .topbar { background: #173321f2; border-bottom: 3px solid #8f804a; backdrop-filter: none; }
+  .main-content { position: relative; }
+  .page-heading h1 { color: #f9e4a4; font: 400 22px/1.3 var(--display); letter-spacing: -.04em; text-shadow: 2px 2px #0b1c13; }
+  .status-line { color: #c4e5a4; }
+  .status-text.zelda { display: block; }
+  .status-line::before { content: '◆'; color: #f2d173; font-size: 10px; }
+
+  /* A real session map: the landscape is decorative; the markers remain buttons. */
+  .theme-console { display: grid; gap: 5px; margin: 8px 0 14px; padding: 7px; border: 3px solid #b5a05a; background: #10291a; box-shadow: 0 0 0 2px #0b1d12, inset 0 0 0 1px #e5d086; }
+  .console-heading { display: flex; justify-content: space-between; padding: 2px 2px 1px; color: #f4df9f; font: 400 9px var(--display); }
+  .console-lamps, .console-power, .console-sweep, .console-vector svg, .console-signal { display: none; }
+  .console-screen { position: relative; height: 118px; overflow: hidden; border: 2px solid #0c1b11; background: #6e9d55; }
+  .console-vector { position: absolute; inset: 0; background: url('/zelda-overworld.webp') center / cover; image-rendering: pixelated; pointer-events: none; }
+  .console-contacts { position: absolute; inset: 0; }
+  .console-contact { position: absolute; width: 24px; height: 24px; padding: 0; transform: translate(-50%, -50%); border: 0; background: transparent; color: #e3e8d2; }
+  .console-contact::before { content: ''; position: absolute; inset: 7px; background: currentColor; border: 2px solid #192f1e; transform: rotate(45deg); box-shadow: 1px 1px #fff9; }
+  .console-contact[data-status=working] { color: #b9ff89; }
+  .console-contact:is([data-status=question], [data-status=permission]) { color: #ffe168; }
+  .console-contact[data-status=error] { color: #ff8070; }
+  .console-contact[data-tracked] { z-index: 1; outline: 2px solid #fff4be; outline-offset: -2px; }
+  .console-empty { position: absolute; inset: 0; display: grid; place-items: center; background: #132c1bd9; color: #f4df9f; font: 10px var(--display); }
+  .console-readout { display: flex; gap: 5px; min-width: 0; color: #dfe9c3; font-size: 10px; }
+  .console-track-label { flex: none; color: #f4df9f; font-weight: 800; }
+  .console-track-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .theme-console[data-disconnected=true] .console-readout { color: var(--danger); }
+  .theme-console[data-disconnected=true] .console-contacts { visibility: hidden; }
+
+  :is(.primary, .secondary, .quiet-button) { border: 2px solid #b3a05f; border-radius: 2px; box-shadow: 0 2px #0b1c13, inset 0 0 0 1px #19321e; font-weight: 700; }
+  .primary { background: #d9ba60; color: #1a321e; }
+  .primary:hover:not(:disabled) { background: #f4d983; }
+  :is(.secondary, .quiet-button):hover:not(:disabled) { background: #365b39; border-color: #f0da8b; color: #fff4d0; }
+  .theme-options, .filter-options, .login-card, .new-session-dialog { border: 3px solid #c5aa62; border-radius: 2px; background: #193725; box-shadow: var(--shadow-lg); }
+  .theme-choice[aria-pressed=true], .tab.active { background: #52663b; color: #fff0b5; }
+  .stat, .search, .usage-accounts, .empty { border: 2px solid #8d8953; border-radius: 2px; background: #1c3a29; box-shadow: var(--shadow); }
+  .stat.selected { border-color: #ebd27e; background: #d9ba60; color: #1a321e; }
+  .spend-panel { --spend-color: #e6c866; --spend-cache: #83d491; border: 1px solid #8d8953; border-radius: 2px; background: #153120; }
+  .spend-heading { border-color: #738453; }
+  .spend-theme-name::before { content: 'Rupee pouch'; }
+  .spend-emblem { background: url('/zelda-crest.svg') center / contain no-repeat; image-rendering: pixelated; }
+  .spend-bar, .spend-reserve, .spend-token-rail { border-radius: 0; }
+  .spend-reserve { height: 9px; background: #0c2014; }
+  .spend-reserve-fill { border-radius: 0; background: repeating-linear-gradient(90deg, #e8cd75 0 12px, #887a45 12px 14px); }
+  .group-heading { padding: 4px 8px; margin-inline: 0; background: #25462f; border-left: 3px solid #dec274; }
+  .group-title h2 { color: #f9e7af; font: 400 12px/1.4 var(--display); }
+  .group-count { color: #f9e7af; background: #10291a; }
+  .session-card { border: 2px solid #6f8050; border-radius: 2px; background: #1b392a; box-shadow: var(--shadow), var(--z-frame); }
+  .session-card:hover { border-color: #e5cc78; background: #254a31; box-shadow: var(--shadow), var(--z-frame); }
+  .session-card.needs-input { border-color: #eaca70; background: #34482e; box-shadow: inset 4px 0 #f4cf68, 0 3px #0b1c13; }
+  .agent-mark, .agent-mark.claude { border: 1px solid #9c995e; border-radius: 2px; }
+  .badge { border-radius: 2px; }
+  .badge.amber { border: 1px solid #dbbb66; }
+  .detail-panel { border-left: 3px solid #b9a35d; }
+  .chat-header, .chat-requests, .message-composer { background: #193725; border-color: #8e8551; }
+  .recent-message:not(.tool) { border: 2px solid #89915b; border-radius: 2px; box-shadow: 0 2px #0b1c13; }
+  .recent-message.user { border-color: #b2a15b; }
+  .message-text a { color: #ffe08a; }
+  .login-screen { background: linear-gradient(#10291ad9, #10291aeb), url('/zelda-overworld.webp') center / cover; }
+  .login-symbol { border: 2px solid #b3a05f; border-radius: 2px; }
+}
+@media (max-width: 1050px) {
+  :root[data-theme=zelda] .theme-console { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme=zelda] .console-contact { transition: none; }
+}
+
+/* Illustrated overworld and temple surfaces: the native controls stay above the art. */
+:root[data-theme=zelda] {
+  --temple: linear-gradient(#122b1dd9, #102619e8), url('/zelda-temple.webp') center / 480px auto;
+  .sidebar { background: var(--temple); border-right: 5px ridge #af9555; box-shadow: 4px 0 0 #0b1c13, 8px 0 15px #0008; }
+  .sidebar .brand { justify-content: center; padding: 2px 0 12px; border-bottom: 2px solid #a48a49; }
+  .sidebar .brand-variant.zelda { gap: 8px; }
+  .sidebar .brand-mark { width: 45px; height: 48px; }
+  .brand-name { font-size: 20px; color: #ffe28d; text-shadow: 2px 2px #152014, 0 0 8px #deba6170; }
+  .workspace { background: #193b25; }
+  .workspace::before { inset: 0 0 0 var(--sidebar-w); width: auto; height: auto; background: linear-gradient(90deg, #0c2117a6 0, #0c21176b 60%, #0c21172b), url('/zelda-overworld.webp') center / cover no-repeat; opacity: 1; mask-image: none; }
+  .main-content { max-width: 1080px; margin-left: 0; }
+  .page-heading h1 { padding: 8px 18px; border: 3px ridge #d2b56d; background: var(--temple); box-shadow: 2px 3px #091a10; }
+  .status-line { width: fit-content; padding: 3px 8px; background: #10281cdb; border: 1px solid #a49155; color: #f6e9bd; text-shadow: 1px 1px #07180d; }
+  .topbar { background: #142d20ed; }
+  .theme-console { padding: 8px; border: 4px ridge #d0b76c; background: var(--temple); box-shadow: 2px 3px #09180f, inset 0 0 0 1px #ead38c; }
+  .console-screen { height: 122px; border: 2px solid #d2ba77; box-shadow: 0 0 0 2px #0a1a10; }
+  .console-vector { background-image: url('/zelda-overworld.webp'); background-position: center; }
+  :is(.usage-accounts, .session-card, .theme-options, .filter-options, .login-card, .new-session-dialog, .spend-panel) { background: var(--temple); }
+  .usage-accounts { border: 4px ridge #c0a35c; box-shadow: 2px 3px #0a1a10; }
+  .session-card { grid-template-columns: 48px minmax(0, 1fr) auto; min-height: 74px; border: 3px ridge #ae9858; box-shadow: 2px 3px #0a1b11, inset 0 0 0 1px #092014; }
+  .session-card:hover { background: linear-gradient(#315833a8, #1c3c29cc), url('/zelda-temple.webp') center / 480px auto; border-color: #edd387; }
+  .session-card.needs-input { background: linear-gradient(#544b24c7, #353c22eb), url('/zelda-temple.webp') center / 480px auto; border-color: #f4d57b; box-shadow: inset 4px 0 #f4cf68, 2px 3px #0a1b11; }
+  .session-card.subagent { grid-template-columns: 34px minmax(0, 1fr) auto; }
+  .agent-mark, .agent-mark.claude, .agent-mark.opencode { width: 48px; height: 48px; border: 0; border-radius: 0; background: url('/zelda-portraits.webp') left center / 300% 100% no-repeat; image-rendering: pixelated; }
+  .agent-mark.claude { background-position: center; }
+  .agent-mark.opencode { background-position: right; }
+  .session-card.subagent .agent-mark { width: 34px; height: 34px; border-radius: 0; }
+  .group-heading { border: 3px ridge #bc9e5a; padding: 5px 10px; background: linear-gradient(90deg, #5c4f29, #8a7440 48%, #4c4929); box-shadow: 2px 2px #0a1b11; }
+  .group-title h2, .group-title .icon, .project-path { color: #fff0bc; text-shadow: 1px 1px #2e2c19; }
+  .group-count { border: 1px solid #d1ba79; color: #fff0bc; }
+  .detail-panel, .chat-header, .chat-requests, .message-composer { background: var(--temple); }
+  .recent-messages { background: linear-gradient(#0b2417df, #10271ae8), url('/zelda-overworld.webp') center / cover; }
+  .recent-message:not(.tool) { background: #173623f5; border: 3px ridge #aa9658; }
+  .recent-message.user { background: #3b5735f5; border-color: #d1b568; }
+  .login-screen { background: linear-gradient(#0d251a55, #0d251a9c), url('/zelda-overworld.webp') center / cover; }
+}
+:root[data-theme=zelda] .agent-mark > .provider-icon { position: absolute; right: -4px; bottom: -3px; width: 18px; height: 18px; filter: drop-shadow(0 1px 1px #000); }
+:root[data-theme=zelda] .session-card.subagent .agent-mark > .provider-icon { width: 15px; height: 15px; }
+@media (max-width: 640px) {
+  :root[data-theme=zelda] .workspace::before { inset: 0; background-position: 48% center; }
+  :root[data-theme=zelda] .session-card { grid-template-columns: 38px minmax(0, 1fr) auto; }
+  :root[data-theme=zelda] .session-card .agent-mark { width: 38px; height: 38px; }
+  :root[data-theme=zelda] .session-card.subagent { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  :root[data-theme=zelda] .session-card.subagent .agent-mark { width: 30px; height: 30px; }
+}

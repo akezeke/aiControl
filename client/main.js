@@ -6,6 +6,7 @@ import './theme-access.css';
 import './simpsons.css';
 import './diablo.css';
 import './heroes.css';
+import './zelda.css';
 import './bricks.css';
 import './backdrop.css';
 import './city-list.css';
@@ -220,7 +221,7 @@ function alertsMenu() {
 }
 // Each theme names the control room after its own computer; CSS shows the active one.
 wearColours(paletteFor(savedColour()));
-const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle', bricks: 'Brick Knights', nodes: 'Nodes' };
+const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', zelda: 'Zelda', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle', bricks: 'Brick Knights', nodes: 'Nodes' };
 function brand() {
   const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
   for (const [id, name] of Object.entries(brandNames)) {
