@@ -120,6 +120,13 @@ export function mountOffice(container, hooks) {
   const pickUp = body => { if (body.pos.distanceTo(player.position) <= REACH) props.grab(body); else player.walkTo(body.pos.clone().setY(0), () => props.grab(body), 0.7, true); };
   // The coffee machine: fills the mug if you're by it, else you walk over first.
   room.onCoffee = () => { if (!props.fill()) player.walkTo(props.machineSpot, () => props.fill(), 0.3, true); };
+  // Approach from the open side of the lounge, clear of the table and plant, before sitting.
+  room.onSofa = () => {
+    if (view.overview) return;
+    if (player.seated) { player.stand(); return; }
+    const approach = room.sofaApproach.clone(), sit = () => player.sit(room.sofaSeat, Math.PI);
+    if (player.position.clone().setY(0).distanceTo(approach) < 0.15) sit(); else player.walkTo(approach, sit);
+  };
   // The room grew with you in the kitchen: you and what's lying in there go along with its door.
   room.kitchen.moved = dz => { const { inside } = room.kitchen; if (inside(player.position)) { player.position.z += dz; player.target = null; } props.shift(inside, dz); };
   // The secret shelf's right book: pressed from where you stand if you can reach it, else you walk over first.
@@ -214,7 +221,7 @@ export function mountOffice(container, hooks) {
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE' && !menu.contains(event.target)) {
       event.preventDefault();
-      if (thrower().holding && !toggle?.userData.dropsHeld) { if (!event.repeat && startCharge()) keyed = true; } else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node, monitor.point); else if (board) office.readBoard(board); else if (toggle) toggle.userData.toggle(togglePoint); else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
+      if (thrower().holding && !toggle?.userData.dropsHeld) { if (!event.repeat && startCharge()) keyed = true; } else if (prop) pickUp(prop); else if (monitor) office.readScreen(monitor.id, monitor.node, monitor.point); else if (board) office.readBoard(board); else if (toggle) { if (!event.repeat || !toggle.userData.once) toggle.userData.toggle(togglePoint); } else if (hire) office.offerHire(hire, dot ? player.centre : mouse, true); else office.talkTo(aimed || office.nearest());
     }
     else if (event.code === 'KeyF' && !view.overview && !office.talking) { event.preventDefault(); if (!event.repeat) props.pour(true); }
   });
@@ -331,6 +338,11 @@ export function mountOffice(container, hooks) {
       // The fired cry at their desks, hands over their faces, then run out like that.
       for (const [id, at] of fired) if (Date.now() - at > VACANT_MS + 10_000) fired.delete(id); else office.statuses.set(id, { ...office.statuses.get(id), ...FIRED });
       room.sync(layout, office.statuses);
+      // The lounge follows the front right corner when the room grows.
+      if (before && player.seated) {
+        const dx = layout.room.width - before.width, dz = layout.room.depth - before.depth;
+        player.position.x += dx; player.position.z += dz; player.seated.x += dx; player.seated.z += dz;
+      }
       shots.sync(snapshot.sessions.filter(session => !session.parentId && layout.desks.has(session.id)));
       for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
       signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });

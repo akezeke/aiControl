@@ -53,7 +53,7 @@ export class Player {
     listen(document, 'keydown', event => {
       this.shift = event.shiftKey;
       if (!officeHasKeys(event) || this.overview) return;
-      if (keys[event.code] || turns[event.code]) { this.held.add(event.code); if (keys[event.code]) this.target = null; else this.keyLook = true; event.preventDefault(); }
+      if (keys[event.code] || turns[event.code]) { this.held.add(event.code); if (keys[event.code]) { this.stand(); this.target = null; } else this.keyLook = true; event.preventDefault(); }
       else if (event.code === 'Space' && sceneFocused(canvas)) { event.preventDefault(); this.jump(); }
     });
     listen(document, 'keyup', event => { this.shift = event.shiftKey; this.held.delete(event.code); });
@@ -116,6 +116,7 @@ export class Player {
   // No walking, on foot or by a click, and no jump. A walking key still down doesn't count afterwards.
   pin(on) {
     this.pinned = on; if (!on) return;
+    this.stand();
     this.target = null; this.height = this.rise = 0; this.position.y = EYE;
     for (const code of Object.keys(keys)) this.held.delete(code);
   }
@@ -134,18 +135,26 @@ export class Player {
   get aiming() { return this.locked || this.keyLook; }
   get centre() { const r = this.canvas.getBoundingClientRect(); return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; }
 
-  place(x, z, yaw) { this.position.set(x, EYE, z); this.yaw = yaw; }
+  place(x, z, yaw) { this.stand(); this.position.set(x, EYE, z); this.yaw = yaw; }
+  // The standing place is clear of furniture; return there before moving away from the seat.
+  sit(point, yaw) {
+    this.stand(); this.seated = this.position.clone().setY(EYE); this.target = this.flight = null;
+    this.height = this.rise = this.spin = 0; this.position.copy(point); this.yaw = yaw; this.pitch = -0.08;
+    for (const code of Object.keys(keys)) this.held.delete(code);
+  }
+  stand() { if (this.seated) { this.position.copy(this.seated); this.seated = null; } }
   // There at once, facing that way and level, whatever you were up to on the way.
   jumpTo(x, z, yaw) { this.target = this.flight = null; this.height = this.rise = this.spin = 0; this.pitch = -0.08; this.place(x, z, yaw); }
   face(point) { this.yaw = Math.atan2(point.x - this.position.x, point.z - this.position.z); }
   get forward() { return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
-  jump() { if (!this.pinned && !this.height && !this.rise && !this.flight) this.rise = JUMP; }
+  jump() { if (!this.pinned && !this.height && !this.rise && !this.flight) { this.stand(); this.rise = JUMP; } }
 
   // Walks to a floor point round the furniture (`route`), or straight there sliding along what's in the way if there's no way
   // through; `then` runs on arrival, or when stuck if `always`. The view turns to face the way until you look somewhere yourself.
   // Stopping short is of the last leg: through a desk, the end can be near long before you are. A new walk on the way keeps its pace.
   walkTo(point, then, stopShort = 0, always = false) {
     if (this.pinned) return;
+    this.stand();
     if (!this.target) this.pace = this.turning = 0;
     const start = this.position.clone().setY(0), way = rounded([start, ...(this.route?.(this.position, point) || [point]).map(at => at.clone().setY(0))], this.colliders(), this.room()).slice(1);
     const end = way.at(-1), leg = end.clone().sub(way.at(-2) ?? start);
@@ -154,6 +163,7 @@ export class Player {
 
   // Flies to a spot, turning to face `look` (clicking someone or a board) and tilting to `pitch`: quick and eased, with a small arc over the desks.
   flyTo(point, look, then, instant = false, pitch = -0.08) {
+    this.stand();
     const to = point.clone().setY(EYE), distance = this.position.distanceTo(to);
     this.target = null; this.height = this.rise = 0;
     this.spin = 0;

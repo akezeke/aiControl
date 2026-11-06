@@ -219,3 +219,25 @@ test('round the furniture the walk bends and the view turns without a jerk, and 
   assert.ok(kick < 30, `the view picks up its turns: ${kick.toFixed(1)} rad/s²`);
   assert.ok(last < 0.02, `and comes to a stop: ${last.toFixed(3)} m in its last frame`);
 });
+
+test('sitting on the sofa lowers the view; looking stays seated and walking stands at the approach', t => {
+  const { player, press, run } = walker(t, []);
+  player.sit(new THREE.Vector3(5.5, 1.05, 3), Math.PI);
+  assert.deepEqual(player.position.toArray(), [5.5, 1.05, 3]);
+  press('ArrowLeft'); run(0.1);
+  assert.equal(player.position.y, 1.05);
+  press('KeyW');
+  assert.deepEqual(player.position.toArray(), [5, EYE, 2]);
+  run(0.1);
+  assert.ok(player.position.distanceTo(new THREE.Vector3(5, EYE, 2)) > 0.1);
+});
+
+test('a click-to-walk or flight from the sofa starts at the standing place', t => {
+  const { player } = walker(t, []);
+  player.sit(new THREE.Vector3(5.5, 1.05, 3), Math.PI);
+  player.walkTo(new THREE.Vector3(7, 0, 2));
+  assert.deepEqual(player.position.toArray(), [5, EYE, 2]);
+  player.sit(new THREE.Vector3(5.5, 1.05, 3), Math.PI);
+  player.flyTo(new THREE.Vector3(7, 0, 2), new THREE.Vector3(8, 1, 2));
+  assert.deepEqual(player.flight.from.toArray(), [5, EYE, 2]);
+});

@@ -509,7 +509,10 @@ export function createRoom(scene, renderer) {
     // Lounge: a rug, a sofa against the front wall, an armchair, a low table, a lamp and a plant.
     const lx = width - 2.1;
     const lounge = rug(3.1, 2.5, '#f2c14e'); lounge.position.set(width - 1.85, 0.007, depth - 1.5); shell.add(lounge);
-    place(sofa(), lx, depth - 0.5, Math.PI); shadowUnder(lx, depth - 0.5, 2, 0.95);
+    const couch = place(sofa(), lx, depth - 0.5, Math.PI); shadowUnder(lx, depth - 0.5, 2, 0.95);
+    couch.userData.toggle = () => room.onSofa?.(); couch.userData.once = true;
+    room.sofaSeat = new THREE.Vector3(lx - 0.44, 1.05, depth - 0.55);
+    room.sofaApproach = new THREE.Vector3(lx - 1.45, 0, depth - 1.35);
     place(armchair(), width - 0.6, depth - 1.75, -Math.PI / 2); shadowUnder(width - 0.6, depth - 1.75, 0.9, 0.95);
     place(lowTable(), lx, depth - 1.65); shadowUnder(lx, depth - 1.65, 1.2, 0.7);
     place(floorLamp(), width - 0.38, depth - 0.38);

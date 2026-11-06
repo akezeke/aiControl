@@ -224,3 +224,18 @@ test('side-on a card still has an edge, in the same one mesh', t => {
 test("the kitchen's cutouts are still named for its plan", () => {
   assert.deepEqual([...new Set(flightBoxes().filter(b => /^cutout/.test(b.surface)).map(b => b.surface))], ['cutout-1', 'cutout-2', 'cutout-3', 'cutout-4']);
 });
+
+test('the sofa can be picked and approached in the office', t => {
+  noDocument(t);
+  for (const { width, depth, cellW } of REAL) {
+    const { scene, room } = standing(width, depth, cellW), approach = room.sofaApproach;
+    const grid = walkGrid(room.colliders, { width, depth });
+    assert.ok(findPath(grid, V(width / 2, 0, depth - 1.2), approach), 'the lounge is reachable');
+    assert.ok(!room.colliders.some(b => approach.x > b.min.x - 0.3 && approach.x < b.max.x + 0.3 && approach.z > b.min.z - 0.3 && approach.z < b.max.z + 0.3), 'there is room to stand');
+    scene.updateMatrixWorld(true);
+    const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
+    camera.position.set(width - 2.1, 1.5, depth - 3); camera.lookAt(width - 2.1, 0.5, depth - 0.5); camera.updateMatrixWorld();
+    const hit = pick({ clientX: 50, clientY: 50 }, { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) }, camera, scene);
+    assert.equal(hit?.kind, 'toggle', 'the sofa can be clicked');
+  }
+});
