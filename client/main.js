@@ -91,10 +91,16 @@ const unread = session => session.status === 'idle' && !session.parentId && (ses
 const liveRender = new LiveRender(() => renderData());
 const groupingKey = 'ai-control-grouping';
 const savedGrouping = () => { try { return localStorage.getItem(groupingKey) === 'flat' ? 'flat' : 'project'; } catch { return 'project'; } };
+const filterKey = 'ai-control-filter';
+const savedFilter = () => { try { const value = localStorage.getItem(filterKey); return ['all', 'active', 'attention', 'working', 'idle'].includes(value) ? value : 'all'; } catch { return 'all'; } };
+function selectFilter(value) {
+  state.filter = value;
+  try { localStorage.setItem(filterKey, value); } catch { /* per tab only */ }
+}
 // The office's own option, under the themes: outlines on everything, or only on what's pointed at or picked.
 const outlinesKey = 'ai-control-office-outlines';
 let outlined = (() => { try { return localStorage.getItem(outlinesKey) !== 'off'; } catch { return true; } })();
-const state = { csrf: '', snapshot: null, filter: 'all', project: '', provider: 'all', grouping: savedGrouping(), search: '', selected: null, error: '', lastActivity: Date.now() };
+const state = { csrf: '', snapshot: null, filter: savedFilter(), project: '', provider: 'all', grouping: savedGrouping(), search: '', selected: null, error: '', lastActivity: Date.now() };
 const navigation = new PanelNavigation(window, id => {
   if (!state.csrf) return;
   if (!id) { hidePanel(); return; }
@@ -453,7 +459,7 @@ function renderData() {
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
   const active = state.filter === 'active', flat = active || state.grouping === 'flat';
-  const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); scene?.pick(picked(), true); };
+  const setFilter = value => () => { selectFilter(value); state.project = ''; renderData(); scene?.pick(picked(), true); };
   // Desktop filters live here; the stat row below replaces them on phones.
   syncList(document.querySelector('#navigation'), [['all', 'All sessions', 'grid', sessions.length], ['active', 'Active', 'play', count + working], ['attention', 'Needs you', 'bell', count], ['working', 'Working', 'activity', working], ['idle', 'Idle', 'moon', idle]]
     .map(([value, label, glyph, number]) => [value, [value, label, glyph, number, state.filter === value && !state.project]]),
@@ -464,7 +470,7 @@ function renderData() {
     data => {
       if (!data) return el('span', 'no-projects', 'Projects appear with sessions');
       const [key, name, active, waiting] = data;
-      const b = button(name, `nav-item ${active ? 'active' : ''}`, () => { state.project = state.project === key ? '' : key; state.filter = 'all'; renderData(); scene?.pick(picked(), !!state.project); }, 'folder'); b.title = key; b.append(el('span', 'project-dot', waiting || '')); return b;
+      const b = button(name, `nav-item ${active ? 'active' : ''}`, () => { state.project = state.project === key ? '' : key; selectFilter('all'); renderData(); scene?.pick(picked(), !!state.project); }, 'folder'); b.title = key; b.append(el('span', 'project-dot', waiting || '')); return b;
     });
   syncList(document.querySelector('#stats'), [
     ['all', 'All', sessions.length, `${projects.size} projects on this computer`, ''],
