@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SessionActivity, compareSessions, compareProjects } from '../client/session-order.js';
+import { SessionActivity, compareSessions, compareProjects, recentlyActive } from '../client/session-order.js';
 
 const session = (id, status, updatedAt) => ({ id, status, updatedAt });
 const ids = sessions => sessions.toSorted(compareSessions).map(session => session.id);
@@ -82,4 +82,86 @@ test('new activity inside a status never reorders; a status change does', () => 
   assert.deepEqual(ids(activity.observe([session('a', 'working', 1900), session('b', 'working', 200)])), ['b', 'a']);
   now = 3000;
   assert.deepEqual(ids(activity.observe([session('a', 'question', 1900), session('b', 'working', 2500)])), ['a', 'b']);
+});
+
+test('recently active sessions expire one hour after stopping, even after polling and a reload', () => {
+  let now = 10_000;
+  const cache = storage(), activity = new SessionActivity({ storage: cache, now: () => now });
+  activity.observe([session('a', 'working', 100)]);
+  now = 20_000;
+  const [finished] = activity.observe([session('a', 'idle', 100)]);
+  assert.equal(recentlyActive(finished, now), true);
+  now = 20_000 + 3_599_999;
+  const [polled] = activity.observe([session('a', 'idle', now)]);
+  assert.equal(recentlyActive(polled, now), true);
+  const restored = new SessionActivity({ storage: cache, now: () => now });
+  const [reloaded] = restored.observe([session('a', 'idle', now)]);
+  assert.equal(recentlyActive(reloaded, now), true);
+  now++;
+  assert.equal(recentlyActive(reloaded, now), false);
+  assert.equal(recentlyActive(restored.observe([session('a', 'idle', now)])[0], now), false);
+});
+
+test('working or waiting again clears the recent section and the next stop starts a fresh hour', () => {
+  let now = 10_000;
+  const activity = new SessionActivity({ storage: storage(), now: () => now });
+  activity.observe([session('a', 'working', 100)]);
+  now = 20_000;
+  assert.equal(recentlyActive(activity.observe([session('a', 'idle', 100)])[0], now), true);
+  for (const status of ['working', 'question', 'permission']) {
+    now += 1000;
+    assert.equal(recentlyActive(activity.observe([session('a', status, 100)])[0], now), false);
+  }
+  now = 3_999_000;
+  activity.observe([session('a', 'working', now)]);
+  now = 4_000_000;
+  const [stopped] = activity.observe([session('a', 'error', 100)]);
+  assert.equal(recentlyActive(stopped, now), true);
+  now += 1000;
+  const [offline] = activity.observe([session('a', 'offline', now)]);
+  assert.equal(offline.inactiveSince, stopped.inactiveSince);
+  assert.equal(recentlyActive(offline, 7_600_000), false);
+});
+
+test('first-seen idle sessions use available activity time, never the time the dashboard opens', () => {
+  const now = 10_000_000, activity = new SessionActivity({ storage: storage(), now: () => now });
+  const observed = activity.observe([
+    session('recent', 'idle', now - 1000), session('old', 'idle', now - 3_600_000),
+    session('missing', 'idle'), session('unknown', 'offline', now), session('working', 'working', now),
+  ]);
+  assert.deepEqual(observed.filter(s => recentlyActive(s, now)).map(s => s.id), ['recent']);
+  const legacy = new SessionActivity({ storage: { getItem: () => JSON.stringify([['legacy', now - 2000]]) }, now: () => now });
+  assert.equal(recentlyActive(legacy.observe([session('legacy', 'idle')])[0], now), true);
+});
+
+test('returning to a hidden dashboard does not give an old completion a fresh hour', () => {
+  let now = 10_000;
+  const activity = new SessionActivity({ storage: storage(), now: () => now });
+  activity.observe([session('a', 'working', 100)]);
+  now = 8_000_000;
+  const [finished] = activity.observe([{ ...session('a', 'idle', now), messages: [{ role: 'assistant', timestamp: 20_000 }] }]);
+  assert.equal(recentlyActive(finished, now), false);
+});
+
+test('metadata and user messages after suspended polling cannot make an old stop recent', () => {
+  let now = 10_000;
+  const activity = new SessionActivity({ storage: storage(), now: () => now });
+  activity.observe([session('a', 'working', 100)]);
+  now = 8_000_000;
+  const [stopped] = activity.observe([{ ...session('a', 'idle', now), messages: [{ role: 'assistant', timestamp: 100 }, { role: 'user', timestamp: now }] }]);
+  assert.equal(recentlyActive(stopped, now), false);
+});
+
+test('a new assistant reply can reveal an unseen turn without metadata updates extending retention', () => {
+  let now = 10_000;
+  const cache = storage(), activity = new SessionActivity({ storage: cache, now: () => now });
+  activity.observe([{ ...session('a', 'idle', 100), messages: [{ role: 'assistant', timestamp: 100 }] }]);
+  now = 8_000_000;
+  const restored = new SessionActivity({ storage: cache, now: () => now });
+  const reply = { role: 'assistant', timestamp: now - 1000 };
+  const [finished] = restored.observe([{ ...session('a', 'idle', now), messages: [reply] }]);
+  assert.equal(recentlyActive(finished, now), true);
+  now += 3_599_000;
+  const [polled] = restored.observe([{ ...session('a', 'idle', now), messages: [reply, { role: 'user', timestamp: now }] }]);
+  assert.equal(recentlyActive(polled, now), false);
 });

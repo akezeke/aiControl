@@ -12,6 +12,11 @@ export function sessionPriority(session) {
   return 3;
 }
 
+export function recentlyActive(session, now = Date.now()) {
+  const stopped = timestamp(session.inactiveSince);
+  return sessionPriority(session) > 1 && stopped > 0 && now >= stopped && now - stopped < 3600_000;
+}
+
 // Within a status, order by when the session entered it, so ongoing activity
 // never reshuffles the list; cards move only when their status changes.
 const since = session => timestamp(session.statusSince ?? session.lastActivityAt);
@@ -35,7 +40,7 @@ export class SessionActivity {
       this.storage = storage ?? globalThis.sessionStorage;
       const saved = JSON.parse(this.storage?.getItem(storageKey) || '[]');
       if (Array.isArray(saved)) for (const entry of saved.slice(0, cacheLimit)) {
-        if (Array.isArray(entry) && typeof entry[0] === 'string' && timestamp(entry[1])) this.entries.set(entry[0], { at: timestamp(entry[1]) });
+        if (Array.isArray(entry) && typeof entry[0] === 'string' && (timestamp(entry[1]) || timestamp(entry[2]))) this.entries.set(entry[0], { at: timestamp(entry[1]), inactiveSince: timestamp(entry[2]) });
       }
     } catch { /* Ordering still works when browser storage is unavailable. */ }
   }
@@ -44,6 +49,7 @@ export class SessionActivity {
     let changed = false;
     const result = sessions.map(session => {
       const previous = this.entries.get(session.id);
+      const replyAt = Math.min(now, Math.max(0, ...(session.messages || []).filter(message => message.role === 'assistant' && !message.tool).map(message => timestamp(message.timestamp))));
       const reported = Math.max(timestamp(session.updatedAt),
         ...(session.messages || []).map(message => timestamp(message.timestamp)),
         ...(session.requests || []).map(request => timestamp(request.createdAt)));
@@ -52,16 +58,25 @@ export class SessionActivity {
         && sessionPriority(previous) < 3 && sessionPriority(session) < 3;
       const at = Math.max(previous?.at || 0, reported, transition ? now : 0);
       const statusSince = previous?.since && !(transition && sessionPriority(previous) !== sessionPriority(session)) ? previous.since : at;
-      if (!previous || previous.at !== at) changed = true;
-      this.entries.set(session.id, { at, status: session.status, since: statusSince });
-      return { ...session, lastActivityAt: at, statusSince };
+      // Freeze the end of an active spell. Polls, metadata updates and reconnects
+      // must not extend retention; unseen idle sessions use their last known activity.
+      // After suspended polling, prefer evidence of completion to the time we returned.
+      const stoppedAt = previous?.observedAt && now - previous.observedAt > 30_000
+        ? Math.min(now, Math.max(previous.observedAt, replyAt)) : now;
+      const inactiveSince = sessionPriority(session) < 2 ? 0
+        : previous?.status && sessionPriority(previous) < 2 ? stoppedAt
+          : previous?.inactiveSince ? Math.max(previous.inactiveSince, replyAt)
+            : session.status === 'idle' ? Math.min(now, replyAt || reported || previous?.at || 0) : 0;
+      if (!previous || previous.at !== at || previous.inactiveSince !== inactiveSince) changed = true;
+      this.entries.set(session.id, { at, status: session.status, since: statusSince, inactiveSince, observedAt: now });
+      return { ...session, lastActivityAt: at, statusSince, inactiveSince };
     });
     if (changed) {
       const recent = [...this.entries].sort((a, b) => b[1].at - a[1].at).slice(0, cacheLimit);
       this.entries = new Map(recent);
       // Keep only IDs/timestamps across refreshes, never messages or answers.
       // Status is deliberately not restored: an unseen completion isn't "now".
-      try { this.storage?.setItem(storageKey, JSON.stringify(recent.map(([id, entry]) => [id, entry.at]))); } catch { /* optional cache */ }
+      try { this.storage?.setItem(storageKey, JSON.stringify(recent.map(([id, entry]) => entry.inactiveSince ? [id, entry.at, entry.inactiveSince] : [id, entry.at]))); } catch { /* optional cache */ }
     }
     return result;
   }

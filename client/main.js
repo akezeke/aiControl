@@ -26,7 +26,7 @@ import { placeShots } from './history-shots.js';
 import { ImagePanZoom } from './image-pan-zoom.js';
 import { imageWindowUrl } from './image-window.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
-import { SessionActivity, compareSessions, compareProjects } from './session-order.js';
+import { SessionActivity, compareSessions, compareProjects, sessionPriority, recentlyActive } from './session-order.js';
 import { feedGroups, feedNow } from './feed.js';
 import { messagingUnavailableReason } from './messaging-status.js';
 import { ComposerInput, followKeyboard } from './composer-input.js';
@@ -248,7 +248,7 @@ const needsInput = session => ['permission', 'question'].includes(session.status
 // The sidebar's filter and project as a test on a session; null while it's all of them. The list shows who passes, the
 // office outlines them.
 const picked = () => state.filter === 'all' && !state.project ? null
-  : s => (!state.project || (s.cwd || s.project) === state.project) && (state.filter === 'all' || (state.filter === 'active' ? needsInput(s) || s.status === 'working' : state.filter === 'attention' ? needsInput(s) : s.status === state.filter));
+  : s => (!state.project || (s.cwd || s.project) === state.project) && (state.filter === 'all' || (state.filter === 'active' ? sessionPriority(s) < 2 || recentlyActive(s) : state.filter === 'attention' ? needsInput(s) : s.status === state.filter));
 const providerName = provider => ({ codex: 'Codex', claude: 'Claude Code', opencode: 'OpenCode' })[provider] || provider;
 function age(time) { if (!time) return 'No activity time'; const seconds = Math.max(0, (Date.now() - time) / 1000); return seconds < 60 ? 'Just now' : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago` : `${Math.floor(seconds / 86400)}d ago`; }
 
@@ -494,8 +494,9 @@ function renderData() {
   const groups = document.querySelector('#groups');
   const pick = picked(), visible = sessions.filter(s => (!pick || pick(s)) && (state.provider === 'all' || s.provider === state.provider) && `${s.title} ${s.project} ${s.cwd} ${s.model}`.toLowerCase().includes(state.search.toLowerCase()));
   const visibleGroups = new Map(); for (const session of visible) { const key = session.cwd || session.project; if (!visibleGroups.has(key)) visibleGroups.set(key, []); visibleGroups.get(key).push(session); }
-  // Active always uses one status-ordered list so every session needing input comes first.
-  const sorted = flat ? (visible.length ? [['', visible]] : []) : [...visibleGroups].sort(compareProjects);
+  // Current sessions stay in status order; recent ones follow below their own divider.
+  const sorted = active ? [['', visible.filter(s => sessionPriority(s) < 2)], ['recent', visible.filter(s => sessionPriority(s) > 1)]].filter(([, list]) => list.length)
+    : flat ? (visible.length ? [['', visible]] : []) : [...visibleGroups].sort(compareProjects);
   const before = flipPositions(groups);
   syncList(groups, visible.length ? sorted.map(([cwd]) => [cwd, null]) : [['empty', [state.filter === 'attention', sessions.length]]], data => {
     if (!data) { const group = el('section', 'project-group'); group.append(el('div', 'group-heading'), el('div', 'session-list')); return group; }
@@ -506,15 +507,22 @@ function renderData() {
   const sessionsById = new Map();
   for (const [cwd, list] of sorted) {
     const group = [...groups.children].find(node => node.dataset.key === cwd), header = group.firstChild;
-    const headerSignature = JSON.stringify([list[0].project, list.length, cwd, hireSignature(cwd)]);
-    header.hidden = flat;
-    if (!flat && header.dataset.sig !== headerSignature) {
+    const recent = active && cwd === 'recent';
+    group.classList.toggle('recent-group', recent);
+    const headerSignature = JSON.stringify([list[0].project, list.length, cwd, recent, hireSignature(cwd)]);
+    header.hidden = flat && !recent;
+    if (recent && header.dataset.sig !== headerSignature) {
+      header.dataset.sig = headerSignature;
+      const title = el('div', 'group-title'); title.append(el('h2', '', 'Recently active'), el('span', 'group-count', list.length));
+      const retention = el('span', 'project-path', '1h'); retention.title = 'Kept for one hour after activity stops';
+      header.replaceChildren(title, retention);
+    } else if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
       const title = el('div', 'group-title'); title.append(el('h2', '', list[0].project), el('span', 'group-count', list.length));
       header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')), spawnButtons(cwd));
     }
     // Outside Active, subagents sit directly under their parent; orphans keep their own place.
-    const ordered = list.sort(compareSessions), ids = new Set(ordered.map(s => s.id));
+    const ordered = list.sort(recent ? (a, b) => b.inactiveSince - a.inactiveSince || a.id.localeCompare(b.id) : compareSessions), ids = new Set(ordered.map(s => s.id));
     const withChildren = s => [s, ...ordered.filter(child => child.parentId === s.id).flatMap(withChildren)];
     const cards = active ? ordered : ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren);
     syncList(group.lastChild, cards.map(session => {
@@ -524,7 +532,10 @@ function renderData() {
         plan: planProgress(session), mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), compacting: compacting(session), unread: unread(session) }];
     }), renderCard);
   }
-  for (const card of groups.querySelectorAll('.session-card')) setProperty(card.querySelector('.session-age'), 'textContent', stateAge(sessionsById.get(card.dataset.key)));
+  for (const card of groups.querySelectorAll('.session-card')) {
+    const session = sessionsById.get(card.dataset.key);
+    setProperty(card.querySelector('.session-age'), 'textContent', active && sessionPriority(session) > 1 ? age(session.inactiveSince) : stateAge(session));
+  }
   flipFrom(groups, before);
   if (focusedSession && document.activeElement?.dataset.sessionId !== focusedSession) [...groups.querySelectorAll('[data-session-id]')].find(card => card.dataset.sessionId === focusedSession)?.focus({ preventScroll: true });
   const integrations = document.querySelector('#integrations'), integrationSignature = JSON.stringify(providers);
