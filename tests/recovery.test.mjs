@@ -107,6 +107,26 @@ test('a restart offers whoever was live before and has not come back', () => {
   assert.deepEqual(again.lost(200_000).map(entry => entry.id).sort(), ['claude:a', 'codex:t']);
 });
 
+test('after a restart, those from before are being checked for until they show up or are lost', () => {
+  const path = file();
+  new Recovery(path).update([claude('a'), claude('b', { pid: 200 }), codex('t'), claude('quiet', { pid: 300, messages: [] })], { now: 0 });
+  const after = new Recovery(path);
+  assert.equal(after.checking(1000), 3);
+  after.update([claude('b', { pid: 200 })], { now: 1000 });
+  assert.equal(after.checking(1000), 2);
+  after.update([claude('b', { pid: 200 })], { now: 1000 + GRACE_MS });
+  assert.equal(after.checking(1000 + GRACE_MS), 0);
+});
+
+test('one from before the restart whose process is gone is lost at once', () => {
+  const path = file();
+  new Recovery(path).update([claude('a'), claude('b', { pid: 200 }), codex('t')], { now: 0 });
+  const after = new Recovery(path);
+  after.update([], { now: 1000, alive: pid => pid === 200 });
+  assert.deepEqual(after.lost(1000).map(entry => entry.id), ['claude:a']);
+  assert.equal(after.checking(1000), 2);
+});
+
 test('resuming hides a session until it is live again or the resume has had its time', () => {
   const recovery = new Recovery(null);
   recovery.update([claude('a')], { now: 0 });

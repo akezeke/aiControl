@@ -43,7 +43,8 @@ export class Recovery {
     try { if (file) for (const entry of JSON.parse(readFileSync(file, 'utf8'))) if (entry?.id && entry.nativeId) this.#entries.set(entry.id, { ...entry, earlier: !entry.lostAt }); } catch { /* starts empty */ }
   }
   // `ended(entry)`: how the session said it ended, if it did. `typed(session)`: its last prompt from the prompt history.
-  update(sessions, { ended = () => '', typed = () => '', now = Date.now() } = {}) {
+  // `alive(pid)`: whether that process still runs.
+  update(sessions, { ended = () => '', typed = () => '', alive = () => true, now = Date.now() } = {}) {
     this.#startedAt ??= now;
     const live = new Set(), pids = new Set();
     for (const session of sessions) {
@@ -63,7 +64,8 @@ export class Recovery {
       if (CLEAN.has(ended(entry)) || (!entry.earlier && entry.pid && pids.has(`${entry.provider}:${entry.pid}`))) { this.#entries.delete(id); continue; }
       // Codex doesn't say why a thread went. One that closes while its app server stays up was closed in its terminal.
       if (entry.provider === 'codex' && !entry.offline && !entry.earlier) { this.#entries.delete(id); continue; }
-      if (now - Math.max(entry.seenAt, this.#startedAt) >= GRACE_MS) entry.lostAt = now;
+      // One from before the restart whose process is gone (a reboot, a crash) won't show up again: no need to wait for it.
+      if ((entry.earlier && entry.pid && !alive(entry.pid)) || now - Math.max(entry.seenAt, this.#startedAt) >= GRACE_MS) entry.lostAt = now;
     }
     this.#save(now);
   }
@@ -71,6 +73,8 @@ export class Recovery {
     return [...this.#entries.values()].filter(entry => entry.lostAt).sort((a, b) => b.seenAt - a.seenAt || a.title.localeCompare(b.title))
       .map(({ pid, earlier, offline, resumedAt, ...entry }) => ({ ...entry, resuming: !!resumedAt && now - resumedAt < RESUME_MS }));
   }
+  // How many from before the restart are still given their chance to show up, so a dashboard can say it's still looking.
+  checking(now = Date.now()) { let count = 0; for (const entry of this.#entries.values()) if (entry.earlier && !entry.lostAt && (entry.prompt || entry.reply) && now - entry.seenAt <= KEEP_MS) count++; return count; }
   // A lost session not already on its way back.
   get(id, now = Date.now()) { const entry = this.#entries.get(id); return entry?.lostAt && !(entry.resumedAt && now - entry.resumedAt < RESUME_MS) ? entry : null; }
   resumed(id, now = Date.now()) { const entry = this.#entries.get(id); if (entry) { entry.resumedAt = now; this.#save(now, true); } }

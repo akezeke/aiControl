@@ -113,6 +113,7 @@ const icons = {
   down: '<path d="m5 9 7 7 7-7"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   restore: '<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8m0-5v5h5"/><path d="M12 7v5l3 2"/>',
+  spinner: '<path d="M21 12a9 9 0 1 1-6.2-8.56"/>',
   play: '<path d="M7 4.5v15l12-7.5Z"/>',
   file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
@@ -448,7 +449,7 @@ function renderData() {
   document.querySelector('#machine').textContent = state.snapshot.machine;
   const usage = document.querySelector('#usage'), usageSignature = JSON.stringify([state.snapshot.usage, !!state.error, Math.floor(Date.now() / 60_000)]);
   if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error, editBudget }); }
-  renderLost(document.querySelector('#lost'), state.snapshot.lost || []);
+  renderLost(document.querySelector('#lost'), state.snapshot.lost || [], state.snapshot.lostChecking || 0);
   renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
   const setFilter = value => () => { state.filter = value; state.project = ''; renderData(); scene?.pick(picked(), true); };
@@ -1405,18 +1406,28 @@ function toggleAccountMenu(control, cwd, accounts) {
 // Sessions that went without a goodbye (server/recovery.mjs): what each was last asked, said and doing, to resume in tmux or let go.
 const lostStates = { working: 'was working', permission: 'needed approval', question: 'asked you', idle: 'idle', error: 'error' };
 let lostOpen = true;
-function renderLost(section, lost) {
-  const signature = JSON.stringify([lost, !!state.error, Math.floor(Date.now() / 60_000)]);
+// After a restart, sessions from before get a moment to show up before they count as lost: `checking` says how many are
+// still awaited, so an empty list right after a reboot doesn't look like nothing is coming.
+function renderLost(section, lost, checking = 0) {
+  const signature = JSON.stringify([lost, checking, !!state.error, Math.floor(Date.now() / 60_000)]);
   if (section.dataset.sig === signature) return;
-  section.dataset.sig = signature; section.hidden = !lost.length;
-  if (!lost.length) { section.replaceChildren(); return; }
+  section.dataset.sig = signature; section.hidden = !lost.length && !checking;
+  if (section.hidden) { section.replaceChildren(); return; }
+  const looking = el('span', 'lost-checking');
+  looking.append(icon('spinner'), el('span', '', lost.length ? `checking ${checking}` : `Checking ${checking} earlier session${checking > 1 ? 's' : ''}…`));
+  looking.title = 'Open before the restart; any that don’t come back can be resumed here';
+  const details = el('details');
+  if (!lost.length) {
+    const summary = el('summary', 'lost-summary waiting'); summary.onclick = event => event.preventDefault(); summary.append(looking);
+    details.append(summary); section.replaceChildren(details); return;
+  }
+  details.open = lostOpen; details.ontoggle = () => { lostOpen = details.open; };
   const ready = lost.filter(entry => !entry.resuming).map(entry => entry.id);
-  const details = el('details'); details.open = lostOpen; details.ontoggle = () => { lostOpen = details.open; };
   const summary = el('summary', 'lost-summary'); summary.title = 'Ended without exiting: a crash, a killed tmux or a shutdown';
   const actions = el('span', 'lost-actions');
   if (ready.length > 1) actions.append(lostButton('Resume all', 'play', ready, 'resume', `Resume ${ready.length} in tmux`));
   actions.append(lostButton('', 'close', lost.map(entry => entry.id), 'dismiss', 'Dismiss all'));
-  summary.append(icon('restore'), el('strong', '', `${lost.length} lost`), el('span', 'lost-when', age(lost[0].seenAt)), actions);
+  summary.append(icon('restore'), el('strong', '', `${lost.length} lost`), el('span', 'lost-when', age(lost[0].seenAt)), ...checking ? [looking] : [], actions);
   const list = el('ul', 'lost-list');
   for (const entry of lost) {
     const row = el('li', `lost-row${entry.resuming ? ' resuming' : ''}`), main = el('div', 'lost-main'), head = el('div', 'lost-head');

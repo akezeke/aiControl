@@ -56,7 +56,7 @@ export async function startServer({ host, hostname, tls = null }) {
   const prompts = new PromptHistory(accounts.map(({ dir }) => join(dir, 'history.jsonl')));
   const recover = async () => {
     await prompts.refresh();
-    recovery.update([...codex.list(), ...claude.list()], { ended: entry => entry.provider === 'claude' ? claude.ending(entry.nativeId) : '', typed: session => session.provider === 'claude' ? prompts.get(session.nativeId) : '' });
+    recovery.update([...codex.list(), ...claude.list()], { ended: entry => entry.provider === 'claude' ? claude.ending(entry.nativeId) : '', typed: session => session.provider === 'claude' ? prompts.get(session.nativeId) : '', alive: pid => claude.running(pid) });
   };
   const currentSessions = () => {
     const live = [...codex.list(), ...claude.list(), ...opencode.list()];
@@ -65,7 +65,7 @@ export async function startServer({ host, hostname, tls = null }) {
   };
   const snapshot = () => {
     const sessions = currentSessions();
-    return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
+    return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), lostChecking: recovery.checking(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -154,7 +154,9 @@ export async function startServer({ host, hostname, tls = null }) {
   for (const { poller } of claudeUsage) poller.start();
   push.update(currentSessions()).catch(error => console.error('[Push]', error.message));
   const pushing = setInterval(() => push.update(currentSessions()).catch(error => console.error('[Push]', error.message)), 3000);
-  const recovering = setInterval(() => recover().catch(error => console.error('[Recovery]', error.message)), 4000);
+  // At once, so sessions a reboot took show up as lost without waiting for the first tick.
+  const recoverNow = () => recover().catch(error => console.error('[Recovery]', error.message));
+  recoverNow(); const recovering = setInterval(recoverNow, 4000);
   // npm start polls for this file; write then rename so it never reads a partial file.
   await writeFile(join(dataDir, 'server.json.tmp'), JSON.stringify({ pid: process.pid, url: origin, host, port, startedAt: new Date().toISOString() }), { mode: 0o600 });
   await rename(join(dataDir, 'server.json.tmp'), join(dataDir, 'server.json'));

@@ -6,6 +6,12 @@
 .lost-summary > .icon { flex: none; }
 .lost-summary strong { font-weight: 650; }
 .lost-when { color: var(--text-3); }
+.lost-summary.waiting { cursor: default; }
+.lost-checking { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); }
+.lost-summary.waiting .lost-checking { color: inherit; }
+.lost-checking .icon { width: 15px; height: 15px; }
+@media (prefers-reduced-motion: no-preference) { .lost-checking .icon { animation: lost-spin 1s linear infinite; } }
+@keyframes lost-spin { to { rotate: 1turn; } }
 .lost-summary .lost-actions { margin-left: auto; }
 .lost-actions { display: flex; flex: none; gap: 2px; }
 .lost-actions .quiet-button { min-height: 30px; padding: 0 8px; }
