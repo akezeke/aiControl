@@ -4,6 +4,7 @@ import { bayer, coverLayout, findDripSites, hash, maskPixels } from '../client/b
 import { createPainter as heroes } from '../client/backdrop/heroes.js';
 import { createPainter as diablo } from '../client/backdrop/diablo.js';
 import { createPainter as city } from '../client/backdrop/city.js';
+import { createPainter as zelda } from '../client/backdrop/zelda.js';
 import { CRANES, H as CITY_H, W as CITY_W, WELDS, drawStill, towerLights } from '../client/backdrop/city-still.js';
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
@@ -80,6 +81,21 @@ for (const [name, create, width, height] of [['heroes', heroes, 418, 236], ['dia
     assert.doesNotThrow(() => { frame(ctx, 1); frame(ctx, 2); });
   });
 }
+
+test('Zelda water and waterfalls change with time and stay within the picture', () => {
+  const sample = solid(418, 236, [30, 65, 35]);
+  paint(sample, 100, 18, 35, 70, [190, 220, 245]);
+  paint(sample, 100, 90, 200, 60, [25, 100, 205]);
+  const frame = zelda(sample), a = recorder(), b = recorder();
+  frame(a.ctx, 1); frame(b.ctx, 2);
+  assert.ok(a.calls.length > 5);
+  assert.notDeepEqual(a.calls, b.calls);
+  for (const c of [...a.calls, ...b.calls]) {
+    assert.ok([c.x, c.y, c.w, c.h].every(Number.isFinite));
+    assert.ok(c.alpha >= 0 && c.alpha <= 1);
+    assert.ok(c.x >= 0 && c.y >= 0 && c.x + c.w <= sample.w && c.y + c.h <= sample.h);
+  }
+});
 
 test('the city wallpaper is drawn edge to edge, with everything the painter moves on it', () => {
   const data = new Uint8ClampedArray(CITY_W * CITY_H * 4); drawStill(data);

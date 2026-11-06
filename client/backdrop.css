@@ -5,10 +5,17 @@
 #pixel-backdrop::after { content: ''; position: absolute; inset: 0; }
 :root[data-theme=heroes] #pixel-backdrop { display: block; background-image: url('/heroes-bg.webp'); }
 :root[data-theme=heroes] #pixel-backdrop::after { background: linear-gradient(90deg, #07102466, #07102422 65%, #07102408); }
+:root[data-theme=zelda] #pixel-backdrop { display: block; background-image: url('/zelda-overworld.webp'); }
+:root[data-theme=zelda]:has(.shell) #pixel-backdrop { left: var(--sidebar-w); }
+:root[data-theme=zelda] #pixel-backdrop::after { background: linear-gradient(90deg, #0c2117a6, #0c21176b 60%, #0c21172b); }
+:root[data-theme=zelda] .workspace { background: transparent; }
+:root[data-theme=zelda] .workspace::before { display: none; }
+:root[data-theme=zelda] .login-screen { background: transparent; }
 :root[data-theme=diablo] #pixel-backdrop { display: block; background-image: url('/diablo-bg.webp'); }
 :root[data-theme=diablo] #pixel-backdrop::after { background: linear-gradient(#0b07052b, #0b07054d); }
 /* Metropolis shows its building site behind the list only: its scene covers everything else. */
 :root[data-theme=city]:is([data-scene-list], [data-scene-fallback]) #pixel-backdrop { display: block; background-image: url('/city-bg.png'); background-position: center bottom; }
 :root[data-theme=city] #pixel-backdrop::after { background: linear-gradient(#0d0e1100, #0d0e1140); }
 @media (max-width: 640px) { :root[data-theme=heroes] #pixel-backdrop { background-position: 78% center; } }
+@media (max-width: 640px) { :root[data-theme=zelda]:has(.shell) #pixel-backdrop { left: 0; background-position: 48% center; } }
 @media (max-width: 640px) { :root[data-theme=city] #pixel-backdrop { background-position: 24% bottom; } }

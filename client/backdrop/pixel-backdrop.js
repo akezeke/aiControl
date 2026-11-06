@@ -5,6 +5,7 @@ import { coverLayout } from './pixels.js';
 // and a painter moves the things the picture already shows. It sits behind the interface and takes no input.
 const looks = {
   heroes: { src: '/heroes-bg.webp', grid: 4, painter: () => import('./heroes.js') },
+  zelda: { src: '/zelda-overworld.webp', grid: 4, painter: () => import('./zelda.js') },
   diablo: { src: '/diablo-bg.webp', grid: 3, painter: () => import('./diablo.js') },
   city: { src: '/city-bg.png', grid: 1, painter: () => import('./city.js') },
 };

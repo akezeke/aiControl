@@ -15,7 +15,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Account usage limits, notifications and sounds when a session needs you.
 - OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets, in every theme: a Bridge console row, a Metropolis plant, a Fantasy treasury and a line on the Office whiteboard.
 - Sessions lost to a crash, a killed tmux or a shutdown come back with their last prompt and reply, to resume in a click.
-- Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting. Heroes, Sanctuary and Metropolis have animated pixel wallpapers: waving flags and waterfalls, guttering candles and dripping blood, cranes and welders working through the night.
+- Light, dark and themed interfaces, including a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting. Heroes, Zelda, Sanctuary and Metropolis have animated pixel wallpapers: waterfalls and rivers, waving flags, guttering candles, dripping blood, cranes and welders.
 - Brick Knights: a toy castle built live in 3D, one scene where every wall, tray, button and meter is real brick geometry on one grid and each label is printed on its brick, so they scroll, press and arrive together. A dragon crosses the keep, minifigures mark sessions and the castle gate opens at start-up.
 - A pixel-art Metropolis where each project is a neighbourhood and each session a building that grows while it runs.
 - Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.
@@ -91,9 +91,13 @@ npm run build
 | --- | --- | --- |
 | ![MU/TH/UR](docs/screenshots/mother-overview.webp) | ![EVA](docs/screenshots/eva-overview.webp) | ![Office](docs/screenshots/office-overview.webp) |
 
-| Springfield | Sanctuary | Heroes |
-| --- | --- | --- |
-| ![Springfield](docs/screenshots/springfield-overview.webp) | ![Sanctuary](docs/screenshots/diablo-overview.webp) | ![Heroes](docs/screenshots/heroes-opencode.webp) |
+| Springfield | Sanctuary |
+| --- | --- |
+| ![Springfield](docs/screenshots/springfield-overview.webp) | ![Sanctuary](docs/screenshots/diablo-overview.webp) |
+
+| Heroes | Zelda |
+| --- | --- |
+| ![Heroes](docs/screenshots/heroes-opencode.webp) | ![Zelda](docs/screenshots/zelda-overview.webp) |
 
 | Bridge | Bridge, on alert | Bridge's list |
 | --- | --- | --- |

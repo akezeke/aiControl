@@ -1,0 +1,6 @@
+Assets: client/public/zelda-frame.webp and client/public/zelda-trim.webp
+Generated with the built-in imagegen tool and resized to 256px square and 320px wide WebP, respectively. CSS uses the artwork as nine-slice borders without filling the center.
+
+Frame prompt: A single square, straight-on symmetrical nine-slice frame for a classic 16-bit Zelda-style interface; antique gold, carved forest-green stone, vines, rivets, triangular motifs and emerald corner gems. Straight continuous edges, ornate corners, flat dark green center, no text or perspective.
+
+Trim prompt: A slim nine-slice frame for small adventure-game buttons and rows; gold and dark-green bronze bevel, emerald corner jewels, repeatable geometric engraving, crisp SNES pixel art, flat dark green center, no text or perspective.

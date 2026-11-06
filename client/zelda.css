@@ -140,3 +140,33 @@
   :root[data-theme=zelda] .session-card.subagent { grid-template-columns: 30px minmax(0, 1fr) auto; }
   :root[data-theme=zelda] .session-card.subagent .agent-mark { width: 30px; height: 30px; }
 }
+
+/* Nine-slice pixel art keeps the corner jewels crisp on panels of any size.
+   The dark interiors remain native CSS, so text and status treatments stay legible. */
+:root[data-theme=zelda] {
+  --zelda-frame: url('/zelda-frame.webp') 15% / 20px / 2px round;
+  --zelda-trim: url('/zelda-trim.webp') 15% 10% / 11px / 1px round;
+
+  .sidebar { border: 7px solid transparent; border-image: var(--zelda-frame); }
+  .theme-console, .usage-accounts, .login-card, .new-session-dialog, .theme-options, .filter-options {
+    border: 8px solid transparent; border-image: var(--zelda-frame); background-clip: padding-box; box-shadow: 3px 4px #07170ecc;
+  }
+  .theme-console { padding: 10px; }
+  .usage-accounts { padding: 8px; }
+  .page-heading h1 { border: 7px solid transparent; border-image: var(--zelda-trim); background-clip: padding-box; }
+  .group-heading { border: 6px solid transparent; border-image: var(--zelda-trim); background-clip: padding-box; }
+  .session-card, .session-card.subagent { border: 6px solid transparent; border-image: var(--zelda-trim); background-clip: padding-box; box-shadow: 2px 3px #0a1b11; }
+  .session-card:hover { box-shadow: 0 0 0 1px #f6dd8c, 2px 4px #0a1b11; }
+  .session-card.needs-input { box-shadow: inset 5px 0 #f4cf68, 0 0 0 1px #ffe39a, 2px 3px #0a1b11; }
+  .session-card.needs-input:hover { box-shadow: inset 5px 0 #f4cf68, 0 0 0 2px #ffe39a, 2px 4px #0a1b11; }
+  :is(.primary, .secondary, .quiet-button, .stat, .search) { border: 5px solid transparent; border-image: var(--zelda-trim); background-clip: padding-box; }
+  :is(.primary, .secondary, .quiet-button, .stat):hover:not(:disabled) { box-shadow: 0 0 0 1px #ffeaa5, 0 2px #0b1c13; }
+  .search:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .recent-message:not(.tool):not(.notice) { border: 6px solid transparent; border-image: var(--zelda-trim); background-clip: padding-box; }
+  .spend-panel { border: 5px solid transparent; border-image: var(--zelda-trim); background-clip: padding-box; }
+}
+@media (max-width: 640px) {
+  :root[data-theme=zelda] .usage-accounts { padding: 4px; }
+  :root[data-theme=zelda] .group-heading { padding-inline: 7px; }
+  :root[data-theme=zelda] .session-card, :root[data-theme=zelda] .session-card.subagent { border-width: 5px; }
+}
