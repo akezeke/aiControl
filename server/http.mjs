@@ -17,7 +17,7 @@ async function body(req, limit = 64 * 1024) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -56,8 +56,12 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
       if (path === '/api/password' && req.method === 'POST') {
         const data = await body(req);
         try { await auth.change(data.current, data.next, req.socket.remoteAddress); } catch (error) { throw fail(error.message, error.status === 401 ? 400 : error.status || 400); }
+        if (push) await push.syncCredential();
         res.setHeader('Set-Cookie', auth.cookie('', 0)); json(res, 200, { ok: true }); return;
       }
+      if (path === '/api/push/key' && req.method === 'GET') { if (!push) throw fail('Push notifications are unavailable.', 503); json(res, 200, { publicKey: push.publicKey }); return; }
+      if (path === '/api/push/subscribe' && req.method === 'POST') { if (!push) throw fail('Push notifications are unavailable.', 503); await push.subscribe(await body(req)); json(res, 200, { ok: true }); return; }
+      if (path === '/api/push/unsubscribe' && req.method === 'POST') { if (!push) throw fail('Push notifications are unavailable.', 503); const data = await body(req); await push.unsubscribe(data.endpoint); json(res, 200, { ok: true }); return; }
       if (path === '/api/snapshot' && req.method === 'GET') { json(res, 200, snapshot(), req); return; }
       if (path === '/api/usage/opencode/budget' && req.method === 'POST') {
         if (!budget) throw fail('Spend budgets are unavailable.', 503);

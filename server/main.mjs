@@ -24,6 +24,7 @@ import { CityTowers } from './towers.mjs';
 import { Battlefields } from './battlefields.mjs';
 import { Recovery, resumeArgs } from './recovery.mjs';
 import { PromptHistory } from './prompt-history.mjs';
+import { PushNotifications } from './push.mjs';
 import { root, authFile, dataDir, hookSocket, port, claudeAccounts, readSettings } from './config.mjs';
 
 export async function startServer({ host, hostname, tls = null }) {
@@ -33,6 +34,7 @@ export async function startServer({ host, hostname, tls = null }) {
   const auth = new Auth(authFile, { secure: !!tls });
   const loginsFile = join(dataDir, 'logins.json');
   auth.restore(loginsFile);
+  const push = await new PushNotifications(join(dataDir, 'push.json'), { credentialFile: authFile }).load();
   const store = new RequestStore(async entry => { await appendFile(join(dataDir, 'decisions.jsonl'), JSON.stringify(entry) + '\n', { mode: 0o600 }); });
   const codex = new CodexAdapter(store);
   const accounts = claudeAccounts();
@@ -56,9 +58,13 @@ export async function startServer({ host, hostname, tls = null }) {
     await prompts.refresh();
     recovery.update([...codex.list(), ...claude.list()], { ended: entry => entry.provider === 'claude' ? claude.ending(entry.nativeId) : '', typed: session => session.provider === 'claude' ? prompts.get(session.nativeId) : '' });
   };
-  const snapshot = () => {
+  const currentSessions = () => {
     const live = [...codex.list(), ...claude.list(), ...opencode.list()];
     const sessions = mergeSessions([...live, ...launches.list().filter(launch => !live.some(session => session.id === launch.id))], store.list());
+    return sessions;
+  };
+  const snapshot = () => {
+    const sessions = currentSessions();
     return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
   };
   const messageTarget = id => {
@@ -133,7 +139,7 @@ export async function startServer({ host, hostname, tls = null }) {
     },
     dismiss: ids => { recovery.dismiss(ids); return { ok: true }; },
   };
-  const handler = createHandler({ auth, store, snapshot, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
+  const handler = createHandler({ auth, store, snapshot, push, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {
@@ -146,6 +152,8 @@ export async function startServer({ host, hostname, tls = null }) {
   codex.start();
   opencode.start();
   for (const { poller } of claudeUsage) poller.start();
+  push.update(currentSessions()).catch(error => console.error('[Push]', error.message));
+  const pushing = setInterval(() => push.update(currentSessions()).catch(error => console.error('[Push]', error.message)), 3000);
   const recovering = setInterval(() => recover().catch(error => console.error('[Recovery]', error.message)), 4000);
   // npm start polls for this file; write then rename so it never reads a partial file.
   await writeFile(join(dataDir, 'server.json.tmp'), JSON.stringify({ pid: process.pid, url: origin, host, port, startedAt: new Date().toISOString() }), { mode: 0o600 });
@@ -155,7 +163,7 @@ export async function startServer({ host, hostname, tls = null }) {
   async function close() {
     if (closing) return; closing = true;
     auth.persist(loginsFile);
-    clearInterval(recovering); launches.stop(); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
+    clearInterval(recovering); clearInterval(pushing); launches.stop(); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
     await closeServers();
     await unlink(join(dataDir, 'server.json')).catch(() => {});
   }

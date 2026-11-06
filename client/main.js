@@ -41,7 +41,7 @@ import { hireChoices } from './hire.js';
 import { agentSettings } from './agent-settings.js';
 import { budgetDialog } from './spend.js';
 import { createFolderField, hireCaret, hireRows } from './scene-ui.js';
-import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, listenForOpen, faviconBadge } from './alerts.js';
+import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, disableNotifications, restoreNotifications, listenForOpen, faviconBadge } from './alerts.js';
 
 const app = document.querySelector('#app');
 const firstVisit = !hasSavedTheme();
@@ -208,12 +208,16 @@ function alertsMenu() {
   const choices = el('div', 'theme-options'); choices.setAttribute('aria-label', 'Alerts');
   const sync = () => { for (const option of choices.children) option.setAttribute('aria-pressed', String(!!alertSettings[option.dataset.alert])); menu.classList.toggle('alerts-on', alertSettings.notify || alertSettings.sound); };
   const notify = button('Notifications', 'theme-choice', async () => {
-    alertSettings.notify = !alertSettings.notify && await enableNotifications();
-    if (!alertSettings.notify && globalThis.Notification?.permission === 'denied') toast('Notifications are blocked for this site');
-    saveAlerts(); sync();
+    notify.disabled = true;
+    try {
+      if (alertSettings.notify) { await disableNotifications(api); alertSettings.notify = false; }
+      else alertSettings.notify = await enableNotifications(api);
+      saveAlerts(); sync();
+    } catch (error) { toast(error.message || 'Could not update notifications'); }
+    finally { notify.disabled = false; }
   }, 'bell');
   notify.dataset.alert = 'notify';
-  if (!canNotify()) { notify.disabled = true; notify.title = 'Needs HTTPS'; }
+  if (!canNotify()) notify.title = globalThis.isSecureContext ? 'Add to Home Screen to enable notifications' : 'Needs HTTPS';
   const sound = button('Sound', 'theme-choice', () => { alertSettings.sound = !alertSettings.sound; saveAlerts(); sync(); if (alertSettings.sound) playSound('on'); }, 'sound');
   sound.dataset.alert = 'sound';
   choices.append(notify, sound); menu.append(summary, choices); placeMenu(menu, summary, choices); sync();
@@ -337,6 +341,7 @@ function showWorkspace() {
   backdrop.onpointerleave = () => scene?.hover?.(null);
   const panel = el('section', 'detail-panel'); panel.id = 'panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-label', 'Session details');
   app.append(backdrop, panel);
+  restoreNotifications(api);
   poll = setInterval(refresh, 3000);
   navigation.sync();
   if (!document.querySelector('.theme-picker')) bootSequence();
@@ -1514,7 +1519,7 @@ document.addEventListener('keydown', event => {
   cards[index < 0 ? 0 : Math.max(0, Math.min(cards.length - 1, index + (event.key === 'j' ? 1 : -1)))]?.focus();
   event.preventDefault();
 });
-listenForOpen(id => { if (state.csrf) openPanel(id); });
+listenForOpen(id => { if (state.csrf) openPanel(id); else location.hash = new URLSearchParams({ session: id }).toString(); });
 document.addEventListener('pointerdown', event => { for (const menu of document.querySelectorAll('#agent-filter-menu, #new-agent-menu, .theme-menu')) if (menu.open && !menu.contains(event.target)) menu.open = false; });
 function sendActivity() {
   clearTimeout(activityTimer); activityTimer = null;

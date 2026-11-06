@@ -337,3 +337,24 @@ test('a request for a session not listed yet shows a connecting session', () => 
   const [session] = mergeSessions([], [{ id: 'r', sessionId: 'codex:x', kind: 'question', provider: 'codex', createdAt: 5 }]);
   assert.deepEqual([session.id, session.status, session.title, session.requests.length], ['codex:x', 'question', 'Session connecting', 1]);
 });
+
+test('push subscription endpoints require login, origin and CSRF token', async t => {
+  const { dir, file } = await fixture(t);
+  const { PushNotifications } = await import('../server/push.mjs');
+  const { createECDH, randomBytes } = await import('node:crypto');
+  const key = createECDH('prime256v1'); key.generateKeys();
+  const sub = { endpoint: 'https://web.push.apple.com/test', keys: { p256dh: key.getPublicKey().toString('base64url'), auth: randomBytes(16).toString('base64url') } };
+  const push = await new PushNotifications(join(dir, 'push.json'), { credentialFile: file }).load();
+  const origin = 'https://control.test:47841';
+  const handler = createHandler({ auth: new Auth(file), push, origin, store: new RequestStore(), snapshot: () => ({}), vite: () => {} });
+  assert.equal((await request(handler, '/api/push/key')).status, 401);
+  const login = await request(handler, '/api/login', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: { password } });
+  const headers = { origin, cookie: login.headers['set-cookie'].split(';')[0], 'content-type': 'application/json', 'x-csrf-token': login.body.csrf };
+  assert.equal((await request(handler, '/api/push/key', { headers })).body.publicKey, push.publicKey);
+  assert.equal((await request(handler, '/api/push/subscribe', { method: 'POST', headers: { ...headers, 'x-csrf-token': 'bad' }, body: sub })).status, 403);
+  assert.equal((await request(handler, '/api/push/subscribe', { method: 'POST', headers: { ...headers, origin: 'https://evil.test' }, body: sub })).status, 403);
+  assert.equal((await request(handler, '/api/push/subscribe', { method: 'POST', headers, body: sub })).status, 200);
+  assert.equal(push.subscriptions.size, 1);
+  assert.equal((await request(handler, '/api/push/unsubscribe', { method: 'POST', headers, body: { endpoint: sub.endpoint } })).status, 200);
+  assert.equal(push.subscriptions.size, 0);
+});

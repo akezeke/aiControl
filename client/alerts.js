@@ -5,7 +5,7 @@ export const alertSettings = { notify: false, sound: false };
 try { Object.assign(alertSettings, JSON.parse(localStorage.getItem(key) || '{}')); } catch { /* defaults */ }
 export function saveAlerts() { try { localStorage.setItem(key, JSON.stringify(alertSettings)); } catch { /* per tab only */ } }
 // Notifications need HTTPS (or localhost) for the service worker that shows them on phones too.
-export const canNotify = () => !!globalThis.isSecureContext && 'Notification' in globalThis && 'serviceWorker' in navigator;
+export const canNotify = () => !!globalThis.isSecureContext && 'Notification' in globalThis && 'serviceWorker' in navigator && 'PushManager' in globalThis;
 
 const needsInput = status => status === 'question' || status === 'permission';
 // 'input' when a session starts waiting for you, 'ready' when a top-level session finishes working.
@@ -59,27 +59,41 @@ export function playSound(kind) {
 }
 
 let worker;
-export async function enableNotifications() {
-  if (!canNotify()) return false;
-  worker ??= navigator.serviceWorker.register('/sw.js');
-  return await Notification.requestPermission() === 'granted';
+function getWorker() {
+  return worker ??= navigator.serviceWorker.register('/sw.js').catch(error => { worker = null; throw error; });
+}
+async function registerPush(api) {
+  const registration = await getWorker();
+  await navigator.serviceWorker.ready;
+  const { publicKey } = await api('push/key');
+  const bytes = Uint8Array.from(atob(publicKey.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+  const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
+  await api('push/subscribe', subscription.toJSON());
+}
+export async function enableNotifications(api) {
+  if (!canNotify()) throw new Error(globalThis.isSecureContext ? 'Add AI Control to your Home Screen to enable notifications' : 'Notifications need HTTPS');
+  if (await Notification.requestPermission() !== 'granted') throw new Error('Notifications are blocked for this app');
+  await registerPush(api);
+  return true;
+}
+export async function disableNotifications(api) {
+  const registration = await getWorker();
+  const subscription = await registration.pushManager.getSubscription();
+  if (subscription) { await api('push/unsubscribe', { endpoint: subscription.endpoint }); await subscription.unsubscribe(); }
+}
+export function restoreNotifications(api) {
+  if (alertSettings.notify && canNotify() && Notification.permission === 'granted') registerPush(api).catch(() => {});
 }
 // Clicking a notification asks the page to open that session.
 export function listenForOpen(open) {
   if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.addEventListener('message', event => { if (typeof event.data?.open === 'string') open(event.data.open); });
-  if (alertSettings.notify && canNotify()) worker ??= navigator.serviceWorker.register('/sw.js');
 }
 
 export async function signal(events) {
   if (!events.length) return;
   const event = events.find(item => item.kind === 'input') || events[0];
   if (alertSettings.sound) playSound(event.kind);
-  if (!alertSettings.notify || !canNotify() || Notification.permission !== 'granted' || (!document.hidden && document.hasFocus())) return;
-  try {
-    const registration = await (worker ??= navigator.serviceWorker.register('/sw.js'));
-    await registration.showNotification(event.kind === 'input' ? 'Needs you' : 'Done', { body: events.length > 1 ? `${event.session.title} · +${events.length - 1} more` : event.session.title, tag: event.session.id, icon: '/favicon.svg', renotify: true, vibrate: event.kind === 'input' ? [120, 60, 120] : [80] });
-  } catch { /* blocked or unsupported */ }
 }
 
 // Favicon with an amber dot while anything needs you.
