@@ -336,12 +336,12 @@
     .console-contact:is([data-status=question], [data-status=permission]) { animation: syn-blink 1s steps(1) infinite; }
     .console-contact[data-status=working] { animation: syn-activity 1.4s steps(1) infinite; }
     .connection-error::before, .queued-message::before { animation: syn-blink 1s steps(1) infinite; }
-    /* A packet runs the working card's trace, as tool calls run the board's. */
-    .session-card[data-status=working]::after { width: 22%; height: 2px; background: linear-gradient(90deg, transparent, var(--ok)); opacity: 1; animation: syn-packet 2.4s linear infinite; animation-delay: var(--since-load, 0s); }
+    /* A packet runs the working card's trace, as tool calls run the board's. It's the trace's background that moves, so it never leaves the card. */
+    .session-card[data-status=working]::after { height: 2px; background: linear-gradient(90deg, transparent, var(--ok)) -28.2% 0 / 22% 100% no-repeat; opacity: 1; animation: syn-packet 2.4s linear infinite; animation-delay: var(--since-load, 0s); }
   }
 }
 @keyframes syn-activity { 0%, 30%, 52%, 86% { opacity: 1; } 18%, 44%, 74% { opacity: .25; box-shadow: none; } }
 @keyframes syn-blink { 50% { opacity: .2; box-shadow: none; } }
 @keyframes syn-stripes { to { background-position: 8px 0; } }
 @keyframes syn-chase { 50% { background-position: 14px 0, 0 0; } }
-@keyframes syn-packet { from { transform: translateX(-100%); } to { transform: translateX(455%); } }
+@keyframes syn-packet { from { background-position: -28.2% 0; } to { background-position: 128.2% 0; } }

@@ -255,12 +255,13 @@
   :root[data-theme-choice=nodes-mycelium] {
     /* Working gills breathe, a tool pulse runs the hypha under the card, the tendril creeps on toward you, and the request's cap glows and fades. */
     .session-card[data-status=working] .agent-mark { animation: myc-breathe 2.8s ease-in-out infinite; animation-delay: var(--since-load, 0s); }
-    .session-card[data-status=working]::after { width: 18%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--ok)); opacity: .9; animation: myc-pulse 3.2s ease-in infinite; animation-delay: var(--since-load, 0s); }
+    .session-card[data-status=working]::after { right: 0; width: auto; height: 2px; background: linear-gradient(90deg, transparent, var(--ok)) -4.4% 0 / 18% 100% no-repeat; opacity: .9; animation: myc-pulse 3.2s ease-in infinite; animation-delay: var(--since-load, 0s); }
     .session-card.needs-input::after { animation: myc-creep 4s linear infinite; }
     .request-box { animation: myc-cap 3.4s ease-in-out infinite; }
   }
 }
 @keyframes myc-breathe { 50% { box-shadow: inset 0 0 0 1px #33402a, inset 0 -7px 9px -4px var(--gill), 0 3px 14px -3px var(--gill); } }
-@keyframes myc-pulse { from { transform: translateX(-20%); opacity: 0; } 15% { opacity: .9; } to { transform: translateX(420%); opacity: 0; } }
+/* The pulse is its hypha's background, moving, so it stays on the card. */
+@keyframes myc-pulse { from { background-position: -4.4% 0; opacity: 0; } 15% { opacity: .9; } to { background-position: 92.2% 0; opacity: 0; } }
 @keyframes myc-creep { to { background-position: 40px 50%; } }
 @keyframes myc-cap { 50% { box-shadow: inset 0 1px 0 #ffd28a33, 0 0 40px -8px var(--warn); border-color: color-mix(in srgb, var(--warn) 75%, var(--warn-line)); } }

@@ -152,13 +152,14 @@
     /* Past the window, stars at warp while anything's working; a waiting plate breathing on the 3 s poll clock; a working one's edge running. */
     &:is([data-scene-list], [data-scene-fallback]):has(.session-card[data-status=working]) .shell::after { content: ''; position: fixed; inset: 0 -960px 0 0; z-index: -1; pointer-events: none; opacity: .3; background: url('/bridge-warp.svg'); animation: ship-warp 2.4s linear infinite; }
     .session-card.needs-input:not(.subagent)::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 34%, transparent), transparent 55%); animation: ship-breathe 3s ease-in-out infinite; animation-delay: var(--since-load, 0s); }
-    .session-card[data-status=working]:not(.subagent)::after { content: ''; position: absolute; left: 0; bottom: 0; width: 28%; height: 2px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--ok)); animation: ship-run 2.8s linear infinite; }
+    .session-card[data-status=working]:not(.subagent)::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none; background: linear-gradient(90deg, transparent, var(--ok)) -38.9% 0 / 28% 100% no-repeat; animation: ship-run 2.8s linear infinite; }
     .console-contact:is([data-status=question], [data-status=permission])::before { animation: ship-contact 1.5s steps(1) infinite; }
     .console-contact.blip::after { content: ''; position: absolute; inset: 2px; border: 1px solid currentColor; rotate: 45deg; animation: ship-blip .7s ease-out both; }
   }
 }
 @keyframes ship-warp { to { transform: translateX(-960px); } }
 @keyframes ship-breathe { 50% { opacity: .1; } }
-@keyframes ship-run { from { transform: translateX(-100%); } to { transform: translateX(360%); } }
+/* The run is the line's background moving, from just off its left end to just off its right, so it stays on the card. */
+@keyframes ship-run { from { background-position: -38.9% 0; } to { background-position: 138.9% 0; } }
 @keyframes ship-contact { 50% { opacity: .35; } }
 @keyframes ship-blip { to { scale: 2.2; opacity: 0; } }
