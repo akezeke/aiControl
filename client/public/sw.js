@@ -5,8 +5,11 @@ self.addEventListener('push', event => {
   let data = {};
   try { data = event.data?.json() || {}; } catch { /* show a generic notification */ }
   const id = typeof data.id === 'string' ? data.id : '';
-  event.waitUntil(self.registration.showNotification(data.kind === 'input' ? 'Needs you' : 'Done', {
-    body: 'Open AI Control', tag: id || 'ai-control', data: { id }, icon: '/icon-192.png',
+  const title = data.kind !== 'input' ? 'Done' : data.status === 'permission' ? 'Permission needed' : data.status === 'question' ? 'Question for you' : 'Needs you';
+  const parts = [data.project, data.title].filter(value => typeof value === 'string' && value.trim());
+  const body = [...new Set(parts)].join(' · ') || 'Open AI Control';
+  event.waitUntil(self.registration.showNotification(title, {
+    body, tag: id || 'ai-control', data: { id }, icon: '/icon-192.png',
   }));
 });
 self.addEventListener('notificationclick', event => {

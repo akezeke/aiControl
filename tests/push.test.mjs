@@ -21,9 +21,9 @@ test('push subscriptions survive restart, deliver transitions and can be removed
   assert.ok((await readFile(file, 'utf8')).includes(sub.endpoint));
   const restored = await new PushNotifications(file, { send }).load();
   assert.equal(restored.publicKey, push.publicKey);
-  await restored.update([{ id: 'a', status: 'working', title: 'Private title' }]);
-  await restored.update([{ id: 'a', status: 'permission', title: 'Private title' }]);
-  assert.deepEqual(sent, [[sub.endpoint, { kind: 'input', id: 'a' }]]);
+  await restored.update([{ id: 'a', status: 'working', title: 'Fix login', project: 'Dashboard' }]);
+  await restored.update([{ id: 'a', status: 'permission', title: 'Fix login', project: 'Dashboard' }]);
+  assert.deepEqual(sent, [[sub.endpoint, { kind: 'input', id: 'a', status: 'permission', title: 'Fix login', project: 'Dashboard' }]]);
   await restored.unsubscribe(sub.endpoint);
   await restored.update([{ id: 'a', status: 'working' }]);
   await restored.update([{ id: 'a', status: 'idle' }]);
@@ -50,16 +50,16 @@ test('changing the dashboard password revokes subscriptions even when changed ou
   assert.equal(sent.length, 0);
 });
 
-test('push shows a private notification and clicking it opens the session', async () => {
+test('push identifies the session needing permission and clicking it opens the session', async () => {
   const { runInNewContext } = await import('node:vm');
   const handlers = {}, shown = [], opened = [];
   const self = { addEventListener: (type, fn) => { handlers[type] = fn; }, registration: { showNotification: async (title, options) => shown.push({ title, options }) }, clients: { matchAll: async () => [], openWindow: async url => opened.push(url) } };
   runInNewContext(await readFile(new URL('../client/public/sw.js', import.meta.url), 'utf8'), { self, URLSearchParams });
   let pending;
-  handlers.push({ data: { json: () => ({ kind: 'input', id: 'codex:abc' }) }, waitUntil: promise => { pending = promise; } });
+  handlers.push({ data: { json: () => ({ kind: 'input', id: 'codex:abc', status: 'permission', title: 'Fix login', project: 'Dashboard' }) }, waitUntil: promise => { pending = promise; } });
   await pending;
-  assert.equal(shown[0].title, 'Needs you');
-  assert.equal(shown[0].options.body, 'Open AI Control');
+  assert.equal(shown[0].title, 'Permission needed');
+  assert.equal(shown[0].options.body, 'Dashboard · Fix login');
   handlers.notificationclick({ notification: { ...shown[0].options, close() {} }, waitUntil: promise => { pending = promise; } });
   await pending;
   assert.equal(opened[0], '/#session=codex%3Aabc');
@@ -74,4 +74,16 @@ test('expired push endpoints are removed and stay removed after restart', async 
   await push.update([{ id: 'a', status: 'idle' }]);
   const restored = await new PushNotifications(file).load();
   assert.equal(restored.subscriptions.size, 0);
+});
+
+
+test('push displays questions, completed work, and missing session details clearly', async () => {
+  const { runInNewContext } = await import('node:vm');
+  const handlers = {}, shown = [];
+  const self = { addEventListener: (type, fn) => { handlers[type] = fn; }, registration: { showNotification: async (title, options) => shown.push({ title, body: options.body }) } };
+  runInNewContext(await readFile(new URL('../client/public/sw.js', import.meta.url), 'utf8'), { self, URLSearchParams });
+  for (const data of [{ kind: 'input', status: 'question', title: 'Investigate' }, { kind: 'ready', title: 'Review', project: 'App' }, { kind: 'input' }]) {
+    let pending; handlers.push({ data: { json: () => data }, waitUntil: promise => { pending = promise; } }); await pending;
+  }
+  assert.deepEqual(shown, [{ title: 'Question for you', body: 'Investigate' }, { title: 'Done', body: 'App · Review' }, { title: 'Needs you', body: 'Open AI Control' }]);
 });

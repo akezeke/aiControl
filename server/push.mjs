@@ -53,7 +53,9 @@ export class PushNotifications {
     const ids = new Set(sessions.map(session => session.id));
     for (const id of this.previous.keys()) if (!ids.has(id)) this.previous.delete(id);
     for (const event of events) {
-      const payload = JSON.stringify({ kind: event.kind, id: event.session.id });
+      // Keep push payloads small and readable, even when a session title comes from a long prompt.
+      const text = value => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
+      const payload = JSON.stringify({ kind: event.kind, id: event.session.id, status: event.session.status, title: text(event.session.title), project: text(event.session.project) });
       await Promise.all([...this.subscriptions.values()].map(async sub => {
         try { await this.send(sub, payload, { vapidDetails: { subject: 'https://github.com/akezeke/aiControl', ...this.keys }, TTL: 60, timeout: 10000 }); }
         catch (error) { if (error.statusCode === 404 || error.statusCode === 410) await this.unsubscribe(sub.endpoint); else console.error('[Push]', error.message); }

@@ -133,7 +133,7 @@ The Fantasy Battle theme is an original design and is not affiliated with any fr
 
 Listens on localhost and optionally the Tailscale IP, never the LAN. Passwords are hashed; sessions lock after ten idle minutes. Settings and logs stay in `.local/`; credentials stay on the backend.
 
-For iPhone and iPad notifications, open the HTTPS URL in Safari, choose **Share → Add to Home Screen**, open AI Control from the Home Screen, and enable **Alerts → Notifications**. iOS/iPadOS 16.4 or later is required. Notifications continue while the app is closed and show no session titles. Changing the PIN/password removes existing notification subscriptions; unlock each device again to restore them.
+For iPhone and iPad notifications, open the HTTPS URL in Safari, choose **Share → Add to Home Screen**, open AI Control from the Home Screen, and enable **Alerts → Notifications**. iOS/iPadOS 16.4 or later is required. Notifications continue while the app is closed and can show project and session names on the lock screen. Changing the PIN/password removes existing notification subscriptions; unlock each device again to restore them.
 
 For HTTPS and notifications, enable HTTPS in Tailscale and follow the certificate command printed by `npm run setup`. Renew certificates every 90 days. The [Mac CLI](https://tailscale.com/docs/reference/tailscale-cli?tab=macos) is bundled in the Tailscale app. HTTP over Tailscale still has encrypted transport between devices.
 
