@@ -24,6 +24,7 @@ import { HistoryScroll } from './history-scroll.js';
 import { populateOnOpen } from './lazy-details.js';
 import { placeShots } from './history-shots.js';
 import { ImagePanZoom } from './image-pan-zoom.js';
+import { imageWindowUrl } from './image-window.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects } from './session-order.js';
 import { feedGroups, feedNow } from './feed.js';
@@ -1212,7 +1213,7 @@ function showShot(id, imageId, images = shots.get(id)?.items || [], closed) {
   const strip = el('div', 'shot-strip'); strip.append(...thumbs);
   const show = () => {
     panZoom.reset();
-    const image = images[at]; picture.src = link.href = shotUrl(id, image.id);
+    const image = images[at]; picture.src = shotUrl(id, image.id); link.href = imageWindowUrl(id, image.id);
     thumbs.forEach((thumb, n) => thumb.classList.toggle('current', n === at)); thumbs[at].scrollIntoView({ block: 'nearest', inline: 'nearest' });
     meta.textContent = [`${at + 1}/${images.length}`, image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
     const focused = document.activeElement;
