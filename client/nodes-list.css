@@ -5,8 +5,6 @@
 @import './nodes/list/steampunk.css';
 @import './nodes/list/mycelium.css';
 
-:root:not([data-theme=nodes]) .nodes-option { display: none; }
-.nodes-option::before { border-radius: 50%; }
 :root[data-theme=nodes] .brand-variant.nodes { display: flex; }
 .brand-variant.nodes .brand-mark { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: var(--accent); -webkit-mask: url('/nodes-mark.svg') center / contain no-repeat; mask: url('/nodes-mark.svg') center / contain no-repeat; }
 .brand-variant.nodes .brand-mark i { display: none; }

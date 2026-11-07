@@ -105,14 +105,14 @@
   .sidebar > .sidebar-label { margin: 10px 10px 6px 0; padding-top: 8px; border-top: 1px solid #656c5b; font: 700 9px var(--mono); letter-spacing: .26em; color: #30372c; text-shadow: 0 1px #f2efcf80; box-shadow: inset 0 1px #f2efcf33; }
   .sidebar > .sidebar-label::before { content: '■ '; color: #74441a; }
   .main-nav, .project-nav { gap: 6px; margin-right: 10px; padding: 5px; border: 1px solid; border-color: #5d6552 #92977f #d7d6bc #747c65; border-radius: 4px; background: #424b39; box-shadow: inset 0 2px 6px #0009, 0 1px #e2dfc555; }
-  .nav-item, .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > summary { position: relative; min-height: 35px; padding: 6px 8px; background: linear-gradient(#333c2b, #1b2418 18%, #141c11 85%, #0d130a); border: 1px solid #4c5940; border-bottom: 3px solid #050805; border-radius: 4px; box-shadow: inset 0 1px #cbd5b833, inset 1px 0 #9cac8522, inset -1px 0 #0007, 0 2px 2px #000a; color: var(--text-2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
-  :is(.nav-item, .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > summary):hover { background: linear-gradient(#252b20, #161a13); border-color: #333b2b; border-bottom-color: #050605; color: var(--accent-2); text-shadow: var(--glow); box-shadow: inset 0 1px #ffffff12, 0 1px 2px #000; }
-  :is(.nav-item, .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > summary):active { border-bottom-width: 1px; translate: 0 2px; }
+  .nav-item, .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > :is(summary, button) { position: relative; min-height: 35px; padding: 6px 8px; background: linear-gradient(#333c2b, #1b2418 18%, #141c11 85%, #0d130a); border: 1px solid #4c5940; border-bottom: 3px solid #050805; border-radius: 4px; box-shadow: inset 0 1px #cbd5b833, inset 1px 0 #9cac8522, inset -1px 0 #0007, 0 2px 2px #000a; color: var(--text-2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  :is(.nav-item, .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > :is(summary, button)):hover { background: linear-gradient(#252b20, #161a13); border-color: #333b2b; border-bottom-color: #050605; color: var(--accent-2); text-shadow: var(--glow); box-shadow: inset 0 1px #ffffff12, 0 1px 2px #000; }
+  :is(.nav-item, .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > :is(summary, button)):active { border-bottom-width: 1px; translate: 0 2px; }
   .nav-item.active { background: linear-gradient(#e1f4cd, #bbdfa3 18%, #a4cb8a 85%, #7d9e64); border-color: #d6e5c2; border-bottom-color: #4d623b; color: #101d0a; font-weight: 700; box-shadow: 0 0 10px #7dff6a40, inset 0 1px #fff9, inset 1px 0 #fff5, 0 2px 2px #000a; text-shadow: 0 1px #e6fbd466; }
   .nav-count, .nav-item.active .nav-count { min-width: 24px; background: #050705; border: 1px solid #333b2b; border-radius: 2px; color: var(--accent); text-shadow: var(--glow); }
   .project-dot { color: var(--lamp-amber); text-shadow: 0 0 6px var(--lamp-amber); }
   .sidebar > .top-actions { margin-right: 10px; padding-top: 10px; border-top-color: #656c5b; box-shadow: inset 0 1px #f2efcf33; }
-  .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > summary { padding: 0; }
+  .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > :is(summary, button) { padding: 0; }
   .sidebar > .top-actions > .live-label { justify-content: center; min-height: 40px; color: var(--danger); }
   .sidebar > .top-actions > .live-label::before { width: 11px; height: 11px; border: 1px solid #0b0c09; background: var(--lamp-green); box-shadow: 0 0 9px var(--lamp-green), inset 0 1px #fff9; }
   .sidebar > .top-actions > .live-label.disconnected::before { background: var(--lamp-red); box-shadow: 0 0 9px var(--lamp-red); }
@@ -542,7 +542,7 @@
   .brand-name { font-weight: 750; letter-spacing: -.03em; }
   .nav-item.active { background: color-mix(in srgb, var(--accent-soft) 85%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent), var(--glow-accent); }
   .sidebar > .top-actions { border-top-color: var(--glass-line); }
-  .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > summary, .search, .usage-accounts { background: var(--glass); border-color: var(--glass-line); }
+  .sidebar > .top-actions > .quiet-button, .sidebar .theme-menu > :is(summary, button), .search, .usage-accounts { background: var(--glass); border-color: var(--glass-line); }
   .main-content { max-width: 1120px; padding-top: 28px; }
   .status-line { margin-bottom: 6px; font-size: 12px; letter-spacing: .02em; text-shadow: 0 0 8px var(--bg); }
   .status-line::before { content: ''; width: 7px; height: 7px; flex: none; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }

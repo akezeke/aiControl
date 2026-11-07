@@ -15,7 +15,7 @@
 .agent-project::before { content: '·'; margin-right: 7px; opacity: .65; }
 :root .chat-header .panel-heading-actions { gap: 5px; }
 :root .chat-header .panel-heading-actions > .quiet-button,
-:root .chat-header .theme-menu > summary { min-height: 36px; padding: 7px 9px; }
+:root .chat-header .theme-menu > :is(summary, button) { min-height: 36px; padding: 7px 9px; }
 :root .chat-header .agent-settings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(108px, .32fr); gap: 7px; margin: 6px 0 2px; min-width: 0; }
 .setting-field { position: relative; display: grid; min-width: 0; padding: 6px 11px 5px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--sunken); transition: border-color .15s, box-shadow .15s; }
 .setting-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }

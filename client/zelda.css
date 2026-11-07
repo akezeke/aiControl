@@ -1,5 +1,6 @@
 /* A pocket overworld and the dark, gold-edged menus of a 16-bit adventure. */
 .theme-swatch.zelda { border: 0; border-radius: 0; background: url('/zelda-crest.svg') center / contain no-repeat; image-rendering: pixelated; }
+.theme-preview.zelda { background-image: url('/zelda-overworld.webp'); image-rendering: pixelated; }
 :root[data-theme=zelda] {
   color-scheme: dark;
   --display: 'Silkscreen', ui-monospace, monospace;

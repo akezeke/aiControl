@@ -163,39 +163,17 @@ function uuid() {
 function chooseTheme(id) {
   applyTheme(id);
   for (const card of document.querySelectorAll('#groups .session-card')) delete card.dataset.sig; // A look may draw its cards differently.
-  for (const option of document.querySelectorAll('.theme-choice[data-theme-choice]')) option.setAttribute('aria-pressed', String(sameChoice(option.dataset.themeChoice, id)));
-  for (const option of document.querySelectorAll('.nodes-option')) option.setAttribute('aria-checked', String(option.dataset.nodeChoice === id));
   // Picking a scene theme opens its scene, even if its list was showing last.
   if (sceneFor(document.documentElement.dataset.theme) && sceneList) setSceneList(false); else syncScene();
   dressTheme();
 }
-// The menu's Nodes entry stands for all its looks.
+// The picker's Nodes entry stands for all its looks.
 const sameChoice = (option, id) => option === id || (option === 'nodes' && !!id?.startsWith('nodes-'));
 function themeMenu() {
-  const menu = el('details', 'theme-menu');
-  const summary = el('summary', 'quiet-button'); summary.append(icon('theme')); summary.setAttribute('aria-label', 'Change theme'); summary.title = 'Change theme';
-  const choices = el('div', 'theme-options'); choices.setAttribute('aria-label', 'Color theme');
-  // The office's own checkbox, tucked under it and shown only while it's the theme.
-  const outlines = button('Outlines', 'theme-sub office-option', () => {
-    outlined = !outlined; try { localStorage.setItem(outlinesKey, outlined ? 'on' : 'off'); } catch { /* per tab only */ }
-    for (const option of document.querySelectorAll('.office-option')) option.setAttribute('aria-checked', String(outlined));
-    scene?.outlines?.(outlined);
-  });
-  outlines.setAttribute('role', 'checkbox'); outlines.setAttribute('aria-checked', String(outlined)); outlines.title = 'Off: only on what you point at';
-  const current = () => document.documentElement.dataset.themeChoice;
-  for (const theme of themes) {
-    if (theme.node && theme.id !== 'nodes') continue;
-    // Nodes keeps the look you're on; its looks are listed under it while it's the theme.
-    const choice = button(theme.name, 'theme-choice', () => { chooseTheme(theme.id === 'nodes' && current()?.startsWith('nodes') ? current() : theme.id); menu.open = false; summary.focus(); });
-    choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-pressed', String(sameChoice(theme.id, current())));
-    choice.prepend(el('i', `theme-swatch ${theme.id}`)); choices.append(choice);
-    if (theme.id === 'office') choices.append(outlines);
-    if (theme.id === 'nodes') for (const look of themes.filter(other => other.node)) {
-      const sub = button(look.node, 'theme-sub nodes-option', () => { chooseTheme(look.id); menu.open = false; summary.focus(); });
-      sub.dataset.nodeChoice = look.id; sub.setAttribute('role', 'radio'); sub.setAttribute('aria-checked', String(current() === look.id)); choices.append(sub);
-    }
-  }
-  menu.append(summary, choices); placeMenu(menu, summary, choices); return menu;
+  const control = el('div', 'theme-menu');
+  const open = button('', 'quiet-button', () => showThemePicker(open), 'theme');
+  open.setAttribute('aria-label', 'Change theme'); open.setAttribute('aria-haspopup', 'dialog'); open.title = 'Change theme';
+  control.append(open); return control;
 }
 // The sidebar scrolls and would clip the list, so open it against the viewport there. A list longer than the room it has
 // scrolls inside itself (the page behind a scene doesn't scroll), opened at the current choice.
@@ -1592,16 +1570,49 @@ async function restoreLogin() {
 }
 restoreLogin();
 
-// First visit: pick a theme. Closing keeps the default.
-function showThemePicker() {
-  const dialog = el('dialog', 'theme-picker'); dialog.setAttribute('aria-label', 'Pick a theme');
+// One preview picker for first visits and every theme control. Closing without a choice keeps the current look.
+function showThemePicker(trigger, welcome = false) {
+  if (document.querySelector('.theme-picker')) return;
+  const current = document.documentElement.dataset.themeChoice;
+  const focusRegion = trigger?.closest('.chat-header, .login-screen, .top-actions');
+  const dialog = el('dialog', 'theme-picker'); dialog.setAttribute('aria-label', 'Themes');
+  const heading = el('div', 'theme-picker-heading');
+  const close = button('', 'theme-picker-close', () => dialog.close(), 'close'); close.setAttribute('aria-label', 'Close themes'); close.title = 'Close (Esc)';
+  heading.append(el('h2', '', 'Themes'), close);
+  const body = el('div', 'theme-picker-body');
+  if (current === 'office') {
+    const label = el('label', 'theme-picker-setting');
+    const input = el('input'); input.type = 'checkbox'; input.checked = outlined;
+    input.onchange = () => { outlined = input.checked; try { localStorage.setItem(outlinesKey, outlined ? 'on' : 'off'); } catch { /* per tab only */ } scene?.outlines?.(outlined); };
+    label.append(input, el('span', '', 'Office outlines')); label.title = 'Off: only on what you point at'; body.append(label);
+  }
+  if (sameChoice('nodes', current)) {
+    const label = el('label', 'theme-picker-setting', 'Nodes look'), select = el('select');
+    for (const theme of themes.filter(theme => theme.node)) { const option = el('option', '', theme.node); option.value = theme.id; select.append(option); }
+    select.value = current; select.onchange = () => dialog.close(select.value); label.append(select); body.append(label);
+  }
   const grid = el('div', 'theme-picker-grid');
   for (const theme of themes.filter(theme => !theme.node || theme.id === 'nodes')) {
-    const choice = button(theme.name, 'theme-picker-choice', () => { applyTheme(theme.id); dialog.close(); bootSequence(); });
+    const choice = button(theme.name, 'theme-picker-choice', () => dialog.close(theme.id === 'nodes' && sameChoice('nodes', current) ? current : theme.id));
+    choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-label', theme.name); choice.setAttribute('aria-pressed', String(sameChoice(theme.id, current)));
     choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
   }
-  dialog.append(el('h2', '', 'Pick a theme'), grid);
-  dialog.onclose = () => { applyTheme(document.documentElement.dataset.themeChoice); dialog.remove(); syncScene(); dressTheme(); };
+  body.append(grid); dialog.append(heading, body);
+  const outside = event => { const r = dialog.getBoundingClientRect(); return event.target === dialog && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom); };
+  let pressedOutside = false;
+  dialog.onpointerdown = event => { pressedOutside = outside(event); };
+  dialog.onclick = event => { if (pressedOutside && outside(event)) dialog.close(); };
+  dialog.onclose = () => {
+    dialog.remove();
+    if (dialog.returnValue) chooseTheme(dialog.returnValue);
+    if (welcome) bootSequence();
+    // Polling can replace a session header's controls while the modal is open.
+    if (trigger) {
+      const next = trigger.isConnected ? trigger : (focusRegion?.isConnected && focusRegion.querySelector('[aria-label="Change theme"]')) || document.querySelector('.top-actions [aria-label="Change theme"], .login-screen [aria-label="Change theme"]');
+      next?.focus({ preventScroll: true });
+    }
+  };
   document.body.append(dialog); dialog.showModal();
+  const selected = grid.querySelector('[aria-pressed=true]'); selected?.focus({ preventScroll: true }); selected?.scrollIntoView({ block: 'nearest' });
 }
-if (firstVisit) showThemePicker();
+if (firstVisit) showThemePicker(undefined, true);
