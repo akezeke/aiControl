@@ -17,6 +17,7 @@ import './provider-icons.css';
 import './agent-header.css';
 import './lost.css';
 import './feed.css';
+import './paper.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
@@ -614,12 +615,12 @@ function syncList(container, items, render) {
 // Typewriter for a card whose preview text changed: one text node per frame, at most ~0.75 s.
 function typewrite(node) {
   const full = node.textContent, parent = node.parentElement;
-  if (reducedMotion.matches || !full) return;
+  if (stillInterface() || !full) return;
   const step = Math.max(1, Math.ceil(full.length / 45));
   let shown = 0; node.textContent = ''; parent.classList.add('typing');
   const tick = () => {
     if (!node.isConnected) return;
-    shown = Math.min(full.length, shown + step); node.textContent = full.slice(0, shown);
+    shown = stillInterface() ? full.length : Math.min(full.length, shown + step); node.textContent = full.slice(0, shown);
     if (shown < full.length) requestAnimationFrame(tick); else parent.classList.remove('typing');
   };
   requestAnimationFrame(tick);
@@ -627,10 +628,11 @@ function typewrite(node) {
 
 // FLIP: moved cards and headers slide from their old spot; new ones fade in.
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const stillInterface = () => reducedMotion.matches || document.documentElement.dataset.theme === 'paper';
 const flipKey = node => node.classList.contains('group-heading') ? `#${node.parentElement.dataset.key}` : node.dataset.key;
 function flipPositions(root) { return new Map([...root.querySelectorAll('.session-card, .group-heading')].map(node => [flipKey(node), node.getBoundingClientRect().top])); }
 function flipFrom(root, before) {
-  if (reducedMotion.matches || !before.size) return;
+  if (stillInterface() || !before.size) return;
   for (const node of root.querySelectorAll('.session-card, .group-heading')) {
     const from = before.get(flipKey(node));
     if (from === undefined) { node.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }); continue; }

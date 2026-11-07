@@ -10,6 +10,8 @@ export const themes = [
   { id: 'modern', name: 'Orbit auto', color: '#f4f5f8', dark: '#0b0d12' },
   { id: 'modern-light', look: 'modern', scheme: 'light', name: 'Orbit light', color: '#f4f5f8' },
   { id: 'modern-dark', look: 'modern', scheme: 'dark', name: 'Orbit dark', color: '#0b0d12' },
+  { id: 'parchment', look: 'paper', scheme: 'light', name: 'Parchment', color: '#e9e5db' },
+  { id: 'graphite', look: 'paper', scheme: 'dark', name: 'Graphite', color: '#242722' },
   { id: 'alien', name: 'MU/TH/UR', color: '#030703' },
   { id: 'command', name: 'EVA', color: '#62685a' },
   { id: 'simpsons', scheme: 'light', name: 'Springfield', color: '#86cbed' },
@@ -44,6 +46,8 @@ export function applyTheme(id) {
   const theme = themes.find(theme => theme.id === id) || themes.find(theme => theme.id === 'alien');
   const root = document.documentElement, previous = root.dataset.theme, look = theme.look || theme.id;
   root.dataset.theme = look; root.dataset.themeChoice = theme.id;
+  // Stop any movement already in flight when entering a still theme.
+  if (look === 'paper') document.getAnimations().forEach(animation => animation.cancel());
   root.toggleAttribute('data-scene', !!sceneFor(look));
   setAlienAmbienceEnabled(look === 'alien');
   setBackdrop(look);
