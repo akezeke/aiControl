@@ -528,7 +528,8 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 /* Requests: plans, diffs and the deny reason. */
 .request-plan { max-height: 45dvh; overflow: auto; margin: 6px 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--panel); }
 .decision-actions { flex-wrap: wrap; }
-.decision-actions button { flex: 1 1 140px; overflow-wrap: anywhere; }
+.decision-actions button { flex: 1 1 140px; min-width: 0; max-width: 100%; }
+.decision-actions button > span:not(.icon) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deny-reason { width: 100%; min-height: 38px; margin-top: 8px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--panel); font-size: 13px; }
 .diff { white-space: pre; overflow-x: auto; }
 .diff > span { display: block; min-width: max-content; }
