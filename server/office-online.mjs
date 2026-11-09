@@ -137,7 +137,8 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   // a page may say (look, where, pos, throw); down, only what checkDown passes. The hello is the server's, from the file.
   // `link`: { who (what it's signed in as), hostKey, ws, retry, delay, me (welcome, kept current), roster, floor, asked
   // (where it last asked to be), floorText (the floor last sent), places (id → the last pos heard of each friend at the
-  // meeting, as sent on, for a page that opens later: the hub only relays) }. `pages`: page socket → { where, start, count }, in the
+  // meeting, as sent on, for a page that opens later: the hub only relays), desks (meetingFloor's desk ids, new each
+  // connection) }. `pages`: page socket → { where, start, count }, in the
   // order they last connected or said where they are. One page speaks for you (its where, pos and throws): the newest at the
   // meeting, else the newest to say where it is, so a tab coming back at home (live.js says where on every connect) doesn't
   // take you out of the meeting another is in. `spoke`: the page that spoke for you last.
@@ -163,7 +164,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       headers: { authorization: `Bearer ${l.key}`, 'x-player': l.token, ...l.hostKey && { 'x-host': l.hostKey } },
       maxPayload: MAX_BYTES, handshakeTimeout: TIMEOUT_MS, followRedirects: false,
     });
-    l.ws = ws;
+    l.ws = ws; l.desks = new Map();
     // A hub gone quiet (a dead network the connection hasn't noticed) is let go like any lost link: anything heard counts,
     // a ping goes every beat, and two beats with nothing back drop it.
     let beat = null, quiet = 0;
@@ -289,7 +290,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
         settle();
         const l = link;
         if (!l?.hostKey || !l.me || l.ws?.readyState !== WebSocket.OPEN) return;
-        const m = checkUp({ type: 'floor', floor: meetingFloor(snapshot()) }), text = m && JSON.stringify(m);
+        const m = checkUp({ type: 'floor', floor: meetingFloor(snapshot(), l.desks) }), text = m && JSON.stringify(m);
         if (!m || text === l.floorText || Buffer.byteLength(text) > MAX_BYTES) return;
         l.floorText = text; l.ws.send(text);
       } catch (error) { console.error('[Office online]', error.message); }

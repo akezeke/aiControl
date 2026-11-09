@@ -63,16 +63,20 @@ export const checkDown = msg => run(down, msg);
 
 // The host's floor: pods by [col, row], and every desk with an opaque id (`d0`, `d1`, ...), its pod, slot, the desk it helps (or null),
 // its fruit's look and a rounded status. Nothing of the session itself: not its id, title, project, folder or messages.
+// `ids`: session id → desk id, kept by the caller from one floor to the next (and never sent), so a desk keeps its id while others
+// come and go; a new session gets the lowest one the last floor didn't use, so no id moves straight on to another desk.
 const round = (v, places = 0) => Math.round(v * 10 ** places) / 10 ** places;
-export function meetingFloor(snapshot) {
+export function meetingFloor(snapshot, ids = new Map()) {
   const { office, sessions } = snapshot, byId = new Map(sessions.map(s => [s.id, s]));
   const podIndex = new Map(office.pods.map((pod, i) => [pod.key, i]));
-  const rows = [], opaque = new Map();
+  const rows = [], opaque = new Map(), used = new Set(ids.values());
   const add = (session, pod, slot, parentId) => {
     const look = identity(session.id); // its desk's props and notes too: random from the id, nothing of the session
     const { pose, expression, screen, since, wear, cups } = officeStatus(session);
-    opaque.set(session.id, `d${rows.length}`);
-    rows.push({ id: `d${rows.length}`, pod, slot, parent: parentId, look, status: { pose, expression, screen, since: since === undefined ? null : round(since), wear: round(wear, 1), cups } });
+    let id = ids.get(session.id);
+    if (!id) { let n = 0; while (used.has(`d${n}`)) n++; id = `d${n}`; used.add(id); }
+    opaque.set(session.id, id);
+    rows.push({ id, pod, slot, parent: parentId, look, status: { pose, expression, screen, since: since === undefined ? null : round(since), wear: round(wear, 1), cups } });
   };
   for (const desk of office.desks) {
     const session = byId.get(desk.sessionId), pod = podIndex.get(desk.podKey);
@@ -82,6 +86,7 @@ export function meetingFloor(snapshot) {
     const parent = session.parentId && opaque.get(session.parentId);
     if (parent) { const top = rows.find(row => row.id === parent); add(session, top.pod, top.slot, parent); }
   }
+  ids.clear(); for (const [session, id] of opaque) ids.set(session, id);
   const { width = 0, depth = 0 } = office.room || {}, door = office.door || { x: width / 2, z: depth };
   return { room: { width: round(width, 1), depth: round(depth, 1) }, door: { x: round(door.x, 1), z: round(door.z, 1) }, pods: office.pods.map(pod => [pod.col, pod.row]), desks: rows };
 }

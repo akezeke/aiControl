@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FRUITS, COLOURS, KINDS, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor } from '../client/office/meeting.js';
-import { palettes } from '../client/office/status.js';
+import { palettes, identity } from '../client/office/status.js';
 import { sharedLayout, layoutOffice } from '../client/office/layout.js';
 
 const session = (n, extra = {}) => ({
@@ -83,6 +83,34 @@ test('meetingFloor carries none of the snapshot\'s words', () => {
   assert.ok(f.desks.every(d => Array.isArray(d.look.props) && d.look.props.length <= 3 && Number.isInteger(d.look.notes)));
   assert.ok(f.desks.some(d => d.look.props.length || d.look.notes), 'some desk has things on it');
   assert.ok(checkFloor(f));
+});
+
+test('desk ids stay with their desks while sessions come and go', () => {
+  const s = (id, extra = {}) => ({ id, cwd: '/p', project: 'p', status: 'working', updatedAt: 1, ...extra }), names = ['a', 'b', 'c', 'd', 'e', 'h'];
+  // Which session a desk is, by its look (identity of the id), and where it sits.
+  const looks = new Map(names.map(name => [JSON.stringify(identity(name)), name]));
+  assert.equal(looks.size, names.length);
+  const ids = new Map();
+  let layout;
+  const floorOf = sessions => {
+    layout = layoutOffice(sessions, layout, 1000);
+    const f = meetingFloor({ sessions, office: { ...layout, desks: [...layout.desks.values()] } }, ids);
+    assert.ok(checkFloor(f)); assert.ok(f.desks.every(d => /^d[0-9]{1,3}$/.test(d.id)));
+    return Object.fromEntries(f.desks.map(d => [looks.get(JSON.stringify(d.look)), { id: d.id, slot: d.slot, parent: d.parent }]));
+  };
+  const first = floorOf([s('a'), s('b'), s('c'), s('h', { parentId: 'b' })]);
+  assert.deepEqual(Object.values(first).map(d => d.id).sort(), ['d0', 'd1', 'd2', 'd3']);
+  // a ends: nothing renumbers, and b's helper still points at b.
+  const second = floorOf([s('b'), s('c'), s('h', { parentId: 'b' })]);
+  assert.deepEqual(second, { b: first.b, c: first.c, h: first.h });
+  // A newcomer doesn't take an id the last floor still had: a's desk going and d's arriving are two things, not one changing.
+  const third = floorOf([s('b'), s('c'), s('h', { parentId: 'b' }), s('d')]);
+  assert.deepEqual({ ...third, d: undefined }, { ...second, d: undefined });
+  assert.equal(third.d.id, first.a.id, "a's id is free again once a floor went without it");
+  const fourth = floorOf([s('c'), s('h', { parentId: 'c' }), s('d'), s('e')]);
+  assert.deepEqual([fourth.c.id, fourth.d.id], [first.c.id, third.d.id]);
+  assert.deepEqual([fourth.h.id, fourth.h.parent], [first.h.id, first.c.id]);
+  assert.ok(!Object.values(third).some(d => d.id === fourth.e.id), "b's id isn't handed straight on to e");
 });
 
 test('floorSnapshot rebuilds what the office draws', () => {
