@@ -126,3 +126,21 @@ test("a hub that won't take this version's link: the page asks again, and is tol
   for (const fn of handlers.refused) fn({ type: 'refused', why: 'version' });
   await new Promise(r => setTimeout(r, 0)); assert.equal(online.state().outdated, true);
 });
+
+test('the room going while you are in a meeting asks again, so the clipboard can say Off for now', async () => {
+  let reply = { joined: true, name: 'Anna', host: 'h', board }, calls = 0;
+  const api = async () => { calls++; return reply; }, online = createOnline({ api, scores: () => ({}) });
+  const handlers = {}, live = { on: (type, fn) => { (handlers[type] ??= []).push(fn); return () => {}; } };
+  const say = m => { for (const fn of handlers[m.type] ?? []) fn(m); }, settled = () => new Promise(r => setTimeout(r, 0));
+  online.follow(live);
+  await online.sync(); calls = 0;
+  say({ type: 'roster', players: [{ id: 'a1', name: 'Anna', fruit: 'apple', colour: '#ff5d8f', at: 'home' }] }); await settled();
+  assert.equal(calls, 0, 'a roster with people in it is no news');
+  reply = { ...reply, offline: true };
+  say({ type: 'roster', players: [] }); await settled();
+  assert.equal(calls, 1); assert.equal(online.state().offline, true);
+  // Not in a meeting: an empty room is nothing to ask about.
+  reply = { joined: false }; await online.sync(true); calls = 0;
+  say({ type: 'roster', players: [] }); await settled();
+  assert.equal(calls, 0);
+});

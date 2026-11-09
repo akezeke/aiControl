@@ -140,9 +140,9 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   // (where it last asked to be), floorText (the floor last sent), places (id → the last pos heard of each friend at the
   // meeting, as sent on, for a page that opens later: the hub only relays), desks (meetingFloor's desk ids, new each
   // connection), outdated (the hub refused this protocol: no more tries until a page opens) }. `pages`: page socket →
-  // { where, start, count }, in the order they last connected or said where they are. One page speaks for you (its where, pos and throws): the newest at the
-  // meeting, else the newest to say where it is, so a tab coming back at home (live.js says where on every connect) doesn't
-  // take you out of the meeting another is in. `spoke`: the page that spoke for you last.
+  // { where, start, count }, in the order they last connected or said where they are. One page speaks for you (its where,
+  // pos and throws): the newest at the meeting, else the newest to say where it is, so a tab coming back at home (live.js
+  // says where on every connect) doesn't take you out of the meeting another is in. `spoke`: the page that spoke for you last.
   let link = null, linger = null, spoke = null;
   const pages = new Map();
   const put = (socket, text) => {
@@ -153,8 +153,9 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   const toPages = m => { const text = JSON.stringify(m); for (const socket of pages.keys()) put(socket, text); return text; };
   const up = m => { if (link?.ws?.readyState === WebSocket.OPEN) link.ws.send(JSON.stringify(m)); };
   const speaker = () => { const said = [...pages].filter(([, page]) => page.where); return (said.findLast(([, page]) => page.where === 'meeting') ?? said.at(-1))?.[0]; };
-  // Pages hear the room's gone: nobody's there, and no floor (a visitor's page walks home).
-  const gone = l => { if (!l.me) return; l.me = l.roster = l.floor = null; l.floorText = ''; l.places.clear(); toPages({ type: 'roster', players: [] }); toPages({ type: 'floor', floor: null }); };
+  // Pages hear the room's gone: nobody's there, and no floor (a visitor's page walks home). The board kept isn't fresh any
+  // more either, so the sync a page sends on hearing it (online.js) asks the hub, and can come back offline.
+  const gone = l => { if (!l.me) return; l.me = l.roster = l.floor = null; l.floorText = ''; l.places.clear(); at = -Infinity; toPages({ type: 'roster', players: [] }); toPages({ type: 'floor', floor: null }); };
   function shut() {
     const l = link; if (!l) return;
     link = null; clearTimeout(l.retry); gone(l);

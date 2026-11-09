@@ -60,10 +60,12 @@ export function createOnline({ api, scores = () => localBests() }) {
     async signIn(code, name) { take(await api('office/online', { code, name })); sent = null; await online.sync(true); }, // your bests, at once
     async signOut() { take(await api('office/online', { leave: true })); sent = null; },
     // Every (re)connect of the live link: ask again, so a page open before the hub started (or AI Control restarted) learns it's hosting.
-    // A hub that refused the link for its protocol: ask again too, and the answer says to update.
+    // A hub that refused the link for its protocol, or the room gone while you're in a meeting (nobody, not even you: the hub
+    // was lost): ask again too, and the answer says to update, or `Off for now`.
     follow(live) {
       live.on('welcome', () => { online.sync(true); });
       live.on('refused', m => { if (m.why === 'version') online.sync(true); });
+      live.on('roster', m => { if (!m.players.length && state?.joined) online.sync(true); });
     },
     dispose() { listeners.clear(); },
   };

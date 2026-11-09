@@ -49,7 +49,7 @@ async function setup(t) {
     return online;
   };
   const restart = async () => { await hub.close(); hub = await startHub({ file: hubFile, port }); hub.server.on('upgrade', count); };
-  return { code, player, restart, upgrades: () => upgrades };
+  return { code, player, restart, stop: () => hub.close(), upgrades: () => upgrades };
 }
 
 // A host's snapshot with a distinctive word in every field that must stay on the host's machine.
@@ -223,6 +223,15 @@ test('a hub gone quiet is noticed: pages hear the room went, and the link comes 
   await until(() => bp.last('welcome'), "Bob's welcome");
   await wait(400);
   assert.equal(s.upgrades(), 1); assert.ok(bp.sees('Bob'));
+});
+
+test('the hub lost: the next sync asks it, rather than answering from the board kept', async t => {
+  const s = await setup(t), anna = await s.player('Anna'), ap = open(anna);
+  await until(() => ap.last('welcome'), 'welcome');
+  assert.equal((await anna.sync({})).offline, undefined);
+  await s.stop();
+  await until(() => ap.last('roster')?.players.length === 0, 'the room gone');
+  assert.equal((await anna.sync({})).offline, true);
 });
 
 test("a hub on another protocol: pages are told, the link doesn't keep knocking, and a page opening tries again", async t => {
