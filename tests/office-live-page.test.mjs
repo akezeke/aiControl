@@ -94,3 +94,11 @@ test('flapping back to the last-sent pose inside the window sends nothing stale'
   r.live.presence(sample(0, 'walking')); r.advance(20); r.live.presence(sample(0, 'standing')); r.advance(300);
   assert.deepEqual(s.sent.filter(m => m.type === 'pos'), []);
 });
+
+test('presence keeps a copy of a waiting sample, so a caller can reuse its object', () => {
+  const r = rig(); r.live.refresh(); const s = r.sockets[0]; s.open(); s.sent.length = 0;
+  const mine = { x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' };
+  r.live.presence(mine); r.t += 10; Object.assign(mine, { x: 1, pose: 'running' }); r.live.presence(mine); // pose change inside the window waits
+  Object.assign(mine, { x: 9, pose: 'standing' }); r.advance(200);
+  const last = s.sent.filter(m => m.type === 'pos').at(-1); assert.equal(last.pose, 'running'); assert.equal(last.x, 1);
+});

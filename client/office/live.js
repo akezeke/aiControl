@@ -19,7 +19,7 @@ export function createLive({
   onHidden = fn => { document.addEventListener('visibilitychange', fn); return () => document.removeEventListener('visibilitychange', fn); },
 } = {}) {
   let pending = null, flush = null, ws = null, retry = null, wait = BACKOFF[0], at = null, roster = [], floor = null, id = null, last = null, lastAt = -Infinity, disposed = false;
-  const listeners = new Map();
+  const listeners = new Map(), held = {};
   const emit = (type, data) => { for (const fn of listeners.get(type) ?? []) fn(data); };
   const open = () => ws?.readyState === 1;
   const send = msg => { if (open()) ws.send(JSON.stringify(msg)); };
@@ -77,7 +77,7 @@ export function createLive({
       if (!poseChanged && !moved) { pending = null; return; } // back to what the hub has: a waiting sample is stale
       if (t - lastAt >= EVERY) { go(sample, t); return; }
       if (!poseChanged && !pending) return;
-      pending = sample;
+      pending = Object.assign(held, sample); // a copy: the caller may reuse its sample
       flush ??= setTimer(() => { flush = null; const s = pending; pending = null; if (s && open()) go(s, now()); }, lastAt + EVERY - t);
     },
     refresh,

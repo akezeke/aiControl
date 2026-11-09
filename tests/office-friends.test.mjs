@@ -38,3 +38,21 @@ test('a friend at home isn\'t built, nor are you', t => {
   friends.sync([p('a', 'meeting')], 'me'); assert.equal(scene.children[0].visible, true); friends.update(0.016); assert.equal(scene.children[0].position.x, 3);
   friends.dispose(); assert.equal(scene.children.length, 0);
 });
+
+test('ease writes into the object it is given', () => {
+  const from = { x: 0, y: 0, z: 0, yaw: 0 }, to = { x: 1, y: 0, z: 0, yaw: 0 };
+  const out = ease(from, to, 1 / 60, from);
+  assert.equal(out, from); assert.ok(from.x > 0 && from.x < 1);
+  const far = ease(from, { x: 20, y: 0, z: 0, yaw: 1 }, 1 / 60, from); assert.equal(far, from); assert.equal(from.x, 20);
+});
+
+test('friends are not clickable', t => {
+  const blank = () => new Proxy({}, { get: (_, k) => k === 'measureText' ? () => ({ width: 50 }) : () => ({ addColorStop() {} }), set: () => true }), was = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: blank }) };
+  t.after(() => { if (was) globalThis.document = was; else delete globalThis.document; });
+  const scene = new THREE.Scene(), friends = createFriends(scene, { room: { kitchen: { inside: () => false, shown: false }, secret: { inside: () => false, shown: false } } });
+  friends.sync([{ id: 'a', name: 'Pip', fruit: 'apple', colour: '#3a86ff', at: 'meeting' }], 'me');
+  friends.move('a', { x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' }); friends.update(0.016);
+  const ray = new THREE.Raycaster(new THREE.Vector3(0, 0.8, 5), new THREE.Vector3(0, 0, -1));
+  assert.deepEqual(ray.intersectObject(scene.children[0], true), []);
+});

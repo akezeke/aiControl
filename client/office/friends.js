@@ -8,11 +8,14 @@ import { playerLook } from './meeting.js';
 const EASE = 0.05, SNAP = 3, RUNNING = 1.7;
 
 // Positions and yaw move toward the last update in about 0.15 s; a jump of more than 3 m is a teleport (the door) and snaps.
-export function ease(from, to, dt) {
-  if (Math.hypot(to.x - from.x, to.z - from.z) > SNAP) return { x: to.x, y: to.y, z: to.z, yaw: to.yaw };
+// Writes into `out` (default: a new object) and returns it, so a frame loop can reuse one.
+export function ease(from, to, dt, out = {}) {
+  if (Math.hypot(to.x - from.x, to.z - from.z) > SNAP) { out.x = to.x; out.y = to.y; out.z = to.z; out.yaw = to.yaw; return out; }
   const k = 1 - Math.exp(-dt / EASE), turn = Math.atan2(Math.sin(to.yaw - from.yaw), Math.cos(to.yaw - from.yaw));
-  return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, z: from.z + (to.z - from.z) * k, yaw: from.yaw + turn * k };
+  out.x = from.x + (to.x - from.x) * k; out.y = from.y + (to.y - from.y) * k; out.z = from.z + (to.z - from.z) * k; out.yaw = from.yaw + turn * k;
+  return out;
 }
+const ignored = () => {}, HAND = new THREE.Vector3(), HAND2 = new THREE.Vector3();
 
 export const gait = speed => speed < 0.3 ? 'standing' : speed < 3 ? 'walking' : 'running';
 
@@ -41,6 +44,7 @@ export function createFriends(scene, { room, reducedMotion = () => false }) {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag(p.name, p.colour), transparent: true, toneMapped: false, depthWrite: false }));
     sprite.renderOrder = 4;
     sprite.scale.set(0.8, 0.2, 1); sprite.position.y = LEG + fruit.height + 0.22; root.add(sprite); // above the cap
+    root.traverse(n => { n.raycast = ignored; }); // friends pass through each other and aren't clickable
     scene.add(root);
     return { id: p.id, name: p.name, look: `${p.fruit}${p.colour}`, fruit, root, sprite, seed: [...p.id].reduce((a, c) => a + c.charCodeAt(0), 0) % 7, at: null, shown: null, pose: 'standing' };
   }
@@ -61,18 +65,17 @@ export function createFriends(scene, { room, reducedMotion = () => false }) {
     },
     // A position message: where they are (feet on the floor), which way they face and what they're doing.
     move(id, { x, y, z, yaw, pose }) {
-      const m = { x, y, z, yaw, pose }; seen.set(id, m);
+      const m = seen.get(id) ?? {}; seen.set(id, Object.assign(m, { x, y, z, yaw, pose }));
       const f = friends.get(id); if (!f) return;
-      const to = { x, y, z, yaw }; f.pose = pose;
-      f.to = to;
-      if (!f.at) { f.at = { ...to }; f.root.visible = true; }
+      f.pose = pose; f.to ??= {}; Object.assign(f.to, { x, y, z, yaw });
+      if (!f.at) { f.at = { ...f.to }; f.root.visible = true; }
     },
     update(dt, now = time + dt) {
       time = now;
       const still = reducedMotion(), t = still ? 0 : time;
       for (const f of friends.values()) {
         if (!f.at) continue;
-        f.at = ease(f.at, f.to, dt);
+        ease(f.at, f.to, dt, f.at);
         f.root.position.set(f.at.x, f.at.y, f.at.z); f.root.rotation.y = f.at.yaw;
         // In a shut room they're behind its wall.
         const p = f.root.position; f.root.visible = !(room.kitchen.inside(p) && !room.kitchen.shown) && !(room.secret.inside(p) && !room.secret.shown);
@@ -81,8 +84,8 @@ export function createFriends(scene, { room, reducedMotion = () => false }) {
         const target = poseTargets('walking', moving && !still ? t * (run ? RUNNING : 1) : 0, moving ? f.seed : 0, f.fruit);
         if (run) target.body.lean = 0.15;
         // Holding something out in front; playing a game, the hands up on it.
-        if (f.pose === 'holding') target.limbs.rightHand = new THREE.Vector3(-0.14, 0.5 + h * 0.3, 0.3);
-        else if (f.pose === 'playing') { target.limbs.leftHand = new THREE.Vector3(0.12, 0.45 + h * 0.3, 0.3); target.limbs.rightHand = new THREE.Vector3(-0.12, 0.45 + h * 0.3, 0.3); }
+        if (f.pose === 'holding') target.limbs.rightHand = HAND.set(-0.14, 0.5 + h * 0.3, 0.3);
+        else if (f.pose === 'playing') { target.limbs.leftHand = HAND.set(0.12, 0.45 + h * 0.3, 0.3); target.limbs.rightHand = HAND2.set(-0.12, 0.45 + h * 0.3, 0.3); }
         f.fruit.setBody(target.body); f.fruit.setLimbs(target.limbs, target.elbows);
       }
     },
