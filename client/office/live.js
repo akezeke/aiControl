@@ -50,7 +50,8 @@ export function createLive({
     if (had) { emit('roster', { type: 'roster', players: [] }); emit('floor', { type: 'floor', floor: null }); }
   }
   function go(sample, t) {
-    pending = null; last = { x: sample.x, y: sample.y, z: sample.z, yaw: sample.yaw, pose: sample.pose }; lastAt = t;
+    pending = null; if (flush) { clearTimer(flush); flush = null; }
+    last = { x: sample.x, y: sample.y, z: sample.z, yaw: sample.yaw, pose: sample.pose }; lastAt = t;
     send({ type: 'pos', ...last });
   }
   function drop() { pending = null; if (flush) { clearTimer(flush); flush = null; } if (retry) { clearTimer(retry); retry = null; } const s = ws; if (s) s.close(); }
@@ -68,12 +69,14 @@ export function createLive({
     presence(sample) {
       if (!open()) return;
       const t = now(), p = last, poseChanged = !p || sample.pose !== p.pose;
+      let moved = false;
       if (!poseChanged) {
         let dyaw = Math.abs(sample.yaw - p.yaw) % (2 * Math.PI); if (dyaw > Math.PI) dyaw = 2 * Math.PI - dyaw;
-        if (Math.hypot(sample.x - p.x, sample.y - p.y, sample.z - p.z) <= MOVE && dyaw <= TURN) return;
+        moved = Math.hypot(sample.x - p.x, sample.y - p.y, sample.z - p.z) > MOVE || dyaw > TURN;
       }
+      if (!poseChanged && !moved) { pending = null; return; } // back to what the hub has: a waiting sample is stale
       if (t - lastAt >= EVERY) { go(sample, t); return; }
-      if (!poseChanged) return;
+      if (!poseChanged && !pending) return;
       pending = sample;
       flush ??= setTimer(() => { flush = null; const s = pending; pending = null; if (s && open()) go(s, now()); }, lastAt + EVERY - t);
     },

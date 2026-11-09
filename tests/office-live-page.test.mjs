@@ -87,3 +87,10 @@ test('a pose flapping every frame still sends at most 10 a second, and the last 
   assert.ok(pos.length <= 11, String(pos.length)); // 10 in the second of flapping, one more after
   assert.equal(pos.at(-1).pose, 'running');
 });
+
+test('flapping back to the last-sent pose inside the window sends nothing stale', () => {
+  const r = rig(); r.live.refresh(); const s = r.sockets[0]; s.open();
+  r.live.presence(sample(0, 'standing')); r.advance(20); s.sent.length = 0;
+  r.live.presence(sample(0, 'walking')); r.advance(20); r.live.presence(sample(0, 'standing')); r.advance(300);
+  assert.deepEqual(s.sent.filter(m => m.type === 'pos'), []);
+});
