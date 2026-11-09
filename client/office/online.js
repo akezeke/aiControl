@@ -55,6 +55,8 @@ export function createOnline({ api, scores = () => localBests() }) {
         take(next);
       } catch { /* unreachable: keep what's shown */ }
     },
+    // Your fruit and colour, saved (and sent on to the room when you're in a meeting); `state().look` is what's saved.
+    async setLook(fruit, colour) { take(await api('office/look', { fruit, colour })); },
     async signIn(code, name) { take(await api('office/online', { code, name })); sent = null; await online.sync(true); }, // your bests, at once
     async signOut() { take(await api('office/online', { leave: true })); sent = null; },
     dispose() { listeners.clear(); },

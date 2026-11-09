@@ -80,6 +80,12 @@
 .office-signin input + input { flex: 1 1 90px; }
 .office-copyline.office-signin button:not(.office-signin-close) { width: auto; padding: 0 12px; border: 2px solid #1b1a1f; background: #ffd166; }
 .office-copyline.office-signin button:disabled { opacity: .5; cursor: progress; }
+.office-signin-row { display: flex; flex: 1 0 100%; flex-wrap: wrap; gap: 4px; }
+.office-copyline.office-signin .office-signin-row button { flex: 0 0 auto; min-width: 32px; height: 32px; padding: 0; border: 2px solid #1b1a1f; border-radius: 8px; background: #fffdf7; font-size: 18px; line-height: 1; }
+.office-copyline.office-signin .office-signin-row button.on { background: #ffd166; box-shadow: 0 0 0 2px #1b1a1f; }
+.office-copyline.office-signin .office-signin-swatch.on { box-shadow: 0 0 0 2px #fffdf7, 0 0 0 4px #1b1a1f; }
+.office-copyline.office-signin .office-signin-swatch:disabled { opacity: .25; cursor: not-allowed; }
+@media (max-width: 640px) { .office-copyline.office-signin .office-signin-row button, .office-copyline.office-signin > button, .office-signin-form button { min-width: 36px; min-height: 36px; } }
 .office-signin-who { flex: 1; min-width: 0; overflow: hidden; padding: 0 6px; color: #1b1a1f; font: 700 15px system-ui, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .office-signin-error { flex-basis: 100%; order: 9; padding: 0 6px; color: #d7263d; font: 600 13px system-ui, sans-serif; }
 .office-hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 13px system-ui, sans-serif; width: max-content; max-width: calc(100% - 32px); pointer-events: none; transition: opacity .5s; }
