@@ -395,12 +395,13 @@ export function createRoom(scene, renderer) {
   function buildShell({ room: { width, depth }, door, grid: { cellW } }) {
     disposeTree(shell, false);
     room.size = `${width}x${depth}`; room.cellW = cellW;
-    // Floor: carpet tiles, a shade apart, drawn once into a repeating texture.
+    // Floor: carpet tiles, a shade apart, drawn once into a repeating texture. Each is half a metre, two of path.js's cells,
+    // counted from the back wall as its cells are (the plane's v runs from the front), so the snake's tiles fit them.
     const carpet = canvasTexture(128, 128, g => {
       for (const [x, y] of [[0, 0], [64, 0], [0, 64], [64, 64]]) { g.fillStyle = (x + y) % 128 ? '#8899af' : '#8192a9'; g.fillRect(x, y, 64, 64); }
       g.strokeStyle = '#7889a0'; g.lineWidth = 1.5; g.strokeRect(0, 0, 128, 128); g.strokeRect(0, 0, 64, 64); g.strokeRect(64, 64, 64, 64);
     });
-    carpet.wrapS = carpet.wrapT = THREE.RepeatWrapping; carpet.repeat.set(width / 1.6, depth / 1.6);
+    carpet.wrapS = carpet.wrapT = THREE.RepeatWrapping; carpet.repeat.set(width, depth); carpet.offset.set(0, -depth);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), toonMaterial('#ffffff', { map: carpet }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(width / 2, 0, depth / 2); floor.userData.floor = true; shell.add(floor);
 
