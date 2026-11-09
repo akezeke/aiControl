@@ -1275,8 +1275,10 @@ function messageNode(message, session, previous) {
   article.append(meta, body);
   if (rendered.more) {
     const more = el('details', 'message-more'); more.dataset.id = message.id; more.open = !!previous?.querySelector('details[open]');
+    const toggle = el('summary', 'quiet-button', more.open ? 'Read less' : 'Read more');
+    more.ontoggle = () => { toggle.textContent = more.open ? 'Read less' : 'Read more'; };
     const rest = el('div', 'message-text'); rest.innerHTML = rendered.more;
-    more.append(el('summary', '', 'Read more'), rest); article.append(more);
+    more.append(toggle, rest); article.append(more);
   }
   if (message.truncated) article.append(el('span', 'muted', 'Long message shortened.'));
   return article;

@@ -331,7 +331,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 .message-text th { background: var(--panel-2); font-weight: 600; }
 .message-text hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
 .message-text input[type=checkbox] { width: auto; height: auto; margin-right: 5px; }
-.message-more summary { padding: 6px 0 2px; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; }
+.message-more > summary { min-height: 30px; margin-top: 6px; padding: 5px 10px; font-size: 12px; }
 .message-more .message-text { margin-top: 6px; }
 .chat-requests { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); }
 .chat-panel:has(.chat-requests:not([hidden])) .message-composer { display: none; }
