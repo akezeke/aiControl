@@ -161,14 +161,14 @@ test('model catalogs require login and model, effort, Fire require origin and CS
     const path = `/api/sessions/${provider}%3Ax`;
     assert.deepEqual((await request(handler, path + '/models', { headers })).body, { models: [] });
     for (const kind of ['model', 'effort', 'fire']) {
-      const body = { [kind]: 'selected' };
+      const body = kind === 'fire' ? { force: true } : { [kind]: 'selected' };
       assert.equal((await request(handler, path + '/' + kind, { method: 'POST', headers: { ...headers, 'x-csrf-token': 'invalid' }, body })).status, 403);
       assert.equal((await request(handler, path + '/' + kind, { method: 'POST', headers: { ...headers, origin: 'https://wrong.test' }, body })).status, 403);
       assert.equal((await request(handler, path + '/' + kind, { method: 'POST', headers, body })).status, 200);
     }
   }
   assert.equal(calls.length, 12);
-  assert.deepEqual(calls.filter(call => call.kind === 'fire').map(call => call.body), Array(3).fill({ fire: 'selected' }));
+  assert.deepEqual(calls.filter(call => call.kind === 'fire').map(call => call.body), Array(3).fill({ force: true }));
 });
 
 test('weekly budget edits require login, same origin and CSRF', async t => {

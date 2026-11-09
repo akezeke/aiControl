@@ -1,7 +1,7 @@
 import { fail } from './requests.mjs';
 
 // Archive shuts down just this thread tree, preserving resumable history. Never signal the shared daemon.
-export async function fireCodex(adapter, threadId) {
+export async function fireCodex(adapter, threadId, options = {}) {
   adapter.requireMessaging(threadId);
   const threads = [], locked = [];
   try {
@@ -34,7 +34,10 @@ export async function fireCodex(adapter, threadId) {
       const queue = await adapter.rpc('thread/queue/list', { threadId: thread.id, limit: 1 });
       if (!Array.isArray(queue.data) || queue.data.length || queue.nextCursor) throw fail('Clear queued messages before firing this session.', 409);
       const terminals = await adapter.rpc('thread/backgroundTerminals/list', { threadId: thread.id, limit: 1 });
-      if (!Array.isArray(terminals.data) || terminals.data.length || terminals.nextCursor) throw fail('A background command is still running. Stop it first.', 409);
+      if (!Array.isArray(terminals.data)) throw fail('Could not verify background commands. Try again.', 409);
+      // Preview servers can outlive a completed turn, and retained entries may lack a live PID.
+      // Force bypasses this blocker only; active turns, approvals, goals and queues still prevent Fire.
+      if ((terminals.data.length || terminals.nextCursor) && options?.force !== true) throw Object.assign(fail('Codex still lists a background command. Stop it first.', 409), { code: 'force_available' });
     }
     for (const id of ids) quiet((await adapter.rpc('thread/read', { threadId: id, includeTurns: false })).thread);
     await adapter.rpc('thread/archive', { threadId });

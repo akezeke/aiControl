@@ -452,7 +452,7 @@ export class CodexAdapter {
     if (!this.modelCatalog.size) await this.loadModels();
     return [...this.modelCatalog.values()].filter(model => !model.hidden || model.id === session.model);
   }
-  fire(threadId) { return fireCodex(this, threadId); }
+  fire(threadId, options) { return fireCodex(this, threadId, options); }
   forgetArchived(id) {
     this.archived.add(id); this.sessions.delete(id); this.joined.delete(id); this.fresh.delete(id); this.images.delete(id); this.store.removeSession(`codex:${id}`);
   }
