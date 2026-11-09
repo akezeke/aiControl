@@ -59,27 +59,51 @@ test('native process inspection recognizes this process and its command on Linux
   assert.ok((await listProcesses()).some(row => row.pid === process.pid && row.ppid === process.ppid));
 });
 
-test('macOS port checks query only TCP listeners and distinguish no matches from errors', () => {
-  const options = { platform: 'darwin', exec: (file, args) => {
-    assert.equal(file, '/usr/sbin/lsof');
-    assert.deepEqual(args, ['-nP', '-iTCP:47841', '-sTCP:LISTEN', '-t']);
-    return '123\n';
-  } };
-  assert.equal(portInUse(47841, options), true);
-  assert.equal(portInUse(47841, { platform: 'darwin', exec: () => { throw Object.assign(new Error('no matches'), { status: 1, stdout: '', stderr: '' }); } }), false);
-  assert.throws(() => portInUse(47841, { platform: 'darwin', exec: () => { throw Object.assign(new Error('permission denied'), { status: 1, stdout: '', stderr: 'permission denied' }); } }), /permission denied/);
-  assert.throws(() => portInUse(47841, { platform: 'darwin', exec: () => { throw Object.assign(new Error('timed out'), { status: null, code: 'ETIMEDOUT' }); } }), /timed out/);
-  assert.equal(portInUse(47841, { platform: 'linux', exec: () => 'LISTEN 0 128 [::1]:47841 [::]:*' }), true);
-  assert.throws(() => portInUse(47841, { exec: () => { throw new Error('inspection failed'); } }), /inspection failed/);
+test('macOS port checks find real IPv4 and IPv6 loopback listeners without lsof', async () => {
+  const options = { platform: 'darwin', host: '127.0.0.2', exec: () => assert.fail('macOS must not invoke lsof') };
+  for (const host of ['127.0.0.1', '::1']) {
+    const server = createServer();
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, host, resolve); });
+    const { port } = server.address();
+    try { assert.equal(await portInUse(port, options), true, host); }
+    finally { await new Promise(resolve => server.close(resolve)); }
+    assert.equal(await portInUse(port, options), false, host);
+  }
+});
+
+test('macOS port checks include the configured server address', async () => {
+  const { EventEmitter } = await import('node:events');
+  const connect = ({ host }) => {
+    const socket = new EventEmitter(); socket.setTimeout = () => socket; socket.destroy = () => socket;
+    queueMicrotask(() => host === '100.64.0.8' ? socket.emit('connect') : socket.emit('error', Object.assign(new Error('refused'), { code: 'ECONNREFUSED' })));
+    return socket;
+  };
+  assert.equal(await portInUse(47841, { platform: 'darwin', host: '100.64.0.8', connect }), true);
+});
+
+test('macOS port checks surface unexpected connection errors and timeouts', async () => {
+  const { EventEmitter } = await import('node:events');
+  const failing = code => () => {
+    const socket = new EventEmitter(); socket.setTimeout = () => socket; socket.destroy = () => socket;
+    queueMicrotask(() => socket.emit(code === 'ETIMEDOUT' ? 'timeout' : 'error', Object.assign(new Error(code), { code })));
+    return socket;
+  };
+  await assert.rejects(portInUse(47841, { platform: 'darwin', connect: failing('EACCES') }), /EACCES/);
+  await assert.rejects(portInUse(47841, { platform: 'darwin', connect: failing('ETIMEDOUT') }), /timed out/i);
+});
+
+test('Linux port checks inspect listeners on all interfaces and report errors', async () => {
+  assert.equal(await portInUse(47841, { platform: 'linux', exec: () => 'LISTEN 0 128 [::1]:47841 [::]:*' }), true);
+  await assert.rejects(portInUse(47841, { platform: 'linux', exec: () => { throw new Error('inspection failed'); } }), /inspection failed/);
 });
 
 test('native port check sees a real listener and releases it after close', async () => {
   const server = createServer();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const { port } = server.address();
-  try { assert.equal(portInUse(port), true); }
+  try { assert.equal(await portInUse(port), true); }
   finally { await new Promise(resolve => server.close(resolve)); }
-  assert.equal(portInUse(port), false);
+  assert.equal(await portInUse(port), false);
 });
 
 test('macOS ps flags also work against real ps without truncating arguments', async () => {
