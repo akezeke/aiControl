@@ -1,0 +1,20 @@
+/* Motion changes leave the themes' painted surfaces, frames, focus and hover colours intact. */
+:root[data-atmosphere=still] *, :root[data-atmosphere=still] *::before, :root[data-atmosphere=still] *::after {
+  animation: none !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0s !important;
+}
+:root[data-atmosphere=still] :is(.boot, .eva-boot, .heroes-boot, .fy-boot, .lb-boot, .alien-visitor-stage, .sky-dragon) { display: none !important; }
+:root[data-atmosphere=still] { --glow: none; --glow-strong: none; --fringe: none; }
+:root[data-atmosphere=still][data-theme=alien] :is(.brand-name, .session-title, .panel-title, .stat-number, .console-count, .status-text, .page-heading h1) { text-shadow: none !important; }
+:root[data-atmosphere=subtle] { --glow: 0 0 3px #7dff6a26; --glow-strong: 0 0 5px #7dff6a26; --fringe: none; }
+:root[data-atmosphere=subtle] :is(.shell, .login-screen, .workspace)::before,
+:root[data-atmosphere=subtle] :is(.shell, .login-screen, .workspace, .main-content, .main-screen, .topbar, .chat-header)::after,
+:root[data-atmosphere=subtle] :is(.console-screen, .console-sweep)::before,
+:root[data-atmosphere=subtle] :is(.console-screen, .console-sweep)::after,
+:root[data-atmosphere=subtle] :is(.castle-water, .castle-light, .sky-dragon, .orb-liquid, .brand-mark, .brand-mark i),
+:root[data-atmosphere=subtle] :is(.brand-mark, .orb-liquid, .usage-orb, .session-card, .agent-mark)::after,
+:root[data-atmosphere=subtle] :is(.brand-mark, .usage-orb)::before { animation: none !important; }
+:root[data-atmosphere=subtle] .console-sweep { animation-duration: 12s !important; }
+:root[data-atmosphere=subtle] :is(.alien-visitor-stage, .sky-dragon) { display: none !important; }
+:root[data-atmosphere=subtle] #pixel-backdrop canvas { opacity: .45; }

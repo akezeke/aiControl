@@ -61,7 +61,9 @@
   --accent: #b0bfaa; --accent-2: #c6d2bf; --accent-ink: #252b22; --accent-soft: #373f34;
   --ok: #aabb9c; --ok-soft: #353e2f; --warn: #c9b48a; --warn-soft: #403a2b; --warn-line: #877855;
   --danger: #d3a29a; --danger-soft: #46332f; --claude: #c6b09a; --claude-soft: #3c352e;
-  --codex-art: url('/providers/orbit-dark-codex.webp'); --claude-art: url('/providers/orbit-dark-claude.webp'); --opencode-art: url('/providers/orbit-dark-opencode.webp');
+  --codex-art: url('/providers/orbit-light-codex.webp'); --claude-art: url('/providers/orbit-dark-claude.webp'); --opencode-art: url('/providers/orbit-dark-opencode.webp');
+  /* Preserve provider colours so their small marks remain distinguishable on graphite. */
+  .provider-icon { filter: none; }
 }
 
 /* Small paper specimens in both theme pickers; no image downloads. */

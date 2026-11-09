@@ -295,6 +295,7 @@ export function buildRoom(world, still = false) {
   const tmp = new THREE.Color(), seat = new THREE.Vector3(), mark = new THREE.Vector3(), SIGNAL = { need: C(SIGNALS.need), working: C(SIGNALS.working), idle: C(SIGNALS.idle) };
   const paintJewel = j => { j.base.copy(C(palette.tones[j.color])).multiplyScalar(j.bright * .7); j.mesh.setColorAt(j.index, j.on ? j.base : tmp.copy(j.base).multiplyScalar(.07)); j.mesh.instanceColor.needsUpdate = true; };
   return {
+    setMotion(value) { still = value; },
     group, stations, panels, glow, crystals,
     // Repaints what exists; creates nothing.
     repaint(next) {

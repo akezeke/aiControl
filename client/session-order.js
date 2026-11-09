@@ -32,6 +32,37 @@ export function compareProjects([aPath, aSessions], [bPath, bSessions]) {
   return priority(aSessions) - priority(bSessions) || activity(bSessions) - activity(aSessions) || aPath.localeCompare(bPath);
 }
 
+// Active matches pull in their ancestry even if an ancestor is outside the time/provider/search filter.
+// Keep each family together in one section; adding context must not invent activity for its parent.
+export function activeSessionGroups(sessions, matches) {
+  const all = new Map(sessions.map(s => [s.id, s])), included = new Map();
+  for (const session of matches) {
+    let current = session;
+    const path = new Set();
+    while (current && !path.has(current.id)) { path.add(current.id); included.set(current.id, current); current = all.get(current.parentId); }
+  }
+  const ordered = [...included.values()].sort(compareSessions), children = new Map(), seen = new Set(), families = [];
+  for (const session of ordered) {
+    if (!children.has(session.parentId)) children.set(session.parentId, []);
+    children.get(session.parentId).push(session);
+  }
+  const visit = (session, family) => {
+    if (seen.has(session.id)) return;
+    seen.add(session.id); family.push(session);
+    for (const child of children.get(session.id) || []) visit(child, family);
+  };
+  const addFamily = session => { if (seen.has(session.id)) return; const family = []; visit(session, family); families.push(family); };
+  ordered.filter(s => !included.has(s.parentId)).forEach(addFamily);
+  ordered.forEach(addFamily); // Cycles and orphans still remain inspectable.
+  const current = families.filter(family => family.some(s => sessionPriority(s) < 2));
+  const recent = families.filter(family => family.every(s => sessionPriority(s) > 1));
+  const first = family => family.toSorted(compareSessions)[0];
+  current.sort((a, b) => compareSessions(first(a), first(b)));
+  const lastStop = family => Math.max(0, ...family.map(s => timestamp(s.inactiveSince)));
+  recent.sort((a, b) => lastStop(b) - lastStop(a) || compareSessions(first(a), first(b)));
+  return [['', current.flat()], ['recent', recent.flat()]].filter(([, list]) => list.length);
+}
+
 export class SessionActivity {
   entries = new Map();
   constructor({ storage, now = Date.now } = {}) {

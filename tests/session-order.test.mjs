@@ -1,10 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SessionActivity, compareSessions, compareProjects, recentlyActive } from '../client/session-order.js';
+import { SessionActivity, compareSessions, compareProjects, recentlyActive, activeSessionGroups } from '../client/session-order.js';
 
 const session = (id, status, updatedAt) => ({ id, status, updatedAt });
 const ids = sessions => sessions.toSorted(compareSessions).map(session => session.id);
 const storage = () => ({ value: null, getItem() { return this.value; }, setItem(_key, value) { this.value = value; } });
+
+test('active subagents bring their idle ancestors and remain directly underneath them', () => {
+  const parent = { id: 'parent', status: 'idle', inactiveSince: 1 }, other = { id: 'other', status: 'working', statusSince: 30 };
+  const middle = { id: 'middle', parentId: 'parent', status: 'idle' }, child = { id: 'child', parentId: 'middle', status: 'permission', statusSince: 10 };
+  const unrelated = { id: 'unrelated', status: 'idle' };
+  const groups = activeSessionGroups([parent, child, unrelated, middle, other], [child, other]);
+  assert.deepEqual(groups.map(([key, list]) => [key, list.map(s => s.id)]), [['', ['parent', 'middle', 'child', 'other']]]);
+  assert.equal(groups[0][1][0], parent, 'ancestor keeps its actual idle status');
+});
+test('a family appears once in Active even when one child is recently active and another still runs', () => {
+  const all = [{ id: 'p', status: 'idle', inactiveSince: 10 }, { id: 'r', parentId: 'p', status: 'idle', inactiveSince: 90 }, { id: 'w', parentId: 'p', status: 'working', statusSince: 50 }, { id: 'recent', status: 'idle', inactiveSince: 100 }];
+  assert.deepEqual(activeSessionGroups(all, all).map(([key, list]) => [key, list.map(s => s.id)]), [['', ['p', 'w', 'r']], ['recent', ['recent']]]);
+  assert.deepEqual(activeSessionGroups(all, [all[1]]).map(([key, list]) => [key, list.map(s => s.id)]), [['recent', ['p', 'r']]]);
+});
+test('missing parents and malformed ancestry cannot hide an active agent or recurse forever', () => {
+  const all = [{ id: 'orphan', parentId: 'absent', status: 'working' }, { id: 'a', parentId: 'b', status: 'working' }, { id: 'b', parentId: 'a', status: 'idle' }];
+  const ids = activeSessionGroups(all, [all[0], all[1]]).flatMap(([, list]) => list.map(s => s.id));
+  assert.equal(ids.length, 3);
+  assert.deepEqual(new Set(ids), new Set(['orphan', 'a', 'b']));
+  assert.deepEqual(activeSessionGroups(all, []), []);
+});
 
 test('input, working and idle have explicit priority, with newest activity first and stable ties', () => {
   const activity = new SessionActivity({ storage: storage() });

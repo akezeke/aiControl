@@ -4,6 +4,7 @@ import { setBackdrop } from './backdrop/pixel-backdrop.js';
 import { askForBoot } from './city/boot-ask.js';
 import { setBrickSky } from './backdrop/brick-sky.js';
 import { setBrickUi } from './bricks3d/mount.js';
+import { effectiveAtmosphere, selectThemeAtmosphere } from './atmosphere.js';
 
 // `look` picks the CSS theme; Orbit's `scheme` is fixed, or follows the system when absent.
 export const themes = [
@@ -46,6 +47,7 @@ export function applyTheme(id) {
   const theme = themes.find(theme => theme.id === id) || themes.find(theme => theme.id === 'alien');
   const root = document.documentElement, previous = root.dataset.theme, look = theme.look || theme.id;
   root.dataset.theme = look; root.dataset.themeChoice = theme.id;
+  selectThemeAtmosphere(theme.id);
   // Stop any movement already in flight when entering a still theme.
   if (look === 'paper') document.getAnimations().forEach(animation => animation.cancel());
   root.toggleAttribute('data-scene', !!sceneFor(look));
@@ -74,12 +76,12 @@ export function bootSequence(force = false) {
   // Metropolis has no overlay: it builds the real city, once the scene has one to build.
   if (theme === 'city') {
     previousOverlays.forEach(overlay => overlay.remove());
-    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+    if (effectiveAtmosphere() !== 'full') return;
     try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
     askForBoot(document.documentElement, performance.now());
     return;
   }
-  if (!['alien', 'command', 'heroes', 'fantasy', 'bricks'].includes(theme) || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) { previousOverlays.forEach(overlay => overlay.remove()); return; }
+  if (!['alien', 'command', 'heroes', 'fantasy', 'bricks'].includes(theme) || effectiveAtmosphere() !== 'full') { previousOverlays.forEach(overlay => overlay.remove()); return; }
   try { if (!force && sessionStorage.getItem('ai-control-boot')) return; sessionStorage.setItem('ai-control-boot', '1'); } catch { /* storage may be disabled */ }
   previousOverlays.forEach(overlay => overlay.remove());
   const overlay = document.createElement('div'); overlay.className = { alien: 'boot', command: 'eva-boot', heroes: 'heroes-boot', fantasy: 'fy-boot', bricks: 'lb-boot' }[theme]; overlay.setAttribute('aria-hidden', 'true');

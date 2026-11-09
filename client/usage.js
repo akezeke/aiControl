@@ -3,6 +3,7 @@ import { usageWindowView, usageUpdatedText, costPeriodView } from './usage-prese
 import { renderPower } from './theme-console.js';
 import { providerIcon } from './provider-icons.js';
 import { renderSpend, renderSpendRow } from './spend.js';
+import { renderUsageSummary } from './usage-summary.js';
 
 const node = (tag, className, text) => {
   const element = document.createElement(tag); element.className = className;
@@ -79,6 +80,6 @@ export function usageAccounts(accounts, { now = Date.now(), disconnected = false
 }
 
 export function renderUsage(container, accounts, options = {}) {
-  container.replaceChildren(usageAccounts(accounts, options));
+  renderUsageSummary(container, accounts, options, usageAccounts);
   renderPower(accounts || []);
 }

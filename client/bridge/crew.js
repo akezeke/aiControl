@@ -94,6 +94,7 @@ export function createCrew(station, { still = false } = {}) {
   const now = { turn: 0, lean: 0, raise: 0, hands: 0, track: 0 };
   const see = () => { root.visible = fade > 0; for (const material of fading) { const clear = fade < 1; if (material.transparent !== clear) { material.transparent = clear; material.needsUpdate = true; } material.opacity = fade; } };
   return {
+    setMotion(value) { still = value; },
     root, body, shimmer,
     setLook({ head: h, suit: s, mark: m, key }) {
       headTop.geometry = shared.heads[h]; badge.geometry = shared.marks[m]; suit.color.copy(C(SUITS[s]));

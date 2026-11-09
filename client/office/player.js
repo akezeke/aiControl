@@ -1,3 +1,4 @@
+import { reducedAtmosphere } from '../atmosphere.js';
 // You, the boss: first-person movement with WASD (Shift runs, Space jumps), arrow keys to look, collision with walls and desks.
 // With a mouse, a click captures it (pointer lock): moving looks around, a click picks what's under the dot, right-click or Esc lets go.
 // Holding something, a press charges a throw instead (`onPress` says so) and letting go throws it (`onRelease`). Right-click calls it
@@ -12,7 +13,6 @@ import { menuOpen, officeHasKeys, sceneFocused } from '../scene-keys.js';
 
 export const EYE = 1.5;
 export const LOOK_UP = 0.8; // radians: as high as you can look
-const reduceMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
 // How far (px) a press can move and still be a tap, not a drag (darts.js tells them apart the same way).
 export const DRAG_SLOP = 6;
 const SPEED = 4, RUN = 1.9, RADIUS = 0.3, LOOK = 0.0035, TOUCH_LOOK = 0.006, LOCKED_LOOK = 0.0022, JUMP = 4.2, FLING = 0.3, GRAVITY = 13, TURN = 2.4, TILT = 1.4;
@@ -105,7 +105,7 @@ export class Player {
       if (charging) { charging = false; this.onRelease(this.locked || event.pointerType !== 'mouse' ? this.centre : event); }
       else if (drag && !drag.moved) this.onPick(event, event.pointerType === 'mouse');
       // A finger that stopped before lifting doesn't fling.
-      else if (drag && !drag.fine && event.pointerType === 'touch' && event.timeStamp - drag.t < 100 && !reduceMotion?.matches) this.spin = drag.v;
+      else if (drag && !drag.fine && event.pointerType === 'touch' && event.timeStamp - drag.t < 100 && !reducedAtmosphere()) this.spin = drag.v;
       drag = null;
     });
     listen(canvas, 'pointercancel', () => { drag = null; noThrow(); });

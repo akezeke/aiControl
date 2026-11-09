@@ -52,6 +52,7 @@ export function createBoard(camera, stations, still) {
     empty.visible = !shown.length; if (empty.visible) { drawEmpty(); empty.scale.set(Math.min(W - 2 * EDGE, 320), Math.min(W - 2 * EDGE, 320) * 96 / 512, 1); }
   }
   return {
+    setMotion(value) { still = value; },
     get open() { return on; },
     show(next) { on = next; },
     // Who's on it: { index, id, status } in station order.

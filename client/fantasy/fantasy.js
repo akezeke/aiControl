@@ -1,3 +1,4 @@
+import { reducedAtmosphere, atmosphereScale } from '../atmosphere.js';
 // Fantasy: each project is a fight, each session a party member, each subagent a minion. One canvas draws every fight in view, each in its tile's rectangle, and a tapped tile grows to fill it.
 import * as THREE from 'three';
 import './fantasy.css';
@@ -29,7 +30,8 @@ export function webglAvailable() {
 const within = (node, x, y) => { const r = node.getBoundingClientRect(); return r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
 
 export function mountFantasy(container, hooks = {}) {
-  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches, look = { value: stored() ? 0 : 1 }, low = () => look.value < .5;
+  let calm = reducedAtmosphere();
+  const look = { value: stored() ? 0 : 1 }, low = () => look.value < .5;
   const wrap = document.createElement('div'); wrap.className = 'fy-stage'; container.append(wrap);
   const paint = document.createElement('div'); paint.className = 'fy-paint'; wrap.append(paint);
   // The old look's words: the fights are drawn small and blown up, but what people say is drawn sharp on a layer above them.
@@ -185,6 +187,9 @@ export function mountFantasy(container, hooks = {}) {
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
+    calm = stage.calm = reducedAtmosphere();
+    say.setMotion(calm);
+    for (const fight of fights.values()) fight.fx.calm = calm;
     // Left open all day, a fight nobody's fighting doesn't need every refresh of the screen.
     const still = zoomT % 1 === 0 && now - touched > 1500 && [...fights.values()].every(fight => fight.quiet);
     if (now - lastFrame < (still ? RESTING_MS : BUSY_MS) - 1.5) return;
@@ -207,13 +212,13 @@ export function mountFantasy(container, hooks = {}) {
         if (!tile || tile.hidden) continue;
         const rect = rectOf(tile, box), clip = clipTo(rect, inView);
         if (clip.bottom <= clip.top || clip.right <= clip.left) continue;
-        fight.tick(real, frozen);
+        fight.tick(real * (atmosphereScale() || 1), frozen);
         const at = { rect: toBuf(rect), clip: toBuf(clip) }; drawn.push(at);
         fight.render(renderer, at.rect, at.clip, scale, { bottom: (fight.lowH || 0) / (rect.bottom - rect.top), top: 0 }, real);
       }
       if (shown) {
         const tile = hud.tile(shown.project), from = tile ? rectOf(tile, box) : full, rect = blend(from, full, k), clip = blend(clipTo(from, inView), full, k), height = rect.bottom - rect.top;
-        shown.tick(real, frozen);
+        shown.tick(real * (atmosphereScale() || 1), frozen);
         const at = { rect: toBuf(rect), clip: toBuf(clip) }; drawn.push(at);
         shown.render(renderer, at.rect, at.clip, scale, { bottom: mix((shown.lowH || 0) / Math.max(1, height), covers.bottom, k), top: mix(0, covers.top, k), right: mix(0, sideShown, k) }, real);
       }

@@ -87,6 +87,7 @@ export function createHologram(parent, { from, at, width = .78, height = .6, pho
   }
   const point = new THREE.Vector3(), eye = new THREE.Vector3();
   return {
+    setMotion(value) { still = value; sweep.visible = !still; },
     get open() { return open; },
     show(nextTitle, nextRows) { hovered = carryHover(rows, hovered, nextRows); title = nextTitle; rows = nextRows; layout = hologramLayout(rows.length, W, H); open = true; draw(); },
     hide() { open = false; if (hovered !== -1) { hovered = -1; draw(); } },

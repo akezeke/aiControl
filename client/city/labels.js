@@ -1,3 +1,4 @@
+import { reducedAtmosphere } from '../atmosphere.js';
 // The DOM laid over the city: its buttons, and everything that talks or names a place.
 import { glyph } from './glyphs.js';
 import { clearOf, offMap, placeBubble } from './view.js';
@@ -79,7 +80,7 @@ export function createLabels(box, { onSession, onHood, onHoodHover = () => {}, o
         if (sig !== entry.sig) {
           // A bubble whose news has changed, rather than its wording, pops. On top of wherever it's been placed.
           const news = `${bubble?.icon}|${!!bubble?.highlight}`;
-          if (entry.sig && news !== entry.news && !matchMedia('(prefers-reduced-motion: reduce)').matches) entry.node.animate(POP, POP_TIMING);
+          if (entry.sig && news !== entry.news && !reducedAtmosphere()) entry.node.animate(POP, POP_TIMING);
           entry.news = news;
           entry.sig = sig; entry.w = null; entry.tail = null;
           const icon = iconOf(bubble?.icon), said = bubble?.text || '', words = [name, said].filter(Boolean).join(': '), dot = document.createElement('b'), rows = [];

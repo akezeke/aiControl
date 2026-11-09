@@ -19,6 +19,7 @@ export function createLights(world, glow, still = false) {
   const tmp = new THREE.Color();
   let palette = null, neon = new THREE.Color(), hail = false, limit = false;
   return {
+    setMotion(value) { still = value; },
     setMode(state) { hail = state.mode === 'hail'; limit = state.mode === 'limit'; },
     repaint(next) { palette = next; neon = C(next.neon); },
     tick(dt, t, space) {

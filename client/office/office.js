@@ -1,3 +1,4 @@
+import { reducedAtmosphere, atmosphereScale } from '../atmosphere.js';
 // The Office theme: a 3D office where each session is a fruit at a desk. main.js mounts it in place of the list.
 import * as THREE from 'three';
 import './office.css';
@@ -43,7 +44,6 @@ export function mountOffice(container, hooks) {
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
   camera.userData.canvas = renderer.domElement;
   const room = createRoom(scene, renderer);
-  const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
   // Ways round the furniture (path.js) for whoever walks: fruit coming and going, and the goose. The grid is worked out again
   // only when the boxes really change (room.sync hands over a new list of them with every snapshot).
   let grid = null;
@@ -57,7 +57,7 @@ export function mountOffice(container, hooks) {
     if (yourGrid?.key !== key) yourGrid = walkGrid(room.colliders, bounds);
     return findPath(yourGrid, from, to);
   };
-  const cast = new Cast(scene, { reducedMotion: () => !!reducedMotion?.matches, route });
+  const cast = new Cast(scene, { reducedMotion: () => reducedAtmosphere(), route });
   let layout;
   const fired = new Map(); // session id → when it was fired from the panel
 
@@ -91,11 +91,11 @@ export function mountOffice(container, hooks) {
       else if (hit?.kind === 'floor' && !view.overview) player.walkTo(hit.point);
     },
   });
-  const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => !!reducedMotion?.matches, container });
+  const view = new OfficeCamera(camera, scene, player, room, { reducedMotion: () => reducedAtmosphere(), container });
   // Whoever gets hit, or whose things do, jumps, glares and says so; the goose comes for you.
   const onHit = (id, line) => { if (id === GOOSE) { goose.hit(); return; } cast.startle(id); bubbles.say(id, '💢', line); };
   const hand = createHand(view.hands), palm = new THREE.Vector3();
-  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => !!reducedMotion?.matches, onHit, others: () => [goose.column], hand });
+  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => layout?.room, reducedMotion: () => reducedAtmosphere(), onHit, others: () => [goose.column], hand });
   // A throw: pressed, it charges while it's all still yours (no panel or menu's come up, no overview); let go, it flies along `at`.
   const charge = createCharge(() => { overlays.setCharge(null); overlays.dropThrow(); player.aimFine(false); }), clock = () => performance.now() / 1000, noEvent = {};
   const thrower = () => playing?.free ? playing : props;
@@ -160,13 +160,13 @@ export function mountOffice(container, hooks) {
   const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay });
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
-  const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => !!reducedMotion?.matches });
+  const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip) }));
   const boards = createBoards(room);
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
   const goose = createGoose(scene, { props, player, walkable, bounds: () => layout?.room, busy: () => view.overview || !!player.flight || !!office.talking || room.kitchen.inside(player.position),
-    reducedMotion: () => !!reducedMotion?.matches, say: (icon, text) => bubbles.say(GOOSE, icon, text),
+    reducedMotion: () => reducedAtmosphere(), say: (icon, text) => bubbles.say(GOOSE, icon, text),
     sleepers: () => cast.sleepers(), wake: (id, line) => { cast.startle(id, goose.root.position); bubbles.say(id, '😱', line); } });
   const card = createCard(container);
   const menu = createMenu(container, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item));
@@ -276,7 +276,7 @@ export function mountOffice(container, hooks) {
     if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
     if (charge.active) {
       if (!canThrow()) callOff();
-      else { const level = charge.level(clock()); overlays.setCharge(level, throwAt()); if (!reducedMotion?.matches) hand.pull(level); }
+      else { const level = charge.level(clock()); overlays.setCharge(level, throwAt()); if (!reducedAtmosphere()) hand.pull(level); }
     }
     const again = !!playing?.retrying && !view.overview && !menu.open;
     overlays.showThrow(touched && (canCharge() || again) && clearToThrow(), again);
@@ -289,7 +289,7 @@ export function mountOffice(container, hooks) {
     if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
     // In the secret room or the kitchen the office's bubbles don't show through its walls. The overview looks down on all of it.
     const away = view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
-    view.update(dt); room.update(dt, camera.position, !!reducedMotion?.matches); room.secret.update(dt, player.position, !!reducedMotion?.matches, view.amount); room.kitchen.update(dt, player.position, !!reducedMotion?.matches, view.amount); if (playing?.following) view.place(); cast.update(dt, player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });
@@ -381,10 +381,10 @@ export function mountOffice(container, hooks) {
       const arrive = () => {
         if (office.talking !== token) return;
         cast.greet(id); view.focus(head.clone().setY(head.y - 0.25));
-        setTimeout(() => { if (office.talking === token) hooks.openPanel(id); }, reducedMotion?.matches ? 0 : 400);
+        setTimeout(() => { if (office.talking === token) hooks.openPanel(id); }, reducedAtmosphere() ? 0 : 400);
       };
       const spot = standNear(head, player.position, room.colliders, layout?.room);
-      if (spot) player.flyTo(spot, head, arrive, !!reducedMotion?.matches); else player.walkTo(head.clone().setY(0), arrive, 1.1, true);
+      if (spot) player.flyTo(spot, head, arrive, reducedAtmosphere()); else player.walkTo(head.clone().setY(0), arrive, 1.1, true);
     },
     // Look over their shoulder at their screen, then their session opens beside the scene; unlike a talk, they keep working.
     // The second monitor (`point` on it) opens the screenshots instead.
@@ -398,10 +398,10 @@ export function mountOffice(container, hooks) {
       const arrive = () => {
         if (office.talking !== token) return;
         view.focus(centre);
-        setTimeout(() => { if (office.talking === token) { if (side) hooks.showShots(id, shots.images(id), () => office.panelClosed()); else hooks.openPanel(id); } }, reducedMotion?.matches ? 0 : 400);
+        setTimeout(() => { if (office.talking === token) { if (side) hooks.showShots(id, shots.images(id), () => office.panelClosed()); else hooks.openPanel(id); } }, reducedAtmosphere() ? 0 : 400);
       };
       const spot = standBefore(shoulder, normal, Math.max(0.8, 1.9 * scale), room.colliders, layout?.room);
-      if (spot) player.flyTo(spot, centre, arrive, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z))); else arrive();
+      if (spot) player.flyTo(spot, centre, arrive, reducedAtmosphere(), Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z))); else arrive();
     },
     // Fly over to a board on the wall and face it, back far enough to take it all in (and not crane up at the clock). A small one says how near (userData.near).
     readBoard(node) {
@@ -411,7 +411,7 @@ export function mountOffice(container, hooks) {
       const normal = new THREE.Vector3(0, 0, 1).transformDirection(node.matrixWorld).setY(0).normalize(), tan = Math.tan(THREE.MathUtils.degToRad(view.fov / 2));
       const fit = Math.max(size.y / 2 / tan, Math.max(size.x, size.z) / 2 / (tan * camera.aspect)) * 1.25, rise = centre.y - EYE;
       const spot = standBefore(centre, normal, THREE.MathUtils.clamp(Math.max(fit, Math.abs(rise) * 1.7), node.userData.near ?? 1, 3.5), room.colliders, layout && room.secret.bounds(layout.room));
-      if (spot) player.flyTo(spot, centre, null, !!reducedMotion?.matches, Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z)));
+      if (spot) player.flyTo(spot, centre, null, reducedAtmosphere(), Math.atan2(rise, Math.hypot(centre.x - spot.x, centre.z - spot.z)));
     },
     // A pod's sign: let go of the mouse and offer Claude or Codex, started in the pod's folder.
     offerHire({ cwd, node, point }, at, focus = false) {
@@ -426,7 +426,7 @@ export function mountOffice(container, hooks) {
       if (!open) return;
       play(null); office.talking = null; menu.close();
       const desks = picked ? (office.snapshot?.sessions || []).filter(picked).map(session => layout?.desks.get(session.id) || layout?.desks.get(session.parentId)).filter(Boolean) : [];
-      view.overhead.frame(desks.map(({ x, z }) => [x - DESK_W / 2 - 0.3, x + DESK_W / 2 + 0.3, z - 1.4, z + 1.4]), !reducedMotion?.matches);
+      view.overhead.frame(desks.map(({ x, z }) => [x - DESK_W / 2 - 0.3, x + DESK_W / 2 + 0.3, z - 1.4, z + 1.4]), !reducedAtmosphere());
       overview(true);
     },
     // main.js calls this when the session panel closes.

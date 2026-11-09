@@ -27,6 +27,7 @@ export function createReticle(camera, still) {
     map.needsUpdate = true;
   }
   return {
+    setMotion(value) { still = value; },
     show(on) { group.visible = on; },
     // What's under it, by name; null for nothing you can use.
     aim(name) { if (name !== target) { target = name; draw(); } },

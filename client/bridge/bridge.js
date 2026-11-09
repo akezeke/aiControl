@@ -1,3 +1,4 @@
+import { reducedAtmosphere, atmosphereScale } from '../atmosphere.js';
 import * as THREE from 'three';
 import './bridge.css';
 import { Player, menuOpen, officeHasKeys, sceneFocused } from '../office/player.js';
@@ -32,7 +33,7 @@ const WALK = /^Key[WASD]$/;
 const shown = node => { for (let n = node; n; n = n.parent) if (!n.visible) return false; return true; };
 
 export function mountBridge(container, hooks = {}, options = {}) {
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let still = reducedAtmosphere();
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace; renderer.autoClear = false; renderer.setClearColor(0, 1);
   const el = renderer.domElement; container.append(el);
@@ -223,7 +224,12 @@ export function mountBridge(container, hooks = {}, options = {}) {
   function frame(now) {
     raf = requestAnimationFrame(frame);
     if (document.hidden) { lastFrame = now; return; }
-    const dt = frameTime(now, lastFrame, .05); lastFrame = now; if (!still) T += dt;
+    const dt = frameTime(now, lastFrame, .05); lastFrame = now;
+    if (still !== reducedAtmosphere()) {
+      still = reducedAtmosphere(); look.still = still;
+      for (const part of [room, lights, space, reticle, board, ...figures, ...Object.values(holograms)]) part.setMotion(still);
+    }
+    const ambientDt = dt * atmosphereScale(); T += ambientDt;
     try {
       if (player.locked && document.body.classList.contains('panel-open')) player.unlock();
       const nowFree = free(); if (nowFree && !wasFree) player.resume(); wasFree = nowFree;
@@ -240,7 +246,7 @@ export function mountBridge(container, hooks = {}, options = {}) {
       showLeave(); hover(dt);
       reticle.show((player.aiming || touch) && !zoomed && !look.overview); reticle.tick(dt, container.clientHeight || 1); board.tick(dt, container.clientWidth || 1, container.clientHeight || 1); brackets.tick(container.clientHeight || 1);
       for (const hologram of Object.values(holograms)) hologram.tick(dt, T, camera);
-      space.tick(dt); lights.tick(dt, T, space); room.tick(dt, T, camera); figures.forEach(figure => figure.tick(dt, T));
+      space.tick(ambientDt); lights.tick(ambientDt, T, space); room.tick(dt, T, camera); figures.forEach(figure => figure.tick(dt, T));
       post.render(world, space.scene, camera);
     } catch (error) { console.error(error); stop(); }
   }

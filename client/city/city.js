@@ -1,5 +1,6 @@
 // The City theme: a pixel-art city on a 2D canvas. Every sprite lands on whole art pixels, and art pixels are whole device pixels.
 import './city.css';
+import { reducedAtmosphere, effectiveAtmosphere, onAtmosphereChange } from '../atmosphere.js';
 import { sharedLayout, layoutOffice, VACANT_MS } from '../office/layout.js';
 import { isTypingTarget } from '../office/status.js';
 import { officeHasKeys, sceneFocused } from '../scene-keys.js';
@@ -47,7 +48,7 @@ export function webglAvailable() {
   try { return !!document.createElement('canvas').getContext('2d'); } catch { return false; }
 }
 
-const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reducedMotion = reducedAtmosphere;
 const drawBounced = (target, image, sprite, x, y, bounce) => {
   const left = x - sprite.originX, top = y - sprite.originY;
   if (bounce) target.drawImage(image, left, top - bounce.lift + bounce.squash, image.width, image.height - bounce.squash);
@@ -418,13 +419,13 @@ export function mountCity(box, hooks = {}) {
   };
 
   const powerNow = now => {
-    if (reducedMotion()) return [];
+    if (effectiveAtmosphere() !== 'full') return [];
     const [gx, gy] = toCanvas(camera, size, 0, 0), wanted = routes.filter(({ id, plant }) => plant === litPlant || (signalOf(id).mood === 'working' && !dimmedId(id)));
     return pulsesAt(wanted, now).filter(({ x, z }) => { const [sx, sy] = screen(x, z, view), px = sx + gx, py = sy + gy; return px > -4 && py > -4 && px < size.width + 4 && py < size.height + 4; });
   };
   // Birds and clouds are in world space, so they turn with the city. Only what's on screen counts: nothing else asks for a paint.
   const birdsNow = now => {
-    if (reducedMotion()) return [];
+    if (effectiveAtmosphere() !== 'full') return [];
     const [gx, gy] = toCanvas(camera, size, 0, 0);
     return birdsAt(plan.bounds, now).map(({ x, z, wings }) => { const [sx, sy] = screen(x, z, view); return { sx: Math.floor(sx), sy: Math.floor(sy) - BIRD_LIFT, wings }; }).filter(({ sx, sy }) => sx + gx > -4 && sy + gy > -4 && sx + gx < size.width + 4 && sy + gy < size.height + 4);
   };
@@ -439,7 +440,7 @@ export function mountCity(box, hooks = {}) {
   };
   // A cloud's shadow needs a sun, so only by day. Reduced motion has none either: a shadow that never moves is only a stain.
   const cloudsNow = now => {
-    if (reducedMotion() || hour === 'night') return [];
+    if (effectiveAtmosphere() !== 'full' || hour === 'night') return [];
     const [gx, gy] = toCanvas(camera, size, 0, 0);
     return cloudsAt(plan.bounds, now).map(({ x, z, shape }) => { const sprite = cloudSprite(shape), [sx, sy] = screen(x, z, view); return { sx: Math.floor(sx - sprite.width / 2), sy: Math.floor(sy - sprite.height / 2), sprite }; }).filter(({ sx, sy, sprite }) => sx + gx + sprite.width > 0 && sy + gy + sprite.height > 0 && sx + gx < size.width && sy + gy < size.height);
   };
@@ -507,6 +508,7 @@ export function mountCity(box, hooks = {}) {
   };
   const schedule = () => { if (!raf && !gone && !document.hidden) raf = requestAnimationFrame(frame); };
   const wake = () => { dirty = true; cancel(); schedule(); };
+  const stopAtmosphere = onAtmosphereChange(wake);
   const onVisible = () => { if (document.hidden) boot?.skip(); else wake(); };
 
   // ---- The intro. Nothing here touches the city's own state: towers go on working out their real signals underneath, so that the end of it isn't a change.
@@ -827,7 +829,7 @@ export function mountCity(box, hooks = {}) {
     fire(id) { if (gone) return; fired.set(id, performance.now()); if (snapshot) scene.update(snapshot, { error }); },
     unmount() {
       if (boot) { boot.skip(); endBoot(); }
-      gone = true; cancel(); clearInterval(clock); mapOff?.(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('pointerdown', onPress, true);
+      gone = true; cancel(); stopAtmosphere(); clearInterval(clock); mapOff?.(); resize.disconnect(); document.removeEventListener('visibilitychange', onVisible); document.removeEventListener('pointerdown', onPress, true);
       for (const [target, type, listener] of listening) target.removeEventListener(type, listener);
       box.removeEventListener('wheel', onWheel); controls.dispose(); card.dispose(); labels.dispose(); menu.dispose();
       sprites.clear(); shown.clear(); grounds.clear(); ghosts.clear(); fired.clear(); canvas.remove(); glowCanvas.remove(); plan = null;

@@ -1,3 +1,4 @@
+import { effectiveAtmosphere, onAtmosphereChange } from './atmosphere.js';
 // A rare, decorative stowaway. CSS does all movement; no frame loop, pointer tracking or audio.
 const creature = `<svg viewBox="0 0 96 60" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
   <g stroke="#78937c" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
@@ -26,7 +27,7 @@ const creature = `<svg viewBox="0 0 96 60" fill="none" xmlns="http://www.w3.org/
 let enabled = false, installed = false, visited = false, timer, visitor, stage, faultTimer;
 const motion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
 const editing = () => document.activeElement?.matches('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
-const allowed = () => enabled && !motion?.matches && !document.hidden && !editing();
+const allowed = () => enabled && effectiveAtmosphere() === 'full' && !motion?.matches && !document.hidden && !editing();
 
 function clear() {
   clearTimeout(timer); timer = undefined;
@@ -86,6 +87,7 @@ export function setAlienAmbienceEnabled(value) {
     document.addEventListener('focusin', syncAmbience);
     document.addEventListener('focusout', syncAmbience);
     motion?.addEventListener('change', syncAmbience);
+    onAtmosphereChange(syncAmbience);
   }
   syncAmbience();
 }

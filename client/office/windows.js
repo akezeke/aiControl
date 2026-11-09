@@ -1,3 +1,4 @@
+import { atmosphereScale } from '../atmosphere.js';
 // The back wall's windows: one merged frame (plus its outline) and one merged pane of glass for them all, three draw calls.
 // The glass looks out through a shader rather than at a picture: sky, clouds, a skyline and trees stand at set distances
 // behind the wall over a street worked out in the shader, so the view shifts as you move, holds up with your nose to the
@@ -135,11 +136,10 @@ function glassMaterial() {
       }`,
   });
   // The sky is checked once a minute; the pictures are only redrawn when night falls or ends. Clouds drift unless motion is reduced.
-  const motion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
-  let checked = -Infinity, night = false;
+  let checked = -Infinity, night = false, previous = performance.now();
   material.update = () => {
     const now = performance.now();
-    if (!motion?.matches) uniforms.drift.value = now / 1000 * 1.5 / HIGH[1] % 1;
+    uniforms.drift.value = (uniforms.drift.value + Math.min(.1, (now - previous) / 1000) * atmosphereScale() * 1.5 / HIGH[1]) % 1; previous = now;
     if (now - checked < 60_000) return;
     checked = now;
     const date = new Date(), hour = date.getHours() + date.getMinutes() / 60, i = SKY.findIndex(key => key[0] > hour), [h0, ...a] = SKY[i - 1], [h1, ...b] = SKY[i], k = (hour - h0) / (h1 - h0);

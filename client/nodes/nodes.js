@@ -15,6 +15,7 @@ import { createMenu, frameTime } from '../scene-ui.js';
 import { officeHasKeys } from '../scene-keys.js';
 import { hireChoices } from '../hire.js';
 import { createScreenshots } from '../office/screenshots.js';
+import { reducedAtmosphere, atmosphereScale, onAtmosphereChange } from '../atmosphere.js';
 
 const LOOKS = {
   clean: () => import('./looks/clean.js'),
@@ -38,8 +39,7 @@ const needs = n => n.status === 'permission' || n.status === 'question';
 const statusLine = n => needs(n) ? `${n.text} · ${kit.fmtWait(n.waitSec)}` : n.text;
 
 export function mountNodes(container, hooks = {}) {
-  const osReduced = matchMedia('(prefers-reduced-motion: reduce)');
-  let reduced = osReduced.matches;
+  let reduced = reducedAtmosphere();
   const world = createWorld(); world.reduced = reduced;
   container.classList.add('nodes-scene');
   const canvas = document.createElement('canvas'); canvas.tabIndex = 0; canvas.setAttribute('aria-label', 'Sessions board');
@@ -736,8 +736,7 @@ export function mountNodes(container, hooks = {}) {
   }
   const onLost = e => { e.preventDefault(); stop(); };
   canvas.addEventListener('webglcontextlost', onLost);
-  const onReduced = e => { reduced = world.reduced = e.matches; wake(); };
-  osReduced.addEventListener?.('change', onReduced);
+  const stopAtmosphere = onAtmosphereChange(() => { reduced = world.reduced = reducedAtmosphere(); wake(); });
   const observer = new ResizeObserver(() => resize()); observer.observe(container); resize();
   // Pace: a frame is drawn only as often as the board changes. At the display's rate while anything is in motion (the camera, a
   // press or held keys, nodes springing, signals fading, a snapshot's events); else at the rate the look asks for its own loops (what
@@ -783,7 +782,7 @@ export function mountNodes(container, hooks = {}) {
     try {
       if (mod && built !== world.structure) build();
       for (const n of world.nodes) n.selected = !!selectedId && n.id === selectedId;
-      const events = world.update(dt, elapsed);
+      const events = world.update(dt, elapsed * atmosphereScale());
       juice(events);
       // The camera first, so the look sees the one this frame is drawn with.
       keyStep(dt);
@@ -817,7 +816,7 @@ export function mountNodes(container, hooks = {}) {
       setLook(lookFor(document.documentElement.dataset.themeChoice));
     },
     unmount() {
-      stop(); clearTimeout(settle); shots.dispose(); observer.disconnect(); osReduced.removeEventListener?.('change', onReduced);
+      stop(); clearTimeout(settle); shots.dispose(); observer.disconnect(); stopAtmosphere();
       document.removeEventListener('pointerdown', press, true); menu.dispose();
       document.fonts?.removeEventListener?.('loadingdone', remeasure);
       teardown(); retire(); styleEl?.remove();

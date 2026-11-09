@@ -126,6 +126,7 @@ export function createSpace(still = false) {
 
   let goal = 0, limit = false, warpT = 0, started = false;
   return {
+    setMotion(value) { still = value; },
     scene, arcs, warpLevel: 0,
     setMode(state) {
       limit = state.mode === 'limit';

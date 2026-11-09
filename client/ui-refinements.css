@@ -1,0 +1,107 @@
+/* Shared reading and navigation refinements; theme frames stay in their own sheets. */
+.usage-disclosure { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--sunken); }
+.usage-summary { display: flex; align-items: center; gap: 16px; min-height: 36px; padding: 7px 11px; overflow-x: auto; scrollbar-width: thin; list-style: none; cursor: pointer; font: 11px/1.4 var(--font); color: var(--text-2); }
+.usage-summary::-webkit-details-marker { display: none; }
+.usage-summary::before { content: '▸'; flex: none; color: var(--text-3); }
+.usage-disclosure[open] > .usage-summary::before { content: '▾'; }
+.usage-summary-account { display: inline-flex; align-items: baseline; flex: none; gap: 9px; white-space: nowrap; }
+.usage-summary-account + .usage-summary-account { padding-left: 16px; border-left: 1px solid var(--line); }
+.usage-summary-name { font-weight: 600; color: var(--text); }
+.usage-summary-metric { display: inline-flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; }
+.usage-summary-period { color: var(--text-3); }
+.usage-summary-metric strong { font-weight: 600; }
+.usage-summary-metric.usage-high, .usage-summary-state { color: var(--warn); }
+.usage-summary-metric.usage-full { color: var(--danger); }
+.usage-summary-state { font-size: 10px; }
+.usage-expanded { padding: 6px; border-top: 1px solid var(--line); }
+.usage-disclosure:not([open]) > .usage-expanded { display: none; }
+.usage-disclosure .usage-accounts { margin: 0; }
+
+/* Put the task before its activity and metadata without changing the card action. */
+:root .session-card .session-body { display: flex; flex-direction: column; gap: 2px; }
+:root .session-card .session-title { order: 0; font-weight: 700; }
+:root .session-card :is(.message-preview, .session-description) { order: 1; margin-top: 0; }
+:root .session-card .message-preview { color: var(--text-2); font-size: 12px; }
+:root .session-card .message-preview strong { color: inherit; font-weight: 600; }
+:root .session-card .session-meta { order: 2; min-width: 0; margin: 1px 0 0; color: var(--text-3); font-size: 10px; overflow: hidden; }
+:root .session-card .session-meta > * { flex-shrink: 0; }
+:root .session-card .session-meta > .branch { flex-shrink: 1; }
+:root .session-card .session-right { align-self: start; min-width: 78px; padding-top: 1px; gap: 5px; }
+:root .session-card .session-age { font-size: 10px; }
+:root .group-heading .group-title { flex: 1; }
+:root .group-heading .group-title h2 { min-width: 0; }
+:root .group-heading .group-count { flex: none; }
+
+/* A steady reading surface inside the ornamental windows. */
+:root .chat-panel .message-text { line-height: 1.6; text-shadow: none; }
+:root .chat-panel :is(.request-reason, .request-fields, .request-code, .request-details pre) { text-shadow: none; }
+:root .chat-panel .message-meta { text-shadow: none; }
+:root:is([data-theme=heroes], [data-theme=diablo]) .chat-panel .recent-message:not(.tool):not(.notice) {
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-image: none;
+  background: var(--reading-message);
+  box-shadow: none;
+}
+:root[data-theme=heroes] { --reading-message: #f0e1bc; --reading-request: #13233e; }
+:root[data-theme=diablo] { --reading-message: #1c1711; --reading-request: #1b1814; }
+:root[data-theme=heroes] .chat-panel .recent-message.user:not(.notice) { background: #e6d5af; border-left: 3px solid #82704c; }
+:root[data-theme=diablo] .chat-panel .recent-message.user:not(.notice) { background: #282016; border-left: 3px solid #81704e; }
+:root:is([data-theme=heroes], [data-theme=diablo]) .chat-panel :is(.message-text pre, .request-code, .request-details pre) {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-image: none;
+  background: var(--sunken);
+  box-shadow: none;
+}
+:root:is([data-theme=heroes], [data-theme=diablo]) .chat-panel .request-box {
+  padding: 12px 14px;
+  border: 1px solid var(--warn-line);
+  border-left: 3px solid var(--warn);
+  border-image: none;
+  background: var(--reading-request);
+  box-shadow: none;
+}
+:root:is([data-theme=heroes], [data-theme=diablo]) .chat-panel .answer-option { border-width: 1px; border-image: none; background: var(--sunken); box-shadow: none; }
+:root:is([data-theme=heroes], [data-theme=diablo]) .chat-panel .answer-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+
+.mobile-nav { display: none; }
+@media (max-width: 640px) {
+  .mobile-nav {
+    position: fixed; inset: auto 0 0; z-index: 25;
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px;
+    padding: 4px max(8px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    border-top: 1px solid var(--line-2); background: var(--sunken); color: var(--text-2);
+    box-shadow: 0 -3px 12px #0002;
+  }
+  .mobile-nav > button { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 44px; padding: 6px 4px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: inherit; font: 600 11px/1.2 var(--font); }
+  .mobile-nav > button > .icon { flex: none; width: 17px; height: 17px; }
+  .mobile-nav > button[aria-current=page] { border-color: var(--line); background: var(--accent-soft); color: var(--accent); }
+  .mobile-nav-count { min-width: 17px; padding: 2px 4px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font: 600 10px/1.2 var(--font); font-variant-numeric: tabular-nums; }
+  .mobile-nav-count:empty, .mobile-nav-count[hidden] { display: none; }
+  .panel-open:not(:has(#panel.feed-panel:not([hidden]))) .mobile-nav,
+  :root[data-scene]:not([data-scene-list], [data-scene-fallback]) .mobile-nav { display: none; }
+  :root:has(.mobile-nav) .main-content { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  :root:has(.mobile-nav) #panel.feed-panel { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+  :root:has(.mobile-nav) .toast { bottom: calc(68px + env(safe-area-inset-bottom)); }
+  :root:has(.mobile-nav) .panel-open .toast { bottom: auto; }
+  :root[data-scene]:not([data-scene-list], [data-scene-fallback]):has(.mobile-nav) .main-content { padding-bottom: 0; }
+  :root .main-content > .stats { display: none; }
+  :root .main-content > .status-line { min-height: 18px; margin-bottom: 6px; font-size: 11px; letter-spacing: .02em; }
+  :root:is([data-theme=alien], [data-theme=command])[data-attention] .main-content::before { margin-bottom: 6px; padding: 4px 8px; font-size: 11px; letter-spacing: .04em; }
+  .usage-summary { min-height: 36px; gap: 10px; padding-inline: 8px; }
+  .usage-summary-account { gap: 6px; }
+  .usage-summary-account + .usage-summary-account { padding-left: 10px; }
+  .usage-expanded { padding: 4px; }
+  :root .session-card .session-right { min-width: 68px; gap: 4px; }
+  :root .session-card .badge { padding: 3px 5px; font-size: 10px; }
+  :root .session-card .session-title { -webkit-line-clamp: 2; line-height: 1.35; }
+  :root .session-card .session-meta { gap: 5px; }
+  :root .group-heading { gap: 6px; }
+  :root .group-heading .group-title h2 { max-width: 100%; }
+  :root:is([data-theme=heroes], [data-theme=diablo]) .chat-panel .recent-message:not(.tool):not(.notice) { padding: 10px 12px; }
+  :root[data-theme=heroes] .usage-expanded .usage-accounts { padding: 8px; }
+  :root[data-theme=diablo] .main-screen { margin-top: 24px; }
+  :root[data-theme=diablo] .main-screen::before { top: -38px; height: 62px; }
+  :root[data-theme=diablo] .main-content { padding-top: 20px; }
+}

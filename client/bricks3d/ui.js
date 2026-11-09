@@ -1,3 +1,4 @@
+import { reducedAtmosphere } from '../atmosphere.js';
 import * as THREE from 'three';
 import { STUD, BRICK, PLATE, masonry, runOf, stackOf, buttonStuds, buttonHover, buttonDepth, stickerPlacement, meterCells, surfaceBase, rng } from './bond.js';
 import { COLOURS } from './parts.js';
@@ -264,7 +265,7 @@ export class BrickUi {
     }
     for (const entry of this.entries) if (entry.item.kind === 'block' || entry.dz.arrive || entry.dz.hover || entry.dz.press) this.apply(entry);
     L.end(); this.prune(new Set(stickers.map(s => s.hit.key)));
-    if (fresh.length && !matchMedia('(prefers-reduced-motion: reduce)').matches) this.arrive(fresh);
+    if (fresh.length && !reducedAtmosphere()) this.arrive(fresh);
   }
   // Textures nobody asked for in this build go, except the most recent few (cards come and go as polls change their text).
   prune(used) {

@@ -10,6 +10,7 @@ export function createSay(container, calm) {
   node.hidden = true; node.setAttribute('aria-hidden', 'true'); node.append(panel, tail); container.append(node);
   let id = null, signature = '', wide = 0, high = 0, grew = null;
   return {
+    setMotion(value) { calm = value; if (calm) grew?.cancel(); },
     // `words` is what the bubble said; `size` the bubble's on-screen size, which is what it grows from.
     show(next, { words, facts, session, minions = 0 } = {}, size) {
       if (!next || !facts) { node.hidden = true; id = null; signature = ''; return; }

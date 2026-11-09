@@ -1,4 +1,5 @@
 import { coverLayout } from './pixels.js';
+import { atmosphereScale, reducedAtmosphere, onAtmosphereChange } from '../atmosphere.js';
 
 // The animated layer over a theme's wallpaper. CSS draws the still picture (and is all that
 // reduced-motion users get); a small canvas, one pixel per artwork pixel, scales up unsmoothed on top of it
@@ -10,8 +11,7 @@ const looks = {
   city: { src: '/city-bg.png', grid: 1, painter: () => import('./city.js') },
 };
 const FPS = 12;
-const motion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)');
-let root, canvas, ctx, current, running, raf, last = 0, ticket = 0, shown = 0;
+let root, canvas, ctx, current, running, raf, last = 0, ticket = 0, shown = 0, time = 0;
 
 function mount() {
   if (root) return;
@@ -20,7 +20,7 @@ function mount() {
   document.body.prepend(root);
   addEventListener('resize', () => requestAnimationFrame(layout));
   document.addEventListener('visibilitychange', sync);
-  motion?.addEventListener?.('change', sync);
+  onAtmosphereChange(sync);
 }
 const loadImage = src => new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src; });
 
@@ -39,12 +39,13 @@ function tick(now) {
   // Hidden by its theme (Metropolis while its scene is up): nothing to paint, and laid out again when it shows.
   const width = root.clientWidth; if (width !== shown) { shown = width; layout(); }
   if (!width) return;
+  time += Math.min(.2, Math.max(0, (now - last) / 1000)) * atmosphereScale();
   last = now; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.globalAlpha = 1;
-  current.frame(ctx, now / 1000);
+  current.frame(ctx, time);
 }
 function sync() {
-  const play = !!current && !motion?.matches && !document.hidden;
-  if (play && !running) { running = true; raf = requestAnimationFrame(tick); }
+  const play = !!current && !reducedAtmosphere() && !document.hidden;
+  if (play && !running) { running = true; last = performance.now(); raf = requestAnimationFrame(tick); }
   else if (!play && running) { running = false; cancelAnimationFrame(raf); }
   if (!play && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
