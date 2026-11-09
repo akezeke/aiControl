@@ -46,7 +46,8 @@ const tailscale = (self, args) => spawnSync(self.command, args, { stdio: 'inheri
 
 if (process.argv.includes('--serve')) {
   prepareData();
-  const hub = await startHub({ file, port: PORT });
+  const hostToken = () => { try { return JSON.parse(readFileSync(onlineFile, 'utf8')).token; } catch { return null; } };
+  const hub = await startHub({ file, port: PORT, hostToken });
   console.log(`Hub ready on 127.0.0.1:${PORT}`);
   for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.once(signal, () => hub.close().finally(() => process.exit(0)));
 } else {

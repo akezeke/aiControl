@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseCode, createOfficeOnline } from '../server/office-online.mjs';
@@ -8,8 +8,8 @@ import { hubState, newKey, startHub } from '../server/hub.mjs';
 
 const K = 'k'.repeat(22), dir = () => mkdtempSync(join(tmpdir(), 'online-'));
 // A real hub on a free port (or `port`), its code, and an AI Control's side of it counting what it sends.
-async function setup({ port = 0, hubFile = join(dir(), 'hub.json'), now } = {}) {
-  const hub = await startHub({ file: hubFile, port }), at = hub.server.address().port;
+async function setup({ port = 0, hubFile = join(dir(), 'hub.json'), now, hostToken } = {}) {
+  const hub = await startHub({ file: hubFile, port, hostToken }), at = hub.server.address().port;
   const code = () => `http://127.0.0.1:${at}/${hubState(hubFile).key}`;
   const counter = { calls: 0 }, counting = (...args) => { counter.calls++; return fetch(...args); };
   const online = createOfficeOnline({ file: join(dir(), 'office-online.json'), fetch: counting, ...now ? { now } : {} });
@@ -120,6 +120,13 @@ test("a sign-in written by another process (npm run hub) is the running server's
   await createOfficeOnline({ file }).join({ code: s.code(), name: 'Anna' });
   assert.deepEqual(server.status(), { joined: true, name: 'Anna', host: '127.0.0.1' });
   assert.deepEqual((await server.sync({ darts: 9 })).board.players.map(p => [p.name, p.scores]), [['Anna', { darts: 9 }]]);
+});
+
+test("the hub marks its host, and that's all the mark says", async t => {
+  const file = join(dir(), 'office-online.json'), s = await setup({ hostToken: () => JSON.parse(readFileSync(file, 'utf8')).token }); t.after(() => s.hub.close());
+  await createOfficeOnline({ file }).join({ code: s.code(), name: 'Host' });
+  const board = (await s.online.join({ code: s.code(), name: 'Anna' })).board;
+  assert.deepEqual(board.players.map(p => [p.name, p.host]), [['Host', true], ['Anna', undefined]]);
 });
 
 test('a bad hub response is offline', async () => {

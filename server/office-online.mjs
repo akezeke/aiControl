@@ -39,7 +39,7 @@ function board(data) {
   if (!object(data) || typeof data.day !== 'string' || !/^\d{4}-\d\d-\d\d$/.test(data.day) || !Array.isArray(data.players) || data.players.length > MAX_PLAYERS) return null;
   const players = data.players.flatMap(p => {
     const name = object(p) && cleanName(p.name);
-    return name ? [{ name, scores: clean(p.scores, data.day), seen: Number.isFinite(p.seen) ? p.seen : 0 }] : [];
+    return name ? [{ name, scores: clean(p.scores, data.day), seen: Number.isFinite(p.seen) ? p.seen : 0, ...p.host === true && { host: true } }] : [];
   });
   return { day: data.day, players };
 }

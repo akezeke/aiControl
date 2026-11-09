@@ -483,8 +483,8 @@ export function createRoom(scene, renderer) {
     // The meetings clipboard (Office online), the far side of the door from the waiting board: boards.js writes the meeting
     // you've joined and who's in it, a click brings up the slip (signin.js, through room.onMeeting). Not in room.boards, so a
     // click doesn't read it.
-    const meeting = hang(front, board(0.32, 0.4, '#a0703c', 0.5), door.x - width / 2 + 1.6, 1.45, 0.03);
-    const meetingClip = mesh(rounded(0.12, 0.05, 0.03, 0.01), toonMaterial('#b8bec8'), 0.006); meetingClip.position.set(0, 0.23, 0.045); meeting.add(meetingClip);
+    const meeting = hang(front, board(0.48, 0.6, '#a0703c', 0.5), door.x - width / 2 + 1.6, 1.45, 0.03);
+    const meetingClip = mesh(rounded(0.16, 0.06, 0.03, 0.01), toonMaterial('#b8bec8'), 0.006); meetingClip.position.set(0, 0.33, 0.045); meeting.add(meetingClip);
     meeting.userData.toggle = () => room.onMeeting?.();
     room.meeting = { group: meeting, face: meeting.userData.face };
     room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face, plate };

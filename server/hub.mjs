@@ -43,7 +43,8 @@ async function readBody(req) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail(400, 'Invalid JSON.'); }
 }
 
-export async function startHub({ file, port = 47843, host = '127.0.0.1', now = Date.now }) {
+// `hostToken()`: the token of whoever hosts (this machine's AI Control, read by scripts/hub.mjs), marked on the board.
+export async function startHub({ file, port = 47843, host = '127.0.0.1', now = Date.now, hostToken = () => null }) {
   const state = hubState(file), key = sha(state.key), hostKey = sha(state.hostKey);
   // ponytail: one window for everyone. Per-player limits if a hub ever has more than a handful of friends.
   let second = -1, count = 0, timer = null, writing = Promise.resolve();
@@ -65,7 +66,8 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     const day = dayKey(new Date(at)), player = state.players[id] ??= { name, scores: {}, seen: 0 };
     player.name = name; player.scores = merge(player.scores, clean(body.scores, day)); player.seen = at;
     later();
-    return { day, players: Object.values(state.players).map(({ name, scores, seen }) => ({ name, scores, seen })) };
+    const hostId = (token => typeof token === 'string' ? sha(token).toString('hex') : null)(hostToken());
+    return { day, players: Object.entries(state.players).map(([id, { name, scores, seen }]) => ({ name, scores, seen, ...id === hostId && { host: true } })) };
   }
 
 

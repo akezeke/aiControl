@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { meetingLines } from '../client/office/boards.js';
 
-const board = names => ({ day: '2026-11-09', players: names.map((name, i) => ({ name, scores: {}, seen: i })) });
+const board = (names, host) => ({ day: '2026-11-09', players: names.map((name, i) => ({ name, scores: {}, seen: i, ...name === host && { host: true } })) });
 
 test('not in a meeting, the page says where to join one', () => {
   assert.deepEqual(meetingLines(null), { title: 'Meetings', lines: ['Join one here'], closed: null });
@@ -19,6 +19,11 @@ test("a meeting that can't be reached or has a new code keeps the names and says
   assert.deepEqual(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: board(['Bo', 'Anna']), offline: true }), { title: 'Meeting at pc', lines: ['Bo (me)', 'Anna'], closed: 'Off for now' });
   assert.equal(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: null, error: 'code' }).closed, 'New code');
   assert.deepEqual(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: null }).lines, ['Bo (me)']);
+});
+
+test("the host is marked, unless it's you", () => {
+  assert.deepEqual(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: board(['Anna', 'Bo'], 'Anna') }).lines, ['Bo (me)', 'Anna (host)']);
+  assert.deepEqual(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: board(['Anna', 'Bo'], 'Bo') }).lines, ['Bo (me)', 'Anna']);
 });
 
 test('at most six names, big enough to read', () => {
