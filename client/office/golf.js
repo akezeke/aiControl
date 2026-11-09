@@ -104,7 +104,7 @@ function drawFelt(g, w, h, c, box) {
 }
 // The notice board: cork with the scorecard pinned on, the hole on now above it, Endless below. Returns where the holes'
 // boxes and the Endless post-it are, in canvas pixels, for clicks.
-function drawBoard(g, w, h, s) {
+export function drawBoard(g, w, h, s) {
   const spots = { holes: [], endless: null }, pars = [...PARS].map(Number);
   g.fillStyle = '#c9a26b'; g.fillRect(0, 0, w, h);
   for (let i = 0; i < 900; i++) { g.fillStyle = hash(i, 3) < 0.5 ? '#b58c55' : '#d9b781'; g.fillRect(hash(i, 1) * w, hash(i, 2) * h, 3, 3); }
@@ -126,6 +126,9 @@ function drawBoard(g, w, h, s) {
   }
   const played = Object.keys(s.best).length, over = Object.entries(s.best).reduce((sum, [n, best]) => sum + best - pars[n - 1], 0);
   g.fillStyle = '#1b1a1f'; g.font = `bold 34px ${CHALK}`; g.textAlign = 'left'; g.fillText(played ? `${played} played · ${over > 0 ? '+' : ''}${over || 'even'}` : 'Pick a hole', 70, h - 78);
+  // Office online's leaders (online.js), small under that, clear of the endless note.
+  const leading = [['Course', s.leaders?.course], ['Endless', s.leaders?.endless]].filter(([, l]) => l).map(([what, l]) => `${what} ${l.name} ${l.text}`).join(' · ');
+  if (leading) { let size = 26; do g.font = `bold ${size}px ${CHALK}`; while (g.measureText(leading).width > w - 470 && --size > 14); g.fillStyle = '#6b7280'; g.fillText(leading, 70, h - 36); }
   const bx = w - 360, by = h - 122, bw = 290, bh = 82;
   g.save(); g.translate(bx + bw / 2, by + bh / 2); g.rotate(0.02); g.fillStyle = '#f7b8de'; g.shadowColor = 'rgba(0,0,0,0.25)'; g.shadowBlur = 8; g.fillRect(-bw / 2, -bh / 2, bw, bh); g.restore();
   g.fillStyle = '#1b1a1f'; g.textAlign = 'center'; g.font = `bold 34px ${CHALK}`; g.fillText(s.mode === 'endless' ? 'Endless: on' : 'Endless ▶', bx + bw / 2, by + 30);
@@ -174,8 +177,9 @@ const deal = (index, seed) => new Promise(resolve => {
   worker.onmessage = ({ data }) => { worker.terminate(); resolve(data); }; worker.postMessage({ index, seed });
 });
 
-// `camera`; `canvas` (the scene's) and `ray(event)`, the direction under a screen point; `onPlay(golf)`: the course was clicked.
-export function createGolf({ camera, canvas, ray, onPlay }) {
+// `camera`; `canvas` (the scene's) and `ray(event)`, the direction under a screen point; `onPlay(golf)`: the course was clicked;
+// `online`: Office online (online.js), whose leaders the board shows.
+export function createGolf({ camera, canvas, ray, onPlay, online }) {
   let saved = {}; try { saved = JSON.parse(localStorage.getItem(SAVE) || '{}'); } catch {}
   const progress = { best: saved.best || {}, reached: saved.reached || 1, n: saved.n || 1, endlessBest: saved.endlessBest || 0 };
   const save = () => { try { localStorage.setItem(SAVE, JSON.stringify(progress)); } catch {} };
@@ -187,7 +191,8 @@ export function createGolf({ camera, canvas, ray, onPlay }) {
   const view = { from: new THREE.Vector3(), look: new THREE.Vector3(), heading: new THREE.Vector2(1, 0), set: false };
   const surfaceY = (x, z) => BASE + height(c, x, z);
   const hint = () => !active ? 'Click the green to play' : mode === 'holes' && progress.n === 1 && !strokes ? 'Draw the club back from the ball and click' : '';
-  const redraw = () => boardTexture?.redraw({ mode, n: progress.n, index: run?.index ?? 0, over: run?.over ?? 0, par: c.par, strokes, best: progress.best, reached: progress.reached, endlessBest: progress.endlessBest, hint: hint() });
+  const redraw = () => boardTexture?.redraw({ mode, n: progress.n, index: run?.index ?? 0, over: run?.over ?? 0, par: c.par, strokes, best: progress.best, reached: progress.reached, endlessBest: progress.endlessBest, hint: hint(), leaders: { course: online?.top('golf')[0], endless: online?.top('golfEndless')[0] } });
+  online?.watch(redraw); // Office online's leaders changed
   const aimAtCup = () => { const d = view.heading.set(c.cup.x - ball.x, c.cup.z - ball.z); if (d.lengthSq() > 1e-6) d.normalize(); };
 
   // Lays out hole `next` (its green, rails, things, cup and tee) in place of the one there.

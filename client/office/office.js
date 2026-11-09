@@ -11,6 +11,8 @@ import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createMenu, createOverlays } from './bubbles.js';
 import { frameTime } from '../scene-ui.js';
 import { copyText, createBoards, createKitchenBoards } from './boards.js';
+import { createOnline, leaderLine } from './online.js';
+import { createSignIn } from './signin.js';
 import { highlight, showOutlines } from './toon.js';
 import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
@@ -142,7 +144,7 @@ export function mountOffice(container, hooks) {
     if (game === playing) return;
     callOff();
     const was = playing;
-    if (was) { was.leave(); if (was.free) player.pin(false); else { const { x, z, yaw } = was.stand(); player.place(x, z, yaw); player.pitch = -0.15; } }
+    if (was) { was.leave(); online.sync(); if (was.free) player.pin(false); else { const { x, z, yaw } = was.stand(); player.place(x, z, yaw); player.pitch = -0.15; } }
     // A free game's played from your own eyes: only your feet stop. The others have the view.
     const seated = game && !game.free ? game : null;
     if (seated || (was && !was.free)) { player.unlock(); player.setOverview(!!seated); view.play(seated && (() => seated.pose())); }
@@ -159,16 +161,22 @@ export function mountOffice(container, hooks) {
     if (player.position.clone().setY(0).distanceTo(spot) < 1.4) { player.place(player.position.x, player.position.z, yaw); play(game); }
     else player.walkTo(spot, () => { player.place(player.position.x, player.position.z, yaw); play(game); }, 0.3, true);
   };
-  const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay });
-  const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay });
+  // Office online (online.js): friends' bests, for the games' own displays and the visitors' clipboard.
+  const online = createOnline({ api: (path, body) => hooks.api(path, body) });
+  const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay, online }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay, online });
+  const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay, online });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
   // Snake, out on the office floor from the snake plant in the corner.
-  const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), home: () => room.snakePlant?.position, score: (goal, verdict) => overlays.setScore(goal, verdict, false),
+  const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), home: () => room.snakePlant?.position, score: (goal, verdict) => overlays.setScore(goal && leaderLine(goal, online.top('snake')[0]), verdict, false),
     blocks: () => goose.root.visible ? [goose.column] : [], bump: () => goose.honk('💢') });
   scene.add(snake.root); room.onSnake = () => onPlay(snake);
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });
-  room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip) }));
+  room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip), online }));
   const boards = createBoards(room);
+  // Signing in at the visitors' clipboard by the door: the slip, and the page redrawn whenever the board comes back different.
+  const signIn = createSignIn(container, online);
+  room.onVisitors = () => { player.unlock(); online.sync(true); signIn.open(); };
+  online.watch(() => { boards.visitors(online.state()); signIn.refresh(); });
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
   const goose = createGoose(scene, { props, player, walkable, bounds: () => layout?.room, busy: () => view.overview || !!player.flight || !!office.talking || room.kitchen.inside(player.position),
@@ -304,6 +312,7 @@ export function mountOffice(container, hooks) {
   // ponytail: Safari has no idle callback, so a short wait between slices instead.
   let readying = true;
   const whenIdle = fn => globalThis.requestIdleCallback ? requestIdleCallback(fn, { timeout: 500 }) : setTimeout(fn, 50);
+  whenIdle(() => online.sync());
   inSlices(frames, (function* () { yield* room.kitchen.prepare(renderer, camera, scene); yield* shaders(renderer, scene, camera); yield* textures(renderer, scene); })(), { whenIdle, stopped: () => !readying, up: () => layout });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
@@ -447,7 +456,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => { readying = false; }, () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => { readying = false; }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }

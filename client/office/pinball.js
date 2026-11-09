@@ -318,6 +318,13 @@ const LAMPS = [
 ];
 const jitter = (i, salt) => { const v = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453; return v - Math.floor(v); };
 const fmt = n => n.toLocaleString('en-US');
+// The attract loop's pages, 2.5 s each: the title, your high score, then Office online's leaders (`tops`, online.js's
+// top('pinball')), and the last game.
+export const attractPages = (best, last, active, tops = []) => [
+  { top: 'TUTTI FRUTTI', big: active ? 'FLIP TO PLAY' : 'PINBALL' }, { top: 'HIGH SCORE', big: fmt(best) },
+  ...tops.map(({ name, value }, i) => ({ top: `${i + 1} ${name.toUpperCase().slice(0, 10)}`, big: fmt(value) })),
+  { top: last ? 'LAST GAME' : 'FRUIT SALAD', big: last ? fmt(last) : 'GET ALL SIX' },
+];
 
 // Geometry on the table, in its frame: playfield point (x, y) is (x, height, -y).
 const along = (x1, y1, x2, y2, thick, high, lift = 0) => new THREE.BoxGeometry(Math.hypot(x2 - x1, y2 - y1), high, thick).rotateY(Math.atan2(y2 - y1, x2 - x1)).translate((x1 + x2) / 2, lift + high / 2, -(y1 + y2) / 2);
@@ -489,7 +496,7 @@ const SOUNDS = {
 };
 
 // `canvas`: the scene's, for presses; `camera`, whose aspect sets the view; `onPlay(pinball)`: the cabinet was clicked.
-export function createPinball({ canvas, camera, onPlay }) {
+export function createPinball({ canvas, camera, onPlay, online }) {
   let best = 0; try { best = Number(localStorage.getItem(BEST)) || 0; } catch {}
   const t = newTable(best), keys = { left: false, right: false, plunge: false, nudge: false }, pointers = new Map();
   let room = null, table, active = false, still = false, time = 0, acc = 0, shake = 0, party = 0, flash = 0, dmdAt = 0, dmdKey = '', kicked = 0;
@@ -799,7 +806,8 @@ export function createPinball({ canvas, camera, onPlay }) {
         : t.time < t.saladUntil ? `FRUIT SALAD ${Math.ceil(t.saladUntil - t.time)}` : `BALL ${t.ball}  ${t.fruits.filter(Boolean).length}/6${t.mult > 1 ? `  ${t.mult}X` : ''}`;
       return { top, big: fmt(t.score), rainbow: t.time < t.saladUntil, phase };
     }
-    return [{ top: 'TUTTI FRUTTI', big: active ? 'FLIP TO PLAY' : 'PINBALL' }, { top: 'HIGH SCORE', big: fmt(best) }, { top: t.last ? 'LAST GAME' : 'FRUIT SALAD', big: t.last ? fmt(t.last) : 'GET ALL SIX' }][Math.floor(time / 2.5) % 3];
+    const pages = attractPages(best, t.last, active, online?.top('pinball'));
+    return pages[Math.floor(time / 2.5) % pages.length];
   }
 
   // Presses: the left or right half of the screen works that flipper (and the plunger, while a ball waits).

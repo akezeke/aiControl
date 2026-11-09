@@ -20,6 +20,7 @@ import { observedOverlaps } from '../server/repository.mjs';
 import { claudeRequest } from '../server/claude.mjs';
 import { codexRequest } from '../server/codex.mjs';
 import { root } from '../server/config.mjs';
+import { createOfficeOnline } from '../server/office-online.mjs';
 
 export async function createDemoServices({ calm = false, withLost = false } = {}) {
 const pin = '1234', now = Date.now(), min = 60_000, home = '/home/demo/code';
@@ -289,7 +290,7 @@ await history.observe([codex('archived-humidity', 'weather-station', 'Humidity s
 ])]);
 await workflow.observe();
 await savePassword(authFile, pin);
-return { auth: new Auth(authFile, { secure: false }), store, snapshot, messages, spawn, folder, lost: recovery, workflow,
+return { auth: new Auth(authFile, { secure: false }), store, snapshot, messages, spawn, folder, lost: recovery, workflow, online: createOfficeOnline({ file: join(dataDir, 'office-online.json') }),
   budget: async value => { const { budget } = usage.find(account => account.provider === 'opencode'); Object.assign(budget, value); return budget; },
   close: async () => { for (const timer of timers) clearTimeout(timer); timers.clear(); await history.observe(sessions); await rm(dataDir, { recursive: true, force: true }); },
 };

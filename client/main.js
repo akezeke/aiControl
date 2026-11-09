@@ -525,7 +525,7 @@ function syncScene() {
   const box = el('div', 'scene'); box.id = look; main.append(box);
   try {
     sceneLook = look;
-    scene = module.mount(box, { mapScreen: () => document.querySelector('#theme-console .console-screen'), openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, selected: () => state.selected, describe: sessionFacts, spawn: spawnAgent, editBudget, showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
+    scene = module.mount(box, { mapScreen: () => document.querySelector('#theme-console .console-screen'), openPanel, nextWaiting: () => nextWaiting(), showList: () => setSceneList(true), isUnread: unread, selected: () => state.selected, describe: sessionFacts, spawn: spawnAgent, editBudget, api: (path, body) => api(path, body), showShots: (id, images, closed) => images.length ? showShot(id, images.at(-1).id, images, closed) : closed() });
     if (state.snapshot) scene.update(state.snapshot, { error: state.error });
     scene.pick(picked(), false); scene.outlines?.(outlined);
   } catch (error) { console.error(error); closeScene(); fallBack(`${entry.name} could not start; showing the list`); }

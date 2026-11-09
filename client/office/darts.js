@@ -123,11 +123,13 @@ function drawFinish(g, size, _, labels = []) {
   g.shadowBlur = 0; g.fillStyle = '#ffe14f'; g.strokeStyle = '#ffffff'; g.lineWidth = size / 110;
   for (const path of beds) { path(); g.fill(); g.stroke(); }
 }
-// The chalkboard: what's left big, this turn's darts, a word on how it went, darts thrown and the best.
-function drawScore(g, w, h, game, best, active) {
+// The chalkboard: what's left big, this turn's darts, a word on how it went, darts thrown, the best and, under it, Office
+// online's leader (online.js's top('darts')[0]), dimmer when that's you.
+export function drawScore(g, w, h, game, best, active, leader) {
   g.fillStyle = '#24302b'; g.fillRect(0, 0, w, h); g.fillStyle = '#f2f2ea'; g.textBaseline = 'alphabetic';
   g.font = `bold 40px ${CHALK}`; g.textAlign = 'left'; g.fillText('301', 26, 52);
   g.textAlign = 'right'; g.font = `bold 30px ${CHALK}`; g.fillText(best ? `best ${best} darts` : 'any finish', w - 24, 50);
+  if (leader) { g.font = `bold 26px ${CHALK}`; g.fillStyle = leader.you ? '#b8c2bb' : '#ffe14f'; g.fillText(`top ${leader.name} ${leader.value}`, w - 24, 86); g.fillStyle = '#f2f2ea'; }
   g.textAlign = 'center'; g.font = `bold 150px ${CHALK}`; g.fillText(game.left, w / 2, 205);
   g.font = `bold 44px ${CHALK}`;
   const darts = [0, 1, 2].map(i => game.turn[i]?.label ?? '·');
@@ -147,11 +149,12 @@ export function drawCall(g, w, h, text, color) {
 }
 
 // `hands`: the camera's hands (camera.js), where the next dart is held; `canvas`: the scene's, for the stick's drags;
-// `onPlay(darts)`: the board was clicked.
-export function createDarts({ hands, camera, canvas, onPlay }) {
+// `onPlay(darts)`: the board was clicked; `online`: Office online (online.js), whose leader the chalkboard shows.
+export function createDarts({ hands, camera, canvas, onPlay, online }) {
   let game = newGame(), best = null, room = null, active = false, flight = null, pullAt = 0, time = 0, still = false;
   let drag = null, breath = 0, shot = 0, flick = 0, wasReady = false, lit = '';
   try { best = Number(localStorage.getItem(BEST)) || null; } catch {}
+  online?.watch(() => chalk?.redraw());
   // Your hand, with the next dart pinched near the back of its barrel, the arm running off the bottom left like the mug's
   // (camera.js). It follows the ring round the board, shakes as it sways and flicks forward as it lets go (update).
   const { arm, grip, fist } = handModel(); arm.visible = false; hands.add(arm);
@@ -199,7 +202,7 @@ export function createDarts({ hands, camera, canvas, onPlay }) {
       const body = new THREE.Mesh(new THREE.CylinderGeometry(RINGS.board * SIZE + 0.005, RINGS.board * SIZE + 0.005, 0.026, 48).rotateX(Math.PI / 2), toonMaterial('#1b1a1f'));
       body.position.set(BOARD.x, BOARD.y, FACE - 0.016); group.add(body);
       const frame = mesh(B(0.86, 0.66, 0.03, 0, 0, 0), toonMaterial('#7a4e2d'), 0.006); frame.position.set(SLATE.x, SLATE.y, -SECRET.back + 0.015); group.add(frame);
-      chalk = canvasTexture(512, 384, (g, w, h) => drawScore(g, w, h, game, best, active));
+      chalk = canvasTexture(512, 384, (g, w, h) => drawScore(g, w, h, game, best, active, online?.top('darts')[0]));
       const slate = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.6), new THREE.MeshBasicMaterial({ map: chalk })); slate.position.set(SLATE.x, SLATE.y, -SECRET.back + 0.032); group.add(slate);
       // Flat things drawn over the rest, in `order`.
       const flat = (geometry, material, order) => { const m = new THREE.Mesh(geometry, material); m.renderOrder = order; return m; };

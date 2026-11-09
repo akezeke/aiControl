@@ -1,0 +1,47 @@
+// The slip that comes up from the visitors' clipboard by the door (room.js; boards.js writes its page): a join code and a name
+// to sign in to a friend's hub, or who you are there and Sign out. It's Trickshot's copy line's slip (.office-copyline), so
+// the office takes no keys while it's up (scene-keys.js); Esc, its ✕ or a press anywhere else puts it away.
+const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
+
+export function createSignIn(container, online) {
+  const slip = el('div', { className: 'office-copyline office-signin', hidden: true }); container.append(slip);
+  const close = () => { if (slip.hidden) return; slip.hidden = true; if (slip.contains(document.activeElement)) document.activeElement.blur(); };
+  slip.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); close(); } });
+  const away = event => { if (!slip.hidden && !slip.contains(event.target)) close(); };
+  document.addEventListener('pointerdown', away, true);
+  let typed = { code: '', name: '' };
+
+  // What the slip says now; `error`, what went wrong last. Typed text survives a redraw.
+  function render(error = '') {
+    const state = online.state(), signedIn = state?.joined && state.error !== 'code';
+    const said = error || (state?.error === 'code' ? 'Code replaced' : state?.offline ? 'Hub closed' : '');
+    slip.replaceChildren();
+    if (signedIn) {
+      const out = el('button', { type: 'button', textContent: 'Sign out', title: 'Leave this hub' });
+      out.onclick = async () => { out.disabled = true; try { await online.signOut(); render(); } catch (e) { render(e.message); } };
+      slip.append(el('span', { className: 'office-signin-who', textContent: `${state.name} · ${state.host}` }), out);
+    } else {
+      const form = el('form', { className: 'office-signin-form' });
+      const code = el('input', { value: typed.code, placeholder: 'Join code', autocomplete: 'off', spellcheck: false, required: true });
+      const name = el('input', { value: typed.name || state?.name || '', placeholder: 'Name', maxLength: 16, autocomplete: 'nickname', required: true });
+      code.setAttribute('aria-label', 'Join code'); name.setAttribute('aria-label', 'Your name');
+      const go = el('button', { type: 'submit', textContent: 'Sign in' });
+      form.onsubmit = async event => {
+        event.preventDefault(); typed = { code: code.value, name: name.value }; go.disabled = true;
+        try { await online.signIn(code.value, name.value); typed = { code: '', name: '' }; render(); } catch (e) { render(e.message); }
+      };
+      form.append(code, name, go); slip.append(form);
+    }
+    if (said) slip.append(el('span', { className: 'office-signin-error', textContent: said, role: 'status' }));
+    const x = el('button', { type: 'button', className: 'office-signin-close', textContent: '✕', title: 'Close (Esc)' });
+    x.setAttribute('aria-label', 'Close'); x.onclick = close; slip.append(x);
+  }
+
+  return {
+    open() { render(); slip.hidden = false; (slip.querySelector('input:placeholder-shown') || slip.querySelector('button'))?.focus(); },
+    close,
+    // The board changed while the slip is up (a sync came back): say so, unless something's being typed.
+    refresh() { if (!slip.hidden && !slip.contains(document.activeElement)) render(); },
+    dispose() { document.removeEventListener('pointerdown', away, true); slip.remove(); },
+  };
+}

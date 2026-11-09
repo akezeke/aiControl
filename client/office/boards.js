@@ -195,8 +195,9 @@ export function drawClipboard({ g, width: w, height: h }, page, lines) {
   });
 }
 
-// The score board: each item's best down the left, today's three down the right.
-export function drawScores({ g, width: w, height: h }, progress, key) {
+// The score board: each item's best down the left, today's three down the right; under each, Office online's leader
+// (`tops`, online.js's top('trickshot')[0] and top('trickshotToday')[0]).
+export function drawScores({ g, width: w, height: h }, progress, key, tops = {}) {
   const mid = 440, heading = (text, x) => { g.fillStyle = INK.blue; g.font = `52px ${SHARPIE}`; g.fillText(text, x, 72); g.strokeStyle = INK.blue; g.lineWidth = 4; scribble(g, x, 84, x + g.measureText(text).width, 86); };
   g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h);
   g.lineCap = 'round'; g.lineJoin = 'round';
@@ -205,6 +206,30 @@ export function drawScores({ g, width: w, height: h }, progress, key) {
   const best = (score, right, y) => { g.fillStyle = score > 0 ? INK.green : INK.black; g.textAlign = 'right'; g.font = `38px ${SHARPIE}`; g.fillText(bestText(score), right, y); g.textAlign = 'left'; };
   MONDAY.forEach(({ id, item }, i) => { const y = 148 + i * 70; g.fillStyle = INK.black; g.font = `38px ${SHARPIE}`; g.fillText(itemName(item), 36, y); best(progress.best[id], mid - 28, y); });
   dailyLines(key, progress).forEach(({ text, best: score }, i) => { const y = 148 + i * 140; g.fillStyle = INK.black; sized(g, text, 34, w - 36 - mid - 40); g.fillText(text, mid + 40, y); best(score, w - 36, y + 52); });
+  const top = (leader, x, width) => { if (!leader) return; const text = `Top: ${leader.name} ${leader.text}`; g.fillStyle = INK.blue; sized(g, text, 30, width); g.fillText(text, x, h - 24); };
+  top(tops.trickshot, 36, mid - 72); top(tops.trickshotToday, mid + 40, w - 76 - mid);
+}
+
+// The visitors' clipboard by the door (Office online): who's signed in to the hub, you first, then whoever was in last.
+// `closed`: what to write across it when the hub can't be reached or its code was replaced.
+export function visitorLines(state) {
+  if (!state?.joined) return { title: 'Visitors', lines: ['Sign in here'], closed: null };
+  const host = /^\d+(\.\d+){3}$/.test(state.host) ? state.host : state.host.split('.')[0], me = state.name.toLowerCase(), players = state.board?.players ?? [];
+  const mine = players.find(p => p.name.toLowerCase() === me)?.name ?? state.name;
+  const others = players.filter(p => p.name.toLowerCase() !== me).sort((a, b) => b.seen - a.seen).map(p => p.name);
+  return { title: `Visitors · ${host}`, lines: [mine, ...others].slice(0, 6), closed: state.error === 'code' ? 'Code replaced' : state.offline ? 'Hub closed' : null };
+}
+export function drawVisitors({ g, width: w, height: h }, { title, lines, closed }) {
+  g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h); g.lineCap = 'round'; g.lineJoin = 'round'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  // Big enough to read from a step away: it's a clipboard, not a board.
+  g.fillStyle = INK.blue; sized(g, title, 76, w - 60); g.fillText(title, 30, 96);
+  g.strokeStyle = INK.blue; g.lineWidth = 5; scribble(g, 30, 114, 30 + g.measureText(title).width, 116);
+  g.strokeStyle = '#c9d6ea'; g.lineWidth = 3;
+  for (let i = 0; i < 6; i++) { const y = 216 + i * 76; g.beginPath(); g.moveTo(24, y); g.lineTo(w - 24, y); g.stroke(); }
+  g.fillStyle = closed ? '#8a8f99' : INK.black;
+  lines.forEach((line, i) => { sized(g, line, 60, w - 70); g.fillText(line, 36, 202 + i * 76); });
+  if (!closed) return;
+  g.save(); g.translate(w / 2, h - 110); g.rotate(-0.14); g.textAlign = 'center'; g.fillStyle = INK.red; sized(g, closed, 84, w - 50); g.fillText(closed, 0, 0); g.restore();
 }
 
 // The controls beside the clipboard, on one small sheet: name, colour. A page's tab is yellow when it's that page.
@@ -228,12 +253,13 @@ const DAY_MS = 86400000, DIMMED_TO = 0.5, today = () => Math.floor(Date.now() / 
 const hung = ({ x, y, z }, turn) => { const board = new THREE.Group(); board.position.set(x, y, z); board.rotation.y = turn; board.userData.board = true; return board; };
 const surface = (w, h, x, y, z, material = dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }), DIMMED_TO)) => { const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material); mesh.position.set(x, y, z); return mesh; };
 // `inReach`: a hit's point is close enough to start a level; from further off a click `read`s the clipboard, as one on the rest of it does.
-export function createKitchenBoards(game, { inReach = () => true, read = () => {} } = {}) {
+export function createKitchenBoards(game, { inReach = () => true, read = () => {}, online } = {}) {
   let page = 'monday', sheet = null, scores = null, tabs = null, saved = 0, day = 0;
   const onToday = [];
   const writePage = () => { const key = dayKey(new Date()); drawClipboard(sheet, page, page === 'today' ? dailyLines(key, game.progress) : clipboardLines(game.progress)); sheet.texture.needsUpdate = true; };
   const writeTabs = () => { drawTabs(tabs, page); tabs.texture.needsUpdate = true; };
-  const write = () => { saved = game.saved; day = today(); writePage(); drawScores(scores, game.progress, dayKey(new Date())); scores.texture.needsUpdate = true; };
+  const write = () => { saved = game.saved; day = today(); writePage(); drawScores(scores, game.progress, dayKey(new Date()), { trickshot: online?.top('trickshot')[0], trickshotToday: online?.top('trickshotToday')[0] }); scores.texture.needsUpdate = true; };
+  online?.watch(() => { if (scores) write(); });
   const turnTo = next => { page = next; for (const node of onToday) node.visible = page === 'today'; writePage(); writeTabs(); };
   return {
     build(room) {
@@ -270,16 +296,22 @@ export function createKitchenBoards(game, { inReach = () => true, read = () => {
 }
 
 export function createBoards(room) {
-  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1, written = null;
+  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1, written = null, visitors = null, visitorsKey = '';
   const writeUsage = () => { drawWhiteboard(boards.whiteboard, ...written); boards.whiteboard.texture.needsUpdate = true; };
   // A canvas draws in a fallback until the font is in, so write the board again once it is.
-  document.fonts?.load(`40px 'Permanent Marker'`).then(() => { if (written) writeUsage(); }).catch(() => {});
+  // Only when what it says changes: a sync that brings the same board back redraws nothing.
+  const writeVisitors = () => {
+    const page = visitorLines(visitors), key = JSON.stringify(page);
+    if (!boards?.visitors || key === visitorsKey) return;
+    visitorsKey = key; drawVisitors(boards.visitors, page); boards.visitors.texture.needsUpdate = true;
+  };
+  document.fonts?.load(`40px 'Permanent Marker'`).then(() => { if (written) writeUsage(); visitorsKey = ''; writeVisitors(); }).catch(() => {});
   const ensure = () => {
     // The room rebuilds its walls (and so its boards) when it resizes; repaint onto the new faces.
     if (faces === room.boards.whiteboard) return;
     faces = room.boards.whiteboard;
-    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512, 1.5), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), sign: paint(room.coffeeSign.userData.face, 256, 192) };
-    usageKey = waitingKey = ''; plateKey = null; minute = -1;
+    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512, 1.5), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), visitors: room.visitors && paint(room.visitors.face, 512, 640), sign: paint(room.coffeeSign.userData.face, 256, 192) };
+    usageKey = waitingKey = visitorsKey = ''; plateKey = null; minute = -1;
   };
   return {
     sync(snapshot, { error = '', waiting = [] } = {}) {
@@ -294,12 +326,15 @@ export function createBoards(room) {
       if (machine !== plateKey) { plateKey = machine; drawPlate(boards.plate, machine); boards.plate.texture.needsUpdate = true; }
       const nextWaiting = JSON.stringify(waiting);
       if (nextWaiting !== waitingKey) { waitingKey = nextWaiting; drawWaiting(boards.waiting, waiting); boards.waiting.texture.needsUpdate = true; }
+      writeVisitors();
     },
+    // Office online's state (online.js), for the visitors' clipboard.
+    visitors(state) { visitors = state; if (room.boards) { ensure(); writeVisitors(); } }, // before the walls are up, sync paints it
     tick(now = Date.now()) {
       if (!boards) return;
       const m = Math.floor(now / 60_000);
       if (m !== minute) { minute = m; drawClock(boards.clock, now); boards.clock.texture.needsUpdate = true; }
     },
-    dispose() { if (boards) for (const board of Object.values(boards)) board.texture.dispose(); },
+    dispose() { if (boards) for (const board of Object.values(boards)) board?.texture.dispose(); },
   };
 }

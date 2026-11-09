@@ -25,6 +25,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.
 - Nodes, every session a node round you on a 3D board, in five looks with their own lists: Clean (light or dark), Neurons, Synthetic circuits, a Steampunk plant and Mycelium. Status, activity, context, plans, screenshots and usage show on the board itself. Pan with the arrows, WASD or a flick, zoom with **+** and **-**, and **0** shows it all.
 - Trickshot in the Office's kitchen: land a paper ball or mug in its target or hit a fruit with a rubber ball or plate, with six levels, three daily shots and a score board.
+- Office online: host with `npm run hub` and share the join code; friends sign in at the visitors' clipboard by the Office door, and their bests show on the pinball backbox, the darts chalkboard, the golf board, the kitchen score board and snake's score line. Only names and scores leave your machine.
 - Local access or access from other devices over Tailscale, protected by a PIN or password.
 
 ### Live feed

@@ -480,6 +480,12 @@ export function createRoom(scene, renderer) {
     // Post-its on the boards' frames, clear of what boards.js writes.
     hang(left, notes('whiteboard', [[0, 0.32, 0.1, NOTE.yellow], [0.012, 0.2, -0.07, NOTE.yellow], [-0.008, -0.34, 0.05, NOTE.pink]]), 1.54, 1.75, 0.0585);
     hang(front, notes('noticeboard', [[-0.57, 0.41, -0.15, NOTE.pink], [0.57, -0.4, 0.12, NOTE.blue], [0.585, -0.29, -0.06, NOTE.yellow]]), door.x - width / 2 - 1.4, 1.5, 0.0585);
+    // The visitors' clipboard (Office online), the far side of the door from the waiting board: boards.js writes who's signed
+    // in, a click brings up the slip (signin.js, through room.onVisitors). Not in room.boards, so a click doesn't read it.
+    const visitors = hang(front, board(0.32, 0.4, '#a0703c', 0.5), door.x - width / 2 + 1.6, 1.45, 0.03);
+    const visitorsClip = mesh(rounded(0.12, 0.05, 0.03, 0.01), toonMaterial('#b8bec8'), 0.006); visitorsClip.position.set(0, 0.23, 0.045); visitors.add(visitorsClip);
+    visitors.userData.toggle = () => room.onVisitors?.();
+    room.visitors = { group: visitors, face: visitors.userData.face };
     room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face, plate };
 
     // Left wall: a bookshelf at the back, the whiteboard, pictures where there's room; the front is kept clear for the kitchen doorway.
