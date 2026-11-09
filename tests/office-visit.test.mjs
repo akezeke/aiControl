@@ -74,6 +74,9 @@ test('the door\'s card: the meeting from home, your office from the host\'s, not
   assert.deepEqual(doorCard('leaving', joined), { text: 'Meeting at alice', go: false }, 'asking');
   assert.deepEqual(doorCard('away', joined), { text: 'Back to your office', go: true });
   assert.equal(doorCard('returning', joined), null);
+  assert.deepEqual(doorCard('home', { ...joined, outdated: true, nobody: true }), { text: 'Update AI Control', go: false });
+  assert.deepEqual(doorCard('home', { ...joined, outdated: true, hosting: true }), { text: 'Update AI Control', go: false });
+  assert.deepEqual(doorCard('away', { ...joined, outdated: true }), { text: 'Back to your office', go: true });
   assert.equal(hostName('alice-pc.local'), 'alice-pc');
   assert.equal(hostName('192.168.1.20'), '192.168.1.20');
 });

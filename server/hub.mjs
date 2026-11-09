@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { writeFile, rename } from 'node:fs/promises';
 import { clean, cleanName, merge } from '../client/office/leaderboard.js';
 import { dayKey } from '../client/office/daily.js';
-import { checkUp, COLOURS } from '../client/office/meeting.js';
+import { checkUp, COLOURS, PROTOCOL } from '../client/office/meeting.js';
 
 const BODY = 4096, PLAYERS = 32, PER_SECOND = 20, SAVE_MS = 1000, SEATS = 8, LIVE_BYTES = 64 * 1024;
 const sha = value => createHash('sha256').update(value).digest();
@@ -96,6 +96,8 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     const p = ws.p;
     if (m.type === 'hello') {
       if (p.id) return;
+      // Another protocol is told why (its AI Control says to update) and let go, rather than misread.
+      if (m.v !== PROTOCOL) { put(ws, { type: 'refused', why: 'version' }); return ws.close(4002); }
       p.id = Array.from(randomBytes(8), b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
       Object.assign(p, { name: state.players[p.token].name, fruit: m.fruit, colour: free(m.colour), at: 'home' }); joined.add(ws);
       put(ws, { type: 'welcome', id: p.id, colour: p.colour, at: p.at }); roster(); return;

@@ -10,7 +10,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { hubState, startHub } from '../server/hub.mjs';
 import { createOfficeOnline, liveUpgrade } from '../server/office-online.mjs';
 import { createHandler } from '../server/http.mjs';
-import { COLOURS, meetingFloor } from '../client/office/meeting.js';
+import { COLOURS, PROTOCOL, meetingFloor } from '../client/office/meeting.js';
 import { identity } from '../client/office/status.js';
 import { layoutOffice } from '../client/office/layout.js';
 
@@ -198,19 +198,18 @@ test('a hub restart: pages hear it went, and the link comes back saying where yo
   await until(() => bp.sees('Anna')?.at === 'meeting' && bp.last('roster').players.length === 2, 'Anna back at the meeting', 5000);
 });
 
-// A hub that takes a join and answers hello, then never says anything again, not even a pong: a network that died without
-// the connection noticing. `lives`: every live connection it got.
-async function quietHub(t) {
+// A hub that takes a join and answers each live message with `answer(ws, message)`. `lives`: every live connection it got.
+// `pong: false`: it never answers a ping either.
+async function fakeHub(t, answer, { pong = true } = {}) {
   const lives = [], server = createServer((req, res) => { req.resume(); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ day: '2026-11-09', players: [] })); });
-  const wss = new WebSocketServer({ noServer: true, autoPong: false });
-  server.on('upgrade', (req, socket, head) => wss.handleUpgrade(req, socket, head, ws => {
-    lives.push(ws);
-    ws.on('message', data => { if (JSON.parse(data).type === 'hello') ws.send(JSON.stringify({ type: 'welcome', id: 'me', colour: COLOURS[0], at: 'home' })); });
-  }));
+  const wss = new WebSocketServer({ noServer: true, autoPong: pong });
+  server.on('upgrade', (req, socket, head) => wss.handleUpgrade(req, socket, head, ws => { lives.push(ws); ws.on('message', data => answer(ws, JSON.parse(data))); }));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => { for (const ws of wss.clients) ws.terminate(); server.close(); });
   return { code: `http://127.0.0.1:${server.address().port}/${'k'.repeat(22)}`, lives };
 }
+// One that answers hello, then never says anything again, not even a pong: a network that died without the connection noticing.
+const quietHub = t => fakeHub(t, (ws, m) => { if (m.type === 'hello') ws.send(JSON.stringify({ type: 'welcome', id: 'me', colour: COLOURS[0], at: 'home' })); }, { pong: false });
 
 test('a hub gone quiet is noticed: pages hear the room went, and the link comes back', async t => {
   const hub = await quietHub(t), anna = createOfficeOnline({ file: join(dir(), 'office-online.json'), retryMs: 50, beatMs: 50 });
@@ -224,6 +223,23 @@ test('a hub gone quiet is noticed: pages hear the room went, and the link comes 
   await until(() => bp.last('welcome'), "Bob's welcome");
   await wait(400);
   assert.equal(s.upgrades(), 1); assert.ok(bp.sees('Bob'));
+});
+
+test("a hub on another protocol: pages are told, the link doesn't keep knocking, and a page opening tries again", async t => {
+  const hellos = [], hub = await fakeHub(t, (ws, m) => { hellos.push(m); ws.send(JSON.stringify({ type: 'refused', why: 'version' })); ws.close(4002); });
+  const anna = createOfficeOnline({ file: join(dir(), 'office-online.json'), retryMs: 20 });
+  t.after(() => anna.close());
+  await anna.join({ code: hub.code, name: 'Anna' });
+  const page = open(anna);
+  await until(() => page.last('refused')?.why === 'version', 'the refusal');
+  assert.equal(hellos[0].v, PROTOCOL);
+  await wait(300);
+  assert.equal(hub.lives.length, 1);
+  assert.equal((await anna.sync({})).outdated, true);
+  assert.equal(anna.status().outdated, undefined, "status is what you joined, not how the link's doing");
+  const again = open(anna);
+  await until(() => hub.lives.length === 2 && again.last('refused'), 'one more try for the new page');
+  await wait(200); assert.equal(hub.lives.length, 2);
 });
 
 test("a page can't speak for another or send what checkUp drops", async t => {

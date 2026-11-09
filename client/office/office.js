@@ -203,7 +203,7 @@ export function mountOffice(container, hooks) {
   const door = createDoorCard(container), fade = document.createElement('div'); fade.className = 'office-fade'; container.append(fade);
   // A host's own page is at its meeting already (the server says, from the hub's file: office-online.mjs).
   const hosting = () => !!online.state()?.hosting;
-  const doorChoice = () => { const state = online.state(); return doorCard(visit.at, { joined: !!state?.joined, host: state?.joined ? hostName(state.host) : '', hosting: hosting(), nobody }); };
+  const doorChoice = () => { const state = online.state(); return doorCard(visit.at, { joined: !!state?.joined, host: state?.joined ? hostName(state.host) : '', hosting: hosting(), nobody, outdated: !!state?.outdated }); };
   const showDoor = (at, focus) => { const choice = doorChoice(); if (choice) door.show(choice, () => step('door'), at, focus); else door.close(); };
   room.onDoor = () => { nobody = false; if (view.overview || !doorChoice()) return; player.unlock(); card.show(null); menu.close(); showDoor(dot ? player.centre : mouse || pressed, true); };
   const fadeTo = (on, then) => { clearTimeout(fading); const still = reducedAtmosphere(); fade.classList.toggle('still', still); fade.classList.toggle('on', on); if (then) fading = setTimeout(then, still ? 0 : FADE_MS); };

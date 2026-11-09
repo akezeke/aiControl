@@ -113,3 +113,16 @@ test('a page learns it is hosting when the live link says welcome, with no reloa
   handlers.welcome({ type: 'welcome' }); await new Promise(r => setTimeout(r, 0));
   assert.equal(online.state().hosting, true); assert.equal(online.state().code, 'h/key');
 });
+
+test("a hub that won't take this version's link: the page asks again, and is told to update", async () => {
+  let reply = { joined: true, name: 'Anna', host: 'h', board };
+  const api = async () => reply, online = createOnline({ api, scores: () => ({}) });
+  const handlers = {}, live = { on: (type, fn) => { (handlers[type] ??= []).push(fn); return () => {}; } };
+  online.follow(live);
+  await online.sync();
+  reply = { ...reply, outdated: true };
+  for (const fn of handlers.refused) fn({ type: 'refused', why: 'full' });
+  await new Promise(r => setTimeout(r, 0)); assert.equal(online.state().outdated, undefined, 'a full meeting is no news for the clipboard');
+  for (const fn of handlers.refused) fn({ type: 'refused', why: 'version' });
+  await new Promise(r => setTimeout(r, 0)); assert.equal(online.state().outdated, true);
+});

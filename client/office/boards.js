@@ -215,13 +215,14 @@ export function drawScores({ g, width: w, height: h }, progress, key, tops = {})
 }
 
 // The meetings clipboard by the door (Office online), a note of the meeting you've joined at a friend's office: who's in it,
-// you first, then whoever was in last. `closed`: what to write across it when it can't be reached or its code was replaced.
+// you first, then whoever was in last. `closed`: what to write across it when it can't be reached, its code was replaced or
+// its hub won't take this version.
 export function meetingLines(state) {
   if (!state?.joined) return { title: 'Meetings', lines: ['Join one here'], closed: null };
   const host = hostName(state.host), me = state.name.toLowerCase(), players = state.board?.players ?? [];
   const mine = players.find(p => p.name.toLowerCase() === me)?.name ?? state.name;
   const others = players.filter(p => p.name.toLowerCase() !== me).sort((a, b) => b.seen - a.seen).map(p => p.host ? `${p.name} (host)` : p.name);
-  return { title: `Meeting at ${host}`, lines: [`${mine} (me)`, ...others].slice(0, 6), closed: state.error === 'code' ? 'New code' : state.offline ? 'Off for now' : null };
+  return { title: `Meeting at ${host}`, lines: [`${mine} (me)`, ...others].slice(0, 6), closed: state.error === 'code' ? 'New code' : state.outdated ? 'Update AI Control' : state.offline ? 'Off for now' : null };
 }
 export function drawMeeting({ g, width: w, height: h }, { title, lines, closed }) {
   g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h); g.lineCap = 'round'; g.lineJoin = 'round'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';

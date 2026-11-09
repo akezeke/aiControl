@@ -7,7 +7,7 @@ import { copyText } from './boards.js';
 const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
 // What the slip offers: the form while not in a meeting or once its code was replaced, Leave whenever you're in one (a
 // replaced code you'll never get again has to be left somehow), and what to say about the hub.
-export const slipMode = state => ({ form: !state?.joined || state.error === 'code', signOut: !!state?.joined, said: state?.error === 'code' ? 'The code was changed' : state?.offline ? 'Off for now' : '', code: state?.hosting && state.code ? state.code : '' });
+export const slipMode = state => ({ form: !state?.joined || state.error === 'code', signOut: !!state?.joined, said: state?.error === 'code' ? 'The code was changed' : state?.outdated ? 'Update AI Control' : state?.offline ? 'Off for now' : '', code: state?.hosting && state.code ? state.code : '' });
 
 // Short names for the swatches' aria-labels, in COLOURS' order.
 export const COLOUR_NAMES = ['pink', 'blue', 'purple', 'mint', 'yellow', 'orange', 'cyan', 'white'];

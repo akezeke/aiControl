@@ -18,6 +18,7 @@ test('in a meeting: where it is, you first, then whoever was in last', () => {
 test("a meeting that can't be reached or has a new code keeps the names and says so", () => {
   assert.deepEqual(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: board(['Bo', 'Anna']), offline: true }), { title: 'Meeting at pc', lines: ['Bo (me)', 'Anna'], closed: 'Off for now' });
   assert.equal(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: null, error: 'code' }).closed, 'New code');
+  assert.equal(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: null, outdated: true, offline: true }).closed, 'Update AI Control');
   assert.deepEqual(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: null }).lines, ['Bo (me)']);
 });
 

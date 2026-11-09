@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FRUITS, COLOURS, KINDS, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor } from '../client/office/meeting.js';
+import { FRUITS, COLOURS, KINDS, PROTOCOL, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor } from '../client/office/meeting.js';
 import { palettes, identity, PROPS, ACCESSORIES } from '../client/office/status.js';
 import { sharedLayout, layoutOffice } from '../client/office/layout.js';
 
@@ -18,7 +18,7 @@ const floor = () => meetingFloor(snapshotOf());
 
 test('checks drop every malformed message', () => {
   const good = [
-    { type: 'hello', name: 'Ann', fruit: 'apple', colour: COLOURS[0] },
+    { type: 'hello', v: PROTOCOL, name: 'Ann', fruit: 'apple', colour: COLOURS[0] },
     { type: 'look', fruit: 'banana', colour: COLOURS[1] },
     { type: 'where', at: 'meeting' },
     { type: 'pos', x: 3, y: 0, z: 4.5, yaw: -1.2, pose: 'walking' },
@@ -32,6 +32,7 @@ test('checks drop every malformed message', () => {
     { type: 'hello', name: 'x'.repeat(40), fruit: 'apple', colour: COLOURS[0] },
     { type: 'hello', name: 'Ann', fruit: 'durian', colour: COLOURS[0] },
     { type: 'hello', name: 'Ann', fruit: 'apple', colour: '#123456' },
+    ...['1', 1.5, 0, -1, 1e6, null].map(v => ({ type: 'hello', v, name: 'Ann', fruit: 'apple', colour: COLOURS[0] })),
     { type: 'where', at: 'moon' },
     { type: 'pos', x: NaN, y: 0, z: 0, yaw: 0, pose: 'walking' },
     { type: 'pos', x: 201, y: 0, z: 0, yaw: 0, pose: 'walking' },
@@ -52,6 +53,9 @@ test('checks drop every malformed message', () => {
   ];
   for (const msg of bad) assert.equal(checkUp(msg), null, JSON.stringify(msg)?.slice(0, 80));
   assert.deepEqual(checkUp({ ...good[3], extra: 'x' }), good[3]);
+  assert.equal(PROTOCOL, 1);
+  assert.equal(checkUp({ type: 'hello', name: 'Ann', fruit: 'apple', colour: COLOURS[0] }).v, 1, "an AI Control from before the number speaks the first one");
+  assert.equal(checkUp({ type: 'hello', v: 7, name: 'Ann', fruit: 'apple', colour: COLOURS[0] }).v, 7, 'the hub decides what a number it does not speak means');
 
   const player = { id: 'a1', name: 'Ann', fruit: 'apple', colour: COLOURS[0], at: 'home' };
   const down = [

@@ -9,6 +9,9 @@ import { layoutOffice } from './layout.js';
 export const FRUITS = [['apple', '🍎'], ['pear', '🍐'], ['orange', '🍊'], ['lemon', '🍋'], ['eggplant', '🍆'], ['strawberry', '🍓'], ['pineapple', '🍍'], ['kiwi', '🥝'], ['watermelon', '🍉'], ['banana', '🍌']];
 export const COLOURS = ['#ff5d8f', '#3a86ff', '#8338ec', '#06d6a0', '#ffbe0b', '#ff7b00', '#00b4d8', '#e5e5e5'];
 export const POSES = ['standing', 'walking', 'running', 'holding', 'playing'];
+// The meeting's protocol: in every hello, and the hub refuses a link speaking another (refused { why: 'version' }). Raise it when
+// a message changes so that the other end would misread it.
+export const PROTOCOL = 1;
 // Everything props.js (BALLS, LOOSE) and levels.js (ITEMS) can throw; a test keeps this in step with them.
 export const KINDS = ['football', 'paper', 'rubber', 'roll', 'mug', 'plate', 'teabag', 'cup', 'duck', 'books', 'plant', 'cactus', 'frame'];
 // Everything status.js's styles put in the head slot.
@@ -30,8 +33,10 @@ export function playerLook(name, fruit, shade) {
   return { ...base, fruit, color: naturalColor(fruit, key), trim: shade, accessories, colour: shade };
 }
 
+// An AI Control from before the number (no `v`) speaks the first one.
+const version = v => v === undefined ? 1 : Number.isInteger(v) && v > 0 && v < 1000 ? v : null;
 const checks = {
-  hello: m => { const name = cleanName(m.name); return own(m, ['name', 'fruit', 'colour']) && name && fruitIds.includes(m.fruit) && colour(m.colour) ? { type: 'hello', name, fruit: m.fruit, colour: m.colour } : null; },
+  hello: m => { const name = cleanName(m.name), v = version(m.v); return own(m, ['name', 'fruit', 'colour']) && v && name && fruitIds.includes(m.fruit) && colour(m.colour) ? { type: 'hello', v, name, fruit: m.fruit, colour: m.colour } : null; },
   look: m => own(m, ['fruit', 'colour']) && fruitIds.includes(m.fruit) && colour(m.colour) ? { type: 'look', fruit: m.fruit, colour: m.colour } : null,
   where: m => m.at === 'home' || m.at === 'meeting' ? { type: 'where', at: m.at } : null,
   // `t`, optional: the sender's clock (ms) when it was there, so friends.js can play moves back at an even pace.

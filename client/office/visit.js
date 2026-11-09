@@ -41,10 +41,12 @@ export function visitStep(state, { type, reduced = false }) {
 export const hostName = host => /^\d+(\.\d+){3}$/.test(host) ? host : String(host).split('.')[0];
 
 // The door's one-row card: { text, go } (go: whether choosing it does anything), or null for none. `host`: hostName's.
-// `hosting`: this page's office is the meeting. `nobody`: the last ask found no one there.
-export function doorCard(at, { joined, host, hosting, nobody }) {
+// `hosting`: this page's office is the meeting. `nobody`: the last ask found no one there. `outdated`: the hub won't take this
+// version's link.
+export function doorCard(at, { joined, host, hosting, nobody, outdated }) {
   if (at === 'away') return { text: 'Back to your office', go: true };
   if (!joined || (at !== 'home' && at !== 'leaving')) return null;
+  if (outdated) return { text: 'Update AI Control', go: false };
   if (at === 'home' && nobody) return { text: `Nobody's at ${host}'s office`, go: false };
   if (hosting) return null;
   return { text: `Meeting at ${host}`, go: at === 'home' };

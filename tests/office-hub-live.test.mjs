@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { connect as tcp } from 'node:net';
 import { WebSocket } from 'ws';
 import { hubState, startHub } from '../server/hub.mjs';
-import { COLOURS } from '../client/office/meeting.js';
+import { COLOURS, PROTOCOL } from '../client/office/meeting.js';
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), 'hub-live-')), 'hub.json');
 const token = c => c.repeat(22);
@@ -40,7 +40,7 @@ async function setup(t, options = {}) {
     });
   };
   const join = async (c, o = {}, hello = {}) => {
-    const p = await connect(c, o); p.send({ type: 'hello', name: 'whatever', fruit: 'apple', colour: COLOURS[0], ...hello });
+    const p = await connect(c, o); p.send({ type: 'hello', v: PROTOCOL, name: 'whatever', fruit: 'apple', colour: COLOURS[0], ...hello });
     p.welcome = await p.next('welcome'); return p;
   };
   return { ...h, state, file, port, connect, join };
@@ -145,6 +145,16 @@ test('a hostile request target cannot crash the hub', async t => {
   }
   const r = await fetch(`http://127.0.0.1:${h.port}/scores`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${h.state.key}` }, body: JSON.stringify({ token: token('z'), name: 'Z', scores: {} }) });
   assert.equal(r.status, 200);
+});
+
+test("a hello in a protocol the hub doesn't speak is refused for the version and closed; one from before the number is welcome", async t => {
+  const h = await setup(t), watcher = await h.join('w');
+  const newer = await h.connect('n'); newer.send({ type: 'hello', v: PROTOCOL + 1, name: 'n', fruit: 'apple', colour: COLOURS[1] });
+  assert.deepEqual(await newer.next('refused'), { type: 'refused', why: 'version' });
+  assert.equal(await newer.closes(), 4002);
+  assert.deepEqual((await lastRoster(watcher)).map(p => p.id), [watcher.welcome.id]);
+  const older = await h.connect('o'); older.send({ type: 'hello', name: 'o', fruit: 'apple', colour: COLOURS[2] });
+  assert.equal((await older.next('welcome')).colour, COLOURS[2]);
 });
 
 test('the roster shows the registered name, not the one in hello', async t => {

@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { clean, cleanName } from '../client/office/leaderboard.js';
 import { dayKey } from '../client/office/daily.js';
-import { checkUp, checkDown, meetingFloor, COLOURS } from '../client/office/meeting.js';
+import { checkUp, checkDown, meetingFloor, COLOURS, PROTOCOL } from '../client/office/meeting.js';
 import { identity } from '../client/office/status.js';
 import { fail } from './requests.mjs';
 
@@ -130,7 +130,8 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   // `hosting`: this machine runs the hub of the meeting you're in, so your office is the meeting (its door goes nowhere).
   // `code`, the meeting's code as `npm run hub` prints it (https:// left off), only for the host's own page: it's the room's key.
   const codeOf = () => `${saved.url.replace(/^https:\/\//, '')}/${saved.key}`;
-  const result = extra => ({ joined: true, name: saved.name, host: host(), hosting: !!hostKey(), ...hostKey() && { code: codeOf() }, board: last?.board ?? null, look: look(), ...extra });
+  // `outdated`: the hub refused the live link for its protocol (meeting.js's PROTOCOL), so someone has to update.
+  const result = extra => ({ joined: true, name: saved.name, host: host(), hosting: !!hostKey(), ...hostKey() && { code: codeOf() }, board: last?.board ?? null, look: look(), ...link?.outdated && { outdated: true }, ...extra });
 
   // The live link: one socket to the hub's live room, shared by every page of yours, open while a page is (and 5 s after the
   // last goes, so a reload doesn't leave and come back), or all the time while hosting. Up goes only what checkUp passes and
@@ -138,8 +139,8 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   // `link`: { who (what it's signed in as), hostKey, ws, retry, delay, me (welcome, kept current), roster, floor, asked
   // (where it last asked to be), floorText (the floor last sent), places (id → the last pos heard of each friend at the
   // meeting, as sent on, for a page that opens later: the hub only relays), desks (meetingFloor's desk ids, new each
-  // connection) }. `pages`: page socket → { where, start, count }, in the
-  // order they last connected or said where they are. One page speaks for you (its where, pos and throws): the newest at the
+  // connection), outdated (the hub refused this protocol: no more tries until a page opens) }. `pages`: page socket →
+  // { where, start, count }, in the order they last connected or said where they are. One page speaks for you (its where, pos and throws): the newest at the
   // meeting, else the newest to say where it is, so a tab coming back at home (live.js says where on every connect) doesn't
   // take you out of the meeting another is in. `spoke`: the page that spoke for you last.
   let link = null, linger = null, spoke = null;
@@ -171,7 +172,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     const alive = () => { quiet = 0; };
     ws.on('ping', alive); ws.on('pong', alive);
     ws.on('open', () => {
-      const hello = checkUp({ type: 'hello', name: l.name, ...look() }); if (hello) ws.send(JSON.stringify(hello));
+      const hello = checkUp({ type: 'hello', v: PROTOCOL, name: l.name, ...look() }); if (hello) ws.send(JSON.stringify(hello));
       beat = setInterval(() => { if (quiet === 2) return ws.terminate(); quiet++; ws.ping(); }, beatMs); beat.unref();
     });
     ws.on('message', (data, binary) => {
@@ -185,12 +186,13 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       clearInterval(beat);
       if (l.ws !== ws) return;
       l.ws = null; gone(l);
-      if (link !== l) return;
+      if (link !== l || l.outdated) return;
       l.retry = setTimeout(() => { l.retry = null; if (link === l) connect(l); }, l.delay); l.retry.unref();
       l.delay = Math.min(l.delay * 2, RETRY_MAX_MS);
     });
   }
   function heard(l, m) {
+    if (m.type === 'refused' && m.why === 'version') { l.outdated = true; toPages(m); return; }
     if (m.type === 'welcome') { l.me = { id: m.id, colour: m.colour, at: m.at }; l.asked = m.at; l.delay = retryMs; toPages(m); place(); return; }
     if (!l.me) return;
     if (m.type === 'roster') {
@@ -322,7 +324,10 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
         if (!pages.size) { linger = setTimeout(() => { linger = null; settle(); place(); }, lingerMs); linger.unref(); }
         place();
       });
-      settle(); place();
+      settle();
+      // A page opening is someone acting: a link refused for its protocol tries once more (the hub may have been updated).
+      if (link?.outdated && !link.ws) { link.outdated = false; connect(link); }
+      place();
       if (link?.me) { put(socket, JSON.stringify({ type: 'welcome', ...link.me })); if (link.roster) put(socket, JSON.stringify(link.roster)); for (const text of link.places.values()) put(socket, text); }
     },
 
