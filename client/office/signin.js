@@ -3,10 +3,11 @@
 // the office takes no keys while it's up (scene-keys.js); Esc, its ✕ or a press anywhere else puts it away.
 import { FRUITS, COLOURS } from './meeting.js';
 import { pickerState } from './live.js';
+import { copyText } from './boards.js';
 const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
 // What the slip offers: the form while not in a meeting or once its code was replaced, Leave whenever you're in one (a
 // replaced code you'll never get again has to be left somehow), and what to say about the hub.
-export const slipMode = state => ({ form: !state?.joined || state.error === 'code', signOut: !!state?.joined, said: state?.error === 'code' ? 'The code was changed' : state?.offline ? 'Off for now' : '' });
+export const slipMode = state => ({ form: !state?.joined || state.error === 'code', signOut: !!state?.joined, said: state?.error === 'code' ? 'The code was changed' : state?.offline ? 'Off for now' : '', code: state?.hosting && state.code ? state.code : '' });
 
 // Short names for the swatches' aria-labels, in COLOURS' order.
 export const COLOUR_NAMES = ['pink', 'blue', 'purple', 'mint', 'yellow', 'orange', 'cyan', 'white'];
@@ -43,6 +44,13 @@ export function createSignIn(container, online, live = null) {
         try { if (picked) { await online.setLook(picked.fruit, picked.colour); picked = null; } await online.signIn(code.value, name.value); typed = { code: '', name: '' }; render(); } catch (e) { render(e.message); }
       };
       form.append(code, name, go); slip.append(form);
+    }
+    if (mode.code) {
+      const field = el('input', { value: mode.code, readOnly: true, spellcheck: false, className: 'office-signin-code' }), copy = el('button', { type: 'button', textContent: 'Copy' });
+      field.setAttribute('aria-label', 'Meeting code'); field.onfocus = () => field.select();
+      const copied = () => { copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 1200); };
+      copy.onclick = () => copyText(mode.code, copied, () => { field.focus(); field.select(); });
+      slip.append(field, copy);
     }
     if (mode.signOut) {
       const out = el('button', { type: 'button', textContent: 'Leave', title: `Leave the meeting at ${state.host}` });

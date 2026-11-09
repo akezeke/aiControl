@@ -181,3 +181,17 @@ test('what the page gets says whether this office is the meeting (hosting), from
   assert.equal((await s.online.sync({ darts: 3 })).hosting, false);
   host.close();
 });
+
+test('the code goes to the host and nobody else', async t => {
+  const s = await setup(); t.after(() => s.hub.close());
+  const host = createOfficeOnline({ file: join(dir(), 'office-online.json'), hubFile: s.hubFile });
+  const key = hubState(s.hubFile).key, code = `127.0.0.1:${s.port}/${key}`;
+  const joined = await host.join({ code: s.code(), name: 'Host' });
+  assert.equal(joined.code, `http://${code}`); // plain http keeps its scheme so the code still joins; https drops it
+  assert.equal((await host.sync({ darts: 3 })).code, `http://${code}`);
+  assert.equal(host.status().code, `http://${code}`);
+  assert.deepEqual(parseCode(joined.code), { url: `http://127.0.0.1:${s.port}`, key });
+  const anna = await s.online.join({ code: s.code(), name: 'Anna' });
+  for (const r of [anna, await s.online.sync({ darts: 1 }), s.online.status()]) assert.ok(!('code' in r) && !JSON.stringify(r).includes(key), JSON.stringify(r));
+  host.close();
+});

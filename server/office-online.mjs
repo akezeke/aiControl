@@ -128,7 +128,9 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     return { status: 200, board: board(data) };
   }
   // `hosting`: this machine runs the hub of the meeting you're in, so your office is the meeting (its door goes nowhere).
-  const result = extra => ({ joined: true, name: saved.name, host: host(), hosting: !!hostKey(), board: last?.board ?? null, look: look(), ...extra });
+  // `code`, the meeting's code as `npm run hub` prints it (https:// left off), only for the host's own page: it's the room's key.
+  const codeOf = () => `${saved.url.replace(/^https:\/\//, '')}/${saved.key}`;
+  const result = extra => ({ joined: true, name: saved.name, host: host(), hosting: !!hostKey(), ...hostKey() && { code: codeOf() }, board: last?.board ?? null, look: look(), ...extra });
 
   // The live link: one socket to the hub's live room, shared by every page of yours, open while a page is (and 5 s after the
   // last goes, so a reload doesn't leave and come back), or all the time while hosting. Up goes only what checkUp passes and
@@ -208,7 +210,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   }
 
   const online = {
-    status: () => { load(); return joined() ? { joined: true, name: saved.name, host: host() } : { joined: false }; },
+    status: () => { load(); return joined() ? { joined: true, name: saved.name, host: host(), ...hostKey() && { code: codeOf() } } : { joined: false }; },
 
     async join({ code, name } = {}) {
       load();

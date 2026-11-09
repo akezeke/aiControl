@@ -67,7 +67,7 @@ export function meetingFloor(snapshot) {
   const podIndex = new Map(office.pods.map((pod, i) => [pod.key, i]));
   const rows = [], opaque = new Map();
   const add = (session, pod, slot, parentId) => {
-    const { props, notes, ...look } = identity(session.id);
+    const look = identity(session.id); // its desk's props and notes too: random from the id, nothing of the session
     const { pose, expression, screen, since, wear, cups } = officeStatus(session);
     opaque.set(session.id, `d${rows.length}`);
     rows.push({ id: `d${rows.length}`, pod, slot, parent: parentId, look, status: { pose, expression, screen, since: since === undefined ? null : round(since), wear: round(wear, 1), cups } });
@@ -84,7 +84,8 @@ export function meetingFloor(snapshot) {
   return { room: { width: round(width, 1), depth: round(depth, 1) }, door: { x: round(door.x, 1), z: round(door.z, 1) }, pods: office.pods.map(pod => [pod.col, pod.row]), desks: rows };
 }
 
-const lookOk = look => own(look, ['fruit', 'color', 'accessories', 'trim', 'habits']) && fruitIds.includes(look.fruit) && /^#[0-9a-f]{6}$/i.test(look.color) && /^#[0-9a-f]{6}$/i.test(look.trim)
+const PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books']; // status.js's pick list
+const lookOk = look => own(look, ['fruit', 'color', 'accessories', 'trim', 'habits', 'props', 'notes']) && Array.isArray(look.props) && look.props.length <= 3 && look.props.every(p => PROPS.includes(p)) && Number.isInteger(look.notes) && look.notes >= 0 && look.notes <= 3 && fruitIds.includes(look.fruit) && /^#[0-9a-f]{6}$/i.test(look.color) && /^#[0-9a-f]{6}$/i.test(look.trim)
   && Array.isArray(look.accessories) && look.accessories.length <= 8 && look.accessories.every(word) && own(look.habits, ['typing', 'thinking', 'sleeping', 'finish']) && ['typing', 'thinking', 'sleeping', 'finish'].every(k => word(look.habits[k]));
 const statusOk = s => own(s, ['pose', 'expression', 'screen', 'since', 'wear', 'cups']) && word(s.pose) && word(s.expression) && SCREENS.includes(s.screen) && (s.since === null || num(s.since, 0, 1e14)) && num(s.wear, 0, 1) && Number.isInteger(s.cups) && s.cups >= 0 && s.cups <= 6;
 // Rebuilt field by field, or null if any of it fails.
@@ -97,7 +98,7 @@ export function checkFloor(floor) {
   const ids = new Set(desks.map(desk => desk?.id));
   const clean = desks.map(desk => own(desk, ['id', 'pod', 'slot', 'parent', 'look', 'status']) && /^d[0-9]{1,3}$/.test(desk.id) && Number.isInteger(desk.pod) && desk.pod >= 0 && desk.pod < pods.length
     && Number.isInteger(desk.slot) && desk.slot >= 0 && desk.slot < 64 && (desk.parent === null || (ids.has(desk.parent) && desk.parent !== desk.id)) && lookOk(desk.look) && statusOk(desk.status)
-    ? { id: desk.id, pod: desk.pod, slot: desk.slot, parent: desk.parent, look: { fruit: desk.look.fruit, color: desk.look.color, accessories: [...desk.look.accessories], trim: desk.look.trim, habits: { ...desk.look.habits } },
+    ? { id: desk.id, pod: desk.pod, slot: desk.slot, parent: desk.parent, look: { fruit: desk.look.fruit, color: desk.look.color, accessories: [...desk.look.accessories], trim: desk.look.trim, habits: { ...desk.look.habits }, props: [...desk.look.props], notes: desk.look.notes },
       status: { pose: desk.status.pose, expression: desk.status.expression, screen: desk.status.screen, since: desk.status.since, wear: desk.status.wear, cups: desk.status.cups } } : null);
   if (!clean.every(Boolean) || ids.size !== desks.length) return null;
   return { room: { width: room.width, depth: room.depth }, door: { x: door.x, z: door.z }, pods: pods.map(([col, row]) => [col, row]), desks: clean };
@@ -109,7 +110,7 @@ export function floorSnapshot(floor) {
   const keys = floor.pods.map((_, i) => `p${i}`), sessions = floor.desks.map(desk => ({ id: desk.id, parentId: desk.parent || undefined, cwd: keys[desk.pod], project: 'Office', status: 'idle' }));
   const previous = { saved: true, desks: new Map(floor.desks.filter(d => !d.parent).map(d => [d.id, { podKey: keys[d.pod], slot: d.slot }])), pods: floor.pods.map(([col, row], i) => ({ key: keys[i], col, row, name: 'Office' })), room: { width: floor.room.width, depth: floor.room.depth } };
   const office = layoutOffice(sessions, previous);
-  const statuses = new Map(floor.desks.map(desk => [desk.id, { ...desk.status, since: desk.status.since ?? undefined, mode: '', bubble: null, monitor: fakeMonitor(desk.id, desk.status.screen, Date.now() / 1000), identity: { ...desk.look, props: [], notes: 0 } }]));
+  const statuses = new Map(floor.desks.map(desk => [desk.id, { ...desk.status, since: desk.status.since ?? undefined, mode: '', bubble: null, monitor: fakeMonitor(desk.id, desk.status.screen, Date.now() / 1000), identity: { ...desk.look } }]));
   return { office: { ...office, desks: [...office.desks.values()] }, sessions: sessions.map(({ id, parentId }) => ({ id, parentId, status: floor.desks.find(d => d.id === id).status })), statuses };
 }
 

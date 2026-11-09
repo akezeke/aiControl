@@ -59,6 +59,8 @@ export function createOnline({ api, scores = () => localBests() }) {
     async setLook(fruit, colour) { take(await api('office/look', { fruit, colour })); },
     async signIn(code, name) { take(await api('office/online', { code, name })); sent = null; await online.sync(true); }, // your bests, at once
     async signOut() { take(await api('office/online', { leave: true })); sent = null; },
+    // Every (re)connect of the live link: ask again, so a page open before the hub started (or AI Control restarted) learns it's hosting.
+    follow: live => live.on('welcome', () => { online.sync(true); }),
     dispose() { listeners.clear(); },
   };
   return online;

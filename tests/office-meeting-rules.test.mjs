@@ -76,7 +76,8 @@ test('meetingFloor carries none of the snapshot\'s words', () => {
   assert.equal(f.desks.filter(d => d.parent).length, 1);
   assert.equal(f.desks.find(d => d.parent).parent, f.desks.find(d => d.id === f.desks.find(x => x.parent).parent).id);
   assert.deepEqual(f.desks.map(d => d.id), f.desks.map((_, i) => `d${i}`));
-  assert.ok(!('props' in f.desks[0].look) && !('notes' in f.desks[0].look));
+  assert.ok(f.desks.every(d => Array.isArray(d.look.props) && d.look.props.length <= 3 && Number.isInteger(d.look.notes)));
+  assert.ok(f.desks.some(d => d.look.props.length || d.look.notes), 'some desk has things on it');
   assert.ok(checkFloor(f));
 });
 
@@ -133,4 +134,21 @@ test('fakeMonitor', () => {
   assert.deepEqual(fakeMonitor('d1', 'green', 6).lines.slice(0, 5), m.lines.slice(1));
   assert.equal(fakeMonitor('d1', 'off', 5), null);
   assert.deepEqual(fakeMonitor('d1', 'amber', 5).lines, [{ kind: 'user', text: '' }], 'an empty prompt: the screen draws a user line\'s › itself');
+});
+
+test('desks keep their things: props and notes survive checkFloor and reach floorSnapshot', () => {
+  const f = floor(), clean = checkFloor(f), snap = floorSnapshot(clean);
+  assert.deepEqual(clean.desks.map(d => [d.look.props, d.look.notes]), f.desks.map(d => [d.look.props, d.look.notes]));
+  for (const d of clean.desks) assert.deepEqual([snap.statuses.get(d.id).identity.props, snap.statuses.get(d.id).identity.notes], [d.look.props, d.look.notes]);
+});
+
+test('checkFloor rejects bad props and notes', () => {
+  const bad = change => { const f = floor(); change(f.desks[0].look); return checkFloor(f); };
+  assert.ok(checkFloor(floor()));
+  assert.equal(bad(l => { l.props = ['bomb']; }), null);
+  assert.equal(bad(l => { l.props = ['plant', 'mug', 'duck', 'frame']; }), null);
+  assert.equal(bad(l => { l.props = 'plant'; }), null);
+  assert.equal(bad(l => { l.notes = 9; }), null);
+  assert.equal(bad(l => { l.notes = 1.5; }), null);
+  assert.equal(bad(l => { delete l.notes; }), null);
 });

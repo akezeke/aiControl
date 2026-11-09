@@ -102,3 +102,14 @@ test('signing in sends your bests straight away', async () => {
   await online.signIn('code', 'Anna');
   assert.deepEqual(api.calls.map(([path]) => path), ['office/online', 'office/scores']);
 });
+
+test('a page learns it is hosting when the live link says welcome, with no reload', async () => {
+  let reply = { joined: true, name: 'Anna', host: 'h', hosting: false, board };
+  const api = async () => reply, online = createOnline({ api, scores: () => ({}) });
+  const handlers = {}, live = { on: (type, fn) => { handlers[type] = fn; return () => {}; } };
+  online.follow(live);
+  await online.sync(); assert.equal(online.state().hosting, false);
+  reply = { ...reply, hosting: true, code: 'h/key' }; // the hub started, or AI Control restarted, under the open page
+  handlers.welcome({ type: 'welcome' }); await new Promise(r => setTimeout(r, 0));
+  assert.equal(online.state().hosting, true); assert.equal(online.state().code, 'h/key');
+});
