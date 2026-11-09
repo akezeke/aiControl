@@ -163,6 +163,30 @@ test("a page that opens later hears where everyone at the meeting last was, and 
   assert.deepEqual(after.all('pos'), []);
 });
 
+test('a page at the meeting speaks for you over pages at home; a newer one at the meeting sends it home', async t => {
+  const s = await setup(t);
+  const host = await s.player('Host', { host: true }), anna = await s.player('Anna');
+  const room = (width = 10) => ({ sessions: [], office: { pods: [], desks: [], room: { width, depth: 10 } } });
+  const hp = open(host); hp.say({ type: 'where', at: 'home' }); host.floor(() => room());
+  await until(() => hp.last('welcome'), "the host's welcome");
+  host.floor(() => room());
+  const phone = open(anna);
+  phone.say({ type: 'where', at: 'home' }); phone.say({ type: 'where', at: 'meeting' });
+  await until(() => phone.last('floor')?.floor && hp.sees('Anna')?.at === 'meeting', 'Anna visiting on her phone');
+  // Her desktop's tab comes back (it was hidden): live.js says where: home on every connect.
+  const desk = open(anna); desk.say({ type: 'where', at: 'home' });
+  await wait(200);
+  assert.equal(hp.sees('Anna').at, 'meeting');
+  assert.ok(!phone.all('floor').some(m => m.floor === null), 'the phone keeps the floor');
+  phone.say({ type: 'pos', x: 3, y: 0, z: 3, yaw: 0, pose: 'walking' });
+  hp.say({ type: 'pos', x: 1, y: 0, z: 1, yaw: 0, pose: 'walking' }); host.floor(() => room(12));
+  await until(() => hp.last('pos')?.x === 3 && phone.last('pos')?.x === 1 && phone.last('floor').floor?.room.width === 12, "the phone's presence out, and the host's pos and floor in");
+  // The desktop goes through the door too: it speaks for her now, and the phone, no longer heard, walks home.
+  desk.say({ type: 'where', at: 'meeting' });
+  await until(() => desk.last('floor')?.floor && phone.last('floor').floor === null, 'the desktop at the meeting, the phone told the floor went');
+  assert.equal(hp.sees('Anna').at, 'meeting');
+});
+
 test('a hub restart: pages hear it went, and the link comes back saying where you were', async t => {
   const s = await setup(t);
   const anna = await s.player('Anna'), bob = await s.player('Bob');

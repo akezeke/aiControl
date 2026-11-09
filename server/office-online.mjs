@@ -138,8 +138,10 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   // `link`: { who (what it's signed in as), hostKey, ws, retry, delay, me (welcome, kept current), roster, floor, asked
   // (where it last asked to be), floorText (the floor last sent), places (id → the last pos heard of each friend at the
   // meeting, as sent on, for a page that opens later: the hub only relays) }. `pages`: page socket → { where, start, count }, in the
-  // order they last connected or said where they are; the last page to say where speaks for you (its where, pos and throws).
-  let link = null, linger = null;
+  // order they last connected or said where they are. One page speaks for you (its where, pos and throws): the newest at the
+  // meeting, else the newest to say where it is, so a tab coming back at home (live.js says where on every connect) doesn't
+  // take you out of the meeting another is in. `spoke`: the page that spoke for you last.
+  let link = null, linger = null, spoke = null;
   const pages = new Map();
   const put = (socket, text) => {
     if (socket.readyState !== WebSocket.OPEN) return;
@@ -148,7 +150,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   };
   const toPages = m => { const text = JSON.stringify(m); for (const socket of pages.keys()) put(socket, text); return text; };
   const up = m => { if (link?.ws?.readyState === WebSocket.OPEN) link.ws.send(JSON.stringify(m)); };
-  const speaker = () => [...pages].findLast(([, page]) => page.where)?.[0];
+  const speaker = () => { const said = [...pages].filter(([, page]) => page.where); return (said.findLast(([, page]) => page.where === 'meeting') ?? said.at(-1))?.[0]; };
   // Pages hear the room's gone: nobody's there, and no floor (a visitor's page walks home).
   const gone = l => { if (!l.me) return; l.me = l.roster = l.floor = null; l.floorText = ''; l.places.clear(); toPages({ type: 'roster', players: [] }); toPages({ type: 'floor', floor: null }); };
   function shut() {
@@ -205,8 +207,12 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   // Where the hub should have you: a host is at their own meeting while a page of theirs is open (or lingering); anyone
   // else wherever the page that speaks for them last said, and stays put if no page has said.
   function place() {
+    // A page at the meeting that no longer speaks for you (a newer one went too) hears the floor's gone, so it walks home.
+    const voice = speaker();
+    if (spoke && spoke !== voice && pages.get(spoke)?.where === 'meeting') put(spoke, JSON.stringify({ type: 'floor', floor: null }));
+    spoke = voice;
     const l = link; if (!l?.me) return;
-    const at = l.hostKey ? (pages.size || linger ? 'meeting' : 'home') : (pages.get(speaker())?.where ?? l.asked);
+    const at = l.hostKey ? (pages.size || linger ? 'meeting' : 'home') : (pages.get(voice)?.where ?? l.asked);
     if (at === l.asked) return;
     l.asked = at; if (at === 'home') { l.floor = null; l.places.clear(); }
     up({ type: 'where', at });
@@ -309,7 +315,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       if (link?.me) { put(socket, JSON.stringify({ type: 'welcome', ...link.me })); if (link.roster) put(socket, JSON.stringify(link.roster)); for (const text of link.places.values()) put(socket, text); }
     },
 
-    close() { clearTimeout(linger); linger = null; pages.clear(); shut(); },
+    close() { clearTimeout(linger); linger = null; pages.clear(); spoke = null; shut(); },
   };
   return online;
 }
