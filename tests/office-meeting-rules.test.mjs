@@ -55,12 +55,14 @@ test('checks drop every malformed message', () => {
     { type: 'pos', id: 'a1', x: 1, y: 0, z: 1, yaw: 0, pose: 'standing' },
     { type: 'throw', id: 'a1', kind: 'paper', pos: [0, 1, 0], vel: [1, 1, 1], spin: [0, 0, 0] },
     { type: 'floor', floor: floor() }, { type: 'floor', floor: null }, { type: 'refused', why: 'full' },
+    { type: 'welcome', id: 'a1', colour: COLOURS[2], at: 'meeting' },
   ];
   for (const msg of down) assert.deepEqual(checkDown(msg), msg);
   for (const msg of [
     null, { type: 'roster', players: Array.from({ length: 33 }, () => player) }, { type: 'roster', players: [{ ...player, id: 'BAD ID' }] },
     { type: 'roster', players: [{ ...player, at: 'x' }] }, { type: 'pos', x: 1, y: 0, z: 1, yaw: 0, pose: 'standing' },
     { type: 'pos', id: 'a'.repeat(13), x: 1, y: 0, z: 1, yaw: 0, pose: 'standing' }, { type: 'refused', why: 'x'.repeat(100) }, { type: 'hello' },
+    { type: 'welcome', id: 'BAD ID', colour: COLOURS[0], at: 'home' }, { type: 'welcome', id: 'a1', colour: '#123456', at: 'home' }, { type: 'welcome', id: 'a1', colour: COLOURS[0], at: 'moon' },
   ]) assert.equal(checkDown(msg), null);
 });
 

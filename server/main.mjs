@@ -20,7 +20,7 @@ import { AgentDefaults } from './agent-defaults.mjs';
 import { SpendBudget } from './spend-budget.mjs';
 import { agentFolder, folderState } from './folders.mjs';
 import { OfficeSeats } from './seats.mjs';
-import { createOfficeOnline } from './office-online.mjs';
+import { createOfficeOnline, liveUpgrade } from './office-online.mjs';
 import { CityTowers } from './towers.mjs';
 import { Battlefields } from './battlefields.mjs';
 import { Recovery, resumeArgs } from './recovery.mjs';
@@ -156,12 +156,14 @@ export async function startServer({ host, hostname, tls = null }) {
     dismiss: ids => { recovery.dismiss(ids); return { ok: true }; },
   };
   const handler = createHandler({ auth, store, snapshot, push, workflow, online, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
+  // Office meetings: pages connect at /api/office/live, checked as any POST is (office-online.mjs); every other upgrade is refused.
+  const live = liveUpgrade({ auth, origins, hosts: origins.map(o => new URL(o).host), online });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {
     server.requestTimeout = 20_000;
     server.headersTimeout = 10_000;
-    server.on('upgrade', (_req, socket) => socket.destroy());
+    server.on('upgrade', live);
     try { await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, address, resolve); }); } catch (e) { await closeServers(); await vite.close(); throw e; }
   }
   try { await claude.start(); } catch (e) { await closeServers(); await vite.close(); throw e; }
@@ -173,6 +175,9 @@ export async function startServer({ host, hostname, tls = null }) {
     workflow.observe().catch(error => console.error('[Workflow]', error.message));
   };
   observe(); const pushing = setInterval(observe, 3000);
+  // Keeps the hub link as it should be, and while this machine hosts the meeting it's in, sends its floor when it changed:
+  // the snapshot is read only then (office-online.mjs).
+  const meeting = setInterval(() => online.floor(snapshot), 2000);
   // At once, so sessions a reboot took show up as lost without waiting for the first tick.
   const recoverNow = () => recover().catch(error => console.error('[Recovery]', error.message));
   recoverNow(); const recovering = setInterval(recoverNow, 4000);
@@ -184,7 +189,7 @@ export async function startServer({ host, hostname, tls = null }) {
   async function close() {
     if (closing) return; closing = true;
     auth.persist(loginsFile);
-    clearInterval(recovering); clearInterval(pushing); launches.stop(); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
+    clearInterval(recovering); clearInterval(pushing); clearInterval(meeting); live.close(); online.close(); launches.stop(); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
     await workflow.observing?.catch(() => {});
     await closeServers();
     await unlink(join(dataDir, 'server.json')).catch(() => {});

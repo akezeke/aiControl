@@ -54,6 +54,8 @@ const down = {
   throw: withId('throw', ['kind', 'pos', 'vel', 'spin']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,
+  // The hub's answer to hello: your id in the roster, the colour you got and where you are.
+  welcome: m => id(m.id) && colour(m.colour) && (m.at === 'home' || m.at === 'meeting') ? { type: 'welcome', id: m.id, colour: m.colour, at: m.at } : null,
 };
 export const checkDown = msg => run(down, msg);
 

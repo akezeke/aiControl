@@ -106,14 +106,15 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         if (!spawn) throw fail('Starting agents is not available.', 503);
         const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;
       }
-      // Office online (office-online.mjs): joining a hub or leaving it, and this browser's bests out with the board back.
-      // A sync runs by itself, so it isn't activity; joining and leaving are.
-      if (path === '/api/office/online' || path === '/api/office/scores') {
+      // Office online (office-online.mjs): joining a hub or leaving it, this browser's bests out with the board back, and
+      // your fruit and colour for meetings. A sync runs by itself, so it isn't activity; joining, leaving and a look are.
+      if (path === '/api/office/online' || path === '/api/office/scores' || path === '/api/office/look') {
         if (!online) throw fail('Office online is not available.', 503);
         if (path === '/api/office/online' && req.method === 'GET') { json(res, 200, online.status()); return; }
         if (req.method === 'POST') {
           const data = await body(req, 4096);
           if (path === '/api/office/scores') { json(res, 200, await online.sync(data?.scores)); return; }
+          if (path === '/api/office/look') { const result = online.look(data); auth.touch(session); json(res, 200, result); return; }
           const result = data?.leave ? await online.leave() : await online.join(data ?? {});
           auth.touch(session); json(res, 200, result); return;
         }
