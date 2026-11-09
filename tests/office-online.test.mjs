@@ -170,3 +170,14 @@ test("a hub's redirect is not followed", async t => {
   assert.equal(await status(online.join({ code: `http://127.0.0.1:${hub.address().port}/${K}`, name: 'Anna' })), 502);
   assert.equal(reached, 0);
 });
+
+test('what the page gets says whether this office is the meeting (hosting), from the hub file, not from the board', async t => {
+  const s = await setup(); t.after(() => s.hub.close());
+  const host = createOfficeOnline({ file: join(dir(), 'office-online.json'), hubFile: s.hubFile });
+  assert.equal((await host.join({ code: s.code(), name: 'Host' })).hosting, true);
+  assert.equal((await host.sync({ darts: 3 })).hosting, true);
+  const anna = await s.online.join({ code: s.code(), name: 'Anna' });
+  assert.equal(anna.hosting, false);
+  assert.equal((await s.online.sync({ darts: 3 })).hosting, false);
+  host.close();
+});

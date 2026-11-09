@@ -127,7 +127,8 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     let data = null; try { data = JSON.parse(await capped(response)); } catch { /* not JSON, or too big */ }
     return { status: 200, board: board(data) };
   }
-  const result = extra => ({ joined: true, name: saved.name, host: host(), board: last?.board ?? null, look: look(), ...extra });
+  // `hosting`: this machine runs the hub of the meeting you're in, so your office is the meeting (its door goes nowhere).
+  const result = extra => ({ joined: true, name: saved.name, host: host(), hosting: !!hostKey(), board: last?.board ?? null, look: look(), ...extra });
 
   // The live link: one socket to the hub's live room, shared by every page of yours, open while a page is (and 5 s after the
   // last goes, so a reload doesn't leave and come back), or all the time while hosting. Up goes only what checkUp passes and

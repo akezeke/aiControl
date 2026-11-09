@@ -15,7 +15,7 @@ import { createOnline, leaderLine } from './online.js';
 import { createSignIn } from './signin.js';
 import { createLive } from './live.js';
 import { floorSnapshot, fakeMonitor } from './meeting.js';
-import { visitStep, doorCard, hostName, FADE_MS, WAIT_MS } from './visit.js';
+import { visitStep, doorCard, hostName, talkHow, FADE_MS, WAIT_MS } from './visit.js';
 import { highlight, showOutlines } from './toon.js';
 import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
@@ -72,9 +72,9 @@ export function mountOffice(container, hooks) {
   const frames = new Set(), listeners = [];
   const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); listeners.push(() => target.removeEventListener(type, fn, options)); };
   // What a click at a screen point gets: a speech bubble there counts as its character. Visiting a meeting, the host's agents,
-  // their screens, the pods' signs and the walls' boards are only to look at.
+  // their screens, the pods' signs and the walls' boards are only to look at, and so is a bubble over one.
   const under = at => {
-    const id = bubbles.at(at.clientX, at.clientY); if (id) return { kind: 'character', id };
+    const id = visiting === null && bubbles.at(at.clientX, at.clientY); if (id) return { kind: 'character', id };
     const hit = pick(at, renderer.domElement, camera, scene);
     return visiting !== null && hit && (LOOK_ONLY.has(hit.kind) || hit.kind === 'board' && Object.values(room.boards).some(face => face.parent === hit.node)) ? null : hit;
   };
@@ -198,13 +198,10 @@ export function mountOffice(container, hooks) {
   const menu = createMenu(container, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item));
   // Going to the meeting (visit.js): your door's card, a fade, and the host's floor (meeting.js's floorSnapshot, `hostView`) drawn
   // in place of yours. Your own snapshot keeps coming in for the list, the feed and alerts; only the 3D is the host's.
-  let visit = { at: 'home' }, visiting = null, hostView = null, nobody = false, asking = 0, fading = 0, pressed = null;
+  let visit = { at: 'home' }, visiting = null, hostView = null, nobody = false, asking = 0, fading = 0, rejoin = 0, pressed = null;
   const door = createDoorCard(container), fade = document.createElement('div'); fade.className = 'office-fade'; container.append(fade);
-  // A host's own page is at its meeting already: the board marks the host, and the hub has you there without asking.
-  const hosting = () => {
-    const state = online.state(), me = state?.name?.toLowerCase();
-    return !!state?.board?.players?.some(p => p.host && p.name.toLowerCase() === me) || visit.at === 'home' && live.roster().some(p => p.id === live.id() && p.at === 'meeting');
-  };
+  // A host's own page is at its meeting already (the server says, from the hub's file: office-online.mjs).
+  const hosting = () => !!online.state()?.hosting;
   const doorChoice = () => { const state = online.state(); return doorCard(visit.at, { joined: !!state?.joined, host: state?.joined ? hostName(state.host) : '', hosting: hosting(), nobody }); };
   const showDoor = (at, focus) => { const choice = doorChoice(); if (choice) door.show(choice, () => step('door'), at, focus); else door.close(); };
   room.onDoor = () => { nobody = false; if (view.overview || !doorChoice()) return; player.unlock(); card.show(null); menu.close(); showDoor(dot ? player.centre : mouse || pressed, true); };
@@ -219,9 +216,12 @@ export function mountOffice(container, hooks) {
     place() { play(null); player.jumpTo(...doorSpot()); },
     goHome() { clearTimeout(asking); live.where('home'); door.close(); if (visiting === null) return; visiting = hostView = null; switchRooms(); draw(); },
     nobody() { nobody = true; showDoor(); },
+    wait() { clearTimeout(rejoin); rejoin = setTimeout(() => step('timeout'), WAIT_MS); },
   };
   function step(type) { visit = visitStep(visit, { type, reduced: reducedAtmosphere() }); for (const action of visit.then) does[action](); }
   live.on('floor', m => step(m.floor ? 'floor' : 'floorGone'));
+  // Hidden, the link closes (live.js) and you stay put; shown, it's back and asks for the floor again.
+  listen(document, 'visibilitychange', () => step(document.hidden ? 'hidden' : 'shown'));
   const shots = createScreenshots({ room });
   // It stays by the spot on the desk you picked as the view moves, and closes once that's off the screen.
   let dismissed = false; const menuAt = new THREE.Vector3(), onScreen = new THREE.Vector3();
@@ -448,7 +448,9 @@ export function mountOffice(container, hooks) {
     // Their session was just ended from the panel.
     fire(id) { fired.set(id, Date.now()); if (office.snapshot) office.update(office.snapshot, { error: office.error }); },
     // Fly over, they turn to you, the view settles on their face, then their session opens beside the scene.
+    // Visiting, your own open straight away (`n`, the list), and the host's agents not at all (visit.js).
     talkTo(id) {
+      if (visiting !== null) { if (talkHow(id, { away: true, own: office.snapshot?.sessions }) === 'panel') { play(null); hooks.openPanel(id); } return; }
       play(null);
       const parent = office.snapshot?.sessions.find(session => session.id === id)?.parentId;
       const head = id && (cast.positionOf(id) || cast.positionOf(parent)); if (!head) return;
@@ -518,7 +520,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); live.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); clearTimeout(rejoin); live.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }

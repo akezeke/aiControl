@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { visitStep, doorCard, hostName } from '../client/office/visit.js';
+import { visitStep, doorCard, hostName, talkHow } from '../client/office/visit.js';
 import { createBoards } from '../client/office/boards.js';
 import { meetingFloor, checkFloor, floorSnapshot } from '../client/office/meeting.js';
 import { layoutOffice } from '../client/office/layout.js';
@@ -141,4 +141,33 @@ test('the host\'s agents wear the host\'s looks, and a desk number that comes ba
   assert.ok(colours().has(hex('#7a4f9e')) && !colours().has(hex('#2a7f3c')));
   const own = cast.characters.get('d0'); sync(null); sync(null);
   assert.equal(cast.characters.get('d0'), own, 'without a look in its status a character is left as it is');
+});
+
+test('nobody there says so, whatever else the page thinks it knows', () => {
+  assert.deepEqual(doorCard('home', { joined: true, host: 'alice', hosting: true, nobody: true }), { text: 'Nobody\'s at alice\'s office', go: false });
+});
+
+test('a hidden tab or a locked phone keeps a visitor where they are; shown again, the floor has a moment to come back', () => {
+  const away = run(HOME, 'door', 'floor', 'faded').state;
+  // The page's own link closes while hidden (live.js), and says there's no floor: that's not the host going.
+  const back = run(away, 'hidden', 'floorGone', 'shown', 'floorGone', 'floor', 'timeout');
+  assert.deepEqual(back.steps, [[], [], ['wait'], [], ['build'], []]);
+  assert.equal(back.state.at, 'away', 'the floor came back: still there');
+  const lost = run(away, 'hidden', 'floorGone', 'shown', 'timeout', 'faded');
+  assert.deepEqual(lost.steps.slice(2), [['wait'], ['fadeOut'], ['goHome', 'place', 'fadeIn']], 'none came: home the usual way');
+  assert.equal(lost.state.at, 'home');
+  assert.deepEqual(run(away, 'timeout').steps, [[]], 'a wait that\'s over changes nothing');
+  assert.deepEqual(run(away, 'hidden', 'left').steps[1], ['fadeOut'], 'leaving the meeting still takes you home');
+  assert.deepEqual(run(away, 'shown', 'floorGone').steps, [[], ['fadeOut']], 'shown without having been hidden: the floor going is the host going');
+  assert.deepEqual(run(HOME, 'hidden', 'shown').steps, [[], []], 'home, nothing to wait for');
+});
+
+test('talking to someone: walk over at home; visiting, only your own open, straight away, and the host\'s agents not at all', () => {
+  const own = [{ id: 'mine' }];
+  assert.equal(talkHow('mine', { away: false, own }), 'walk');
+  assert.equal(talkHow('d0', { away: false, own }), 'walk', 'at home every character is yours');
+  assert.equal(talkHow('mine', { away: true, own }), 'panel');
+  assert.equal(talkHow('d0', { away: true, own }), null);
+  assert.equal(talkHow(undefined, { away: true, own }), null);
+  assert.equal(talkHow(undefined, { away: false, own }), null);
 });

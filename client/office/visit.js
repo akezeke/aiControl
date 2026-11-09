@@ -3,12 +3,15 @@
 // door first asks (`ask`: say so, and wait a moment); the fade starts once the floor's come, and none came means nobody's
 // there: back to saying you're home, never moved. A fade begun is always undone, whatever reduced motion says by then.
 //   then: ask, fadeOut, build (draw the host's floor, again on each new one), place (inside the door), fadeIn,
-//         goHome (say you're home, draw your own office), nobody (the door's card says so).
+//         goHome (say you're home, draw your own office), nobody (the door's card says so), wait (a timeout after WAIT_MS).
+// A hidden tab or a locked phone closes the page's link (live.js), which then says there's no floor: that's the page, not the
+// host, so away you stay. Shown again the link comes back and asks for the floor; none by the timeout, and you go home.
 export const FADE_MS = 350, WAIT_MS = 3000;
 
 const to = (at, then, extra = {}) => ({ at, ...extra, then });
-// `state`: { at: home | leaving | away | returning, fading (leaving: the fade out's begun) }.
-// `event`: { type: door | floor | floorGone | left | faded, reduced }.
+// `state`: { at: home | leaving | away | returning, fading (leaving: the fade out's begun), hidden, waiting (away: shown again,
+// the floor not back yet) }.
+// `event`: { type: door | floor | floorGone | left | faded | hidden | shown | timeout, reduced }.
 export function visitStep(state, { type, reduced = false }) {
   const gone = type === 'floorGone' || type === 'left';
   switch (state.at) {
@@ -22,7 +25,10 @@ export function visitStep(state, { type, reduced = false }) {
       break;
     case 'away':
       if (type === 'floor') return to('away', ['build']);
-      if (type === 'door' || gone) return reduced ? to('home', ['goHome', 'place']) : to('returning', ['fadeOut']);
+      if (type === 'hidden') return to('away', [], { hidden: true });
+      if (type === 'shown' && state.hidden) return to('away', ['wait'], { waiting: true });
+      if (type === 'floorGone' && (state.hidden || state.waiting)) break;
+      if (type === 'door' || gone || type === 'timeout' && state.waiting) return reduced ? to('home', ['goHome', 'place']) : to('returning', ['fadeOut']);
       break;
     case 'returning':
       if (type === 'faded') return to('home', ['goHome', 'place', 'fadeIn']);
@@ -38,7 +44,16 @@ export const hostName = host => /^\d+(\.\d+){3}$/.test(host) ? host : String(hos
 // `hosting`: this page's office is the meeting. `nobody`: the last ask found no one there.
 export function doorCard(at, { joined, host, hosting, nobody }) {
   if (at === 'away') return { text: 'Back to your office', go: true };
-  if (!joined || hosting || (at !== 'home' && at !== 'leaving')) return null;
-  if (at === 'leaving') return { text: `Meeting at ${host}`, go: false };
-  return nobody ? { text: `Nobody's at ${host}'s office`, go: false } : { text: `Meeting at ${host}`, go: true };
+  if (!joined || (at !== 'home' && at !== 'leaving')) return null;
+  if (at === 'home' && nobody) return { text: `Nobody's at ${host}'s office`, go: false };
+  if (hosting) return null;
+  return { text: `Meeting at ${host}`, go: at === 'home' };
+}
+
+// What talking to `id` does (office.talkTo): at home, walk over to them. Visiting, the room is the host's: your own sessions
+// (`own`, your snapshot's) open straight away without walking, as `n` and the list expect, and the host's agents not at all.
+export function talkHow(id, { away, own = [] }) {
+  if (!id) return null;
+  if (!away) return 'walk';
+  return own.some(session => session.id === id) ? 'panel' : null;
 }
