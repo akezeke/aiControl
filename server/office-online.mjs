@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { clean, cleanName } from '../client/office/leaderboard.js';
+import { dayKey } from '../client/office/daily.js';
 import { fail } from './requests.mjs';
 
 const FRESH_MS = 10_000, TIMEOUT_MS = 5000, MAX_BYTES = 64 * 1024, MAX_PLAYERS = 64;
@@ -60,7 +61,8 @@ export function createOfficeOnline({ file, fetch = globalThis.fetch, now = Date.
   // keeps the better), so that one gets a second try on a fresh connection.
   async function ask(url, key, name, scores) {
     const send = () => fetch(`${url}/scores`, {
-      method: 'POST', signal: AbortSignal.timeout(TIMEOUT_MS),
+      // A hub never redirects: following one would send a player's token wherever it pointed.
+      method: 'POST', signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
       body: JSON.stringify({ token: saved.token, name, scores }),
     });
@@ -82,7 +84,8 @@ export function createOfficeOnline({ file, fetch = globalThis.fetch, now = Date.
       let reply;
       try { reply = await ask(url, key, clean, {}); } catch { throw fail('The hub is not answering.', 502); }
       if (reply.status === 409) throw fail('That name is taken on this hub.', 409);
-      if (reply.status === 401) throw fail('That code is wrong or has been replaced.', 401);
+      // Not 401: from this server, the page reads a 401 as locked and shows the PIN screen.
+      if (reply.status === 401) throw fail('That code is wrong or has been replaced.', 403);
       if (reply.status === 429) throw fail('The hub is full or busy.', 429);
       if (reply.status !== 200 || !reply.board) throw fail('The hub is not answering.', 502);
       save({ token: saved.token, url, key, name: clean });
@@ -92,10 +95,11 @@ export function createOfficeOnline({ file, fetch = globalThis.fetch, now = Date.
 
     async leave() { save({ token: saved.token }); last = null; sent = ''; at = -Infinity; return { joined: false }; },
 
-    async sync(scores = {}) {
+    async sync(given = {}) {
       if (!joined()) return { joined: false };
-      const text = JSON.stringify(scores);
-      if (inflight) { await inflight.catch(() => {}); return online.sync(scores); }
+      // The allowlist is kept here, not by the page: known games, possible scores, nothing else.
+      const scores = clean(given, dayKey(new Date(now()))), text = JSON.stringify(scores);
+      if (inflight) { await inflight.catch(() => {}); return online.sync(given); }
       if (text === sent && last && now() - at < FRESH_MS) return result();
       inflight = (async () => {
         try {

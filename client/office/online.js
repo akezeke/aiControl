@@ -28,13 +28,14 @@ export const leaderLine = (goal, leader) => leader && !leader.you ? [...goal, { 
 export function createOnline({ api, scores = () => localBests() }) {
   let state = null, shown = '', sent = null, tops = new Map();
   const listeners = new Set();
+  // Who was in when doesn't count as a change: every sync of your own stamps it, and nothing shows it but the order of names.
   const take = next => {
-    const text = JSON.stringify(next);
+    const text = JSON.stringify(next, (key, value) => key === 'seen' ? undefined : value);
     if (text === shown) return;
     state = next; shown = text; tops = new Map();
     for (const fn of listeners) fn();
   };
-  return {
+  const online = {
     state: () => state,
     // Up to three, best first, each with its text and whether it's you; the same list until the board changes.
     top(id) {
@@ -48,10 +49,15 @@ export function createOnline({ api, scores = () => localBests() }) {
     async sync(force = false) {
       const now = scores(), text = JSON.stringify(now);
       if (!force && text === sent) return;
-      try { const next = await api('office/scores', { scores: now }); sent = text; take(next); } catch { /* unreachable: keep what's shown */ }
+      try {
+        const next = await api('office/scores', { scores: now });
+        if (!next?.offline && !next?.error) sent = text; // a best the hub didn't get goes again next time
+        take(next);
+      } catch { /* unreachable: keep what's shown */ }
     },
-    async signIn(code, name) { take(await api('office/online', { code, name })); sent = null; },
+    async signIn(code, name) { take(await api('office/online', { code, name })); sent = null; await online.sync(true); }, // your bests, at once
     async signOut() { take(await api('office/online', { leave: true })); sent = null; },
     dispose() { listeners.clear(); },
   };
+  return online;
 }

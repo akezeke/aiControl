@@ -93,12 +93,13 @@ test('leave keeps the token', async t => {
   assert.equal(back.joined, true);
 });
 
-test('a taken name and a wrong key throw 409 and 401; a bad name 400', async t => {
+// Never 401: the page takes a 401 from its own server to mean it's locked, and shows the PIN screen (main.js api()).
+test('a taken name and a wrong key throw 409 and 403; a bad name 400', async t => {
   const s = await setup(); t.after(() => s.hub.close());
   await s.online.join({ code: s.code(), name: 'Anna' });
   const other = createOfficeOnline({ file: join(dir(), 'office-online.json') });
   assert.equal(await status(other.join({ code: s.code(), name: 'anna' })), 409);
-  assert.equal(await status(other.join({ code: `http://127.0.0.1:${s.port}/${K}`, name: 'Bo' })), 401);
+  assert.equal(await status(other.join({ code: `http://127.0.0.1:${s.port}/${K}`, name: 'Bo' })), 403);
   assert.equal(await status(other.join({ code: s.code(), name: '<b>' })), 400);
   assert.equal(await status(other.join({ code: `http://127.0.0.1:1/${K}`, name: 'Bo' })), 502);
   assert.deepEqual(other.status(), { joined: false });
@@ -129,4 +130,27 @@ test('a bad hub response is offline', async () => {
   const result = await online.sync({ darts: 4 });
   assert.equal(result.offline, undefined);
   assert.deepEqual(result.board.players, [{ name: 'Bo', scores: { pinball: 5 }, seen: 0 }]);
+});
+
+test('only clean scores leave: the server enforces the allowlist, not the page', async () => {
+  const sent = [];
+  const fake = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response(JSON.stringify({ day: '2026-11-09', players: [] }), { status: 200 }); };
+  const online = createOfficeOnline({ file: join(dir(), 'office-online.json'), fetch: fake });
+  await online.join({ code: `x.ts.net/${K}`, name: 'Anna' });
+  await online.sync({ darts: 9, pinball: -5, history: 'secret session text', trickshotToday: { day: '1999-01-01', score: 5 } });
+  assert.deepEqual(Object.keys(sent.at(-1)).sort(), ['name', 'scores', 'token']);
+  assert.deepEqual(sent.at(-1).scores, { darts: 9 });
+});
+
+test("a hub's redirect is not followed", async t => {
+  const { createServer } = await import('node:http');
+  let reached = 0;
+  const target = createServer((req, res) => { reached++; res.end(JSON.stringify({ day: '2026-11-09', players: [] })); });
+  await new Promise(r => target.listen(0, '127.0.0.1', r));
+  const hub = createServer((req, res) => { res.statusCode = 307; res.setHeader('location', `http://127.0.0.1:${target.address().port}/scores`); res.end(); });
+  await new Promise(r => hub.listen(0, '127.0.0.1', r));
+  t.after(() => { target.close(); hub.close(); });
+  const online = createOfficeOnline({ file: join(dir(), 'office-online.json') });
+  assert.equal(await status(online.join({ code: `http://127.0.0.1:${hub.address().port}/${K}`, name: 'Anna' })), 502);
+  assert.equal(reached, 0);
 });

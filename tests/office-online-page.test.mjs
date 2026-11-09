@@ -65,11 +65,40 @@ test('a failing api leaves the last state', async () => {
 test('signing in and out', async () => {
   const api = fakeApi(), online = createOnline({ api, scores: () => ({}) });
   await online.signIn('code', 'Anna');
-  assert.deepEqual(api.calls.at(-1), ['office/online', { code: 'code', name: 'Anna' }]);
+  assert.deepEqual(api.calls[0], ['office/online', { code: 'code', name: 'Anna' }]);
   assert.equal(online.state().joined, true);
   await assert.rejects(createOnline({ api: fakeApi(new Error('That name is taken on this hub.')), scores: () => ({}) }).signIn('c', 'x'), /taken/);
   const out = fakeApi({ joined: false }), leaving = createOnline({ api: out, scores: () => ({}) });
   await leaving.signOut();
   assert.deepEqual(out.calls.at(-1), ['office/online', { leave: true }]);
   assert.deepEqual(leaving.state(), { joined: false });
+});
+
+test('a sync that failed is sent again next time', async () => {
+  let reply = { joined: true, name: 'Anna', host: 'h', board, offline: true };
+  const api = async (path, body) => { api.calls++; return reply; }; api.calls = 0;
+  const online = createOnline({ api, scores: () => ({ darts: 9 }) });
+  await online.sync(); await online.sync();
+  assert.equal(api.calls, 2);
+  reply = { joined: true, name: 'Anna', host: 'h', board, error: 'code' };
+  await online.sync();
+  assert.equal(api.calls, 3);
+  reply = { joined: true, name: 'Anna', host: 'h', board };
+  await online.sync(); await online.sync();
+  assert.equal(api.calls, 4);
+});
+
+test("a board that only differs in who was seen when doesn't redraw", async () => {
+  let seen = 1;
+  const api = async () => ({ joined: true, name: 'Anna', host: 'h', board: { ...board, players: board.players.map(p => ({ ...p, seen: seen++ })) } });
+  const online = createOnline({ api, scores: () => ({}) });
+  let told = 0; online.watch(() => told++);
+  await online.sync(); await online.sync(true); await online.sync(true);
+  assert.equal(told, 1);
+});
+
+test('signing in sends your bests straight away', async () => {
+  const api = fakeApi(), online = createOnline({ api, scores: () => ({ darts: 9 }) });
+  await online.signIn('code', 'Anna');
+  assert.deepEqual(api.calls.map(([path]) => path), ['office/online', 'office/scores']);
 });
