@@ -175,9 +175,9 @@ export async function startServer({ host, hostname, tls = null }) {
     workflow.observe().catch(error => console.error('[Workflow]', error.message));
   };
   observe(); const pushing = setInterval(observe, 3000);
-  // Keeps the hub link as it should be, and while this machine hosts the meeting it's in, sends its floor when it changed:
-  // the snapshot is read only then (office-online.mjs).
-  const meeting = setInterval(() => online.floor(snapshot), 2000);
+  // Keeps the hub link as it should be, and while this machine hosts the meeting it's in, sends its floor when it changed
+  // (office-online.mjs). The floor needs only the sessions and their seats, read as nobody watching (seats.mjs).
+  const meeting = setInterval(() => online.floor(() => { const sessions = currentSessions(); return { sessions, office: seats.update(sessions, Date.now(), { watched: false }) }; }), 2000);
   // At once, so sessions a reboot took show up as lost without waiting for the first tick.
   const recoverNow = () => recover().catch(error => console.error('[Recovery]', error.message));
   recoverNow(); const recovering = setInterval(recoverNow, 4000);

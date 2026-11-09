@@ -20,12 +20,14 @@ export class OfficeSeats {
   reserve(cwd, slot, now = Date.now()) { if (Number.isInteger(slot) && slot >= 0 && slot <= 63) this.#reserved.push({ cwd, slot, at: now }); }
   release(cwd, slot) { const i = this.#reserved.findIndex(r => r.cwd === cwd && r.slot === slot); if (i >= 0) this.#reserved.splice(i, 1); }
   // Gone by the time anyone looks again, they don't walk out for nobody; the -Infinity drops them at once.
-  update(sessions, now = Date.now()) {
-    const idle = this.#seen && now - this.#seen >= IDLE_MS;
+  // `watched: false` (the meeting floor's tick, office-online.mjs) is the same layout without anyone looking: it neither
+  // closes up the floor nor counts as a look, so the next real look still does.
+  update(sessions, now = Date.now(), { watched = true } = {}) {
+    const idle = watched && this.#seen && now - this.#seen >= IDLE_MS;
     this.#reserved = this.#reserved.filter(r => now - r.at < RESERVE_MS);
     const reserved = new Map();
     for (const { cwd, slot } of this.#reserved) reserved.set(cwd, [...reserved.get(cwd) || [], slot]);
-    this.#layout = layoutOffice(sessions, idle ? earlier(compact(this.#layout), -Infinity) : this.#layout, now, reserved); this.#seen = now;
+    this.#layout = layoutOffice(sessions, idle ? earlier(compact(this.#layout), -Infinity) : this.#layout, now, reserved); if (watched) this.#seen = now;
     // Taken, by whoever: never used twice.
     const desks = [...this.#layout.desks.values()];
     this.#reserved = this.#reserved.filter(r => !desks.some(desk => desk.podKey === r.cwd && desk.slot === r.slot));

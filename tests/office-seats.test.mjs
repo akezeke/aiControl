@@ -53,6 +53,14 @@ test('the room shrinks to what closing up leaves', () => {
   const seats = new OfficeSeats(), first = seats.update(['a', 'b', 'c', 'd', 'e'].map(p => s(p, p)), T);
   assert.ok(seats.update([s('e', 'e')], T + IDLE_MS).room.width < first.room.width);
 });
+test("the meeting floor's ticks are nobody watching: they neither close up the floor nor stop the next look from it", () => {
+  const seats = new OfficeSeats(), everyone = ['a', 'b', 'c', 'd'].map(p => s(p, p)), rest = everyone.filter(session => 'bd'.includes(session.id));
+  const first = seats.update(everyone, T), pods = office => office.pods.map(pod => [pod.key, pod.col, pod.row]);
+  let tick;
+  for (let t = T + 2000; t <= T + 2 * IDLE_MS; t += 2000) tick = seats.update(rest, t, { watched: false });
+  assert.deepEqual(tick.room, first.room, 'a tick never closes up the floor');
+  assert.deepEqual(pods(seats.update(rest, T + 2 * IDLE_MS + 1000)), [['/p/b', 0, 0], ['/p/d', 0, 1]], 'the next look still does');
+});
 test('gone by the time anyone looks again, they are not shown walking out', () => {
   const seats = new OfficeSeats();
   seats.update([s('a', 'x'), s('b', 'x')], T);
