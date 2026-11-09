@@ -114,6 +114,15 @@ test('playerLook gives each fruit its own natural colour', () => {
   }
 });
 
+test('playerLook wears exactly one head item', () => {
+  const head = ['bow', 'flower', 'beanie', 'cap', 'headphones'];
+  for (let n = 0; n < 40; n++) for (const [fruit] of FRUITS) {
+    const { accessories } = playerLook(`name${n}`, fruit, COLOURS[0]);
+    assert.deepEqual(accessories.filter(x => head.includes(x)), [fruit === 'banana' ? 'bow' : 'cap'], `${n} ${fruit}`);
+    assert.equal(new Set(accessories).size, accessories.length);
+  }
+});
+
 test('fakeMonitor', () => {
   const m = fakeMonitor('d1', 'green', 5.4);
   assert.deepEqual(m, fakeMonitor('d1', 'green', 5.9));

@@ -11,7 +11,8 @@ export const COLOURS = ['#ff5d8f', '#3a86ff', '#8338ec', '#06d6a0', '#ffbe0b', '
 export const POSES = ['standing', 'walking', 'running', 'holding', 'playing'];
 // Everything props.js (BALLS, LOOSE) and levels.js (ITEMS) can throw; a test keeps this in step with them.
 export const KINDS = ['football', 'paper', 'rubber', 'roll', 'mug', 'plate', 'teabag', 'cup', 'duck', 'books', 'plant', 'cactus', 'frame'];
-const HATS = ['beanie', 'cap', 'headphones'], SCREENS = ['off', 'dark', 'green', 'amber', 'blue', 'red'];
+// Everything status.js's styles put in the head slot.
+const HEAD = ['bow', 'flower', 'beanie', 'cap', 'headphones'], SCREENS = ['off', 'dark', 'green', 'amber', 'blue', 'red'];
 const MAX_PODS = 64, MAX_DESKS = 256, MAX_PLAYERS = 32;
 
 const fruitIds = FRUITS.map(([id]) => id);
@@ -25,7 +26,7 @@ const id = v => typeof v === 'string' && /^[a-z0-9]{1,12}$/.test(v);
 // What a player wears: a stable look from their name, their fruit, their colour on the trim, and a cap (a bow for a banana).
 export function playerLook(name, fruit, shade) {
   const key = 'player:' + String(name).toLowerCase(), base = identity(key);
-  const accessories = [...base.accessories.filter(item => !HATS.includes(item)), fruit === 'banana' ? 'bow' : 'cap'];
+  const accessories = [...base.accessories.filter(item => !HEAD.includes(item)), fruit === 'banana' ? 'bow' : 'cap'];
   return { ...base, fruit, color: naturalColor(fruit, key), trim: shade, accessories, colour: shade };
 }
 
