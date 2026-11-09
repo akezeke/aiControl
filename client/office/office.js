@@ -14,6 +14,7 @@ import { copyText, createBoards, createKitchenBoards } from './boards.js';
 import { createOnline, leaderLine } from './online.js';
 import { createSignIn } from './signin.js';
 import { createLive } from './live.js';
+import { createFriends, gait } from './friends.js';
 import { floorSnapshot, fakeMonitor } from './meeting.js';
 import { visitStep, doorCard, hostName, talkHow, FADE_MS, WAIT_MS } from './visit.js';
 import { highlight, showOutlines } from './toon.js';
@@ -220,6 +221,27 @@ export function mountOffice(container, hooks) {
   };
   function step(type) { visit = visitStep(visit, { type, reduced: reducedAtmosphere() }); for (const action of visit.then) does[action](); }
   live.on('floor', m => step(m.floor ? 'floor' : 'floorGone'));
+  // The others at the meeting walk about the host's office, and your own place goes out while you're at it (visiting, or hosting with your page open).
+  const friends = createFriends(scene, { room, reducedMotion: () => reducedAtmosphere() });
+  const atMeeting = () => (visiting !== null || hosting()) && !document.hidden;
+  let lastX = 0, lastZ = 0, speed = 0, shownTo = false;
+  const sample = () => {
+    let pose = props.holding ? 'holding' : playing ? 'playing' : gait(speed);
+    if (pose === 'running' && !player.running) pose = 'walking';
+    const { x, z } = player.position;
+    return { x, y: Math.max(0, player.position.y - EYE), z, yaw: player.yaw, pose };
+  };
+  // The hub only relays moves, so whoever arrives gets everyone's place sent again; someone standing still would otherwise stay unseen.
+  const meet = () => { shownTo = atMeeting(); friends.sync(shownTo ? live.roster() : [], live.id()); if (shownTo) live.send({ type: 'pos', ...sample() }); };
+  live.on('roster', meet); live.on('welcome', meet);
+  live.on('pos', m => friends.move(m.id, m));
+  frames.add(dt => {
+    const { x, z } = player.position, moved = dt > 0 ? Math.hypot(x - lastX, z - lastZ) / dt : 0; lastX = x; lastZ = z;
+    speed += (Math.min(moved, 12) - speed) * Math.min(1, dt * 12);
+    if (atMeeting() !== shownTo) meet();
+    friends.update(dt);
+    if (shownTo) live.presence(sample());
+  });
   // Hidden, the link closes (live.js) and you stay put; shown, it's back and asks for the floor again.
   listen(document, 'visibilitychange', () => step(document.hidden ? 'hidden' : 'shown'));
   const shots = createScreenshots({ room });
@@ -521,7 +543,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); clearTimeout(rejoin); live.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); clearTimeout(rejoin); live.dispose(); friends.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }
