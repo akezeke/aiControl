@@ -308,6 +308,8 @@ export function createRoom(scene, renderer) {
       room.colliders = [...room.wallColliders, ...room.furnitureColliders, ...solid]; room.refreshFlight();
       lights.refresh();
     },
+    // Only the screens, from statuses as sync takes them: a visitor's made-up ones move on once a second (office.js).
+    monitors(statuses) { for (const [id, desk] of desks) { redraw(desk, statuses.get(id)); for (const helper of desk.helpers) redraw(helper, statuses.get(helper.monitor.userData.monitor)); } },
     // A session's newest screenshot ({ bitmap, count }) for its second monitor, or null for none (and no second monitor).
     setShot(id, shot) { if (shot) shots.set(id, shot); else shots.delete(id); const desk = desks.get(id); if (desk) showShot(desk, shot); },
     // Which of a monitor's screens a point on it is nearest: its glass (where it is), and whether it's the second one's.
@@ -455,8 +457,10 @@ export function createRoom(scene, renderer) {
     // The snake plant in the corner starts the snake game (room.onSnake, from office.js; snake.js).
     place(plant('tree'), 0.5, 0.5); room.snakePlant = place(plant('snake'), width - 0.5, 0.5); room.snakePlant.userData.toggle = () => room.onSnake?.();
 
-    // Door in the front wall, facing into the room, with a coat rack, an extinguisher and the light switch beside it.
+    // Door in the front wall, facing into the room, with a coat rack, an extinguisher and the light switch beside it. In a
+    // meeting it goes to the host's office and back (room.onDoor, from office.js; visit.js).
     const doorGroup = new THREE.Group(); doorGroup.position.set(door.x - width / 2, -WALL_H / 2, -WALL_T / 2 - 0.02); doorGroup.rotation.y = Math.PI; front.add(doorGroup);
+    doorGroup.userData.toggle = () => room.onDoor?.(); room.door = doorGroup;
     const panel = mesh(rounded(1.05, 2.15, 0.06, 0.03), toonMaterial('#e0574a')); panel.position.y = 1.075; doorGroup.add(panel);
     const knob = mesh(new THREE.SphereGeometry(0.04, 12, 8), toonMaterial('#f2c14e'), 0.006); knob.position.set(0.4, 1.05, 0.06); doorGroup.add(knob);
     const doorNote = notes('door', [[0, 0, 0.06, NOTE.yellow]]); doorNote.position.set(-0.15, 1.5, 0.0325); doorGroup.add(doorNote);

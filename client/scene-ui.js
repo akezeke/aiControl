@@ -39,6 +39,29 @@ export function createCard(container) {
   };
 }
 
+// The office's front door in a meeting (visit.js's doorCard): one row in the menu's look, to go through or, greyed, why not.
+// It closes on Esc or a press anywhere else; what a pick does, and whether it stays up saying so, is office.js's.
+export function createDoorCard(container) {
+  const card = document.createElement('div'); card.className = 'office-menu office-door'; card.setAttribute('role', 'menu'); card.hidden = true; container.append(card);
+  const row = document.createElement('button'); row.type = 'button'; row.setAttribute('role', 'menuitem'); card.append(row);
+  let go = null, placedAt = null;
+  row.onclick = () => go?.();
+  card.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Escape') result.close(); });
+  const result = {
+    get open() { return !card.hidden; },
+    contains: node => card.contains(node),
+    // `choice`: { text, go }; `act` runs when it's chosen. `at` (a screen point) only when it first comes up; `focus` for the keyboard.
+    show(choice, act, at, focus = false) {
+      row.textContent = `🚪 ${choice.text}`; row.disabled = !choice.go; go = choice.go ? act : null; card.hidden = false;
+      if (at) placedAt = at; if (placedAt) placeNear(container, card, placedAt);
+      if (focus && choice.go) row.focus();
+    },
+    close() { if (card.hidden) return; if (card.contains(document.activeElement)) document.activeElement.blur(); card.hidden = true; },
+    dispose() { card.remove(); },
+  };
+  return result;
+}
+
 // The folder an agent starts in, typed, with the folders sessions run in to pick from. One that isn't there yet is made
 // as the agent starts, if its parent is (server/folders.mjs); the note under it says which, as you type.
 let fields = 0;

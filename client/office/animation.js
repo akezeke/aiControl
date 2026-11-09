@@ -166,6 +166,7 @@ export function blendPose(a, b, k, kTurn = k) {
 const toward = (c, at) => { const a = Math.atan2(at.x - c.root.position.x, at.z - c.root.position.z) - c.anchor.facing; return Math.atan2(Math.sin(a), Math.cos(a)); };
 const clonePose = pose => ({ ...pose, body: { ...pose.body }, limbs: Object.fromEntries(Object.entries(pose.limbs).map(([k, v]) => [k, v.clone()])) });
 
+const lookKey = who => `${who.fruit} ${who.color} ${who.trim} ${who.accessories}`;
 const shadowGeometry = new THREE.CircleGeometry(0.34, 24).rotateX(-Math.PI / 2);
 const shadowMaterial = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.16, depthWrite: false });
 
@@ -194,10 +195,14 @@ export class Cast {
     this.door = new THREE.Vector3(layout.door.x, 0, layout.door.z - 0.6);
     const firstSync = !this.synced; this.synced = true;
     // Someone on their way out (gone, or a helper that's done) waves.
+    // Each wears the look its status brings (a host's floor: theirs, office.js), else identity(id)'s. A visited desk's id can
+    // come back on someone else (meeting.js numbers them), so a different look is a different character.
     const place = (id, make, going = false) => {
       seen.add(id);
       let c = this.characters.get(id);
-      if (!c) { c = make(); this.characters.set(id, c); this.scene.add(c.root); }
+      const look = statuses.get(id)?.identity;
+      if (c && look && c.look !== lookKey(look)) { this.#remove(id, c); c = null; }
+      if (!c) { c = make(look); this.characters.set(id, c); this.scene.add(c.root); }
       const status = !going && statuses.get(id) || { pose: 'waving', expression: 'smile' };
       c.expression = status.expression; c.since = status.since;
       // Done: a sitter going from work to idle stretches or punches the air before nodding off (not on a page load).
@@ -214,7 +219,7 @@ export class Cast {
     };
     for (const [id, desk] of layout.desks) {
       const anchor = room.deskAnchor(id); if (!anchor) continue;
-      const isNew = !this.characters.has(id), c = place(id, () => this.#character(id, 1));
+      const isNew = !this.characters.has(id), c = place(id, look => this.#character(id, 1, look));
       c.anchor = anchor;
       // Newcomers walk in from the door (not on the first load, when everyone is simply there).
       if (isNew && !firstSync && animate && !still) c.trip = { at: this.door.clone(), to: 'desk' };
@@ -222,7 +227,7 @@ export class Cast {
       // Helpers sit at their own tiny desks beside the parent's, and leave like anyone else once done (layout.js); moved up a
       // seat when one before them has gone, they walk over. More than fit show as a +N above the last one.
       desk.subagents.forEach((kid, i) => {
-        const going = desk.leaving.includes(kid), k = place(kid, () => this.#character(kid, HELPER_SCALE), going), seat = anchor.helpers[i];
+        const going = desk.leaving.includes(kid), k = place(kid, look => this.#character(kid, HELPER_SCALE, look), going), seat = anchor.helpers[i];
         if (k.anchor && !k.leaving && animate && !still && k.anchor.seat.distanceTo(seat.seat) > 0.05) k.trip = { to: 'desk' };
         k.anchor = seat; leave(k, going);
       });
@@ -238,13 +243,13 @@ export class Cast {
     for (const [id, c] of this.characters) if (!seen.has(id)) this.#remove(id, c);
   }
 
-  #character(id, scale) {
-    const who = identity(id), fruit = createFruit(who, { scale }), root = new THREE.Group();
+  #character(id, scale, look) {
+    const who = look || identity(id), fruit = createFruit(who, { scale }), root = new THREE.Group();
     root.userData.sessionId = id;
     root.add(fruit.group);
     const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial); shadow.position.y = 0.017; shadow.scale.setScalar(scale); root.add(shadow);
     const seed = [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 100;
-    return { id, fruit, root, scale, seed, habits: who.habits, current: null, changed: 0, wear: 0, blinkAt: seed / 30, blinkUntil: 0 };
+    return { id, fruit, root, scale, seed, habits: who.habits, look: lookKey(who), current: null, changed: 0, wear: 0, blinkAt: seed / 30, blinkUntil: 0 };
   }
 
   #remove(id, c) {

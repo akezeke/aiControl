@@ -1,5 +1,6 @@
 // What's written on the walls: usage limits and any agent the server can't reach on the whiteboard, the real time on the clock,
 // a sticky note per waiting session, the machine's name on the door, and a sign on the coffee machine while usage is used up.
+// Visiting a meeting (visit.js) none of that is the host's to show: the boards are blank and the plate says whose office it is.
 // Each is a canvas texture redrawn only when what it shows changes. And the kitchen's: Trickshot's clipboard and score board.
 import * as THREE from 'three';
 import { usageWindowView, spendView } from '../usage-presentation.js';
@@ -7,6 +8,7 @@ import { PLACES, aimAt, bestText, capital, challenges, dayKey, itemName, num, ra
 import { SPOTS, ZONES } from './kitchen-plan.js';
 import { MONDAY } from './levels.js';
 import { dims } from './lights.js';
+import { hostName } from './visit.js';
 
 const MARKER = "'Comic Neue', 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive";
 const SHARPIE = "'Permanent Marker', 'Marker Felt', 'Comic Neue', cursive";
@@ -137,9 +139,11 @@ function drawClock({ g, width: w, height: h }, now) {
   g.setTransform(1, 0, 0, 1, 0, 0);
 }
 
+// `titles` null: the bare cork.
 function drawWaiting({ g, width: w, height: h }, titles) {
   g.fillStyle = '#c4935f'; g.fillRect(0, 0, w, h);
   for (let i = 0; i < 400; i++) { g.fillStyle = i % 2 ? '#b07f4c' : '#d3a774'; g.fillRect((i * 97) % w, (i * 57) % h, 3, 3); }
+  if (!titles) return;
   if (!titles.length) { g.fillStyle = '#fff8e1'; g.font = `bold 34px ${MARKER}`; g.textAlign = 'center'; g.fillText('nobody waiting ☺', w / 2, h / 2); g.textAlign = 'left'; return; }
   titles.slice(0, 6).forEach((title, i) => {
     const col = i % 3, row = Math.floor(i / 3), x = 24 + col * 168, y = 24 + row * 176, tilt = ((i * 37) % 7 - 3) / 60;
@@ -214,7 +218,7 @@ export function drawScores({ g, width: w, height: h }, progress, key, tops = {})
 // you first, then whoever was in last. `closed`: what to write across it when it can't be reached or its code was replaced.
 export function meetingLines(state) {
   if (!state?.joined) return { title: 'Meetings', lines: ['Join one here'], closed: null };
-  const host = /^\d+(\.\d+){3}$/.test(state.host) ? state.host : state.host.split('.')[0], me = state.name.toLowerCase(), players = state.board?.players ?? [];
+  const host = hostName(state.host), me = state.name.toLowerCase(), players = state.board?.players ?? [];
   const mine = players.find(p => p.name.toLowerCase() === me)?.name ?? state.name;
   const others = players.filter(p => p.name.toLowerCase() !== me).sort((a, b) => b.seen - a.seen).map(p => p.host ? `${p.name} (host)` : p.name);
   return { title: `Meeting at ${host}`, lines: [`${mine} (me)`, ...others].slice(0, 6), closed: state.error === 'code' ? 'New code' : state.offline ? 'Off for now' : null };
@@ -314,18 +318,23 @@ export function createBoards(room) {
     usageKey = waitingKey = meetingKey = ''; plateKey = null; minute = -1;
   };
   return {
-    sync(snapshot, { error = '', waiting = [] } = {}) {
+    // `visiting`: the host's name while you're at their office (office.js), else null.
+    sync(snapshot, { error = '', waiting = [], visiting = null } = {}) {
       ensure();
-      const now = Date.now(), nextUsage = JSON.stringify([snapshot.usage, snapshot.providers, !!error, Math.floor(now / 60_000)]);
+      const now = Date.now(), away = visiting !== null, nextUsage = away ? 'away' : JSON.stringify([snapshot.usage, snapshot.providers, !!error, Math.floor(now / 60_000)]);
       if (nextUsage !== usageKey) {
-        usageKey = nextUsage; written = [snapshot.usage, snapshot.providers, error, now]; writeUsage();
-        const empty = usedUp(snapshot.usage, now); room.coffeeSign.visible = empty.length > 0;
-        if (empty.length) { drawSign(boards.sign, empty); boards.sign.texture.needsUpdate = true; }
+        usageKey = nextUsage;
+        if (away) { written = null; const { g, width, height, texture } = boards.whiteboard; g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, width, height); texture.needsUpdate = true; room.coffeeSign.visible = false; }
+        else {
+          written = [snapshot.usage, snapshot.providers, error, now]; writeUsage();
+          const empty = usedUp(snapshot.usage, now); room.coffeeSign.visible = empty.length > 0;
+          if (empty.length) { drawSign(boards.sign, empty); boards.sign.texture.needsUpdate = true; }
+        }
       }
-      const machine = snapshot.machine || '';
+      const machine = away ? visiting : snapshot.machine || '';
       if (machine !== plateKey) { plateKey = machine; drawPlate(boards.plate, machine); boards.plate.texture.needsUpdate = true; }
-      const nextWaiting = JSON.stringify(waiting);
-      if (nextWaiting !== waitingKey) { waitingKey = nextWaiting; drawWaiting(boards.waiting, waiting); boards.waiting.texture.needsUpdate = true; }
+      const nextWaiting = JSON.stringify(away ? null : waiting);
+      if (nextWaiting !== waitingKey) { waitingKey = nextWaiting; drawWaiting(boards.waiting, away ? null : waiting); boards.waiting.texture.needsUpdate = true; }
       writeMeeting();
     },
     // Office online's state (online.js), for the meetings clipboard.

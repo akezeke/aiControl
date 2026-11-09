@@ -104,10 +104,10 @@ export function checkFloor(floor) {
 }
 
 // A floor in the form the office reads (office.update): the geometry laid out again from each pod's grid spot and each desk's slot,
-// with fake screens and no speech bubbles.
+// in a room the host's size (theirs only ever grows, so it can be bigger than its pods need), with fake screens and no speech bubbles.
 export function floorSnapshot(floor) {
   const keys = floor.pods.map((_, i) => `p${i}`), sessions = floor.desks.map(desk => ({ id: desk.id, parentId: desk.parent || undefined, cwd: keys[desk.pod], project: 'Office', status: 'idle' }));
-  const previous = { saved: true, desks: new Map(floor.desks.filter(d => !d.parent).map(d => [d.id, { podKey: keys[d.pod], slot: d.slot }])), pods: floor.pods.map(([col, row], i) => ({ key: keys[i], col, row, name: 'Office' })), room: { width: 0, depth: 0 } };
+  const previous = { saved: true, desks: new Map(floor.desks.filter(d => !d.parent).map(d => [d.id, { podKey: keys[d.pod], slot: d.slot }])), pods: floor.pods.map(([col, row], i) => ({ key: keys[i], col, row, name: 'Office' })), room: { width: floor.room.width, depth: floor.room.depth } };
   const office = layoutOffice(sessions, previous);
   const statuses = new Map(floor.desks.map(desk => [desk.id, { ...desk.status, since: desk.status.since ?? undefined, mode: '', bubble: null, monitor: fakeMonitor(desk.id, desk.status.screen, Date.now() / 1000), identity: { ...desk.look, props: [], notes: 0 } }]));
   return { office: { ...office, desks: [...office.desks.values()] }, sessions: sessions.map(({ id, parentId }) => ({ id, parentId, status: floor.desks.find(d => d.id === id).status })), statuses };
@@ -123,7 +123,7 @@ const lineAt = (seed, n) => {
   return { kind: KINDS_OF_LINE[next() % KINDS_OF_LINE.length], text: Array.from({ length: 3 + next() % 4 }, () => WORDS[next() % WORDS.length]).join(' ') };
 };
 export function fakeMonitor(seed, tone, t) {
-  if (tone === 'amber') return { title: '', plan: null, lines: [{ kind: 'user', text: '› ' }] };
+  if (tone === 'amber') return { title: '', plan: null, lines: [{ kind: 'user', text: '' }] }; // the screen draws its prompt
   if (tone !== 'green') return null;
   const now = Math.floor(t);
   return { title: '', plan: null, lines: Array.from({ length: 6 }, (_, i) => lineAt(seed, now - 5 + i)) };

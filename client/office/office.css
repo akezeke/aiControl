@@ -32,6 +32,12 @@
 .office-menu button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px 0 8px; border: 0; border-radius: 8px; background: none; color: #1b1a1f; font: 700 14px system-ui, sans-serif; cursor: pointer; }
 .office-menu button:hover, .office-menu button:focus-visible { background: #ffd166; outline: none; }
 .office-menu button:disabled { opacity: .5; cursor: progress; }
+.office-door button:disabled { opacity: .75; background: none; cursor: default; }
+/* Through the door to a meeting and back (visit.js): out, the other office builds, in again. None with reduced motion. */
+.office-fade { position: absolute; inset: 0; z-index: 1000; background: #1b1a1f; opacity: 0; pointer-events: none; transition: opacity .35s ease-in-out; }
+.office-fade.on { opacity: 1; }
+.office-fade.still { transition: none; }
+@media (prefers-reduced-motion: reduce) { .office-fade { transition: none; } }
 .office-menu .mark { width: 16px; color: #d97757; text-align: center; }
 .office-menu .mark.codex { color: #1b1a1f; }
 .office-menu .office-folder { width: 220px; min-height: 36px; margin-bottom: 2px; padding: 0 10px; border: 2px solid #1b1a1f; border-radius: 8px; background: #fff; color: #1b1a1f; font: 600 14px ui-monospace, monospace; }

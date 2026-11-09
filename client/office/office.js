@@ -9,10 +9,13 @@ import { Cast } from './animation.js';
 import { Player, pick, rayAt, officeHasKeys, gameKey, menuOpen, sceneFocused, standNear, standBefore, EYE } from './player.js';
 import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createMenu, createOverlays } from './bubbles.js';
-import { frameTime } from '../scene-ui.js';
+import { frameTime, createDoorCard } from '../scene-ui.js';
 import { copyText, createBoards, createKitchenBoards } from './boards.js';
 import { createOnline, leaderLine } from './online.js';
 import { createSignIn } from './signin.js';
+import { createLive } from './live.js';
+import { floorSnapshot, fakeMonitor } from './meeting.js';
+import { visitStep, doorCard, hostName, FADE_MS, WAIT_MS } from './visit.js';
 import { highlight, showOutlines } from './toon.js';
 import { shared } from './furniture.js';
 import { PITCH } from './overview.js';
@@ -32,6 +35,7 @@ import { hireChoices } from '../hire.js';
 
 const PICKED = '#ffd23f'; // the sidebar's highlighter
 const FIRED = { pose: 'crying', expression: 'crying', bubble: { icon: '📦', text: 'Fired', highlight: false } };
+const LOOK_ONLY = new Set(['character', 'monitor', 'hire']); // what a visitor can't click in the host's office
 
 export function webglAvailable() {
   // three.js needs WebGL 2; the probe's context is released straight away.
@@ -67,8 +71,13 @@ export function mountOffice(container, hooks) {
 
   const frames = new Set(), listeners = [];
   const listen = (target, type, fn, options) => { target.addEventListener(type, fn, options); listeners.push(() => target.removeEventListener(type, fn, options)); };
-  // What a click at a screen point gets: a speech bubble there counts as its character.
-  const under = at => { const id = bubbles.at(at.clientX, at.clientY); return id ? { kind: 'character', id } : pick(at, renderer.domElement, camera, scene); };
+  // What a click at a screen point gets: a speech bubble there counts as its character. Visiting a meeting, the host's agents,
+  // their screens, the pods' signs and the walls' boards are only to look at.
+  const under = at => {
+    const id = bubbles.at(at.clientX, at.clientY); if (id) return { kind: 'character', id };
+    const hit = pick(at, renderer.domElement, camera, scene);
+    return visiting !== null && hit && (LOOK_ONLY.has(hit.kind) || hit.kind === 'board' && Object.values(room.boards).some(face => face.parent === hit.node)) ? null : hit;
+  };
   const player = new Player(renderer.domElement, {
     colliders: () => room.colliders,
     room: () => layout && room.secret.bounds(layout.room), // the secret room's beside the office
@@ -173,10 +182,13 @@ export function mountOffice(container, hooks) {
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip), online }));
   const boards = createBoards(room);
+  // Office meetings' live link (live.js), open while you're in one and the page is shown. You're home until the door says otherwise.
+  const live = createLive({ joined: () => !!online.state()?.joined });
+  live.where('home');
   // Joining a meeting at the clipboard by the door: the slip, and the page redrawn whenever the board comes back different.
-  const signIn = createSignIn(container, online);
+  const signIn = createSignIn(container, online, live);
   room.onMeeting = () => { player.unlock(); online.sync(true); signIn.open(); };
-  online.watch(() => { boards.meeting(online.state()); signIn.refresh(); });
+  online.watch(() => { boards.meeting(online.state()); signIn.refresh(); live.refresh(); if (!online.state()?.joined) step('left'); });
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
   const goose = createGoose(scene, { props, player, walkable, bounds: () => layout?.room, busy: () => view.overview || !!player.flight || !!office.talking || room.kitchen.inside(player.position),
@@ -184,6 +196,32 @@ export function mountOffice(container, hooks) {
     sleepers: () => cast.sleepers(), wake: (id, line) => { cast.startle(id, goose.root.position); bubbles.say(id, '😱', line); } });
   const card = createCard(container);
   const menu = createMenu(container, (cwd, choice, item) => hooks.spawn?.(cwd, choice, item));
+  // Going to the meeting (visit.js): your door's card, a fade, and the host's floor (meeting.js's floorSnapshot, `hostView`) drawn
+  // in place of yours. Your own snapshot keeps coming in for the list, the feed and alerts; only the 3D is the host's.
+  let visit = { at: 'home' }, visiting = null, hostView = null, nobody = false, asking = 0, fading = 0, pressed = null;
+  const door = createDoorCard(container), fade = document.createElement('div'); fade.className = 'office-fade'; container.append(fade);
+  // A host's own page is at its meeting already: the board marks the host, and the hub has you there without asking.
+  const hosting = () => {
+    const state = online.state(), me = state?.name?.toLowerCase();
+    return !!state?.board?.players?.some(p => p.host && p.name.toLowerCase() === me) || visit.at === 'home' && live.roster().some(p => p.id === live.id() && p.at === 'meeting');
+  };
+  const doorChoice = () => { const state = online.state(); return doorCard(visit.at, { joined: !!state?.joined, host: state?.joined ? hostName(state.host) : '', hosting: hosting(), nobody }); };
+  const showDoor = (at, focus) => { const choice = doorChoice(); if (choice) door.show(choice, () => step('door'), at, focus); else door.close(); };
+  room.onDoor = () => { nobody = false; if (view.overview || !doorChoice()) return; player.unlock(); card.show(null); menu.close(); showDoor(dot ? player.centre : mouse || pressed, true); };
+  const fadeTo = (on, then) => { clearTimeout(fading); const still = reducedAtmosphere(); fade.classList.toggle('still', still); fade.classList.toggle('on', on); if (then) fading = setTimeout(then, still ? 0 : FADE_MS); };
+  // A whole other room: what's in it is just there (no desks rising, nobody walking in), and nothing of the last one is left up.
+  const switchRooms = () => { room.synced = false; cast.synced = false; play(null); menu.close(); door.close(); card.show(null); unhover(); office.talking = null; };
+  const does = {
+    ask() { live.where('meeting'); showDoor(); clearTimeout(asking); asking = setTimeout(() => { if (visit.at === 'leaving' && !visit.fading) step('floorGone'); }, WAIT_MS); },
+    fadeOut() { door.close(); fadeTo(true, () => step('faded')); },
+    fadeIn() { fadeTo(false); },
+    build() { const floor = live.floor(); if (!floor) return; hostView = floorSnapshot(floor); if (visiting === null) { visiting = hostName(online.state()?.host ?? ''); switchRooms(); } draw(); },
+    place() { play(null); player.jumpTo(...doorSpot()); },
+    goHome() { clearTimeout(asking); live.where('home'); door.close(); if (visiting === null) return; visiting = hostView = null; switchRooms(); draw(); },
+    nobody() { nobody = true; showDoor(); },
+  };
+  function step(type) { visit = visitStep(visit, { type, reduced: reducedAtmosphere() }); for (const action of visit.then) does[action](); }
+  live.on('floor', m => step(m.floor ? 'floor' : 'floorGone'));
   const shots = createScreenshots({ room });
   // It stays by the spot on the desk you picked as the view moves, and closes once that's off the screen.
   let dismissed = false; const menuAt = new THREE.Vector3(), onScreen = new THREE.Vector3();
@@ -194,7 +232,7 @@ export function mountOffice(container, hooks) {
     const r = renderer.domElement.getBoundingClientRect();
     menu.move({ clientX: r.left + (onScreen.x + 1) / 2 * r.width, clientY: r.top + (1 - onScreen.y) / 2 * r.height });
   };
-  listen(document, 'pointerdown', event => { dismissed = menu.open && !menu.contains(event.target); if (dismissed) menu.close(); if (overlays.closeCopy(event.target)) dismissed = true; }, true);
+  listen(document, 'pointerdown', event => { dismissed = menu.open && !menu.contains(event.target); if (dismissed) menu.close(); if (door.open && !door.contains(event.target)) { door.close(); dismissed = true; } if (overlays.closeCopy(event.target)) dismissed = true; }, true);
   // The overview frees the mouse to click around; leaving it captures the mouse again if it was (see `free`).
   const overview = on => {
     if (on === view.overview) return;
@@ -203,7 +241,7 @@ export function mountOffice(container, hooks) {
     view.setOverview(on); player.setOverview(on); overlays.setOverview(on);
   };
   // Nothing else wants the mouse: no panel, menu or dialog up, not on the way to someone, not in the overview or a game, the window focused.
-  const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !overlays.copying && !view.overview && !office.talking && (!playing || playing.free) && document.hasFocus();
+  const free = () => !document.body.classList.contains('panel-open') && !menuOpen() && !menu.open && !door.open && !overlays.copying && !view.overview && !office.talking && (!playing || playing.free) && document.hasFocus();
   let wasFree = true;
   const overlays = createOverlays(container, { onNext: () => office.talkTo(hooks.nextWaiting()?.id), onList: () => hooks.showList(), onOverview: () => overview(!view.overview), onLeave: () => play(null), onCopy: () => trickshot.copy(), onThrow: { press: () => { if (playing?.retrying) { playing.click(); return false; } if (!startCharge()) return false; keyed = true; player.aimFine(true); return true; }, release: () => letGo(player.centre), cancel: () => callOff() },
     onNew: anchor => {
@@ -232,6 +270,7 @@ export function mountOffice(container, hooks) {
     if (!player.locked && player.wanted && /^(Key[WASD]|Arrow\w+|Space)$/.test(event.code) && free()) player.lock();
     if (event.key === 'Tab' && sceneFocused(renderer.domElement)) { event.preventDefault(); if (!event.repeat) overview(!view.overview); }
     else if (event.key === 'Escape' && menu.open) menu.close();
+    else if (event.key === 'Escape' && door.open) door.close();
     else if (event.key === 'Escape' && view.overview) overview(false);
     else if (event.code === 'KeyE' && !menu.contains(event.target)) {
       event.preventDefault();
@@ -261,7 +300,7 @@ export function mountOffice(container, hooks) {
   listen(container, 'pointerleave', () => { mouse = null; });
   // On a device with both, a finger's throw isn't the mouse's; and the throw button's up for whichever was used last.
   let touched = !!globalThis.matchMedia?.('(pointer: coarse)')?.matches;
-  listen(container, 'pointerdown', event => { if (event.pointerType !== 'mouse') mouse = null; touched = event.pointerType === 'touch'; });
+  listen(container, 'pointerdown', event => { if (event.pointerType !== 'mouse') mouse = null; touched = event.pointerType === 'touch'; pressed = event; });
   const hover = dt => {
     const aiming = player.aiming && !view.overview && !office.talking;
     if (aiming !== dot) { dot = aiming; overlays.showDot(aiming); hoverIn = 0; }
@@ -276,7 +315,7 @@ export function mountOffice(container, hooks) {
     const whose = aimed || monitor?.id, session = whose && office.snapshot?.sessions.find(session => session.id === whose), facts = session && hooks.describe?.(session);
     const count = monitor && room.glass(monitor.node, monitor.point).side && shots.count(monitor.id); // the second monitor: the screenshots
     card.show(facts && count ? { ...facts, detail: `${count} screenshot${count === 1 ? '' : 's'}` } : facts || hire && { title: 'Hire', project: hire.cwd.replace(/^\/home\/[^/]+/, '~') } || null); card.move(aiming ? player.centre : mouse);
-    const node = aimed && cast.characters.get(aimed)?.root || monitor?.node || board || hire?.node || (toggle?.userData.quiet ? null : toggle); // a quiet one gives nothing away
+    const node = aimed && cast.characters.get(aimed)?.root || monitor?.node || board || hire?.node || (toggle?.userData.quiet || toggle === room.door && !doorChoice() ? null : toggle); // a quiet one gives nothing away, nor a door with nowhere to go
     renderer.domElement.style.cursor = (node || prop) && !aiming ? 'pointer' : view.overview ? view.overhead.dragging ? 'grabbing' : 'grab' : '';
     overlays.setAim(!!(node || prop));
     if (node === hovered) return;
@@ -306,6 +345,14 @@ export function mountOffice(container, hooks) {
     snake.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
+  });
+  // Visiting, the working desks' made-up screens (meeting.js) move on once a second, through the screens' own redraw.
+  let second = 0;
+  frames.add(() => {
+    if (visiting === null) return;
+    const now = Math.floor(Date.now() / 1000); if (now === second) return; second = now;
+    for (const [id, status] of office.statuses) if (status.screen === 'green') status.monitor = fakeMonitor(id, 'green', now);
+    room.monitors(office.statuses);
   });
   // Once the office has drawn a few frames the kitchen gets ready, a slice each time the browser's idle, so its doors have little left to do (kitchen.prepare).
   // So does whatever else in the office hasn't been looked at yet, which is what you first turn to face and the dotted arc of the first throw.
@@ -338,41 +385,55 @@ export function mountOffice(container, hooks) {
   const visibility = () => { cancelAnimationFrame(raf); raf = 0; if (!document.hidden) { last = previous = performance.now(); raf = requestAnimationFrame(loop); } };
   document.addEventListener('visibilitychange', visibility); visibility();
 
-  const office = {
-    scene, renderer, camera, hooks, container, props,
-    onFrame(fn) { frames.add(fn); return () => frames.delete(fn); },
-    update(snapshot, { error = '' } = {}) {
-      office.snapshot = snapshot; office.error = error; setSkyPlace(snapshot.location);
-      // The server's seats, the same on every device (server/seats.mjs). Worked out here only until a server from before them restarts.
-      const before = layout?.room;
-      layout = snapshot.office ? sharedLayout(snapshot.office) : layoutOffice(snapshot.sessions, layout); view.setLayout(layout);
-      // The floor closed up while this page was away or the server restarted: you might be standing outside the walls now.
-      if (before && (layout.room.width < before.width || layout.room.depth < before.depth)) office.placed = false;
-      cast.frozen = !!error;
+  // The room as it is now: your office from your snapshot, or while visiting the host's floor (`hostView`) with none of
+  // their words: blank pod signs and boards, no bubbles, no waiting count or usage warning.
+  function draw() {
+    const { snapshot, error } = office, away = visiting !== null, shown = away ? hostView : snapshot;
+    // The server's seats, the same on every device (server/seats.mjs). Worked out here only until a server from before them restarts.
+    const before = layout?.room;
+    layout = shown.office ? sharedLayout(shown.office) : layoutOffice(shown.sessions, layout); view.setLayout(layout);
+    if (away) layout.pods = layout.pods.map(pod => ({ ...pod, name: '', cwd: undefined }));
+    // The floor closed up while this page was away or the server restarted: you might be standing outside the walls now.
+    if (before && (layout.room.width < before.width || layout.room.depth < before.depth)) office.placed = false;
+    cast.frozen = !away && !!error;
+    if (away) office.statuses = hostView.statuses;
+    else {
       office.statuses = new Map(snapshot.sessions.map(session => [session.id, { ...officeStatus(session), identity: identity(session.id), monitor: monitorLines(session) }]));
       // The fired cry at their desks, hands over their faces, then run out like that.
       for (const [id, at] of fired) if (Date.now() - at > VACANT_MS + 10_000) fired.delete(id); else office.statuses.set(id, { ...office.statuses.get(id), ...FIRED });
-      room.sync(layout, office.statuses);
-      // The lounge follows the front right corner when the room grows.
-      if (before && player.seated) {
-        const dx = layout.room.width - before.width, dz = layout.room.depth - before.depth;
-        player.position.x += dx; player.position.z += dz; player.seated.x += dx; player.seated.z += dz;
-      }
-      shots.sync(snapshot.sessions.filter(session => !session.parentId && layout.desks.has(session.id)));
-      for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
-      signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });
-      cast.sync(layout, snapshot.sessions, room, office.statuses); mark();
-      bubbles.sync([...snapshot.sessions.filter(session => layout.desks.has(session.id) || session.parentId).map(session => ({ id: session.id, bubble: office.statuses.get(session.id).bubble, unread: hooks.isUnread?.(session) })),
-        ...[...fired.keys()].filter(id => layout.desks.get(id)?.vacantSince !== undefined).map(id => ({ id, bubble: FIRED.bubble }))]);
-      const waiting = snapshot.sessions.filter(session => office.statuses.get(session.id).bubble?.highlight);
-      overlays.setWaiting(waiting.length);
-      overlays.setUsageLow((snapshot.usage || []).some(account => account.windows?.some(window => window.usedPercent >= 80)));
-      boards.sync(snapshot, { error, waiting: waiting.map(session => session.title || session.project) });
-      office.layout = layout;
-      // First snapshot: stand just inside the door, looking into the room.
-      // Not from inside a free game: you're out of it first. A seated one puts you back where it says when you leave it.
-      if (!office.placed) { office.placed = true; if (playing?.free) play(null); const { width, depth } = layout.room; player.place(layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))); }
+    }
+    room.sync(layout, office.statuses);
+    // The lounge follows the front right corner when the room grows.
+    if (before && player.seated) {
+      const dx = layout.room.width - before.width, dz = layout.room.depth - before.depth;
+      player.position.x += dx; player.position.z += dz; player.seated.x += dx; player.seated.z += dz;
+    }
+    if (!away) shots.sync(snapshot.sessions.filter(session => !session.parentId && layout.desks.has(session.id)));
+    for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
+    signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });
+    cast.sync(layout, shown.sessions, room, office.statuses); mark();
+    bubbles.sync(away ? [] : [...snapshot.sessions.filter(session => layout.desks.has(session.id) || session.parentId).map(session => ({ id: session.id, bubble: office.statuses.get(session.id).bubble, unread: hooks.isUnread?.(session) })),
+      ...[...fired.keys()].filter(id => layout.desks.get(id)?.vacantSince !== undefined).map(id => ({ id, bubble: FIRED.bubble }))]);
+    const waiting = away ? [] : snapshot.sessions.filter(session => office.statuses.get(session.id).bubble?.highlight);
+    overlays.setWaiting(waiting.length);
+    overlays.setUsageLow(!away && (snapshot.usage || []).some(account => account.windows?.some(window => window.usedPercent >= 80)));
+    boards.sync(snapshot, { error, waiting: waiting.map(session => session.title || session.project), visiting });
+    office.layout = layout;
+    // First snapshot: stand just inside the door, looking into the room.
+    // Not from inside a free game: you're out of it first. A seated one puts you back where it says when you leave it.
+    if (!office.placed) { office.placed = true; if (playing?.free) play(null); player.place(...doorSpot()); }
+  }
+  const doorSpot = () => { const { width, depth } = layout.room; return [layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))]; };
+
+  const office = {
+    scene, renderer, camera, hooks, container, props,
+    onFrame(fn) { frames.add(fn); return () => frames.delete(fn); },
+    // Visiting, nothing of yours is drawn: the snapshot's kept for the list, the feed and alerts (main.js) and for coming home.
+    update(snapshot, { error = '' } = {}) {
+      office.snapshot = snapshot; office.error = error; setSkyPlace(snapshot.location);
+      if (visiting === null) draw();
     },
+    get visiting() { return visiting; }, // null, or the host's name while you're at their office
     unmount() {
       cancelAnimationFrame(raf); observer.disconnect(); document.removeEventListener('visibilitychange', visibility);
       for (const fn of office.disposers) fn();
@@ -448,6 +509,7 @@ export function mountOffice(container, hooks) {
     panelClosed() { office.talking = null; cast.greet(null); view.focus(null); },
     // E: whoever is within 2 m and roughly in front of you.
     nearest() {
+      if (visiting !== null) return null; // the host's agents aren't to talk to
       let best = null, bestDistance = 2;
       for (const id of cast.characters.keys()) {
         const at = cast.positionOf(id); if (!at) continue;
@@ -456,7 +518,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => { readying = false; }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); live.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }

@@ -20,7 +20,7 @@ import { observedOverlaps } from '../server/repository.mjs';
 import { claudeRequest } from '../server/claude.mjs';
 import { codexRequest } from '../server/codex.mjs';
 import { root } from '../server/config.mjs';
-import { createOfficeOnline } from '../server/office-online.mjs';
+import { createOfficeOnline, liveUpgrade } from '../server/office-online.mjs';
 
 export async function createDemoServices({ calm = false, withLost = false } = {}) {
 const pin = '1234', now = Date.now(), min = 60_000, home = '/home/demo/code';
@@ -302,7 +302,10 @@ const demo = await createDemoServices({ calm: process.argv.includes('--calm'), w
 const origins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
 const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: ['127.0.0.1', 'localhost'] } });
 const server = createServer(createHandler({ ...demo, origin: origins, vite: vite.middlewares }));
+// Office meetings, as server/main.mjs: pages' live links, and the floor's 2 s tick (it goes up only while this demo hosts).
+const live = liveUpgrade({ auth: demo.auth, origins, hosts: origins.map(o => new URL(o).host), online: demo.online }); server.on('upgrade', live);
+const meeting = setInterval(() => demo.online.floor(() => { const { sessions, office } = demo.snapshot(); return { sessions, office }; }), 2000);
 server.listen(port, '127.0.0.1', () => console.log(`AI Control demo: ${origins[0]}  PIN 1234  (Ctrl-C stops)`));
-const stop = () => { server.closeAllConnections(); server.close(); Promise.allSettled([vite.close(), demo.close()]).finally(() => process.exit(0)); };
+const stop = () => { clearInterval(meeting); live.close(); demo.online.close(); server.closeAllConnections(); server.close(); Promise.allSettled([vite.close(), demo.close()]).finally(() => process.exit(0)); };
 process.once('SIGINT', stop); process.once('SIGTERM', stop);
 }
