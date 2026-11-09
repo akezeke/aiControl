@@ -1,6 +1,6 @@
 // What a session looks like in the office: its pose, face, speech bubble and monitor, and its fixed fruit identity. Pure.
 export const FRUITS = ['apple', 'pear', 'banana', 'orange', 'lemon', 'eggplant', 'strawberry', 'kiwi', 'watermelon', 'pineapple'];
-const palettes = {
+export const palettes = {
   apple: ['#d62828', '#b81d24', '#f2c14e'], pear: ['#b5c934', '#e0b73f'], banana: ['#f7d23e'], orange: ['#f28c28'],
   lemon: ['#f9e04b'], eggplant: ['#5b2a86', '#7a3ea8'], strawberry: ['#e63946'], kiwi: ['#8c6a3c', '#7a5a32'], watermelon: ['#1f6b33'], pineapple: ['#f2b632'],
 };
@@ -80,6 +80,8 @@ function hash(text) {
   for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); }
   return h >>> 0;
 }
+// A fruit's natural colour for this id, picked the way identity() picks its own.
+export const naturalColor = (fruit, id) => palettes[fruit][hash(`color:${id}`) % palettes[fruit].length];
 export function identity(id) {
   const pick = (list, salt) => list[hash(`${salt}:${id}`) % list.length];
   const fruit = pick(FRUITS, 'fruit'), style = pick(STYLES, 'style');

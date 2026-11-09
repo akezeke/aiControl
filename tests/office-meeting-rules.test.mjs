@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FRUITS, COLOURS, KINDS, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor, WORDS } from '../client/office/meeting.js';
+import { palettes } from '../client/office/status.js';
 import { sharedLayout, layoutOffice } from '../client/office/layout.js';
 
 const session = (n, extra = {}) => ({
@@ -100,9 +101,17 @@ test('playerLook is stable and wears your colour', () => {
   const c = playerLook('Ann', 'banana', COLOURS[3]);
   assert.deepEqual(c.accessories.filter(x => ['beanie', 'cap', 'headphones'].includes(x)), []);
   assert.ok(c.accessories.includes('bow'));
-  assert.equal(c.color, a.color);
+  assert.ok(c.color);
   assert.equal(FRUITS.length, 10); assert.equal(COLOURS.length, 8); assert.equal(new Set(COLOURS).size, 8);
   assert.ok(KINDS.includes('football') && KINDS.includes('mug'));
+});
+
+test('playerLook gives each fruit its own natural colour', () => {
+  for (const name of ['Ann', 'Bo', 'Cy Dee', 'x.y']) for (const [fruit] of FRUITS) {
+    const look = playerLook(name, fruit, COLOURS[0]);
+    assert.ok(palettes[fruit].includes(look.color), `${name} ${fruit} ${look.color}`);
+    assert.equal(playerLook(name, fruit, COLOURS[1]).color, look.color);
+  }
 });
 
 test('fakeMonitor', () => {

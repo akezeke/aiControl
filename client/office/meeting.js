@@ -2,7 +2,7 @@
 // what the hub may send down, and the host's floor (who sits where and how they look), which carries no words from the host's
 // sessions. Everything arriving is rebuilt field by field here; anything malformed is dropped whole. Pure.
 import { cleanName } from './leaderboard.js';
-import { identity, officeStatus } from './status.js';
+import { identity, officeStatus, naturalColor } from './status.js';
 import { layoutOffice } from './layout.js';
 
 // Pickable fruit, in the slip's order: [id, emoji].
@@ -24,9 +24,9 @@ const id = v => typeof v === 'string' && /^[a-z0-9]{1,12}$/.test(v);
 
 // What a player wears: a stable look from their name, their fruit, their colour on the trim, and a cap (a bow for a banana).
 export function playerLook(name, fruit, shade) {
-  const base = identity('player:' + String(name).toLowerCase());
+  const key = 'player:' + String(name).toLowerCase(), base = identity(key);
   const accessories = [...base.accessories.filter(item => !HATS.includes(item)), fruit === 'banana' ? 'bow' : 'cap'];
-  return { ...base, fruit, trim: shade, accessories, colour: shade };
+  return { ...base, fruit, color: naturalColor(fruit, key), trim: shade, accessories, colour: shade };
 }
 
 const checks = {
