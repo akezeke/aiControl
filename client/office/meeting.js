@@ -34,7 +34,9 @@ const checks = {
   hello: m => { const name = cleanName(m.name); return own(m, ['name', 'fruit', 'colour']) && name && fruitIds.includes(m.fruit) && colour(m.colour) ? { type: 'hello', name, fruit: m.fruit, colour: m.colour } : null; },
   look: m => own(m, ['fruit', 'colour']) && fruitIds.includes(m.fruit) && colour(m.colour) ? { type: 'look', fruit: m.fruit, colour: m.colour } : null,
   where: m => m.at === 'home' || m.at === 'meeting' ? { type: 'where', at: m.at } : null,
-  pos: m => num(m.x, -12, 200) && num(m.y, -1, 6) && num(m.z, -12, 200) && num(m.yaw) && POSES.includes(m.pose) ? { type: 'pos', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pose: m.pose } : null,
+  // `t`, optional: the sender's clock (ms) when it was there, so friends.js can play moves back at an even pace.
+  pos: m => num(m.x, -12, 200) && num(m.y, -1, 6) && num(m.z, -12, 200) && num(m.yaw) && POSES.includes(m.pose) && (m.t === undefined || num(m.t, 0))
+    ? { type: 'pos', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pose: m.pose, ...m.t !== undefined && { t: m.t } } : null,
   throw: m => KINDS.includes(m.kind) && vec(m.pos, 1000) && vec(m.vel, 40) && vec(m.spin, 100) ? { type: 'throw', kind: m.kind, pos: [...m.pos], vel: [...m.vel], spin: [...m.spin] } : null,
   floor: m => { const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
 };
@@ -43,14 +45,14 @@ export const checkUp = msg => run(checks, msg);
 
 const player = p => own(p, ['id', 'name', 'fruit', 'colour', 'at']) && id(p.id) && cleanName(p.name) && fruitIds.includes(p.fruit) && colour(p.colour) && (p.at === 'home' || p.at === 'meeting')
   ? { id: p.id, name: cleanName(p.name), fruit: p.fruit, colour: p.colour, at: p.at } : null;
-const withId = (type, fields) => m => { const inner = checks[type](m); return inner && id(m.id) ? { type, id: m.id, ...Object.fromEntries(fields.map(f => [f, inner[f]])) } : null; };
+const withId = (type, fields) => m => { const inner = checks[type](m); return inner && id(m.id) ? { type, id: m.id, ...Object.fromEntries(fields.filter(f => inner[f] !== undefined).map(f => [f, inner[f]])) } : null; };
 const down = {
   roster: m => {
     if (!Array.isArray(m.players) || m.players.length > MAX_PLAYERS) return null;
     const players = m.players.map(player);
     return players.every(Boolean) ? { type: 'roster', players } : null;
   },
-  pos: withId('pos', ['x', 'y', 'z', 'yaw', 'pose']),
+  pos: withId('pos', ['x', 'y', 'z', 'yaw', 'pose', 't']),
   throw: withId('throw', ['kind', 'pos', 'vel', 'spin']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,

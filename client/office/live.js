@@ -2,7 +2,7 @@
 // come down, and where you are and what you do that goes up. It connects only while the page is visible and you're in a
 // meeting, closes when hidden, and reconnects with a backoff (1 s up to 30 s). Everything outside is passed in, so node can fake it.
 import { checkDown } from './meeting.js';
-const BACKOFF = [1000, 30000], EVERY = 100, MOVE = 0.02, TURN = 0.02;
+const BACKOFF = [1000, 30000], EVERY = 66, STILL = 2000, MOVE = 0.02, TURN = 0.02;
 
 // What the colour/fruit pickers show: your own look in the roster and everyone else's colours as taken.
 export function pickerState(roster, me) {
@@ -52,7 +52,7 @@ export function createLive({
   function go(sample, t) {
     pending = null; if (flush) { clearTimer(flush); flush = null; }
     last = { x: sample.x, y: sample.y, z: sample.z, yaw: sample.yaw, pose: sample.pose }; lastAt = t;
-    send({ type: 'pos', ...last });
+    send({ type: 'pos', ...last, t: Math.round(t) });
   }
   function drop() { pending = null; if (flush) { clearTimer(flush); flush = null; } if (retry) { clearTimer(retry); retry = null; } const s = ws; if (s) s.close(); }
   // Connect or close to match: visible and in a meeting. Call when either changes.
@@ -64,17 +64,19 @@ export function createLive({
     on(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); return () => listeners.get(type).delete(fn); },
     send,
     where(to) { at = to; send({ type: 'where', at }); },
-    // `sample`: { x, y, z, yaw, pose }. Sent at most 10 Hz and only past 2 cm or 0.02 rad; a new pose waits for the window.
-    // A pose change inside the 100 ms window waits for it: the latest sample goes when the window opens.
-    presence(sample) {
+    // `sample`: { x, y, z, yaw, pose }. Sent at most 15 Hz and only past 2 cm or 0.02 rad, with the time (friends.js plays
+    // moves back by it). A pose change inside the 66 ms window waits for it: the latest sample goes when the window opens.
+    // Standing still, it's said again every 2 s, for a page that missed it; `force` says it at once (someone just arrived).
+    presence(sample, force = false) {
       if (!open()) return;
       const t = now(), p = last, poseChanged = !p || sample.pose !== p.pose;
+      if (force) { go(sample, t); return; }
       let moved = false;
       if (!poseChanged) {
         let dyaw = Math.abs(sample.yaw - p.yaw) % (2 * Math.PI); if (dyaw > Math.PI) dyaw = 2 * Math.PI - dyaw;
         moved = Math.hypot(sample.x - p.x, sample.y - p.y, sample.z - p.z) > MOVE || dyaw > TURN;
       }
-      if (!poseChanged && !moved) { pending = null; return; } // back to what the hub has: a waiting sample is stale
+      if (!poseChanged && !moved) { pending = null; if (t - lastAt >= STILL) go(sample, t); return; } // back to what the hub has: a waiting sample is stale
       if (t - lastAt >= EVERY) { go(sample, t); return; }
       if (!poseChanged && !pending) return;
       pending = Object.assign(held, sample); // a copy: the caller may reuse its sample

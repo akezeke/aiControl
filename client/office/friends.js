@@ -5,15 +5,55 @@ import { createFruit, LEG } from './fruit.js';
 import { poseTargets } from './animation.js';
 import { playerLook } from './meeting.js';
 
-const EASE = 0.05, SNAP = 3, RUNNING = 1.7;
+const SNAP = 3, RUNNING = 1.7;
+const GAP = 1 / 15, PAUSE = 0.25, NEED_MAX = 0.35, RELAX = 0.02, WARP = 0.1, MARGIN = 0.01, DRIFT = 1e-3, KEEP = 16;
 
-// Positions and yaw move toward the last update in about 0.15 s; a jump of more than 3 m is a teleport (the door) and snaps.
-// Writes into `out` (default: a new object) and returns it, so a frame loop can reuse one.
-export function ease(from, to, dt, out = {}) {
-  if (Math.hypot(to.x - from.x, to.z - from.z) > SNAP) { out.x = to.x; out.y = to.y; out.z = to.z; out.yaw = to.yaw; return out; }
-  const k = 1 - Math.exp(-dt / EASE), turn = Math.atan2(Math.sin(to.yaw - from.yaw), Math.cos(to.yaw - from.yaw));
-  out.x = from.x + (to.x - from.x) * k; out.y = from.y + (to.y - from.y) * k; out.z = from.z + (to.z - from.z) * k; out.yaw = from.yaw + turn * k;
-  return out;
+// One friend's moves, played back a little late at an even pace however the network bunches them: drawn between the two
+// positions either side of a playback clock. Each move carries the sender's clock (`t`, ms; without it, when it came). The
+// delay is the longest lately from one move to the next one's arrival (held at its peak, let go at 20 ms a second), and the
+// playback clock speeds up or slows down by up to 10% rather than jump when that changes. With nothing newer yet it waits
+// on the last place, then carries on from there. A pause (standing still) gets a stop just before the next move, so nobody
+// drifts across it, and a jump of more than 3 m (the door) snaps. Times are in seconds; `at` writes into `out`, allocating nothing.
+export function createTrack() {
+  const samples = [];
+  let offset = Infinity, need = GAP, clock = null, then = null;
+  const copy = (out, s) => { out.x = s.x; out.y = s.y; out.z = s.z; out.yaw = s.yaw; out.pose = s.pose; return out; };
+  return {
+    heard(m, now) {
+      const t = m.t === undefined ? now : m.t / 1000;
+      let last = samples.at(-1);
+      // Their clock went back, or a long silence: another page of theirs, or they were away. Start again.
+      if (last && (t < last.t || t - last.t > 5)) { samples.length = 0; offset = Infinity; need = GAP; clock = null; last = undefined; }
+      const d = last ? t - last.t : 0, pause = last && d >= PAUSE;
+      if (last && d === 0) samples.pop(); // the same moment again: the newer wins
+      else if (pause) samples.push({ ...last, t: t - GAP }); // still till just before this
+      const before = samples.at(-1);
+      samples.push({ t, x: m.x, y: m.y, z: m.z, yaw: m.yaw, pose: m.pose });
+      if (samples.length > KEEP) samples.shift();
+      // The quickest a move has come (creeping up a little, as two machines' clocks drift), and how long this one took
+      // from the one before it was due.
+      offset = Math.min(offset + d * DRIFT, now - t);
+      if (before) need = Math.min(NEED_MAX, Math.max(need, now - before.t - offset));
+      // Waiting where they stood: anywhere up to this move is the same place, so the clock can skip the pause.
+      if (pause && clock !== null && clock >= last.t) clock = Math.max(last.t, Math.min(t - GAP, now - offset - need - MARGIN));
+    },
+    at(now, out) {
+      if (!samples.length) return null;
+      const dt = then === null ? 0 : Math.max(0, now - then); then = now;
+      need = Math.max(0, need - dt * RELAX);
+      const want = now - offset - need - MARGIN;
+      if (clock === null || Math.abs(want - clock) > 0.5) clock = want;
+      else clock += dt + Math.max(-WARP * dt, Math.min(WARP * dt, want - clock - dt));
+      clock = Math.min(clock, samples.at(-1).t);
+      while (samples.length > 1 && samples[1].t <= clock) samples.shift();
+      const a = samples[0], b = samples[1];
+      if (!b || clock <= a.t) return copy(out, a); // before the first, or at the last: there
+      if (Math.hypot(b.x - a.x, b.z - a.z) > SNAP) return copy(out, b);
+      const u = (clock - a.t) / (b.t - a.t), turn = Math.atan2(Math.sin(b.yaw - a.yaw), Math.cos(b.yaw - a.yaw));
+      out.x = a.x + (b.x - a.x) * u; out.y = a.y + (b.y - a.y) * u; out.z = a.z + (b.z - a.z) * u; out.yaw = a.yaw + turn * u; out.pose = a.pose;
+      return out;
+    },
+  };
 }
 const ignored = () => {}, HAND = new THREE.Vector3(), HAND2 = new THREE.Vector3();
 
@@ -34,8 +74,9 @@ function tag(name, colour) {
   return texture;
 }
 
-export function createFriends(scene, { room, reducedMotion = () => false }) {
-  const friends = new Map(), seen = new Map(); // seen: the last place heard of everyone, even before they're built (the roster and their move can arrive either way round)
+// `clock`: seconds, the same for when a move's heard and when it's drawn.
+export function createFriends(scene, { room, reducedMotion = () => false, clock = () => performance.now() / 1000 }) {
+  const friends = new Map(), tracks = new Map(); // tracks: everyone's moves, even before they're built (the roster and their move can arrive either way round)
   let time = 0;
 
   function build(p) {
@@ -46,7 +87,7 @@ export function createFriends(scene, { room, reducedMotion = () => false }) {
     sprite.scale.set(0.8, 0.2, 1); sprite.position.y = LEG + fruit.height + 0.22; root.add(sprite); // above the cap
     root.traverse(n => { n.raycast = ignored; }); // friends pass through each other and aren't clickable
     scene.add(root);
-    return { id: p.id, name: p.name, look: `${p.fruit}${p.colour}`, fruit, root, sprite, seed: [...p.id].reduce((a, c) => a + c.charCodeAt(0), 0) % 7, at: null, shown: null, pose: 'standing' };
+    return { id: p.id, name: p.name, look: `${p.fruit}${p.colour}`, fruit, root, sprite, seed: [...p.id].reduce((a, c) => a + c.charCodeAt(0), 0) % 7, at: { x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' } };
   }
   function drop(f) { f.root.removeFromParent(); f.fruit.dispose(); f.sprite.material.map.dispose(); f.sprite.material.dispose(); }
 
@@ -55,40 +96,37 @@ export function createFriends(scene, { room, reducedMotion = () => false }) {
     // a new name or look is built again.
     sync(roster, me, show = true) {
       const here = new Map(show ? atMeeting(roster, me).map(p => [p.id, p]) : []);
-      for (const id of seen.keys()) if (!roster.some(p => p.id === id)) seen.delete(id);
+      for (const id of tracks.keys()) if (!roster.some(p => p.id === id)) tracks.delete(id);
       for (const [id, f] of friends) {
         const p = here.get(id);
         if (!p || f.look !== `${p.fruit}${p.colour}`) { drop(f); friends.delete(id); }
         else if (f.name !== p.name) { f.name = p.name; f.sprite.material.map.dispose(); f.sprite.material.map = tag(p.name, p.colour); }
       }
-      for (const [id, p] of here) if (!friends.has(id)) { friends.set(id, build(p)); if (seen.has(id)) this.move(id, seen.get(id)); }
+      for (const [id, p] of here) if (!friends.has(id)) { const f = build(p); friends.set(id, f); f.root.visible = tracks.has(id); }
     },
-    // A position message: where they are (feet on the floor), which way they face and what they're doing.
-    move(id, { x, y, z, yaw, pose }) {
-      const m = seen.get(id) ?? {}; seen.set(id, Object.assign(m, { x, y, z, yaw, pose }));
-      const f = friends.get(id); if (!f) return;
-      f.pose = pose; f.to ??= {}; Object.assign(f.to, { x, y, z, yaw });
-      if (!f.at) { f.at = { ...f.to }; f.root.visible = true; }
+    // A position message: where they are (feet on the floor), which way they face, what they're doing and when (`t`).
+    move(id, m) {
+      let track = tracks.get(id); if (!track) tracks.set(id, track = createTrack());
+      track.heard(m, clock());
     },
     update(dt, now = time + dt) {
       time = now;
-      const still = reducedMotion(), t = still ? 0 : time;
+      const still = reducedMotion(), t = still ? 0 : time, when = clock();
       for (const f of friends.values()) {
-        if (!f.at) continue;
-        ease(f.at, f.to, dt, f.at);
-        f.root.position.set(f.at.x, f.at.y, f.at.z); f.root.rotation.y = f.at.yaw;
+        const at = tracks.get(f.id)?.at(when, f.at); if (!at) continue;
+        f.root.position.set(at.x, at.y, at.z); f.root.rotation.y = at.yaw;
         // In a shut room they're behind its wall.
         const p = f.root.position; f.root.visible = !(room.kitchen.inside(p) && !room.kitchen.shown) && !(room.secret.inside(p) && !room.secret.shown);
         if (!f.root.visible) continue;
-        const h = f.fruit.height, run = f.pose === 'running', moving = run || f.pose === 'walking';
+        const h = f.fruit.height, pose = at.pose, run = pose === 'running', moving = run || pose === 'walking';
         const target = poseTargets('walking', moving && !still ? t * (run ? RUNNING : 1) : 0, moving ? f.seed : 0, f.fruit);
         if (run) target.body.lean = 0.15;
         // Holding something out in front; playing a game, the hands up on it.
-        if (f.pose === 'holding') target.limbs.rightHand = HAND.set(-0.14, 0.5 + h * 0.3, 0.3);
-        else if (f.pose === 'playing') { target.limbs.leftHand = HAND.set(0.12, 0.45 + h * 0.3, 0.3); target.limbs.rightHand = HAND2.set(-0.12, 0.45 + h * 0.3, 0.3); }
+        if (pose === 'holding') target.limbs.rightHand = HAND.set(-0.14, 0.5 + h * 0.3, 0.3);
+        else if (pose === 'playing') { target.limbs.leftHand = HAND.set(0.12, 0.45 + h * 0.3, 0.3); target.limbs.rightHand = HAND2.set(-0.12, 0.45 + h * 0.3, 0.3); }
         f.fruit.setBody(target.body); f.fruit.setLimbs(target.limbs, target.elbows);
       }
     },
-    dispose() { for (const f of friends.values()) drop(f); friends.clear(); seen.clear(); },
+    dispose() { for (const f of friends.values()) drop(f); friends.clear(); tracks.clear(); },
   };
 }

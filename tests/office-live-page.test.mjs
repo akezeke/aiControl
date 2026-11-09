@@ -17,8 +17,10 @@ test('presence is throttled and thresholded', () => {
   s.sent.length = 0;
   for (let i = 0; i < 60; i++) { r.t += 1000 / 60; r.live.presence(sample(i * 0.05)); }
   const pos = s.sent.filter(m => m.type === 'pos');
-  assert.ok(pos.length >= 5 && pos.length <= 10, String(pos.length));
-  // Still, or moving less than 2 cm: nothing.
+  assert.ok(pos.length >= 10 && pos.length <= 15, String(pos.length));
+  assert.ok(pos.every((m, i) => Number.isInteger(m.t) && (!i || m.t - pos[i - 1].t >= 66)), 'each says when, at most 15 a second');
+  // Stopped, the last place goes when the window opens; then still, or moving less than 2 cm: nothing.
+  r.t += 100; r.live.presence(sample(59 * 0.05)); assert.equal(s.sent.at(-1).x, 59 * 0.05);
   const n = s.sent.length; r.t += 500; r.live.presence(sample(59 * 0.05 + 0.01)); r.live.presence(sample(59 * 0.05)); assert.equal(s.sent.length, n);
   // A pose change at once.
   r.live.presence(sample(59 * 0.05, 'running')); assert.equal(s.sent.length, n + 1); assert.equal(s.sent.at(-1).pose, 'running');
@@ -79,12 +81,12 @@ test('server messages are checked: malformed ones change nothing and emit nothin
   assert.deepEqual(seen, []); assert.deepEqual(r.live.roster(), [me]); assert.equal(r.live.floor(), null); assert.equal(r.live.id(), 'a');
 });
 
-test('a pose flapping every frame still sends at most 10 a second, and the last pose lands', () => {
+test('a pose flapping every frame still sends at most 15 a second, and the last pose lands', () => {
   const r = rig(); r.live.refresh(); const s = r.sockets[0]; s.open(); s.sent.length = 0;
   for (let i = 0; i < 62; i++) { r.live.presence(sample(0, i % 2 ? 'walking' : 'standing')); r.advance(16); }
   r.live.presence(sample(0, 'running')); r.advance(200);
   const pos = s.sent.filter(m => m.type === 'pos');
-  assert.ok(pos.length <= 11, String(pos.length)); // 10 in the second of flapping, one more after
+  assert.ok(pos.length <= 16, String(pos.length)); // 15 in the second of flapping, one more after
   assert.equal(pos.at(-1).pose, 'running');
 });
 
@@ -101,4 +103,12 @@ test('presence keeps a copy of a waiting sample, so a caller can reuse its objec
   r.live.presence(mine); r.t += 10; Object.assign(mine, { x: 1, pose: 'running' }); r.live.presence(mine); // pose change inside the window waits
   Object.assign(mine, { x: 9, pose: 'standing' }); r.advance(200);
   const last = s.sent.filter(m => m.type === 'pos').at(-1); assert.equal(last.pose, 'running'); assert.equal(last.x, 1);
+});
+
+test('standing still, presence says so again every 2 s; forced, at once', () => {
+  const r = rig(); r.live.refresh(); const s = r.sockets[0]; s.open(); s.sent.length = 0;
+  for (let i = 0; i < 300; i++) { r.live.presence(sample(1)); r.advance(1000 / 60); } // 5 s
+  const gaps = s.sent.slice(1).map((m, i) => m.t - s.sent[i].t);
+  assert.equal(s.sent.length, 3); assert.ok(gaps.every(g => g >= 2000 && g <= 2017), String(gaps));
+  r.live.presence(sample(1), true); assert.equal(s.sent.length, 4); assert.equal(s.sent.at(-1).x, 1);
 });

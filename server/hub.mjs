@@ -76,21 +76,21 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
   const wss = new WebSocketServer({ noServer: true, maxPayload: LIVE_BYTES });
   const byToken = new Map(), joined = new Set();
   let floor = null, hostSocket = null;
-  // A reader that lets a megabyte pile up is cut off rather than buffered for.
-  const put = (ws, m) => { if (ws.readyState !== 1) return; if (ws.bufferedAmount > 1 << 20) return ws.terminate(); ws.send(JSON.stringify(m)); };
-  const roster = () => { const m = { type: 'roster', players: [...joined].map(({ p }) => ({ id: p.id, name: p.name, fruit: p.fruit, colour: p.colour, at: p.at })) }; for (const ws of joined) put(ws, m); };
+  // A reader that lets a megabyte pile up is cut off rather than buffered for. `put` takes a message or, sent to many, its text.
+  const put = (ws, m) => { if (ws.readyState !== 1) return; if (ws.bufferedAmount > 1 << 20) return ws.terminate(); ws.send(typeof m === 'string' ? m : JSON.stringify(m)); };
+  const roster = () => { const text = JSON.stringify({ type: 'roster', players: [...joined].map(({ p }) => ({ id: p.id, name: p.name, fruit: p.fruit, colour: p.colour, at: p.at })) }); for (const ws of joined) put(ws, text); };
   const at = place => [...joined].filter(ws => ws.p.at === place);
   const free = asked => { const taken = new Set([...joined].map(ws => ws.p.colour)); return taken.has(asked) ? COLOURS.find(c => !taken.has(c)) ?? asked : asked; };
   const drop = ws => {
     if (byToken.get(ws.p.token) === ws) byToken.delete(ws.p.token);
     const was = joined.delete(ws);
-    if (ws === hostSocket) { hostSocket = null; floor = null; for (const v of at('meeting')) put(v, { type: 'floor', floor: null }); }
+    if (ws === hostSocket) { hostSocket = null; floor = null; const text = JSON.stringify({ type: 'floor', floor: null }); for (const v of at('meeting')) put(v, text); }
     if (was) roster();
   };
   const relay = (ws, m) => {
     if (!ws.p.id || (ws.p.at !== 'meeting' && ws !== hostSocket)) return;
-    const out = { ...m, id: ws.p.id };
-    for (const other of joined) if (other !== ws && (other.p.at === 'meeting' || other === hostSocket)) put(other, out);
+    const text = JSON.stringify({ ...m, id: ws.p.id });
+    for (const other of joined) if (other !== ws && (other.p.at === 'meeting' || other === hostSocket)) put(other, text);
   };
   function heard(ws, m) {
     const p = ws.p;
@@ -108,7 +108,7 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
       p.at = m.at; roster(); if (m.at === 'meeting' && floor) put(ws, { type: 'floor', floor });
     }
     else if (m.type === 'pos' || m.type === 'throw') relay(ws, m);
-    else if (m.type === 'floor' && ws === hostSocket) { floor = m.floor; for (const v of at('meeting')) put(v, m); }
+    else if (m.type === 'floor' && ws === hostSocket) { floor = m.floor; const text = JSON.stringify(m); for (const v of at('meeting')) put(v, text); }
   }
   wss.on('connection', (ws, _req, mine) => {
     ws.p = { token: mine.token, windowStart: -Infinity, count: 0, alive: true };

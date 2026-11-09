@@ -1,19 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ease, gait, atMeeting, createFriends } from '../client/office/friends.js';
+import { createTrack, gait, atMeeting, createFriends } from '../client/office/friends.js';
 
-test('ease reaches the target and snaps a teleport', () => {
-  let p = { x: 0, y: 0, z: 0, yaw: 0 };
-  const to = { x: 1, y: 0, z: -1, yaw: 1 };
-  for (let i = 0; i < 18; i++) p = ease(p, to, 1 / 60); // 0.3 s
-  assert.ok(Math.abs(p.x - 1) < 0.02 && Math.abs(p.z + 1) < 0.02 && Math.abs(p.yaw - 1) < 0.02, JSON.stringify(p));
-  const one = ease({ x: 0, y: 0, z: 0, yaw: 0 }, to, 1 / 60);
-  assert.ok(one.x > 0 && one.x < 1, 'a step moves part of the way');
-  assert.deepEqual(ease({ x: 0, y: 0, z: 0, yaw: 0 }, { x: 10, y: 0, z: 0, yaw: 2 }, 1 / 60), { x: 10, y: 0, z: 0, yaw: 2 });
-  // yaw takes the short way round
-  const turn = ease({ x: 0, y: 0, z: 0, yaw: 3 }, { x: 0, y: 0, z: 0, yaw: -3 }, 1 / 60);
-  assert.ok(turn.yaw > 3, 'turns up through pi, not back through zero');
+// Plays `moves` ([sent s, arrives s, x, extra]) through a track a frame at a time, from 0 to `until` s; the drawn place each frame.
+function play(moves, until, track = createTrack()) {
+  const out = {}, drawn = []; let i = 0;
+  for (let f = 0; f / 60 < until; f++) {
+    const now = f / 60;
+    while (i < moves.length && moves[i][1] <= now) { const [t, , x, extra] = moves[i++]; track.heard({ t: t * 1000, x, y: 0, z: 0, yaw: 0, pose: 'walking', ...extra }, now); }
+    const at = track.at(now, out); if (at) drawn.push({ now, ...at });
+  }
+  return drawn;
+}
+
+test('a track plays bunched-up moves back at an even pace and stops where they stopped', () => {
+  // 4 m/s for 3 s, a move every 1/15 s, every third one 80 ms late (the ones after it wait behind it, as on a socket).
+  let arrive = 0; const moves = [];
+  for (let k = 0; k <= 45; k++) { const t = k / 15; arrive = Math.max(arrive, t + 0.01 + (k % 3 ? 0 : 0.08)); moves.push([t, arrive, 4 * t]); }
+  const drawn = play(moves, 5);
+  const speeds = drawn.slice(61, 180).map((d, i) => (d.x - drawn[60 + i].x) * 60);
+  assert.ok(speeds.every(v => v > 3.4 && v < 4.6), speeds.map(v => v.toFixed(1)).join(' '));
+  assert.equal(drawn.at(-1).x, 12); assert.ok(drawn.every(d => d.x <= 12), 'no overshoot');
+});
+
+test('a track shows the first move at once, stands still through a pause and snaps a teleport', () => {
+  assert.equal(createTrack().at(0, {}), null);
+  // Still at 0 (and said again at 2 s), walking from 3 s: nobody drifts off before then.
+  const pause = play([[0, 0.01, 0], [2, 2.01, 0], [3, 3.01, 0.1], [3 + 1 / 15, 3.08, 0.2]], 4);
+  assert.equal(pause[0].x, 0); assert.ok(pause.filter(d => d.now < 3).every(d => d.x === 0)); assert.equal(pause.at(-1).x, 0.2);
+  // The door: from 0 to 10 in one move is 0 then 10, nothing between.
+  assert.ok(play([[0, 0.01, 0], [1 / 15, 0.08, 10]], 1).every(d => d.x === 0 || d.x === 10));
+  // Yaw takes the short way round, up through pi.
+  const turn = play([[0, 0.01, 0, { yaw: 3 }], [1 / 15, 0.08, 0, { yaw: -3 }]], 1);
+  assert.ok(turn.some(d => d.yaw > 3.1) && turn.every(d => d.yaw >= 3 || d.yaw === -3), turn.map(d => d.yaw.toFixed(2)).join(' '));
+});
+
+test('a track starts again when their clock goes back, and plays moves without one by when they came', () => {
+  const track = createTrack(), out = {};
+  track.heard({ t: 10_000, x: 1, y: 0, z: 0, yaw: 0, pose: 'standing' }, 0); track.at(0, out);
+  track.heard({ t: 500, x: 5, y: 0, z: 0, yaw: 0, pose: 'running' }, 0.1); // a reload
+  assert.equal(track.at(0.1, out).x, 5); assert.equal(out.pose, 'running');
+  const bare = createTrack(); bare.heard({ x: 2, y: 0, z: 0, yaw: 0, pose: 'standing' }, 7);
+  assert.equal(bare.at(7, out).x, 2);
 });
 
 test('gait by speed', () => {
@@ -37,13 +66,6 @@ test('a friend at home isn\'t built, nor are you', t => {
   friends.sync([p('a', 'meeting')], 'me', false); assert.equal(scene.children.length, 0, 'not at the meeting yourself: nobody shown');
   friends.sync([p('a', 'meeting')], 'me'); assert.equal(scene.children[0].visible, true); friends.update(0.016); assert.equal(scene.children[0].position.x, 3);
   friends.dispose(); assert.equal(scene.children.length, 0);
-});
-
-test('ease writes into the object it is given', () => {
-  const from = { x: 0, y: 0, z: 0, yaw: 0 }, to = { x: 1, y: 0, z: 0, yaw: 0 };
-  const out = ease(from, to, 1 / 60, from);
-  assert.equal(out, from); assert.ok(from.x > 0 && from.x < 1);
-  const far = ease(from, { x: 20, y: 0, z: 0, yaw: 1 }, 1 / 60, from); assert.equal(far, from); assert.equal(from.x, 20);
 });
 
 test('friends are not clickable', t => {

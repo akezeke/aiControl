@@ -224,8 +224,8 @@ export function mountOffice(container, hooks) {
   // The others at the meeting walk about the host's office, and your own place goes out while you're at it (visiting, or hosting with your page open).
   const friends = createFriends(scene, { room, reducedMotion: () => reducedAtmosphere() });
   const atMeeting = () => (visiting !== null || hosting()) && !document.hidden;
-  let lastX = 0, lastZ = 0, speed = 0, shownTo = false, beat = 0;
-  const mine = { x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' }, hello = { type: 'pos', x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' };
+  let lastX = 0, lastZ = 0, speed = 0, shownTo = false;
+  const mine = { x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' };
   const sample = () => {
     let pose = props.holding ? 'holding' : playing ? 'playing' : gait(speed);
     if (pose === 'running' && !player.running) pose = 'walking';
@@ -233,7 +233,7 @@ export function mountOffice(container, hooks) {
     mine.x = x; mine.y = Math.max(0, player.position.y - EYE); mine.z = z; mine.yaw = player.yaw; mine.pose = pose;
     return mine;
   };
-  const say = () => live.send(Object.assign(hello, sample())); // live.send serializes at once, so the one object is reused
+  const say = () => live.presence(sample(), true);
   // The hub only relays moves, so whoever arrives gets everyone's place sent again; someone standing still would otherwise stay unseen.
   const meet = () => { shownTo = atMeeting(); friends.sync(live.roster(), live.id(), shownTo); if (shownTo) say(); };
   live.on('roster', meet); live.on('welcome', meet);
@@ -249,8 +249,6 @@ export function mountOffice(container, hooks) {
     friends.update(dt);
     if (!shownTo) return;
     live.presence(sample());
-    // A page that opens later (or one whose message was lost) has nothing of someone standing still, and the hub doesn't replay: say so every 2 s.
-    beat += dt; if (beat > 2) { beat = 0; say(); }
   });
   // Hidden, the link closes (live.js) and you stay put; shown, it's back and asks for the floor again.
   listen(document, 'visibilitychange', () => step(document.hidden ? 'hidden' : 'shown'));

@@ -24,6 +24,7 @@ test('checks drop every malformed message', () => {
     { type: 'pos', x: 3, y: 0, z: 4.5, yaw: -1.2, pose: 'walking' },
     { type: 'throw', kind: 'football', pos: [1, 1, 1], vel: [1, 2, 3], spin: [4, 5, 6] },
     { type: 'floor', floor: floor() },
+    { type: 'pos', x: 3, y: 0, z: 4.5, yaw: -1.2, pose: 'walking', t: 12345 },
   ];
   for (const msg of good) assert.deepEqual(checkUp(msg), msg);
   const bad = [
@@ -38,6 +39,9 @@ test('checks drop every malformed message', () => {
     { type: 'pos', x: 0, y: 0, z: -13, yaw: 0, pose: 'walking' },
     { type: 'pos', x: 0, y: 0, z: 0, yaw: Infinity, pose: 'walking' },
     { type: 'pos', x: 0, y: 0, z: 0, yaw: 0, pose: 'flying' },
+    { type: 'pos', x: 0, y: 0, z: 0, yaw: 0, pose: 'walking', t: -1 },
+    { type: 'pos', x: 0, y: 0, z: 0, yaw: 0, pose: 'walking', t: '5' },
+    { type: 'pos', x: 0, y: 0, z: 0, yaw: 0, pose: 'walking', t: null },
     { type: 'throw', kind: 'anvil', pos: [0, 0, 0], vel: [0, 0, 0], spin: [0, 0, 0] },
     { type: 'throw', kind: 'mug', pos: [0, 0], vel: [0, 0, 0], spin: [0, 0, 0] },
     { type: 'throw', kind: 'mug', pos: [0, 0, 0], vel: [41, 0, 0], spin: [0, 0, 0] },

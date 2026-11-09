@@ -143,6 +143,26 @@ test('pages come and go: one hub connection, the roster follows', async t => {
   for (const p of [bp, ...tabs, reload, ...again]) for (const m of p.all('roster')) assert.equal(new Set(m.players.map(p => p.name)).size, m.players.length);
 });
 
+test("a page that opens later hears where everyone at the meeting last was, and nothing of who's left", async t => {
+  const s = await setup(t);
+  const anna = await s.player('Anna'), bob = await s.player('Bob');
+  const ap = open(anna), bp = open(bob);
+  await until(() => ap.last('welcome') && bp.last('welcome'), 'welcomes');
+  for (const p of [ap, bp]) p.say({ type: 'where', at: 'meeting' });
+  await until(() => bp.sees('Anna')?.at === 'meeting' && bp.sees('Bob')?.at === 'meeting', 'both at the meeting');
+  ap.say({ type: 'pos', x: 1, y: 0, z: 1, yaw: 0, pose: 'walking', t: 100 });
+  ap.say({ type: 'pos', x: 2, y: 0, z: 1, yaw: 0, pose: 'standing', t: 167 });
+  await until(() => bp.last('pos')?.x === 2, "Anna's presence");
+  const later = open(bob);
+  await until(() => later.last('pos'), 'the last place, replayed');
+  assert.deepEqual(later.all('pos'), [{ type: 'pos', id: ap.last('welcome').id, x: 2, y: 0, z: 1, yaw: 0, pose: 'standing', t: 167 }]);
+  ap.say({ type: 'where', at: 'home' });
+  await until(() => bp.sees('Anna')?.at === 'home', 'Anna home');
+  const after = open(bob);
+  await until(() => after.last('roster'), 'the roster'); await wait(50);
+  assert.deepEqual(after.all('pos'), []);
+});
+
 test('a hub restart: pages hear it went, and the link comes back saying where you were', async t => {
   const s = await setup(t);
   const anna = await s.player('Anna'), bob = await s.player('Bob');
