@@ -44,7 +44,7 @@ async function readBody(req) {
 }
 
 // `hostToken()`: the token of whoever hosts (this machine's AI Control, read by scripts/hub.mjs), marked on the board.
-export async function startHub({ file, port = 47843, host = '127.0.0.1', now = Date.now, hostToken = () => null }) {
+export async function startHub({ file, port = 47843, host = '127.0.0.1', now = Date.now, helloMs = 5000, heartbeatMs = 30_000, hostToken = () => null }) {
   const state = hubState(file), key = sha(state.key), hostKey = sha(state.hostKey);
   // ponytail: one window for everyone. Per-player limits if a hub ever has more than a handful of friends.
   let second = -1, count = 0, timer = null, writing = Promise.resolve();
@@ -76,7 +76,8 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
   const wss = new WebSocketServer({ noServer: true, maxPayload: LIVE_BYTES });
   const byToken = new Map(), joined = new Set();
   let floor = null, hostSocket = null;
-  const put = (ws, m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
+  // A reader that lets a megabyte pile up is cut off rather than buffered for.
+  const put = (ws, m) => { if (ws.readyState !== 1) return; if (ws.bufferedAmount > 1 << 20) return ws.terminate(); ws.send(JSON.stringify(m)); };
   const roster = () => { const m = { type: 'roster', players: [...joined].map(({ p }) => ({ id: p.id, name: p.name, fruit: p.fruit, colour: p.colour, at: p.at })) }; for (const ws of joined) put(ws, m); };
   const at = place => [...joined].filter(ws => ws.p.at === place);
   const free = asked => { const taken = new Set([...joined].map(ws => ws.p.colour)); return taken.has(asked) ? COLOURS.find(c => !taken.has(c)) ?? asked : asked; };
@@ -96,7 +97,7 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     if (m.type === 'hello') {
       if (p.id) return;
       p.id = Array.from(randomBytes(8), b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
-      Object.assign(p, { name: m.name, fruit: m.fruit, colour: free(m.colour), at: 'home' }); joined.add(ws);
+      Object.assign(p, { name: state.players[p.token].name, fruit: m.fruit, colour: free(m.colour), at: 'home' }); joined.add(ws);
       put(ws, { type: 'welcome', id: p.id, colour: p.colour, at: p.at }); roster(); return;
     }
     if (!p.id) return;
@@ -110,7 +111,9 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     else if (m.type === 'floor' && ws === hostSocket) { floor = m.floor; for (const v of at('meeting')) put(v, m); }
   }
   wss.on('connection', (ws, _req, mine) => {
-    ws.p = { token: mine.token, windowStart: -Infinity, count: 0 };
+    ws.p = { token: mine.token, windowStart: -Infinity, count: 0, alive: true };
+    ws.on('pong', () => { ws.p.alive = true; });
+    const late = setTimeout(() => { if (!ws.p.id) ws.terminate(); }, helloMs); late.unref(); ws.on('close', () => clearTimeout(late));
     const old = byToken.get(mine.token); byToken.set(mine.token, ws);
     if (mine.host) hostSocket = ws;
     if (old) { drop(old); old.close(4000); if (mine.host) hostSocket = ws; }
@@ -124,13 +127,17 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     });
     ws.on('close', () => drop(ws)); ws.on('error', () => ws.terminate());
   });
+  // Silent peers (a sleeping phone, a dead network) are dropped: no pong since the last ping.
+  const beat = setInterval(() => { for (const ws of wss.clients) { if (!ws.p.alive) ws.terminate(); else { ws.p.alive = false; ws.ping(); } } }, heartbeatMs); beat.unref();
   function upgrade(req, socket, head) {
     const refuse = () => { socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); };
-    if (new URL(req.url, 'http://hub').pathname !== '/live') return socket.destroy();
+    if (req.url !== '/live') return socket.destroy();
     const given = /^Bearer (.+)$/.exec(req.headers.authorization || '')?.[1], tok = req.headers['x-player'], asked = req.headers['x-host'];
     if (!given || !timingSafeEqual(sha(given), key) || typeof tok !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(tok)) return refuse();
+    const id = sha(tok).toString('hex');
+    if (!state.players[id]) return refuse();
     const host = typeof asked === 'string' && timingSafeEqual(sha(asked), hostKey);
-    wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req, { token: sha(tok).toString('hex'), host }));
+    wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req, { token: id, host }));
   }
 
   const server = createServer(async (req, res) => {
@@ -152,6 +159,6 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   return {
     server, flush,
-    async close() { await flush(); for (const ws of wss.clients) ws.terminate(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); },
+    async close() { await flush(); clearInterval(beat); for (const ws of wss.clients) ws.terminate(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); },
   };
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { connect as tcp } from 'node:net';
 import { WebSocket } from 'ws';
 import { hubState, startHub } from '../server/hub.mjs';
 import { COLOURS } from '../client/office/meeting.js';
@@ -17,7 +18,10 @@ async function setup(t, options = {}) {
   const file = fresh(), h = await startHub({ port: 0, file, ...options }), port = h.server.address().port, state = hubState(file), sockets = [];
   t.after(() => { for (const s of sockets) s.terminate(); return h.close(); });
   // A client that keeps every message; `next(type)` waits for one more of a type (or the next already unread), with a timeout.
-  const connect = (c, { key = state.key, host = false, auth = true, tok = token(c) } = {}) => new Promise((resolve, reject) => {
+  const register = (tok, name) => fetch(`http://127.0.0.1:${port}/scores`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${state.key}` }, body: JSON.stringify({ token: tok, name, scores: {} }) });
+  const connect = async (c, { key = state.key, host = false, auth = true, tok = token(c), name = c, signed = true } = {}) => {
+    if (signed) assert.equal((await register(tok, name)).status, 200);
+    return new Promise((resolve, reject) => {
     const headers = { 'x-player': tok, ...(auth ? { authorization: `Bearer ${key}` } : {}), ...(host ? { 'x-host': state.hostKey } : {}) };
     const ws = new WebSocket(`ws://127.0.0.1:${port}/live`, { headers }); sockets.push(ws);
     const c_ = { ws, inbox: [], waiting: [], closed: null };
@@ -33,9 +37,10 @@ async function setup(t, options = {}) {
     c_.quiet = async (type, ms = 150) => { await new Promise(r => setTimeout(r, ms)); return c_.inbox.filter(m => m.type === type); };
     c_.closes = (ms = 1000) => new Promise((res, rej) => { if (c_.closed !== null) return res(c_.closed); ws.once('close', code => res(code)); setTimeout(() => rej(new Error('still open')), ms); });
     ws.once('open', () => resolve(c_)); ws.once('error', reject); ws.once('unexpected-response', (_q, r) => reject(Object.assign(new Error('refused'), { status: r.statusCode })));
-  });
+    });
+  };
   const join = async (c, o = {}, hello = {}) => {
-    const p = await connect(c, o); p.send({ type: 'hello', name: o.name ?? c, fruit: 'apple', colour: COLOURS[0], ...hello });
+    const p = await connect(c, o); p.send({ type: 'hello', name: 'whatever', fruit: 'apple', colour: COLOURS[0], ...hello });
     p.welcome = await p.next('welcome'); return p;
   };
   return { ...h, state, file, port, connect, join };
@@ -50,9 +55,10 @@ test('hubState gains a hostKey once, keeping the key and players', () => {
 
 test('only the right key and token get in', async t => {
   const h = await setup(t);
-  await assert.rejects(h.connect('a', { auth: false }), { status: 401 });
-  await assert.rejects(h.connect('a', { key: 'nope' }), { status: 401 });
-  await assert.rejects(h.connect('a', { tok: 'short' }), { status: 401 });
+  await assert.rejects(h.connect('a', { auth: false, signed: false }), { status: 401 });
+  await assert.rejects(h.connect('a', { key: 'nope', signed: false }), { status: 401 });
+  await assert.rejects(h.connect('a', { tok: 'short', signed: false }), { status: 401 });
+  await assert.rejects(h.connect('a', { signed: false }), { status: 401 });
   const ok = await h.connect('a'); assert.equal(ok.ws.readyState, WebSocket.OPEN);
   const other = new WebSocket(`ws://127.0.0.1:${h.port}/other`, { headers: { authorization: `Bearer ${h.state.key}`, 'x-player': token('b') } });
   await new Promise(r => { other.on('error', r); other.on('close', r); });
@@ -129,4 +135,33 @@ test('the same token twice keeps one player', async t => {
   assert.equal(await a.closes(), 4000);
   const roster = await lastRoster(watcher); assert.equal(roster.length, 2);
   assert.ok(roster.some(p => p.id === again.welcome.id) && !roster.some(p => p.id === a.welcome.id));
+});
+
+test('a hostile request target cannot crash the hub', async t => {
+  const h = await setup(t);
+  for (const target of ['//', '/live/../x', 'http://']) {
+    const raw = await new Promise(res => { const c = tcp(h.port, '127.0.0.1', () => c.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`)); c.on('close', res); c.on('error', res); });
+    assert.equal(h.server.listening, true);
+  }
+  const r = await fetch(`http://127.0.0.1:${h.port}/scores`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${h.state.key}` }, body: JSON.stringify({ token: token('z'), name: 'Z', scores: {} }) });
+  assert.equal(r.status, 200);
+});
+
+test('the roster shows the registered name, not the one in hello', async t => {
+  const h = await setup(t), a = await h.join('a', { name: 'Anna' }, { name: 'Mallory' });
+  assert.equal((await lastRoster(a))[0].name, 'Anna');
+});
+
+test('a socket that never says hello is closed', async t => {
+  const h = await setup(t, { helloMs: 100 }), a = await h.connect('a');
+  assert.equal(await a.closes(), 1006);
+});
+
+test('a peer that stops answering pings is dropped, and a vanished host takes the floor with it', async t => {
+  const h = await setup(t, { heartbeatMs: 100 });
+  const host = await h.join('h', { host: true }), a = await h.join('a'), b = await h.join('b');
+  a.send({ type: 'where', at: 'meeting' }); host.send({ type: 'floor', floor: FLOOR }); await a.next('floor');
+  host.ws._socket.pause(); b.ws._socket.pause();
+  assert.equal((await a.next('floor', 1500)).floor, null);
+  const roster = await lastRoster(a); assert.deepEqual(roster.map(p => p.id), [a.welcome.id]);
 });
