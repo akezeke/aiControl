@@ -346,12 +346,13 @@ export function mountOffice(container, hooks) {
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });
-  // Visiting, the working desks' made-up screens (meeting.js) move on once a second, through the screens' own redraw.
+  // Visiting, the working, waiting and idle desks' made-up screens (meeting.js) move on once a second, through the screens' own redraw
+  // (which only repaints a screen whose content changed).
   let second = 0;
   frames.add(() => {
     if (visiting === null) return;
     const now = Math.floor(Date.now() / 1000); if (now === second) return; second = now;
-    for (const [id, status] of office.statuses) if (status.screen === 'green') status.monitor = fakeMonitor(id, 'green', now);
+    for (const [id, status] of office.statuses) status.monitor = fakeMonitor(id, status.screen, now);
     room.monitors(office.statuses);
   });
   // Once the office has drawn a few frames the kitchen gets ready, a slice each time the browser's idle, so its doors have little left to do (kitchen.prepare).

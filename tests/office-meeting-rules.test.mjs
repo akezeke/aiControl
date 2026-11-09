@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FRUITS, COLOURS, KINDS, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor, WORDS } from '../client/office/meeting.js';
+import { FRUITS, COLOURS, KINDS, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor } from '../client/office/meeting.js';
 import { palettes } from '../client/office/status.js';
 import { sharedLayout, layoutOffice } from '../client/office/layout.js';
 
@@ -131,7 +131,6 @@ test('fakeMonitor', () => {
   assert.notDeepEqual(m, fakeMonitor('d1', 'green', 6));
   assert.equal(m.lines.length, 6); assert.equal(m.title, ''); assert.equal(m.plan, null);
   assert.deepEqual(fakeMonitor('d1', 'green', 6).lines.slice(0, 5), m.lines.slice(1));
-  assert.equal(fakeMonitor('d1', 'dark', 5), null); assert.equal(fakeMonitor('d1', 'off', 5), null);
+  assert.equal(fakeMonitor('d1', 'off', 5), null);
   assert.deepEqual(fakeMonitor('d1', 'amber', 5).lines, [{ kind: 'user', text: '' }], 'an empty prompt: the screen draws a user line\'s › itself');
-  for (let t = 0; t < 20; t++) for (const l of fakeMonitor('x', 'green', t).lines) for (const w of l.text.split(' ')) assert.ok(WORDS.includes(w), w);
 });

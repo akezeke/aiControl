@@ -162,6 +162,12 @@ function drawScreen(g, w, h, monitor = null, tone = 'off') {
   g.setTransform(w / 432, 0, 0, h / 256, 0, 0); w = 432; h = 256;
   g.fillStyle = background; g.fillRect(0, 0, w, h);
   if (!monitor) return;
+  // A screen saver: the text bouncing about (x, y in 0..1 of the room it has), nothing else.
+  if (monitor.saver) {
+    const { text, x, y } = monitor.saver; g.font = 'bold 26px ui-monospace, monospace'; g.textBaseline = 'middle'; g.fillStyle = accent;
+    const tw = g.measureText(text).width; g.fillText(text, 6 + x * (w - tw - 12), 20 + y * (h - 40));
+    return;
+  }
   g.fillStyle = accent; g.fillRect(0, 0, w, 34);
   // The plan as a row of boxes before the title (the post-its cover the bar's right end): filled when done, a dot in the one
   // under way.
@@ -179,6 +185,12 @@ function drawScreen(g, w, h, monitor = null, tone = 'off') {
     g.fillStyle = kind === 'user' ? '#ffffff' : kind === 'tool' ? accent : '#c9cfdb';
     g.fillText(clip(g, `${kind === 'user' ? '› ' : kind === 'tool' ? '• ' : '  '}${text}`, w - 20), 10, 46 + i * 34);
   });
+  // A banner over the lines: big and centred on a dark band.
+  if (monitor.banner) {
+    g.fillStyle = '#000000d9'; g.fillRect(0, h / 2 - 34, w, 68);
+    g.font = 'bold 40px ui-monospace, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = accent;
+    g.fillText(clip(g, monitor.banner, w - 20), w / 2, h / 2 + 2); g.textAlign = 'left';
+  }
 }
 // The second monitor: the newest screenshot, fitted in, and how many there are.
 function drawShot(g, w, h, shot = null) {

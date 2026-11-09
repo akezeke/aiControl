@@ -113,18 +113,35 @@ export function floorSnapshot(floor) {
   return { office: { ...office, desks: [...office.desks.values()] }, sessions: sessions.map(({ id, parentId }) => ({ id, parentId, status: floor.desks.find(d => d.id === id).status })), statuses };
 }
 
-// A screen that looks busy without showing anything: lines made of a fixed word list, the same for the same desk and second.
-export const WORDS = ['let', 'const', 'return', 'if', 'else', 'for', 'while', 'map', 'filter', 'reduce', 'await', 'async', 'import', 'export', 'node', 'value', 'list', 'item', 'result', 'error', 'build', 'test', 'pass', 'fail', 'read', 'write', 'edit', 'check', 'run', 'file', 'path', 'name', 'type', 'state', 'event', 'data', 'update', 'render', 'load', 'save'];
-const KINDS_OF_LINE = ['assistant', 'assistant', 'tool', 'user'];
+// Screens that are obviously fake: a Hollywood hacker's terminal at Low-Hanging Fruit Ltd. Everything comes from these lists, the same
+// for the same desk and second, and nothing from the host's sessions.
+export const COMMANDS = ['$ npm install more-ram', '$ git commit -m "fixed it, for real this time"', '$ sudo make me a sandwich', '$ ./ripen --force bananas', '$ rm -rf mondays/', '$ docker run coffee:double', '$ curl stackoverflow.com | sh', '$ git push --force-with-confidence', '$ cd /fruit/low-hanging', '$ ssh root@the-mainframe', '$ make it-work', '$ chmod +x banana', '$ ping -c 1 the-cloud', '$ cat /dev/urandom | grep meaning'];
+export const PROGRESS = ['Downloading more RAM', 'Reticulating splines', 'Squeezing juice from legacy code', 'Ripening branch', 'Peeling bananas.js', 'Hacking the mainframe', 'Defragmenting the fruit bowl', 'Compiling the synergy', 'Untangling spaghetti code', 'Bribing the garbage collector', 'Watering the stack', 'Polishing the apples', 'Mining fruitcoin', 'Warming up the cloud'];
+export const RESULTS = ['✓ 4,812 tests passed (2 were looked at)', '⚠ it works on my machine', 'ERROR: too much fruit in the stack', '✓ deployed to production (fingers crossed)', 'TODO: ask the banana', '✓ bug fixed (renamed to feature)', '⚠ 99 problems, 98 are fruit', 'ERROR: keyboard not found, press F1', '✓ coffee level: critical', '⚠ legacy code is looking at me', 'TODO: delete this TODO', '✓ merged without reading', 'ERROR: pear-to-pear connection lost', '✓ the cloud is just fruit on someone else\'s tree'];
+export const BANNERS = ['ACCESS GRANTED', 'ENHANCE.', 'HACK COMPLETE', 'I\'M IN.'];
 const hashOf = text => { let h = 0x811c9dc5; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
+const mix = h => { h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0; h = Math.imul(h ^ (h >>> 12), 0x297a2d39) >>> 0; return (h ^ (h >>> 15)) >>> 0; };
+const rolled = (seed, tag, n) => mix(hashOf(`${seed}:${tag}:${n}`));
+const BAR = 10;
 const lineAt = (seed, n) => {
-  let h = hashOf(`${seed}:${n}`);
-  const next = () => { h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0; h = (h ^ (h >>> 12)) >>> 0; return h; };
-  return { kind: KINDS_OF_LINE[next() % KINDS_OF_LINE.length], text: Array.from({ length: 3 + next() % 4 }, () => WORDS[next() % WORDS.length]).join(' ') };
+  const h = rolled(seed, 'line', n), kind = ['user', 'tool', 'assistant'][h % 3], pick = (h >>> 4) % 14;
+  if (kind === 'user') return { kind, text: COMMANDS[pick] };
+  if (kind === 'assistant') return { kind, text: RESULTS[pick] };
+  const label = PROGRESS[pick], shape = (h >>> 9) % 4, pct = 1 + (h >>> 12) % 99, done = Math.round(pct * BAR / 100);
+  return { kind, text: shape === 0 ? `${label} …` : shape === 1 ? `${label} ${'█'.repeat(BAR)} done` : `${label} ${'█'.repeat(done)}${'░'.repeat(BAR - done)} ${pct}%` };
 };
+const bannerAt = (seed, n) => rolled(seed, 'banner', n) % 12 === 0 && rolled(seed, 'banner', n - 1) % 12 !== 0 ? BANNERS[rolled(seed, 'words', n) % BANNERS.length] : undefined;
+const bounce = (v, size) => { const m = ((v % (2 * size)) + 2 * size) % (2 * size); return (m > size ? 2 * size - m : m) / size; };
+const SAVER_STEP = [0.137, 0.091];
 export function fakeMonitor(seed, tone, t) {
-  if (tone === 'amber') return { title: '', plan: null, lines: [{ kind: 'user', text: '' }] }; // the screen draws its prompt
-  if (tone !== 'green') return null;
   const now = Math.floor(t);
-  return { title: '', plan: null, lines: Array.from({ length: 6 }, (_, i) => lineAt(seed, now - 5 + i)) };
+  if (tone === 'amber') return { title: '', plan: null, lines: [{ kind: 'user', text: now % 2 ? '' : 'hello? anyone? (tap tap tap)' }] }; // the screen draws its ›
+  if (tone === 'dark') {
+    const [x0, y0] = [rolled(seed, 'x', 0) / 2 ** 32, rolled(seed, 'y', 0) / 2 ** 32];
+    return { title: '', plan: null, lines: [], saver: { text: 'brb ☕', x: bounce(x0 + now * SAVER_STEP[0], 1), y: bounce(y0 + now * SAVER_STEP[1], 1) } };
+  }
+  if (tone !== 'green') return null;
+  const monitor = { title: '', plan: null, lines: Array.from({ length: 6 }, (_, i) => lineAt(seed, now - 5 + i)) }, banner = bannerAt(seed, now);
+  if (banner) monitor.banner = banner;
+  return monitor;
 }
