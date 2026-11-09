@@ -1,6 +1,7 @@
 // Trickshot: throw a thing from its taped mark across the kitchen and into where it goes. Clicking an item walks you to its mark and
 // puts it in your hand, from your own eyes: you can look but not walk, and the doors stay shut till you leave. A shot is worked out
-// whole at release (shot.js) and played back here, in the room's own frame, so the room growing under it changes nothing. No document here.
+// whole at release (shot.js) and played back here, in the room's own frame, so the room growing under it changes nothing. At a meeting a
+// throw is told (onThrow) in the office's frame, and a friend's is played here as a copy (ghost, ghosts.js). No document here.
 import * as THREE from 'three';
 import { wideFov } from './camera.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -14,6 +15,7 @@ import { loadProgress, recordDaily, recordLevel, saveProgress } from './progress
 import { EYE } from './player.js';
 import { toonMaterial, withOutline } from './toon.js';
 import { WALL_H } from './furniture.js';
+import { createGhosts } from './ghosts.js';
 
 const HAND_BACK = 1, PARTY = 1.2, BITS = 24, GROUND = 0.008; // seconds the camera stays on where a shot ended; of confetti; how many; the tape's height
 const LIT = '#ffd21f', ARROW = 0.09, OVER = 0.2, LEAST = 0.08, HIGHEST = 1, BOB = 0.025, BOBS = 2.2, TAP_ASIDE = -0.13, MARKER_SIGHT = { radius: 0.01, low: 0.01 }; // the marker: its colour; how tall per metre from the mark, so it looks the same size from near and far; how far its tip stays over its target, as a rule and when there's no room; as high as it goes to be seen; how far it bobs either way, and how fast (radians a second); to the side of the sink's middle, where the tap's spout is
@@ -90,6 +92,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
   const follow = { at: new THREE.Vector3(), look: new THREE.Vector3(), ahead: new THREE.Vector3(), spot: new THREE.Vector3(), step: new THREE.Vector3(), from: new THREE.Vector3() };
   const eye = new THREE.Vector3(), now = new THREE.Vector3(), flying = new THREE.Vector3(), palm = new THREE.Vector3(), fromHand = new THREE.Vector3(); // `flying`: where it really is, the mesh only drawn from the hand
   let group = null, pending = null, entry = null, kind = null, mesh = null, angle = 0, moved = false, handBack = 0, partyLeft = 0, climb = 0, hidden = 0, bob = 0, told = false; // hidden: how long the camera's not seen the item; told: this shot's verdict is out
+  const ghosts = createGhosts({ world: () => flightWorld(), reducedMotion }); // through the same boxes as a shot
 
   const bits = Array.from({ length: BITS }, () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 })), spots = new Float32Array(BITS * 3), colours = new Float32Array(BITS * 3);
   { const paper = ['#ffd166', '#ef476f', '#06d6a0', '#4f7cff'].map(c => new THREE.Color(c)); for (let i = 0; i < BITS; i++) paper[i % 4].toArray(colours, i * 3); }
@@ -265,10 +268,20 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       axis.crossVectors(direction, UP).normalize(); if (!axis.lengthSq()) axis.set(1, 0, 0);
       game.score = null; told = false; label();
       game.run.shoot(makeBody(kind, pos, vel), ZONES[entry.target]);
+      // A shot has no spin, which is how a friend's office tells it from the office's own throws (props.js): those always tumble.
+      game.onThrow?.({ kind: entry.item, pos: [pos.x + kitchen.origin.x, pos.y, pos.z + kitchen.origin.z], vel: vel.toArray(), spin: [0, 0, 0] });
       if (!reducedMotion()) { moved = true; hidden = 0; follow.at.copy(eye); follow.look.copy(mesh.position); follow.ahead.set(direction.x, 0, direction.z); if (follow.ahead.lengthSq() < 1e-6) follow.ahead.set(Math.sin(STARTS[entry.start].stand), 0, Math.cos(STARTS[entry.start].stand)); follow.ahead.normalize(); view?.play(() => game.pose()); }
       tone(280, 640, 0.13, 'sine', 0.08 + 0.1 * charge);
     },
     abort() { hand.pull(0); },
+    // A friend's shot at the meeting ({ kind, pos, vel, spin }, in the office's frame): a copy of the item that flies the way it did and
+    // fades, tumbling as a shot's drawn to. False if it isn't a shot: none of these items, or it spins.
+    ghost(thrown) {
+      if (!group || !kitchen.origin || !Object.hasOwn(ITEMS, thrown.kind) || thrown.spin.some(Boolean)) return false;
+      const item = ITEMS[thrown.kind], [x, y, z] = thrown.pos, [vx, , vz] = thrown.vel, across = Math.hypot(vx, vz) || 1;
+      ghosts.add(group, items[MONDAY.find(e => e.item === thrown.kind).id].clone(), item, { pos: [x - kitchen.origin.x, y, z - kitchen.origin.z], vel: thrown.vel, spin: [-vz / across * item.tumble, 0, vx / across * item.tumble] });
+      return true;
+    },
     reset() {
       if (!entry) return;
       const r = keepMade();
@@ -287,7 +300,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       return pose;
     },
     update(dt, at, still, shown) {
-      blowUp(dt);
+      blowUp(dt); ghosts.update(dt);
       if (!entry) return;
       marker.visible = !moved;
       if (!moved && !reducedMotion()) { const was = Math.sin(bob); bob += dt * BOBS; marker.position.y += (Math.sin(bob) - was) * BOB; marker.glow((Math.sin(bob) + 1) / 2); }

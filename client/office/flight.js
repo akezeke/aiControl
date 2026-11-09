@@ -129,7 +129,7 @@ export function stepBody(b, world) {
   const parts = Math.max(1, Math.ceil(b.vel.length() * h / Math.min(r, low)));
   let ground = false;
   for (let i = 0; i < parts; i++) { b.pos.addScaledVector(b.vel, h / parts); ground = collide(b, world) || ground; }
-  // ponytail: no orientation here, only spin; whoever draws the thing turns it by `spin`
+  // ponytail: no orientation here, only spin; whoever draws the thing turns it by `spin` (turnBy)
   if (ground) { const k = Math.exp(-roll * h); b.vel.x *= k; b.vel.z *= k; if (upright) b.spin.set(0, 0, 0); else b.spin.set(b.vel.z, 0, -b.vel.x).divideScalar(r); }
   else b.spin.multiplyScalar(Math.exp(-0.5 * h));
   b.ground = ground;
@@ -144,6 +144,17 @@ export function advance(b, dt, world) {
   let n = 0;
   while (b.due >= STEP && n < MOST && !b.rest) { stepBody(b, world); b.due -= STEP; n++; }
   if (b.due > STEP) b.due = STEP;
+}
+
+// A frame of how a thing that's drawn turns (b.turn, a quaternion): by its spin, and one that stands (kind.upright) stands back up
+// once it's down, at rest only once it's straight.
+const UP = new Vector3(0, 1, 0), turnAxis = new Vector3(), turning = new Quaternion(), tilt = new Quaternion();
+export function turnBy(b, dt) {
+  const rate = b.spin.length();
+  if (rate > 1e-4) b.turn.premultiply(turning.setFromAxisAngle(turnAxis.copy(b.spin).normalize(), rate * dt));
+  if (!b.kind.upright) return;
+  if (b.ground) b.turn.premultiply(tilt.identity().slerp(turning.setFromUnitVectors(turnAxis.copy(UP).applyQuaternion(b.turn), UP), 1 - Math.exp(-12 * dt)));
+  if (b.rest && turnAxis.copy(UP).applyQuaternion(b.turn).y <= 0.999) b.rest = false; // still leaning: stays awake
 }
 
 // A whole shot ahead of time on a body (stepped in place): the path every 4 steps, each contact (with where the thing was and which way the surface faces), and where it ends.

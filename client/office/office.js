@@ -238,6 +238,9 @@ export function mountOffice(container, hooks) {
   const meet = () => { shownTo = atMeeting(); friends.sync(live.roster(), live.id(), shownTo); if (shownTo) say(); };
   live.on('roster', meet); live.on('welcome', meet);
   live.on('pos', m => friends.move(m.id, m));
+  // Throws at the meeting: yours go to everyone there, and theirs fly here as copies that move nothing of yours (a shot in the kitchen, else the office's things).
+  props.onThrow = trickshot.onThrow = thrown => { if (atMeeting()) live.send({ type: 'throw', ...thrown }); };
+  live.on('throw', m => { if (atMeeting()) trickshot.ghost(m) || props.ghost(m); });
   frames.add(dt => {
     const { x, z } = player.position, fast = dt > 0 ? Math.hypot(x - lastX, z - lastZ) / dt : 0, moved = fast > 12 ? 0 : fast; lastX = x; lastZ = z; // a jump (the door) isn't a run
     speed += (moved - speed) * Math.min(1, dt * 12);
