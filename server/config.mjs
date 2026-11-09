@@ -17,9 +17,21 @@ export const settingsFile = join(dataDir, 'config.json');
 export const port = 47841;
 export function prepareData() { mkdirSync(dataDir, { recursive: true, mode: 0o700 }); }
 
-// { mode: 'tailscale' | 'local', cert?, key?, claudeDirs?, opencode?: { service: true } | { url, username?, password? } }, written by scripts/setup.mjs.
+// { mode: 'tailscale' | 'local', cert?, key?, claudeDirs?, opencode?: { service: true } | { url, username?, password? }, location?: [lat, lon] },
+// written by scripts/setup.mjs (location only by hand).
 export function readSettings() {
   try { return JSON.parse(readFileSync(settingsFile, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return {}; throw e; }
+}
+
+// [latitude, longitude] the office windows' sun is worked out for: settings.location, else the main city of this machine's
+// time zone in the tz database's zone.tab (Linux, macOS), whose ISO 6709 ±DDMM[SS]±DDDMM[SS] it parses; null when neither (the windows then use Stockholm).
+export function location(settings = readSettings(), zone = Intl.DateTimeFormat().resolvedOptions().timeZone, tab = '/usr/share/zoneinfo/zone.tab') {
+  if (Array.isArray(settings.location) && settings.location.length === 2 && settings.location.every(Number.isFinite)) return settings.location;
+  try {
+    const [, lat, lon] = readFileSync(tab, 'utf8').split('\n').map(line => line.split('\t')).find(row => row[2] === zone)[1].match(/^([+-]\d{4,6})([+-]\d{5,7})$/);
+    const degrees = (s, n) => (s[0] === '-' ? -1 : 1) * (+s.slice(1, n + 1) + s.slice(n + 1, n + 3) / 60 + s.slice(n + 3) / 3600);
+    return [degrees(lat, 2), degrees(lon, 3)];
+  } catch { return null; }
 }
 
 // Claude Code config folders in use when none are configured: $CLAUDE_CONFIG_DIR, ~/.claude and every ~/.claude-*

@@ -22,6 +22,7 @@ import { closeAudio, createTrickshot } from './trickshot.js';
 import { createGolf } from './golf.js';
 import { createPinball } from './pinball.js';
 import { createSnake } from './snake.js';
+import { setSkyPlace } from './windows.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
 import { inSlices, shaders, textures } from './ready.js';
@@ -331,7 +332,7 @@ export function mountOffice(container, hooks) {
     scene, renderer, camera, hooks, container, props,
     onFrame(fn) { frames.add(fn); return () => frames.delete(fn); },
     update(snapshot, { error = '' } = {}) {
-      office.snapshot = snapshot; office.error = error;
+      office.snapshot = snapshot; office.error = error; setSkyPlace(snapshot.location);
       // The server's seats, the same on every device (server/seats.mjs). Worked out here only until a server from before them restarts.
       const before = layout?.room;
       layout = snapshot.office ? sharedLayout(snapshot.office) : layoutOffice(snapshot.sessions, layout); view.setLayout(layout);

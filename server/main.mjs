@@ -29,7 +29,7 @@ import { WorkspaceStore } from './workspace.mjs';
 import { HistorySearch, openCodeHistorySource } from './history-search.mjs';
 import { WorkflowService } from './workflow.mjs';
 import { launchPreset } from './workflow-launch.mjs';
-import { root, authFile, dataDir, hookSocket, port, claudeAccounts, readSettings } from './config.mjs';
+import { root, authFile, dataDir, hookSocket, port, claudeAccounts, readSettings, location } from './config.mjs';
 
 export async function startServer({ host, hostname, tls = null }) {
   const origin = `${tls ? 'https' : 'http'}://${hostname}:${port}`;
@@ -74,9 +74,10 @@ export async function startServer({ host, hostname, tls = null }) {
     providers: [{ id: 'codex', name: 'Codex', adapter: codex, retry: () => codex.connected ? codex.refresh() : codex.connect() },
       { id: 'claude', name: 'Claude Code', adapter: claude, retry: () => claude.refresh() },
       ...opencode.config ? [{ id: 'opencode', name: 'OpenCode', adapter: opencode, retry: () => opencode.refresh() }] : []] });
+  const place = location();
   const snapshot = () => {
     const sessions = currentSessions();
-    return { sessions, ...workflow.snapshot(), office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), lostChecking: recovery.checking(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, workflow: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: workflow.health().providers };
+    return { sessions, ...workflow.snapshot(), office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), lostChecking: recovery.checking(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, workflow: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: workflow.health().providers, location: place };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);

@@ -2,7 +2,7 @@ import { atmosphereScale } from '../atmosphere.js';
 // The back wall's windows: one merged frame (plus its outline) and one merged pane of glass for them all, three draw calls.
 // The glass looks out through a shader rather than at a picture: sky, clouds, a skyline and trees stand at set distances
 // behind the wall over a street worked out in the shader, so the view shifts as you move, holds up with your nose to the
-// glass and runs on from one window to the next. The sky follows the clock.
+// glass and runs on from one window to the next. The sky follows the sun where the server is (snapshot.location).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { WALL_H, WALL_T, rounded, mesh, canvasTexture } from './furniture.js';
@@ -11,10 +11,27 @@ import { toonMaterial } from './toon.js';
 const W = 1.5, H = 1.4, Y = 1.75 - WALL_H / 2, FACE = WALL_T / 2; // glass size, its centre on the wall, the wall's inner face
 const CASING = 0.07, DEPTH = 0.14; // the frame's boards stand out from the wall, so its inner sides read as a recess
 
-// [hour, zenith, horizon, what lights the skyline and trees]; between 20:30 and 06:00 the night pictures are drawn already dark.
-const SKY = [[0, '#0a1330', '#1b2950', '#5c5872'], [5.5, '#0a1330', '#1b2950', '#5c5872'], [6.5, '#5a74b0', '#f3b48e', '#c9a8a0'], [8, '#3f9be3', '#cbecff', '#ffffff'],
-  [17.5, '#3f9be3', '#cbecff', '#ffffff'], [19.5, '#3b4c8c', '#f2996c', '#e09a80'], [20.5, '#0a1330', '#1b2950', '#5c5872'], [24, '#0a1330', '#1b2950', '#5c5872']];
-const isNight = hour => hour < 6 || hour >= 20.5;
+// [the sun's elevation in degrees, zenith, horizon, what lights the skyline and trees], with sunrise's or sunset's colours at
+// the horizon; with the sun 4° below it the night pictures are drawn already dark.
+const NIGHT = ['#0a1330', '#1b2950', '#5c5872'], DAY = ['#3f9be3', '#cbecff', '#ffffff'], DAWN = ['#5a74b0', '#f3b48e', '#c9a8a0'], DUSK = ['#3b4c8c', '#f2996c', '#e09a80'];
+const sky = rising => [[-90, ...NIGHT], [-9, ...NIGHT], [0, ...rising ? DAWN : DUSK], [8, ...DAY], [91, ...DAY]];
+const isNight = elevation => elevation < -4;
+
+// The sun's elevation in degrees at `time` (ms) seen from [lat, lon], and whether it is still climbing: the almanac's
+// low-precision formulas, within a minute or two of the real sunrise and sunset.
+export function sun(time, [lat, lon]) {
+  const rad = Math.PI / 180, d = time / 864e5 - 10957.5; // days since J2000
+  const g = (357.529 + 0.98560028 * d) * rad, l = (280.459 + 0.98564736 * d + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * rad; // mean anomaly, ecliptic longitude
+  const e = (23.439 - 4e-7 * d) * rad, dec = Math.asin(Math.sin(e) * Math.sin(l)), ra = Math.atan2(Math.cos(e) * Math.sin(l), Math.cos(l));
+  const ha = (280.46061837 + 360.98564736629 * d + lon) * rad - ra; // local hour angle, from sidereal time
+  return { elevation: Math.asin(Math.sin(lat * rad) * Math.sin(dec) + Math.cos(lat * rad) * Math.cos(dec) * Math.cos(ha)) / rad, rising: Math.sin(ha) < 0 };
+}
+// Where the sun is seen from; Stockholm until the server says, or when it can't tell.
+const STOCKHOLM = [59.3333, 18.05];
+let place = null, checked = -Infinity;
+export function setSkyPlace(location) {
+  if (String(location) !== String(place)) { place = location; checked = -Infinity; }
+}
 
 const random = seed => () => (seed = seed * 16807 % 2147483647) / 2147483647;
 // The same for a spot every time, so a lit window stays lit whichever copy of its building is drawn.
@@ -136,18 +153,19 @@ function glassMaterial() {
       }`,
   });
   // The sky is checked once a minute; the pictures are only redrawn when night falls or ends. Clouds drift unless motion is reduced.
-  let checked = -Infinity, night = false, previous = performance.now();
+  let night = false, previous = performance.now();
   material.update = () => {
     const now = performance.now();
     uniforms.drift.value = (uniforms.drift.value + Math.min(.1, (now - previous) / 1000) * atmosphereScale() * 1.5 / HIGH[1]) % 1; previous = now;
     if (now - checked < 60_000) return;
     checked = now;
-    const date = new Date(), hour = date.getHours() + date.getMinutes() / 60, i = SKY.findIndex(key => key[0] > hour), [h0, ...a] = SKY[i - 1], [h1, ...b] = SKY[i], k = (hour - h0) / (h1 - h0);
+    const { elevation, rising } = sun(Date.now(), place || STOCKHOLM), keys = sky(rising), i = keys.findIndex(key => key[0] > elevation);
+    const [e0, ...a] = keys[i - 1], [e1, ...b] = keys[i], k = (elevation - e0) / (e1 - e0);
     for (const [j, name] of ['zenith', 'horizon', 'shade'].entries()) uniforms[name].value.set(a[j]).lerp(new THREE.Color(b[j]), k);
     // The pictures are drawn dark for the night already; the street isn't.
-    uniforms.lit.value.copy(uniforms.shade.value); uniforms.lamps.value = isNight(hour) ? 1 : 0;
-    if (isNight(hour)) uniforms.shade.value.set('#ffffff');
-    if (night !== isNight(hour)) { night = isNight(hour); for (const name of ['high', 'far', 'near']) uniforms[name].value.redraw(night); }
+    uniforms.lit.value.copy(uniforms.shade.value); uniforms.lamps.value = isNight(elevation) ? 1 : 0;
+    if (isNight(elevation)) uniforms.shade.value.set('#ffffff');
+    if (night !== isNight(elevation)) { night = isNight(elevation); for (const name of ['high', 'far', 'near']) uniforms[name].value.redraw(night); }
   };
   return look = material;
 }
