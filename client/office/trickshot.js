@@ -2,6 +2,7 @@
 // puts it in your hand, from your own eyes: you can look but not walk, and the doors stay shut till you leave. A shot is worked out
 // whole at release (shot.js) and played back here, in the room's own frame, so the room growing under it changes nothing. No document here.
 import * as THREE from 'three';
+import { wideFov } from './camera.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { createArc, drawnAt, launch } from './throwing.js';
 import { makeBody, stopShort } from './flight.js';
@@ -23,7 +24,7 @@ const SHOT_FOV = 52, WIDEST_FOV = 80, LANDSCAPE = 1.6, IN_SIGHT = 0.6; // its fo
 const VIEWS = [[1.5, 0.6, 0], [1.2, 1, 0], [0.6, 1.4, 0], [0.9, 0.9, 0.9], [0.9, 0.9, -0.9], [-0.9, 0.9, 0], [0, 1.4, 0.5], [0, 1.4, -0.5]], NEAREST = 0.7, CATCH = 5, FASTEST = 8, EYES = 10, COMES_ROUND = 2.5, CAMERA = { radius: 0.15, low: 0.15 }, SLIM = { radius: 0.02, low: 0.02 }, CLEAR = 1e-3, WEDGED = 1, CLIMB = 3, CLIMBS = 0.4;
 const LOST = 0.3, SIGHT = { radius: 0.005, low: 0.005 };
 // As much across as a landscape screen shows, as far as a fov can go without looking stretched.
-export const shotFov = aspect => Math.max(SHOT_FOV, Math.min(WIDEST_FOV, 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(SHOT_FOV / 2)) * LANDSCAPE / aspect))));
+export const shotFov = aspect => wideFov(SHOT_FOV, aspect, WIDEST_FOV);
 // Whatever the look is lagging behind, the item is never more than `most` (radians) off it, seen from `at`: `look` is drawn in that far, not snapped.
 export const keepInSight = (look, item, at, most) => {
   const to = sight.subVectors(item, at), from = sightFrom.subVectors(look, at), far = to.length();

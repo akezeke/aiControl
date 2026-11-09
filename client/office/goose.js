@@ -187,6 +187,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     // Just over its head, for its bubble.
     top() { return root.visible ? head.getWorldPosition(above).setY(above.y + 0.16) : null; },
     hit() { provoke(LONG, '💢'); },
+    honk, // just a honk, beak open and a bubble: the snake bumped into it
     poke() { provoke(LONG); },
     update(dt) {
       const room = bounds(); if (!room) return;

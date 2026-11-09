@@ -1,6 +1,6 @@
 // Snake on the office floor. Click the snake plant in the back corner (or E on it) and the view drops in behind a snake curled
-// at its pot. ← → (A D) turn it left or right of where it's heading, as does pressing the left or right half of the screen;
-// ↑, W or Space sets it off, and again after a crash. Esc, ✕, ↓ or S steps back and pauses it.
+// at its pot. ← → (A D) turn it left or right of where it's heading, as does a swipe that way or a tap on that half of the screen;
+// ↑ ↓, W S or Space (or a tap, before it's off) sets it off, and again after a crash. Esc or ✕ steps back and pauses it.
 // It runs on path.js's walk grid a cell (25 cm) a step, so a turn never waits long. Furniture, walls and its own body end the
 // run, though about to hit one it holds a moment first, shivering, for a turn to save it. The grid shows on the floor round it
 // while it plays, faint red where it would crash. One apple at a time, somewhere it can get to a few metres off, under a beam
@@ -18,14 +18,18 @@ export const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 export const LENGTH = 16, GROW = 3; // segments to start with (4 m: the office is big), and more for each apple
 const RATE = 8, FAST = 16, QUICKER = 0.4; // steps a second to start (2 m/s), at most, and more per apple
 const NEAR = 3, FAR = 8, AGAIN = 0.5; // metres' crawl off an apple goes when it can be; seconds after a crash before going again
+export const CLEAR = 0.12; // metres kept off something moving about (the goose) beyond its own radius: its red circle
 export const STALL = 0.12; // seconds it holds, about to hit something, for a turn: about a step at the start
 
 const same = (a, b) => a[0] === b[0] && a[1] === b[1];
 const openAt = (grid, x, z) => grid.open[index(grid, { x, z })] === 1;
+// Inside one of `blocks` (things moving about, { x, z, r }: the goose), by its red circle. Only the head minds them, so the
+// goose can waddle across the body.
+const inside = (blocks, [x, z]) => blocks.some(b => Math.hypot(x - b.x, z - b.z) < b.r + CLEAR);
 // The next step would hit something: the way it's heading, or will be once the next turn's taken.
-const shut = (s, grid) => {
+const shut = (s, grid, blocks) => {
   const d = DIRS[s.turns.length ? (s.dir + s.turns[0] + 4) % 4 : s.dir], next = [s.body[0][0] + d[0] * SPAN, s.body[0][1] + d[1] * SPAN];
-  return !openAt(grid, ...next) || (s.grow > 0 ? s.body : s.body.slice(0, -1)).some(b => same(b, next));
+  return !openAt(grid, ...next) || inside(blocks, next) || (s.grow > 0 ? s.body : s.body.slice(0, -1)).some(b => same(b, next));
 };
 const centre = (grid, k) => [grid.left + (k % grid.cols + 0.5) * CELL, grid.back + (Math.floor(k / grid.cols) + 0.5) * CELL];
 
@@ -66,13 +70,14 @@ export function turn(s, side) {
 }
 export const go = s => { if (s.mode === 'ready') s.mode = 'play'; };
 export const settled = s => s.mode === 'over' && s.time - s.overAt >= AGAIN;
-// One step: 'step', 'eat' or 'crash'.
-export function step(s, grid, rand = Math.random) {
+// One step: 'step', 'eat', 'crash' or 'bump' (into one of `blocks`, which ends it too).
+export function step(s, grid, blocks = [], rand = Math.random) {
   if (s.turns.length) s.dir = (s.dir + s.turns.shift() + 4) % 4;
   const d = DIRS[s.dir], next = [s.body[0][0] + d[0] * SPAN, s.body[0][1] + d[1] * SPAN], eats = !!s.apple && same(next, s.apple);
   if (eats) s.grow += GROW;
   const body = s.grow > 0 ? s.body : s.body.slice(0, -1); // the tail moves off, unless it's growing
-  if (!openAt(grid, ...next) || body.some(b => same(b, next))) { s.mode = 'over'; s.overAt = s.time; s.prev = s.body; s.acc = 0; s.turns = []; s.record = s.eaten > s.best; s.best = Math.max(s.best, s.eaten); return 'crash'; }
+  const bump = inside(blocks, next);
+  if (bump || !openAt(grid, ...next) || body.some(b => same(b, next))) { s.mode = 'over'; s.overAt = s.time; s.prev = s.body; s.acc = 0; s.turns = []; s.record = s.eaten > s.best; s.best = Math.max(s.best, s.eaten); return bump ? 'bump' : 'crash'; }
   if (s.grow > 0) s.grow--;
   s.prev = s.body; s.body = [next, ...body];
   if (!eats) return 'step';
@@ -82,17 +87,17 @@ export function step(s, grid, rand = Math.random) {
 // `dt` seconds on: what happened, a step at a time. An apple something's been put down on goes somewhere else. About to hit
 // something, it holds where it is up to STALL seconds; a turn then is taken on the spot (one into something else as well, so
 // the next can still save it), and it crashes if it's still shut when the time's up.
-export function tick(s, grid, dt, rand = Math.random) {
+export function tick(s, grid, dt, blocks = [], rand = Math.random) {
   const happened = []; s.time += dt;
   if (s.apple && !openAt(grid, ...s.apple)) s.apple = placeApple(s, grid, rand);
   if (s.mode !== 'play') return happened;
   s.acc += dt * s.rate;
   while (s.mode === 'play' && s.acc >= 1) {
-    if (shut(s, grid)) {
+    if (shut(s, grid, blocks)) {
       if (s.turns.length) { s.dir = (s.dir + s.turns.shift() + 4) % 4; continue; }
       if ((s.stall += (s.acc - 1) / s.rate) < STALL) { s.acc = 1; break; } // only the time since the step fell due, whatever the frame rate
     }
-    s.stall = 0; s.acc--; happened.push(step(s, grid, rand)); // a crash stops it where it is
+    s.stall = 0; s.acc--; happened.push(step(s, grid, blocks, rand)); // a crash stops it where it is
   }
   return happened;
 }
@@ -141,10 +146,10 @@ function gridMaterial() {
 }
 
 // `grid()`: the walk grid (null before there's an office); `home()`: where the snake plant stands; `score(goal, verdict)`:
-// the score bar (null clears it).
-export function createSnake({ canvas, grid, home, score }) {
+// the score bar (null clears it); `blocks()`: what's moving about to keep off ({ x, z, r }: the goose); `bump()`: one was hit.
+export function createSnake({ canvas, grid, home, score, blocks = () => [], bump = () => {} }) {
   let best = 0; try { best = Number(localStorage.getItem(BEST)) || 0; } catch { /* no storage here */ }
-  let s = null, active = false, linger = 0, shake = 0, gulp = 0, bulge = Infinity, headYaw = 0, viewYaw = 0, distance = 0, fresh = true, shown = '', gridKey = '';
+  let s = null, active = false, linger = 0, shake = 0, gulp = 0, bulge = Infinity, headYaw = 0, viewYaw = 0, distance = 0, fresh = true, bumped = false, shown = '', gridKey = '';
   const held = new Set(), from = new THREE.Vector3(), look = new THREE.Vector3(), wobble = new THREE.Vector3(), at = new THREE.Vector3(), follow = new THREE.Vector3();
   const root = new THREE.Group(); root.visible = false;
 
@@ -170,17 +175,23 @@ export function createSnake({ canvas, grid, home, score }) {
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.2, 3, 16, 1, true).translate(0, 1.5, 0), new THREE.MeshBasicMaterial({ color: '#ffe14d', transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
   beam.raycast = () => {}; apple.add(beam);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), gridMaterial()); floor.raycast = () => {}; root.add(floor);
+  // A red circle under each thing moving about, as far out as it's kept off: a disc and a rim, made as they're needed.
+  const circles = [], red = new THREE.MeshBasicMaterial({ color: '#ff2e38', transparent: true, opacity: 0.3, depthWrite: false });
+  const rim = new THREE.MeshBasicMaterial({ color: '#ff2e38', transparent: true, opacity: 0.8, depthWrite: false });
+  const circle = () => { const c = new THREE.Group(); c.add(new THREE.Mesh(new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2), red), new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48).rotateX(-Math.PI / 2), rim)); c.traverse(m => { m.raycast = () => {}; }); root.add(c); return c; };
 
-  const restart = () => { const g = grid(), spot = home(); s = g && spot ? newSnake(g, spot, best) : null; if (s) headYaw = viewYaw = Math.atan2(...DIRS[s.dir]); bulge = Infinity; fresh = true; };
+  const restart = () => { const g = grid(), spot = home(); s = g && spot ? newSnake(g, spot, best) : null; if (s) headYaw = viewYaw = Math.atan2(...DIRS[s.dir]); bulge = Infinity; fresh = true; bumped = false; };
   const press = () => { if (!s) return; if (settled(s)) restart(); else go(s); };
   const showScore = () => {
-    const over = s?.mode === 'over', line = s ? [s.eaten, best, s.mode].join() : '';
+    const over = s?.mode === 'over', line = s ? [s.eaten, best, s.mode, bumped].join() : '';
     if (line === shown) return; shown = line;
     if (!s) { score(null); return; }
-    const hint = s.mode === 'ready' ? '↑ go · ← → turn' : over ? '↑ again' : null;
-    score([{ text: `🍎 ${s.eaten}` }, { text: `Best ${best}` }, ...hint ? [{ text: hint }] : []], over ? (s.record ? 'New best!' : 'Crash!') : null);
+    const touch = globalThis.matchMedia?.('(pointer: coarse)')?.matches;
+    const hint = s.mode === 'ready' ? (touch ? 'Tap to go · swipe to turn' : '↑ go · ← → turn') : over ? (touch ? 'Tap again' : '↑ again') : null;
+    score([{ text: `🍎 ${s.eaten}` }, { text: `Best ${best}` }, ...hint ? [{ text: hint }] : []], over ? (s.record ? 'New best!' : bumped ? 'Honk!' : 'Crash!') : null);
   };
-  const KEYS = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1, ArrowUp: 0, KeyW: 0, Space: 0 };
+  // ↓ and S as well as ↑: unclaimed, they'd be walking keys, which step out of a game (office.js).
+  const KEYS = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1, ArrowUp: 0, KeyW: 0, ArrowDown: 0, KeyS: 0, Space: 0 };
 
   const snake = {
     root,
@@ -189,7 +200,7 @@ export function createSnake({ canvas, grid, home, score }) {
     blur() { held.clear(); },
     // In front of the plant, facing it.
     stand() { const spot = home(), g = grid(), p = spot && g && nearestOpen(g, spot) || spot || new THREE.Vector3(); return { x: p.x, z: p.z, yaw: spot ? Math.atan2(spot.x - p.x, spot.z - p.z) : 0 }; },
-    pose() { return { from: from.clone().add(wobble), look: look.clone().add(wobble), fov: FOV, hands: false }; },
+    pose() { return { from: from.clone().add(wobble), look: look.clone().add(wobble), fov: FOV, hands: false, wide: true }; }, // wide: more across on a phone held upright (camera.js)
     click() { return false; }, // presses steer (below)
     // A key while playing: true if it's one of the snake's (office.js leaves it be); held keys don't repeat.
     key(code, down) {
@@ -203,11 +214,13 @@ export function createSnake({ canvas, grid, home, score }) {
     update(dt, reduced) {
       if (!active && (linger -= dt) <= 0) { root.visible = false; return; }
       const g = grid(); root.visible = !!s && !!g; if (!root.visible) return;
-      if (active) for (const happened of tick(s, g, dt)) {
+      const near = blocks();
+      if (active) for (const happened of tick(s, g, dt, near)) {
         if (happened === 'eat' && !reduced) { gulp = 1; bulge = 0; }
-        if (happened === 'crash') { if (!reduced) shake = 1; if (s.best > best) { best = s.best; try { localStorage.setItem(BEST, String(best)); } catch { /* no storage here */ } } }
+        if (happened === 'bump') { bumped = true; bump(); }
+        if (happened === 'crash' || happened === 'bump') { if (!reduced) shake = 1; if (s.best > best) { best = s.best; try { localStorage.setItem(BEST, String(best)); } catch { /* no storage here */ } } }
       }
-      draw(dt, reduced, g); if (active) showScore();
+      draw(dt, reduced, g, near); if (active) showScore();
     },
   };
 
@@ -239,7 +252,9 @@ export function createSnake({ canvas, grid, home, score }) {
     }
     tube.attributes.position.needsUpdate = tube.attributes.normal.needsUpdate = true;
   }
-  function draw(dt, reduced, g) {
+  function draw(dt, reduced, g, near) {
+    while (circles.length < near.length) circles.push(circle());
+    circles.forEach((c, i) => { const b = near[i]; c.visible = !!b; if (b) { c.position.set(b.x, 0.022, b.z); c.scale.setScalar(b.r + CLEAR); } });
     shade(g); bend(reduced, dt);
     // The head turns to where it's going (the heading's set as each step starts); the view swings round after it.
     segment(0, at); const yaw = Math.atan2(...DIRS[s.dir]);
@@ -280,11 +295,27 @@ export function createSnake({ canvas, grid, home, score }) {
     floor.scale.set(cols * CELL, 1, rows * CELL); floor.position.set(g.left + cols * CELL / 2, 0.02, g.back + rows * CELL / 2);
   }
 
-  // Presses: the left or right half of the screen turns that way; before it's off, or after a crash, a press sets it going.
+  // Presses. A swipe left or right turns that way as soon as it's gone SWIPE px, before the finger's lifted; a tap turns to the
+  // side of the screen it was on when it's let go (so it isn't a swipe's start), a click as it's pressed (no swiping with a
+  // mouse). Before it's off, or after a crash, a press sets it going.
+  const SWIPE = 24, downs = new Map(); // css px; pointer → where it went down, null once it's swiped
+  const half = x => { const r = canvas.getBoundingClientRect(); return x < r.left + r.width / 2 ? -1 : 1; };
+  const playing = () => active && s?.mode === 'play';
   canvas.addEventListener('pointerdown', event => {
     if (!active || !s || event.pointerType === 'mouse' && event.button !== 0) return;
-    if (s.mode !== 'play') { press(); return; }
-    const r = canvas.getBoundingClientRect(); turn(s, event.clientX < r.left + r.width / 2 ? -1 : 1);
+    if (s.mode !== 'play') press();
+    else if (event.pointerType === 'mouse') turn(s, half(event.clientX));
+    else downs.set(event.pointerId, { x: event.clientX, y: event.clientY });
   });
+  canvas.addEventListener('pointermove', event => {
+    const down = downs.get(event.pointerId), dx = down && event.clientX - down.x;
+    if (!down || !playing() || Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(event.clientY - down.y)) return;
+    downs.set(event.pointerId, null); turn(s, Math.sign(dx));
+  });
+  const lift = event => {
+    const down = downs.get(event.pointerId); downs.delete(event.pointerId);
+    if (down && playing() && event.type === 'pointerup' && Math.hypot(event.clientX - down.x, event.clientY - down.y) < SWIPE) turn(s, half(down.x));
+  };
+  canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);
   return snake;
 }

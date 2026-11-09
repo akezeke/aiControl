@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { walkGrid, index, CELL } from '../client/office/path.js';
-import { newSnake, turn, go, step, tick, reach, settled, spine, SPAN, DIRS, LENGTH, GROW, STALL } from '../client/office/snake.js';
+import { newSnake, turn, go, step, tick, reach, settled, spine, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
 
 const box = (x1, z1, x2, z2) => new THREE.Box3(new THREE.Vector3(x1, 0, z1), new THREE.Vector3(x2, 1, z2));
 const V = (x, z) => new THREE.Vector3(x, 0, z), first = () => 0;
@@ -50,6 +50,26 @@ test('with no turn, or only one into something else, it crashes once the hold is
   let turned = false;
   crashAfter(corner, () => { if (!turned && corner.acc >= 1) { turn(corner, 1); turned = true; } });
   assert.deepEqual(DIRS[corner.dir], [0, 1]); assert.equal(corner.mode, 'over');
+});
+
+test('the goose\'s circle is something to hit: it holds for a turn, then bumps into it', () => {
+  const s = newSnake(open, V(5, 5), 0, first); s.dir = 1; s.apple = null; go(s);
+  const [x, z] = s.body[0], goose = [{ x: x + SPAN + 0.15, z, r: 0.2 }]; // its circle (r + CLEAR) takes in the next cell
+  const happened = []; while (s.mode === 'play') happened.push(...tick(s, open, 0.01, goose));
+  assert.deepEqual(happened, ['bump']); assert.deepEqual(s.body[0], [x, z]);
+
+  const away = newSnake(open, V(5, 5), 0, first); away.dir = 1; away.apple = null; go(away);
+  tick(away, open, 1.05 / away.rate, goose); turn(away, 1); tick(away, open, 0.01, goose);
+  assert.equal(away.mode, 'play'); assert.deepEqual(DIRS[away.dir], [0, 1]);
+});
+
+test('only the head minds the goose: it can waddle across the body', () => {
+  const s = newSnake(open, V(5, 5), 0, first); s.dir = 1; s.apple = null; go(s);
+  const [x, z] = s.body[0];
+  s.body = [[x, z], at(x, z, [-1, 0]), at(x, z, [-2, 0]), at(x, z, [-3, 0])];
+  const goose = [{ x: x - 2 * SPAN, z, r: 0.2 }];
+  assert.ok(Math.hypot(at(x, z, [1, 0])[0] - goose[0].x, 0) >= goose[0].r + CLEAR);
+  assert.equal(step(s, open, goose), 'step');
 });
 
 test('a wall, furniture or its own body ends the run', () => {

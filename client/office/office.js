@@ -163,7 +163,8 @@ export function mountOffice(container, hooks) {
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
   // Snake, out on the office floor from the snake plant in the corner.
-  const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), home: () => room.snakePlant?.position, score: (goal, verdict) => overlays.setScore(goal, verdict, false) });
+  const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), home: () => room.snakePlant?.position, score: (goal, verdict) => overlays.setScore(goal, verdict, false),
+    blocks: () => goose.root.visible ? [goose.column] : [], bump: () => goose.honk('💢') });
   scene.add(snake.root); room.onSnake = () => onPlay(snake);
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip) }));

@@ -9,6 +9,11 @@ const EASE = 5, FADED = 0.12, RUN_FOV = 6, STRIDE = 1.6, LINE = 0.003; // radian
 // A sip now and then: seconds between (at random in that range), its raise, hold and lower, and how much of a mug it is.
 // The hand comes in to the bottom of the screen and tips the mug till the coffee is at the rim: further the emptier (radians).
 const SIPS = [40, 110], RAISE = 0.35, HOLD = 0.5, LOWER = 0.45, SIP = 0.2, MOUTH = new THREE.Vector3(-0.2, 0.1, 0.3), TILT = [0.45, 1.05];
+const WIDEST = 95, LANDSCAPE = 1.6; // the widest the view opens (wider stretches the top and bottom too far), and what for
+
+// The (vertical) fov that shows as much across on a screen `aspect` wide (over its height) as `fov` does on a landscape one,
+// as far as `widest`; never narrower than `fov`. For a phone held upright, which otherwise sees a slot.
+export const wideFov = (fov, aspect, widest = WIDEST) => Math.max(fov, Math.min(widest, 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(fov / 2)) * LANDSCAPE / aspect))));
 
 export class OfficeCamera {
   constructor(camera, scene, player, room, { reducedMotion, container }) {
@@ -78,8 +83,10 @@ export class OfficeCamera {
     if (Math.abs(this.amount - (this.overview ? 1 : 0)) < 0.001) this.amount = this.overview ? 1 : 0;
     this.gameAmount += ((this.game ? 1 : 0) - this.gameAmount) * k; if (Math.abs(this.gameAmount - (this.game ? 1 : 0)) < 0.001) this.gameAmount = this.game ? 1 : 0;
     const p = this.player, game = this.place();
-    // Running, or flying over to someone, widens the view a little.
-    const fov = this.game ? game.fov : this.fov + (p.running && !instant ? RUN_FOV : 0);
+    // Running, or flying over to someone, widens the view a little. So does a narrow screen, up close (wideFov): the overview
+    // frames the room itself, and a game that fits its own view keeps it, unless it asks (`wide`).
+    const near = wideFov(this.fov, this.camera.aspect);
+    const fov = this.game ? (game.wide ? wideFov(game.fov, this.camera.aspect) : game.fov) : near + (this.fov - near) * this.amount + (p.running && !instant ? RUN_FOV : 0);
     if (Math.abs(fov - this.camera.fov) > 0.01) { this.camera.fov += (fov - this.camera.fov) * k; this.camera.updateProjectionMatrix(); }
     // While talking, shift the picture left so the character is centred in the part the panel leaves open.
     const panel = document.querySelector('#panel:not([hidden])'), canvas = this.camera.userData.canvas, shift = panel && innerWidth > 640 ? panel.offsetWidth / 2 * this.focusAmount : 0;
