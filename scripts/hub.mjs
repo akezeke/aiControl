@@ -1,5 +1,6 @@
 // npm run hub: host Office online. Runs the hub (server/hub.mjs) in its own tmux session on 127.0.0.1, publishes it with
-// Tailscale Funnel and prints the join code: the address and the room key. Friends enter it at the visitors' clipboard.
+// Tailscale Funnel and prints the meeting code: the address and the room key. Friends enter it at the meetings clipboard by
+// their office door.
 //   --new-code  a new key; everyone signs in again with the new code (names and scores stay)
 //   --stop      Funnel off, hub stopped
 //   --local     no Funnel: only this machine can join (or put your own HTTPS proxy in front)
@@ -52,7 +53,7 @@ if (process.argv.includes('--serve')) {
       const { key } = hubState(file);
       await start();
       const published = !process.argv.includes('--local') && self && self.hostname !== self.ip && tailscale(self, ['funnel', '--bg', String(PORT)]);
-      if (published) console.log(`\nJoin code: ${self.hostname}/${key}`);
+      if (published) console.log(`\nMeeting code: ${self.hostname}/${key}`);
       else {
         if (self && !process.argv.includes('--local') && process.platform === 'linux') console.log('\nIf Tailscale refused, allow it once: sudo tailscale set --operator=$USER');
         console.log(`\nFunnel is off, so only this machine can join: http://127.0.0.1:${PORT}/${key}`);

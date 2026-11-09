@@ -210,16 +210,16 @@ export function drawScores({ g, width: w, height: h }, progress, key, tops = {})
   top(tops.trickshot, 36, mid - 72); top(tops.trickshotToday, mid + 40, w - 76 - mid);
 }
 
-// The visitors' clipboard by the door (Office online): who's signed in to the hub, you first, then whoever was in last.
-// `closed`: what to write across it when the hub can't be reached or its code was replaced.
-export function visitorLines(state) {
-  if (!state?.joined) return { title: 'Visitors', lines: ['Sign in here'], closed: null };
+// The meetings clipboard by the door (Office online), a note of the meeting you've joined at a friend's office: who's in it,
+// you first, then whoever was in last. `closed`: what to write across it when it can't be reached or its code was replaced.
+export function meetingLines(state) {
+  if (!state?.joined) return { title: 'Meetings', lines: ['Join one here'], closed: null };
   const host = /^\d+(\.\d+){3}$/.test(state.host) ? state.host : state.host.split('.')[0], me = state.name.toLowerCase(), players = state.board?.players ?? [];
   const mine = players.find(p => p.name.toLowerCase() === me)?.name ?? state.name;
   const others = players.filter(p => p.name.toLowerCase() !== me).sort((a, b) => b.seen - a.seen).map(p => p.name);
-  return { title: `Visitors · ${host}`, lines: [mine, ...others].slice(0, 6), closed: state.error === 'code' ? 'Code replaced' : state.offline ? 'Hub closed' : null };
+  return { title: `Meeting at ${host}`, lines: [mine, ...others].slice(0, 6), closed: state.error === 'code' ? 'New code' : state.offline ? 'Off for now' : null };
 }
-export function drawVisitors({ g, width: w, height: h }, { title, lines, closed }) {
+export function drawMeeting({ g, width: w, height: h }, { title, lines, closed }) {
   g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h); g.lineCap = 'round'; g.lineJoin = 'round'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   // Big enough to read from a step away: it's a clipboard, not a board.
   g.fillStyle = INK.blue; sized(g, title, 76, w - 60); g.fillText(title, 30, 96);
@@ -296,22 +296,22 @@ export function createKitchenBoards(game, { inReach = () => true, read = () => {
 }
 
 export function createBoards(room) {
-  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1, written = null, visitors = null, visitorsKey = '';
+  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1, written = null, meeting = null, meetingKey = '';
   const writeUsage = () => { drawWhiteboard(boards.whiteboard, ...written); boards.whiteboard.texture.needsUpdate = true; };
   // A canvas draws in a fallback until the font is in, so write the board again once it is.
   // Only when what it says changes: a sync that brings the same board back redraws nothing.
-  const writeVisitors = () => {
-    const page = visitorLines(visitors), key = JSON.stringify(page);
-    if (!boards?.visitors || key === visitorsKey) return;
-    visitorsKey = key; drawVisitors(boards.visitors, page); boards.visitors.texture.needsUpdate = true;
+  const writeMeeting = () => {
+    const page = meetingLines(meeting), key = JSON.stringify(page);
+    if (!boards?.meeting || key === meetingKey) return;
+    meetingKey = key; drawMeeting(boards.meeting, page); boards.meeting.texture.needsUpdate = true;
   };
-  document.fonts?.load(`40px 'Permanent Marker'`).then(() => { if (written) writeUsage(); visitorsKey = ''; writeVisitors(); }).catch(() => {});
+  document.fonts?.load(`40px 'Permanent Marker'`).then(() => { if (written) writeUsage(); meetingKey = ''; writeMeeting(); }).catch(() => {});
   const ensure = () => {
     // The room rebuilds its walls (and so its boards) when it resizes; repaint onto the new faces.
     if (faces === room.boards.whiteboard) return;
     faces = room.boards.whiteboard;
-    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512, 1.5), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), visitors: room.visitors && paint(room.visitors.face, 512, 640), sign: paint(room.coffeeSign.userData.face, 256, 192) };
-    usageKey = waitingKey = visitorsKey = ''; plateKey = null; minute = -1;
+    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512, 1.5), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), meeting: room.meeting && paint(room.meeting.face, 512, 640), sign: paint(room.coffeeSign.userData.face, 256, 192) };
+    usageKey = waitingKey = meetingKey = ''; plateKey = null; minute = -1;
   };
   return {
     sync(snapshot, { error = '', waiting = [] } = {}) {
@@ -326,10 +326,10 @@ export function createBoards(room) {
       if (machine !== plateKey) { plateKey = machine; drawPlate(boards.plate, machine); boards.plate.texture.needsUpdate = true; }
       const nextWaiting = JSON.stringify(waiting);
       if (nextWaiting !== waitingKey) { waitingKey = nextWaiting; drawWaiting(boards.waiting, waiting); boards.waiting.texture.needsUpdate = true; }
-      writeVisitors();
+      writeMeeting();
     },
-    // Office online's state (online.js), for the visitors' clipboard.
-    visitors(state) { visitors = state; if (room.boards) { ensure(); writeVisitors(); } }, // before the walls are up, sync paints it
+    // Office online's state (online.js), for the meetings clipboard.
+    meeting(state) { meeting = state; if (room.boards) { ensure(); writeMeeting(); } }, // before the walls are up, sync paints it
     tick(now = Date.now()) {
       if (!boards) return;
       const m = Math.floor(now / 60_000);

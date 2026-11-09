@@ -67,7 +67,7 @@ test('signing in and out', async () => {
   await online.signIn('code', 'Anna');
   assert.deepEqual(api.calls[0], ['office/online', { code: 'code', name: 'Anna' }]);
   assert.equal(online.state().joined, true);
-  await assert.rejects(createOnline({ api: fakeApi(new Error('That name is taken on this hub.')), scores: () => ({}) }).signIn('c', 'x'), /taken/);
+  await assert.rejects(createOnline({ api: fakeApi(new Error('That name is taken in this meeting.')), scores: () => ({}) }).signIn('c', 'x'), /taken/);
   const out = fakeApi({ joined: false }), leaving = createOnline({ api: out, scores: () => ({}) });
   await leaving.signOut();
   assert.deepEqual(out.calls.at(-1), ['office/online', { leave: true }]);

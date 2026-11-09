@@ -161,7 +161,7 @@ export function mountOffice(container, hooks) {
     if (player.position.clone().setY(0).distanceTo(spot) < 1.4) { player.place(player.position.x, player.position.z, yaw); play(game); }
     else player.walkTo(spot, () => { player.place(player.position.x, player.position.z, yaw); play(game); }, 0.3, true);
   };
-  // Office online (online.js): friends' bests, for the games' own displays and the visitors' clipboard.
+  // Office online (online.js): friends' bests, for the games' own displays and the meetings clipboard.
   const online = createOnline({ api: (path, body) => hooks.api(path, body) });
   const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay, online }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay, online });
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay, online });
@@ -173,10 +173,10 @@ export function mountOffice(container, hooks) {
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip), online }));
   const boards = createBoards(room);
-  // Signing in at the visitors' clipboard by the door: the slip, and the page redrawn whenever the board comes back different.
+  // Joining a meeting at the clipboard by the door: the slip, and the page redrawn whenever the board comes back different.
   const signIn = createSignIn(container, online);
-  room.onVisitors = () => { player.unlock(); online.sync(true); signIn.open(); };
-  online.watch(() => { boards.visitors(online.state()); signIn.refresh(); });
+  room.onMeeting = () => { player.unlock(); online.sync(true); signIn.open(); };
+  online.watch(() => { boards.meeting(online.state()); signIn.refresh(); });
   const bubbles = new Bubbles(container, id => office.talkTo(id));
   // It lets you be in the overview and on your way to someone.
   const goose = createGoose(scene, { props, player, walkable, bounds: () => layout?.room, busy: () => view.overview || !!player.flight || !!office.talking || room.kitchen.inside(player.position),

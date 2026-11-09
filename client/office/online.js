@@ -1,6 +1,6 @@
 // Office online in the page: this browser's bests, read from where each game keeps them, sent to this AI Control (which
 // relays them to the hub, server/office-online.mjs) and the board that comes back. It never draws and never runs per
-// frame: it syncs when the office opens, when a game is left and when the visitors' clipboard is clicked, and skips the
+// frame: it syncs when the office opens, when a game is left and when the meetings clipboard is clicked, and skips the
 // request when nothing changed. Whatever shows the board (boards.js, the games) asks `top(id)`, a list kept until the
 // board changes, and `watch`es for that change.
 import { bests, format, standings } from './leaderboard.js';

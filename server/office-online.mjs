@@ -82,12 +82,12 @@ export function createOfficeOnline({ file, fetch = globalThis.fetch, now = Date.
       if (!clean) throw fail('Use 1–16 letters or numbers.', 400);
       if (!saved.token) save({ ...saved, token: randomBytes(18).toString('base64url') });
       let reply;
-      try { reply = await ask(url, key, clean, {}); } catch { throw fail('The hub is not answering.', 502); }
-      if (reply.status === 409) throw fail('That name is taken on this hub.', 409);
+      try { reply = await ask(url, key, clean, {}); } catch { throw fail("The meeting can't be reached.", 502); }
+      if (reply.status === 409) throw fail('That name is taken in this meeting.', 409);
       // Not 401: from this server, the page reads a 401 as locked and shows the PIN screen.
       if (reply.status === 401) throw fail('That code is wrong or has been replaced.', 403);
-      if (reply.status === 429) throw fail('The hub is full or busy.', 429);
-      if (reply.status !== 200 || !reply.board) throw fail('The hub is not answering.', 502);
+      if (reply.status === 429) throw fail('The meeting is full or busy.', 429);
+      if (reply.status !== 200 || !reply.board) throw fail("The meeting can't be reached.", 502);
       save({ token: saved.token, url, key, name: clean });
       last = { board: reply.board }; sent = ''; at = -Infinity;
       return result();
