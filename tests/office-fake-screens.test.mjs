@@ -34,7 +34,7 @@ test('banners: about one second in twelve, never two in a row, from the list', (
       if (b !== undefined) { assert.ok(BANNERS.includes(b)); assert.ok(!prev, `${seed} ${t}`); n++; }
       prev = b !== undefined;
     }
-    assert.ok(n > 1200 * 0.05 && n < 1200 * 0.12, `${seed}: ${n}`);
+    assert.ok(n > 1200 * 0.06 && n < 1200 * 0.09, `${seed}: ${n}`);
   }
   const at = seed => Array.from({ length: 200 }, (_, t) => working(seed, t).banner !== undefined).join();
   assert.notEqual(at('a'), at('b'), 'desks do not flash together');
@@ -64,4 +64,14 @@ test('idle screens bounce a saver inside the screen, moving every second', () =>
 
 test('off and the other tones are null', () => {
   for (const tone of ['off', 'blue', 'red']) assert.equal(fakeMonitor('d', tone, 3), null);
+});
+
+test('every line fits the screen: 40 characters with its prefix, nothing clipped', () => {
+  for (const text of [...COMMANDS, ...RESULTS]) assert.ok(`› ${text}`.length <= 40, text);
+  for (const label of PROGRESS) assert.ok(`• ${label} ${'█'.repeat(10)} 100%`.length <= 40, label);
+});
+
+test('the same line never sits twice in a row', () => {
+  const key = ({ kind, text }) => kind === 'tool' ? PROGRESS.find(p => text.startsWith(p)) : text;
+  for (const seed of ['a', 'b', 'c']) for (let t = 0; t < 500; t++) { const { lines } = working(seed, t); for (let i = 1; i < 6; i++) assert.notEqual(key(lines[i]), key(lines[i - 1]), `${seed} ${t}`); }
 });

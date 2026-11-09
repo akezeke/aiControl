@@ -115,16 +115,18 @@ export function floorSnapshot(floor) {
 
 // Screens that are obviously fake: a Hollywood hacker's terminal at Low-Hanging Fruit Ltd. Everything comes from these lists, the same
 // for the same desk and second, and nothing from the host's sessions.
-export const COMMANDS = ['$ npm install more-ram', '$ git commit -m "fixed it, for real this time"', '$ sudo make me a sandwich', '$ ./ripen --force bananas', '$ rm -rf mondays/', '$ docker run coffee:double', '$ curl stackoverflow.com | sh', '$ git push --force-with-confidence', '$ cd /fruit/low-hanging', '$ ssh root@the-mainframe', '$ make it-work', '$ chmod +x banana', '$ ping -c 1 the-cloud', '$ cat /dev/urandom | grep meaning'];
-export const PROGRESS = ['Downloading more RAM', 'Reticulating splines', 'Squeezing juice from legacy code', 'Ripening branch', 'Peeling bananas.js', 'Hacking the mainframe', 'Defragmenting the fruit bowl', 'Compiling the synergy', 'Untangling spaghetti code', 'Bribing the garbage collector', 'Watering the stack', 'Polishing the apples', 'Mining fruitcoin', 'Warming up the cloud'];
-export const RESULTS = ['✓ 4,812 tests passed (2 were looked at)', '⚠ it works on my machine', 'ERROR: too much fruit in the stack', '✓ deployed to production (fingers crossed)', 'TODO: ask the banana', '✓ bug fixed (renamed to feature)', '⚠ 99 problems, 98 are fruit', 'ERROR: keyboard not found, press F1', '✓ coffee level: critical', '⚠ legacy code is looking at me', 'TODO: delete this TODO', '✓ merged without reading', 'ERROR: pear-to-pear connection lost', '✓ the cloud is just fruit on someone else\'s tree'];
+export const COMMANDS = ['$ npm install more-ram', '$ git commit -m "fixed it (for real)"', '$ sudo make me a sandwich', '$ ./ripen --force bananas', '$ rm -rf mondays/', '$ docker run coffee:double', '$ curl stackoverflow.com | sh', '$ git push --force-with-confidence', '$ cd /fruit/low-hanging', '$ ssh root@the-mainframe', '$ make it-work', '$ chmod +x banana', '$ ping -c 1 the-cloud', '$ cat /dev/urandom | grep meaning'];
+export const PROGRESS = ['Downloading more RAM', 'Reticulating splines', 'Squeezing legacy juice', 'Ripening branch', 'Peeling bananas.js', 'Hacking the mainframe', 'Defragging fruit bowl', 'Compiling the synergy', 'Untangling spaghetti', 'Bribing the GC', 'Watering the stack', 'Polishing the apples', 'Mining fruitcoin', 'Warming up the cloud'];
+export const RESULTS = ['✓ 4,812 tests passed (2 looked at)', '⚠ it works on my machine', 'ERROR: too much fruit in the stack', '✓ deployed (fingers crossed)', 'TODO: ask the banana', '✓ bug fixed (renamed to feature)', '⚠ 99 problems, 98 are fruit', 'ERROR: keyboard not found, press F1', '✓ coffee level: critical', '⚠ legacy code is looking at me', 'TODO: delete this TODO', '✓ merged without reading', 'ERROR: pear-to-pear link lost', '✓ cloud = fruit on another tree'];
 export const BANNERS = ['ACCESS GRANTED', 'ENHANCE.', 'HACK COMPLETE', 'I\'M IN.'];
 const hashOf = text => { let h = 0x811c9dc5; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
 const mix = h => { h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0; h = Math.imul(h ^ (h >>> 12), 0x297a2d39) >>> 0; return (h ^ (h >>> 15)) >>> 0; };
 const rolled = (seed, tag, n) => mix(hashOf(`${seed}:${tag}:${n}`));
 const BAR = 10;
+// Each line is a pure function of its index n, so lines scroll. Even lines use the lists' even entries and odd lines the odd ones,
+// so the same joke never sits on two lines in a row.
 const lineAt = (seed, n) => {
-  const h = rolled(seed, 'line', n), kind = ['user', 'tool', 'assistant'][h % 3], pick = (h >>> 4) % 14;
+  const h = rolled(seed, 'line', n), kind = ['user', 'tool', 'assistant'][h % 3], pick = ((h >>> 4) % 7) * 2 + (n & 1);
   if (kind === 'user') return { kind, text: COMMANDS[pick] };
   if (kind === 'assistant') return { kind, text: RESULTS[pick] };
   const label = PROGRESS[pick], shape = (h >>> 9) % 4, pct = 1 + (h >>> 12) % 99, done = Math.round(pct * BAR / 100);
