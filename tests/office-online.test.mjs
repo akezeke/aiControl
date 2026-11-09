@@ -113,6 +113,15 @@ test('the file is private and survives a restart', async t => {
   assert.deepEqual(createOfficeOnline({ file }).status(), { joined: true, name: 'Anna', host: '127.0.0.1' });
 });
 
+test("a sign-in written by another process (npm run hub) is the running server's, token and all", async t => {
+  const s = await setup(); t.after(() => s.hub.close());
+  const file = join(dir(), 'office-online.json'), server = createOfficeOnline({ file });
+  assert.deepEqual(server.status(), { joined: false });
+  await createOfficeOnline({ file }).join({ code: s.code(), name: 'Anna' });
+  assert.deepEqual(server.status(), { joined: true, name: 'Anna', host: '127.0.0.1' });
+  assert.deepEqual((await server.sync({ darts: 9 })).board.players.map(p => [p.name, p.scores]), [['Anna', { darts: 9 }]]);
+});
+
 test('a bad hub response is offline', async () => {
   let reply = null;
   const board = players => JSON.stringify({ day: '2026-11-09', players });

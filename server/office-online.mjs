@@ -45,16 +45,23 @@ function board(data) {
 }
 
 export function createOfficeOnline({ file, fetch = globalThis.fetch, now = Date.now }) {
-  let saved = {};
-  try { const read = JSON.parse(readFileSync(file, 'utf8')); if (object(read)) saved = read; } catch { /* not joined yet */ }
+  // The file as last read or written; the last good board, the scores it was sent with and when; the request in flight.
+  let saved = {}, text = null, last = null, sent = '', at = -Infinity, inflight = null;
+  // Re-read on every call: `npm run hub` signs in by writing this file while the server runs (and the token must stay one
+  // player's). A file that changed under us drops the board kept for the old one. It's tiny and read only on a request.
+  const load = () => {
+    let current = ''; try { current = readFileSync(file, 'utf8'); } catch { /* not joined yet */ }
+    if (current === text) return;
+    text = current; last = null; sent = ''; at = -Infinity;
+    try { const read = JSON.parse(current); saved = object(read) ? read : {}; } catch { saved = {}; }
+  };
   const save = next => {
     const temporary = `${file}.${randomBytes(6).toString('hex')}.tmp`;
-    writeFileSync(temporary, JSON.stringify(next) + '\n', { mode: 0o600 }); renameSync(temporary, file); saved = next;
+    text = JSON.stringify(next) + '\n'; writeFileSync(temporary, text, { mode: 0o600 }); renameSync(temporary, file); saved = next;
   };
+  load();
   const joined = () => !!(saved.url && saved.key && saved.name);
   const host = () => new URL(saved.url).hostname;
-  // The last good board, the scores it was sent with and when; the request in flight.
-  let last = null, sent = '', at = -Infinity, inflight = null;
 
   // { status, board } for a 200 with a board, { status } otherwise; throws only when the hub can't be reached.
   // A kept-alive connection to a hub that has since restarted dies on first use; scores are safe to send twice (the hub
@@ -75,9 +82,10 @@ export function createOfficeOnline({ file, fetch = globalThis.fetch, now = Date.
   const result = extra => ({ joined: true, name: saved.name, host: host(), board: last?.board ?? null, ...extra });
 
   const online = {
-    status: () => joined() ? { joined: true, name: saved.name, host: host() } : { joined: false },
+    status: () => { load(); return joined() ? { joined: true, name: saved.name, host: host() } : { joined: false }; },
 
     async join({ code, name } = {}) {
+      load();
       const { url, key } = parseCode(code), clean = cleanName(name);
       if (!clean) throw fail('Use 1–16 letters or numbers.', 400);
       if (!saved.token) save({ ...saved, token: randomBytes(18).toString('base64url') });
@@ -93,9 +101,10 @@ export function createOfficeOnline({ file, fetch = globalThis.fetch, now = Date.
       return result();
     },
 
-    async leave() { save({ token: saved.token }); last = null; sent = ''; at = -Infinity; return { joined: false }; },
+    async leave() { load(); save({ token: saved.token }); last = null; sent = ''; at = -Infinity; return { joined: false }; },
 
     async sync(given = {}) {
+      load();
       if (!joined()) return { joined: false };
       // The allowlist is kept here, not by the page: known games, possible scores, nothing else.
       const scores = clean(given, dayKey(new Date(now()))), text = JSON.stringify(scores);
