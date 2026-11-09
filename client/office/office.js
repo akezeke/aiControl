@@ -236,7 +236,7 @@ export function mountOffice(container, hooks) {
   const say = () => live.presence(sample(), true);
   // The hub only relays moves, so whoever arrives gets everyone's place sent again; someone standing still would otherwise stay unseen.
   const meet = () => { shownTo = atMeeting(); friends.sync(live.roster(), live.id(), shownTo); if (shownTo) say(); };
-  live.on('roster', meet); live.on('welcome', meet);
+  live.on('roster', meet); live.on('welcome', meet); live.on('roster', () => signIn.refresh()); // the slip's colours: yours, and those taken
   online.follow(live); online.watch(meet); // learning you're hosting (a sync after welcome) starts your presence
   live.on('pos', m => friends.move(m.id, m));
   // Throws at the meeting: yours go to everyone there, and theirs fly here as copies that move nothing of yours (a shot in the kitchen, else the office's things).

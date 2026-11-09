@@ -9,6 +9,10 @@ const el = (tag, props = {}) => Object.assign(document.createElement(tag), props
 // replaced code you'll never get again has to be left somehow), and what to say about the hub.
 export const slipMode = state => ({ form: !state?.joined || state.error === 'code', signOut: !!state?.joined, said: state?.error === 'code' ? 'The code was changed' : state?.outdated ? 'Update AI Control' : state?.offline ? 'Off for now' : '', code: state?.hosting && state.code ? state.code : '' });
 
+// What the pickers show: what you just picked, else what you wear in the room (`mine`, pickerState's: the hub hands out
+// another colour when yours is taken), else what's saved.
+export const slipLook = (picked, mine, saved) => ({ fruit: picked?.fruit ?? mine.fruit ?? saved?.fruit ?? FRUITS[0][0], colour: picked?.colour ?? mine.colour ?? saved?.colour ?? COLOURS[0] });
+
 // Short names for the swatches' aria-labels, in COLOURS' order.
 export const COLOUR_NAMES = ['pink', 'blue', 'purple', 'mint', 'yellow', 'orange', 'cyan', 'white'];
 
@@ -25,8 +29,7 @@ export function createSignIn(container, online, live = null) {
   function render(error = '') {
     const state = online.state(), mode = slipMode(state), said = error || mode.said;
     slip.replaceChildren();
-    const roster = live?.roster() ?? [], mine = pickerState(roster, live?.id?.()), look = picked ?? state?.look ?? {};
-    const fruit = look.fruit ?? mine.fruit ?? FRUITS[0][0], colour = look.colour ?? mine.colour ?? COLOURS[0];
+    const roster = live?.roster() ?? [], mine = pickerState(roster, live?.id?.()), { fruit, colour } = slipLook(picked, mine, state?.look);
     const pick = next => { picked = { fruit, colour, ...next }; if (state?.joined) online.setLook(picked.fruit, picked.colour).then(() => { picked = null; render(); }, e => render(e.message)); else render(); };
     const fruits = el('div', { className: 'office-signin-row office-signin-fruit' }), swatches = el('div', { className: 'office-signin-row office-signin-colours' });
     for (const [id, emoji] of FRUITS) { const b = el('button', { type: 'button', textContent: emoji, className: id === fruit ? 'on' : '', title: id }); b.setAttribute('aria-label', id); b.setAttribute('aria-pressed', String(id === fruit)); b.onclick = () => pick({ fruit: id }); fruits.append(b); }
@@ -67,8 +70,15 @@ export function createSignIn(container, online, live = null) {
   return {
     open() { render(); slip.hidden = false; (slip.querySelector('input:placeholder-shown') || slip.querySelector('button'))?.focus(); },
     close,
-    // The board changed while the slip is up (a sync came back): say so, unless something's being typed.
-    refresh() { if (!slip.hidden && !slip.contains(document.activeElement)) render(); },
+    // The board or the room changed while the slip is up (a sync came back, someone took a colour): say so, unless something's
+    // being typed. A focused button is focused again after.
+    refresh() {
+      const at = document.activeElement, mine = slip.contains(at);
+      if (slip.hidden || (mine && at.tagName === 'INPUT')) return;
+      const label = mine ? at.getAttribute('aria-label') || at.textContent : null;
+      render();
+      if (label) [...slip.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') || b.textContent) === label)?.focus();
+    },
     dispose() { document.removeEventListener('pointerdown', away, true); slip.remove(); },
   };
 }
