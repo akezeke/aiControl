@@ -17,3 +17,29 @@ test('the meeting code shows only for a host that has one', () => {
   assert.equal(slipMode({ joined: true, name: 'A', host: 'h', hosting: true }).code, '');
   assert.equal(slipMode(null).code, '');
 });
+
+// A DOM just big enough for the slip: elements keep their children, and inputs and buttons their handlers.
+function fakeDom() {
+  const el = tag => ({ tagName: tag.toUpperCase(), children: [], style: {}, value: '', hidden: false,
+    append(...c) { this.children.push(...c); }, replaceChildren(...c) { this.children = c; }, remove() {},
+    setAttribute() {}, addEventListener() {}, focus() {}, blur() {}, contains() { return false }, querySelector() { return null } });
+  globalThis.document = { createElement: el, addEventListener() {}, removeEventListener() {}, activeElement: null };
+  const all = (node, out = []) => { out.push(node); for (const c of node.children || []) all(c, out); return out; };
+  return { container: el('div'), all };
+}
+
+test('picking a fruit or colour keeps what you typed in the join form', async t => {
+  const was = globalThis.document; t.after(() => { if (was === undefined) delete globalThis.document; else globalThis.document = was; });
+  const { container, all } = fakeDom();
+  const { createSignIn } = await import('../client/office/signin.js');
+  const online = { state: () => null, setLook: async () => {}, signIn: async () => {}, signOut: async () => {} };
+  const slip = createSignIn(container, online, { roster: () => [], id: () => null });
+  slip.open();
+  const inputs = () => all(container).filter(n => n.tagName === 'INPUT');
+  const [code, name] = inputs();
+  code.value = 'pc.ts.net/abc'; code.oninput?.(); name.value = 'Anna'; name.oninput?.();
+  all(container).find(n => n.tagName === 'BUTTON' && n.title === 'pear').onclick();
+  assert.deepEqual(inputs().map(i => i.value), ['pc.ts.net/abc', 'Anna']);
+  all(container).find(n => n.tagName === 'BUTTON' && /swatch/.test(n.className || '') && !n.disabled).onclick();
+  assert.deepEqual(inputs().map(i => i.value), ['pc.ts.net/abc', 'Anna']);
+});

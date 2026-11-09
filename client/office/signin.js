@@ -37,6 +37,8 @@ export function createSignIn(container, online, live = null) {
       const form = el('form', { className: 'office-signin-form' });
       const code = el('input', { value: typed.code, placeholder: 'Meeting code', autocomplete: 'off', spellcheck: false, required: true });
       const name = el('input', { value: typed.name || state?.name || '', placeholder: 'Name', maxLength: 16, autocomplete: 'nickname', required: true });
+      // Kept as typed: picking a fruit or colour draws the slip again.
+      code.oninput = () => { typed.code = code.value; }; name.oninput = () => { typed.name = name.value; };
       code.setAttribute('aria-label', 'Meeting code'); name.setAttribute('aria-label', 'Your name');
       const go = el('button', { type: 'submit', textContent: 'Join' });
       form.onsubmit = async event => {
