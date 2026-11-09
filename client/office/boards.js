@@ -217,7 +217,7 @@ export function meetingLines(state) {
   const host = /^\d+(\.\d+){3}$/.test(state.host) ? state.host : state.host.split('.')[0], me = state.name.toLowerCase(), players = state.board?.players ?? [];
   const mine = players.find(p => p.name.toLowerCase() === me)?.name ?? state.name;
   const others = players.filter(p => p.name.toLowerCase() !== me).sort((a, b) => b.seen - a.seen).map(p => p.name);
-  return { title: `Meeting at ${host}`, lines: [mine, ...others].slice(0, 6), closed: state.error === 'code' ? 'New code' : state.offline ? 'Off for now' : null };
+  return { title: `Meeting at ${host}`, lines: [`${mine} (me)`, ...others].slice(0, 6), closed: state.error === 'code' ? 'New code' : state.offline ? 'Off for now' : null };
 }
 export function drawMeeting({ g, width: w, height: h }, { title, lines, closed }) {
   g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h); g.lineCap = 'round'; g.lineJoin = 'round'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
