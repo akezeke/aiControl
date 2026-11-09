@@ -150,5 +150,16 @@ test('checkFloor rejects bad props and notes', () => {
   assert.equal(bad(l => { l.props = 'plant'; }), null);
   assert.equal(bad(l => { l.notes = 9; }), null);
   assert.equal(bad(l => { l.notes = 1.5; }), null);
-  assert.equal(bad(l => { delete l.notes; }), null);
+  assert.equal(bad(l => { delete l.notes; }).desks[0].look.notes, 0); // missing (an older host) means none, not refused
+});
+
+test("an older host's floor without desk things is still taken, with none on the desks", async () => {
+  const { checkFloor } = await import('../client/office/meeting.js');
+  const look = { fruit: 'apple', color: '#aa0000', accessories: ['cap'], trim: '#00aa00', habits: { typing: 'touch', thinking: 'chin', sleeping: 'heels', finish: 'cheering' } };
+  const status = { pose: 'typing', expression: 'focused', screen: 'green', since: null, wear: 0, cups: 0 };
+  const floor = { room: { width: 10, depth: 10 }, door: { x: 5, z: 10 }, pods: [[0, 0]], desks: [{ id: 'd0', pod: 0, slot: 0, parent: null, look, status }] };
+  const clean = checkFloor(floor);
+  assert.ok(clean, 'older floor rejected');
+  assert.deepEqual([clean.desks[0].look.props, clean.desks[0].look.notes], [[], 0]);
+  assert.equal(checkFloor({ ...floor, desks: [{ ...floor.desks[0], look: { ...look, props: ['secret'], notes: 0 } }] }), null);
 });

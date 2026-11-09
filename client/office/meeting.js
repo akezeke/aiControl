@@ -85,7 +85,8 @@ export function meetingFloor(snapshot) {
 }
 
 const PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books']; // status.js's pick list
-const lookOk = look => own(look, ['fruit', 'color', 'accessories', 'trim', 'habits', 'props', 'notes']) && Array.isArray(look.props) && look.props.length <= 3 && look.props.every(p => PROPS.includes(p)) && Number.isInteger(look.notes) && look.notes >= 0 && look.notes <= 3 && fruitIds.includes(look.fruit) && /^#[0-9a-f]{6}$/i.test(look.color) && /^#[0-9a-f]{6}$/i.test(look.trim)
+// Desk things (props, notes) are optional, so a host on an older version still gets visitors: missing means none.
+const lookOk = look => own(look, ['fruit', 'color', 'accessories', 'trim', 'habits']) && (look.props === undefined || (Array.isArray(look.props) && look.props.length <= 3 && look.props.every(p => PROPS.includes(p)))) && (look.notes === undefined || (Number.isInteger(look.notes) && look.notes >= 0 && look.notes <= 3)) && fruitIds.includes(look.fruit) && /^#[0-9a-f]{6}$/i.test(look.color) && /^#[0-9a-f]{6}$/i.test(look.trim)
   && Array.isArray(look.accessories) && look.accessories.length <= 8 && look.accessories.every(word) && own(look.habits, ['typing', 'thinking', 'sleeping', 'finish']) && ['typing', 'thinking', 'sleeping', 'finish'].every(k => word(look.habits[k]));
 const statusOk = s => own(s, ['pose', 'expression', 'screen', 'since', 'wear', 'cups']) && word(s.pose) && word(s.expression) && SCREENS.includes(s.screen) && (s.since === null || num(s.since, 0, 1e14)) && num(s.wear, 0, 1) && Number.isInteger(s.cups) && s.cups >= 0 && s.cups <= 6;
 // Rebuilt field by field, or null if any of it fails.
@@ -98,7 +99,7 @@ export function checkFloor(floor) {
   const ids = new Set(desks.map(desk => desk?.id));
   const clean = desks.map(desk => own(desk, ['id', 'pod', 'slot', 'parent', 'look', 'status']) && /^d[0-9]{1,3}$/.test(desk.id) && Number.isInteger(desk.pod) && desk.pod >= 0 && desk.pod < pods.length
     && Number.isInteger(desk.slot) && desk.slot >= 0 && desk.slot < 64 && (desk.parent === null || (ids.has(desk.parent) && desk.parent !== desk.id)) && lookOk(desk.look) && statusOk(desk.status)
-    ? { id: desk.id, pod: desk.pod, slot: desk.slot, parent: desk.parent, look: { fruit: desk.look.fruit, color: desk.look.color, accessories: [...desk.look.accessories], trim: desk.look.trim, habits: { ...desk.look.habits }, props: [...desk.look.props], notes: desk.look.notes },
+    ? { id: desk.id, pod: desk.pod, slot: desk.slot, parent: desk.parent, look: { fruit: desk.look.fruit, color: desk.look.color, accessories: [...desk.look.accessories], trim: desk.look.trim, habits: { ...desk.look.habits }, props: [...(desk.look.props ?? [])], notes: desk.look.notes ?? 0 },
       status: { pose: desk.status.pose, expression: desk.status.expression, screen: desk.status.screen, since: desk.status.since, wear: desk.status.wear, cups: desk.status.cups } } : null);
   if (!clean.every(Boolean) || ids.size !== desks.length) return null;
   return { room: { width: room.width, depth: room.depth }, door: { x: door.x, z: door.z }, pods: pods.map(([col, row]) => [col, row]), desks: clean };
