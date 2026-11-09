@@ -1,7 +1,7 @@
 // The other players in a meeting, as fruit in their own colour with a name tag, walking about the host's office (live.js
 // brings their positions; office.js feeds them in). Built the first time they show up, disposed when they leave.
 import * as THREE from 'three';
-import { createFruit } from './fruit.js';
+import { createFruit, LEG } from './fruit.js';
 import { poseTargets } from './animation.js';
 import { playerLook } from './meeting.js';
 
@@ -23,7 +23,7 @@ export const atMeeting = (roster, me) => roster.filter(p => p.at === 'meeting' &
 function tag(name, colour) {
   const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 64;
   const g = canvas.getContext('2d');
-  g.font = 'bold 30px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = 'bold 40px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   const w = Math.min(244, g.measureText(name).width + 28);
   g.fillStyle = 'rgba(20,20,24,0.78)'; g.beginPath(); g.roundRect(128 - w / 2, 8, w, 48, 14); g.fill();
   g.fillStyle = colour; g.fillText(name, 128, 33, 224);
@@ -32,32 +32,36 @@ function tag(name, colour) {
 }
 
 export function createFriends(scene, { room, reducedMotion = () => false }) {
-  const friends = new Map();
+  const friends = new Map(), seen = new Map(); // seen: the last place heard of everyone, even before they're built (the roster and their move can arrive either way round)
   let time = 0;
 
   function build(p) {
     const look = playerLook(p.name, p.fruit, p.colour), fruit = createFruit(look), root = new THREE.Group();
     root.add(fruit.group); root.visible = false;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag(p.name, p.colour), transparent: true, toneMapped: false }));
-    sprite.scale.set(0.64, 0.16, 1); sprite.position.y = fruit.height + 0.2; root.add(sprite);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag(p.name, p.colour), transparent: true, toneMapped: false, depthWrite: false }));
+    sprite.renderOrder = 4;
+    sprite.scale.set(0.8, 0.2, 1); sprite.position.y = LEG + fruit.height + 0.22; root.add(sprite); // above the cap
     scene.add(root);
     return { id: p.id, name: p.name, look: `${p.fruit}${p.colour}`, fruit, root, sprite, seed: [...p.id].reduce((a, c) => a + c.charCodeAt(0), 0) % 7, at: null, shown: null, pose: 'standing' };
   }
   function drop(f) { f.root.removeFromParent(); f.fruit.dispose(); f.sprite.material.map.dispose(); f.sprite.material.dispose(); }
 
   return {
-    // `me` is your own id. Builds whoever just arrived, drops whoever left; a new name or look is built again.
-    sync(roster, me) {
-      const here = new Map(atMeeting(roster, me).map(p => [p.id, p]));
+    // `me` is your own id; `show` false (you're not at the meeting) shows nobody. Builds whoever just arrived, drops whoever left;
+    // a new name or look is built again.
+    sync(roster, me, show = true) {
+      const here = new Map(show ? atMeeting(roster, me).map(p => [p.id, p]) : []);
+      for (const id of seen.keys()) if (!roster.some(p => p.id === id)) seen.delete(id);
       for (const [id, f] of friends) {
         const p = here.get(id);
         if (!p || f.look !== `${p.fruit}${p.colour}`) { drop(f); friends.delete(id); }
         else if (f.name !== p.name) { f.name = p.name; f.sprite.material.map.dispose(); f.sprite.material.map = tag(p.name, p.colour); }
       }
-      for (const [id, p] of here) if (!friends.has(id)) friends.set(id, build(p));
+      for (const [id, p] of here) if (!friends.has(id)) { friends.set(id, build(p)); if (seen.has(id)) this.move(id, seen.get(id)); }
     },
     // A position message: where they are (feet on the floor), which way they face and what they're doing.
     move(id, { x, y, z, yaw, pose }) {
+      const m = { x, y, z, yaw, pose }; seen.set(id, m);
       const f = friends.get(id); if (!f) return;
       const to = { x, y, z, yaw }; f.pose = pose;
       f.to = to;
@@ -82,6 +86,6 @@ export function createFriends(scene, { room, reducedMotion = () => false }) {
         f.fruit.setBody(target.body); f.fruit.setLimbs(target.limbs, target.elbows);
       }
     },
-    dispose() { for (const f of friends.values()) drop(f); friends.clear(); },
+    dispose() { for (const f of friends.values()) drop(f); friends.clear(); seen.clear(); },
   };
 }

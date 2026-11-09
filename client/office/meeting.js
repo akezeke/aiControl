@@ -34,7 +34,7 @@ const checks = {
   hello: m => { const name = cleanName(m.name); return own(m, ['name', 'fruit', 'colour']) && name && fruitIds.includes(m.fruit) && colour(m.colour) ? { type: 'hello', name, fruit: m.fruit, colour: m.colour } : null; },
   look: m => own(m, ['fruit', 'colour']) && fruitIds.includes(m.fruit) && colour(m.colour) ? { type: 'look', fruit: m.fruit, colour: m.colour } : null,
   where: m => m.at === 'home' || m.at === 'meeting' ? { type: 'where', at: m.at } : null,
-  pos: m => num(m.x, -1, 200) && num(m.y, -1, 6) && num(m.z, -1, 200) && num(m.yaw) && POSES.includes(m.pose) ? { type: 'pos', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pose: m.pose } : null,
+  pos: m => num(m.x, -12, 200) && num(m.y, -1, 6) && num(m.z, -12, 200) && num(m.yaw) && POSES.includes(m.pose) ? { type: 'pos', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pose: m.pose } : null,
   throw: m => KINDS.includes(m.kind) && vec(m.pos, 1000) && vec(m.vel, 40) && vec(m.spin, 100) ? { type: 'throw', kind: m.kind, pos: [...m.pos], vel: [...m.vel], spin: [...m.spin] } : null,
   floor: m => { const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
 };

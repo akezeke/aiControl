@@ -33,5 +33,8 @@ test('a friend at home isn\'t built, nor are you', t => {
   friends.sync([p('b', 'home')], 'me'); assert.equal(scene.children.length, 0);
   friends.sync([p('a', 'meeting')], 'me'); assert.equal(scene.children.length, 1);
   friends.sync([p('a', 'home')], 'me'); assert.equal(scene.children.length, 0, 'gone when they leave the meeting');
-  friends.sync([p('a', 'meeting')], 'me'); friends.dispose(); assert.equal(scene.children.length, 0);
+  friends.move('a', { x: 3, y: 0, z: 4, yaw: 0, pose: 'standing' }); // a move heard before the roster says they're here
+  friends.sync([p('a', 'meeting')], 'me', false); assert.equal(scene.children.length, 0, 'not at the meeting yourself: nobody shown');
+  friends.sync([p('a', 'meeting')], 'me'); assert.equal(scene.children[0].visible, true); friends.update(0.016); assert.equal(scene.children[0].position.x, 3);
+  friends.dispose(); assert.equal(scene.children.length, 0);
 });
