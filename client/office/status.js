@@ -4,7 +4,7 @@ export const palettes = {
   apple: ['#d62828', '#b81d24', '#f2c14e'], pear: ['#b5c934', '#e0b73f'], banana: ['#f7d23e'], orange: ['#f28c28'],
   lemon: ['#f9e04b'], eggplant: ['#5b2a86', '#7a3ea8'], strawberry: ['#e63946'], kiwi: ['#8c6a3c', '#7a5a32'], watermelon: ['#1f6b33'], pineapple: ['#f2b632'],
 };
-const PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books'];
+export const PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books'];
 // Accessories come in slots, one pick or none each, so glasses go with a tie but never two hats; a style keeps an outfit
 // together. A banana's tip has no room for a hat or headphones. `trim` colours the bow, flower, scarf, hat, headphones and earrings.
 const STYLES = [
@@ -12,6 +12,8 @@ const STYLES = [
   { lips: ['moustache', '', '', ''], head: ['cap', 'beanie', 'headphones', '', '', ''], neck: ['tie', 'tie', 'scarf', '', ''], eyes: ['glasses', '', ''] },
   { head: ['beanie', 'cap', 'headphones', '', '', '', ''], neck: ['scarf', '', '', '', ''], eyes: ['glasses', '', ''] },
 ];
+// Every accessory a style can put on (meeting.js lets a host's floor carry only these).
+export const ACCESSORIES = [...new Set(STYLES.flatMap(style => Object.values(style).flat()).filter(Boolean))];
 const HATS = ['beanie', 'cap', 'headphones'], TRIMS = ['#ff5d8f', '#3a86ff', '#8338ec', '#06d6a0', '#ffbe0b'], CLASH = { eggplant: '#8338ec', banana: '#ffbe0b', lemon: '#ffbe0b', pineapple: '#ffbe0b', watermelon: '#06d6a0' };
 const MAX_TEXT = 48;
 // Permission modes the office shows: bypass wears sunglasses, plan keeps a clipboard on the desk.

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FRUITS, COLOURS, KINDS, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor } from '../client/office/meeting.js';
-import { palettes, identity } from '../client/office/status.js';
+import { palettes, identity, PROPS, ACCESSORIES } from '../client/office/status.js';
 import { sharedLayout, layoutOffice } from '../client/office/layout.js';
 
 const session = (n, extra = {}) => ({
@@ -127,6 +127,14 @@ test('floorSnapshot rebuilds what the office draws', () => {
   assert.ok(snap.sessions.some(x => x.parentId));
 });
 
+test("the floor's lists of desk things and accessories are status.js's", () => {
+  const seen = { props: new Set(), accessories: new Set() };
+  for (let n = 0; n < 2000; n++) { const look = identity(`s${n}`); look.props.forEach(p => seen.props.add(p)); look.accessories.forEach(a => seen.accessories.add(a)); }
+  assert.deepEqual([...seen.props].sort(), [...PROPS].sort());
+  for (const [fruit] of FRUITS) for (const a of playerLook('Ann', fruit, COLOURS[0]).accessories) seen.accessories.add(a);
+  assert.deepEqual([...seen.accessories].sort(), [...ACCESSORIES].sort());
+});
+
 test('playerLook is stable and wears your colour', () => {
   const a = playerLook('Ann', 'apple', COLOURS[2]), b = playerLook('ANN', 'apple', COLOURS[2]);
   assert.deepEqual(a, b);
@@ -174,15 +182,24 @@ test('desks keep their things: props and notes survive checkFloor and reach floo
   for (const d of clean.desks) assert.deepEqual([snap.statuses.get(d.id).identity.props, snap.statuses.get(d.id).identity.notes], [d.look.props, d.look.notes]);
 });
 
-test('checkFloor rejects bad props and notes', () => {
-  const bad = change => { const f = floor(); change(f.desks[0].look); return checkFloor(f); };
+test("checkFloor reads a newer host's looks as the nearest it knows, and keeps sizes and types strict", () => {
+  const desk = (change, part = 'look') => { const f = floor(); change(f.desks[0][part]); return checkFloor(f)?.desks[0][part] ?? null; };
   assert.ok(checkFloor(floor()));
-  assert.equal(bad(l => { l.props = ['bomb']; }), null);
-  assert.equal(bad(l => { l.props = ['plant', 'mug', 'duck', 'frame']; }), null);
-  assert.equal(bad(l => { l.props = 'plant'; }), null);
-  assert.equal(bad(l => { l.notes = 9; }), null);
-  assert.equal(bad(l => { l.notes = 1.5; }), null);
-  assert.equal(bad(l => { delete l.notes; }).desks[0].look.notes, 0); // missing (an older host) means none, not refused
+  // Things this version doesn't know: dropped, or the plain default, never the whole floor refused.
+  assert.deepEqual(desk(l => { l.props = ['bomb', 'plant']; }).props, ['plant']);
+  assert.deepEqual(desk(l => { l.accessories = ['jetpack', 'glasses']; }).accessories, ['glasses']);
+  assert.equal(desk(l => { l.fruit = 'durian'; }).fruit, 'apple');
+  assert.equal(desk(s => { s.screen = 'hologram'; }, 'status').screen, 'off');
+  assert.equal(desk(l => { l.notes = 9; }).notes, 3);
+  assert.equal(desk(l => { l.notes = -2; }).notes, 0);
+  assert.equal(desk(s => { s.cups = 40; }, 'status').cups, 6);
+  assert.equal(desk(l => { delete l.notes; }).notes, 0); // missing (an older host) means none, not refused
+  // Wrong types and sizes are still refused whole.
+  for (const change of [l => { l.props = ['plant', 'mug', 'duck', 'frame']; }, l => { l.props = 'plant'; }, l => { l.props = [7]; }, l => { l.notes = 1.5; }, l => { l.notes = '2'; },
+    l => { l.fruit = 5; }, l => { l.fruit = 'x'.repeat(40); }, l => { l.accessories = Array(9).fill('cap'); }, l => { l.accessories = ['CAP!']; }])
+    assert.equal(desk(change), null, change.toString());
+  for (const change of [s => { s.screen = 3; }, s => { s.cups = 1.5; }, s => { s.cups = null; }, s => { s.wear = 2; }])
+    assert.equal(desk(change, 'status'), null, change.toString());
 });
 
 test("an older host's floor without desk things is still taken, with none on the desks", async () => {
@@ -193,5 +210,5 @@ test("an older host's floor without desk things is still taken, with none on the
   const clean = checkFloor(floor);
   assert.ok(clean, 'older floor rejected');
   assert.deepEqual([clean.desks[0].look.props, clean.desks[0].look.notes], [[], 0]);
-  assert.equal(checkFloor({ ...floor, desks: [{ ...floor.desks[0], look: { ...look, props: ['secret'], notes: 0 } }] }), null);
+  assert.deepEqual(checkFloor({ ...floor, desks: [{ ...floor.desks[0], look: { ...look, props: ['secret'], notes: 0 } }] }).desks[0].look.props, []);
 });

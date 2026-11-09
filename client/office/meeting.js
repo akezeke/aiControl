@@ -2,7 +2,7 @@
 // what the hub may send down, and the host's floor (who sits where and how they look), which carries no words from the host's
 // sessions. Everything arriving is rebuilt field by field here; anything malformed is dropped whole. Pure.
 import { cleanName } from './leaderboard.js';
-import { identity, officeStatus, naturalColor } from './status.js';
+import { identity, officeStatus, naturalColor, PROPS, ACCESSORIES } from './status.js';
 import { layoutOffice } from './layout.js';
 
 // Pickable fruit, in the slip's order: [id, emoji].
@@ -91,11 +91,23 @@ export function meetingFloor(snapshot, ids = new Map()) {
   return { room: { width: round(width, 1), depth: round(depth, 1) }, door: { x: round(door.x, 1), z: round(door.z, 1) }, pods: office.pods.map(pod => [pod.col, pod.row]), desks: rows };
 }
 
-const PROPS = ['plant', 'mug', 'duck', 'frame', 'cactus', 'books']; // status.js's pick list
-// Desk things (props, notes) are optional, so a host on an older version still gets visitors: missing means none.
-const lookOk = look => own(look, ['fruit', 'color', 'accessories', 'trim', 'habits']) && (look.props === undefined || (Array.isArray(look.props) && look.props.length <= 3 && look.props.every(p => PROPS.includes(p)))) && (look.notes === undefined || (Number.isInteger(look.notes) && look.notes >= 0 && look.notes <= 3)) && fruitIds.includes(look.fruit) && /^#[0-9a-f]{6}$/i.test(look.color) && /^#[0-9a-f]{6}$/i.test(look.trim)
-  && Array.isArray(look.accessories) && look.accessories.length <= 8 && look.accessories.every(word) && own(look.habits, ['typing', 'thinking', 'sleeping', 'finish']) && ['typing', 'thinking', 'sleeping', 'finish'].every(k => word(look.habits[k]));
-const statusOk = s => own(s, ['pose', 'expression', 'screen', 'since', 'wear', 'cups']) && word(s.pose) && word(s.expression) && SCREENS.includes(s.screen) && (s.since === null || num(s.since, 0, 1e14)) && num(s.wear, 0, 1) && Number.isInteger(s.cups) && s.cups >= 0 && s.cups <= 6;
+// A desk's look and status, rebuilt. Desk things (props, notes) are optional, so a host on an older version still gets visitors:
+// missing means none. What a newer host has and this version doesn't know (a fruit, screen, prop or accessory; more notes or
+// cups) comes out as the nearest it knows, so the room is still drawn; a wrong type or size still fails the whole floor.
+const HABITS = ['typing', 'thinking', 'sleeping', 'finish'], hex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+const count = (v, most) => Number.isInteger(v) ? Math.min(most, Math.max(0, v)) : null;
+const known = (v, most, list) => Array.isArray(v) && v.length <= most && v.every(word) ? v.filter(item => list.includes(item)) : null;
+function lookOf(look) {
+  if (!own(look, ['fruit', 'color', 'accessories', 'trim', 'habits']) || !word(look.fruit) || !hex(look.color) || !hex(look.trim) || !own(look.habits, HABITS) || !HABITS.every(k => word(look.habits[k]))) return null;
+  const accessories = known(look.accessories, 8, ACCESSORIES), props = look.props === undefined ? [] : known(look.props, 3, PROPS), notes = look.notes === undefined ? 0 : count(look.notes, 3);
+  if (!accessories || !props || notes === null) return null;
+  return { fruit: fruitIds.includes(look.fruit) ? look.fruit : 'apple', color: look.color, accessories, trim: look.trim, habits: Object.fromEntries(HABITS.map(k => [k, look.habits[k]])), props, notes };
+}
+function statusOf(s) {
+  if (!own(s, ['pose', 'expression', 'screen', 'since', 'wear', 'cups']) || !word(s.pose) || !word(s.expression) || !word(s.screen) || !(s.since === null || num(s.since, 0, 1e14)) || !num(s.wear, 0, 1)) return null;
+  const cups = count(s.cups, 6);
+  return cups === null ? null : { pose: s.pose, expression: s.expression, screen: SCREENS.includes(s.screen) ? s.screen : 'off', since: s.since, wear: s.wear, cups };
+}
 // Rebuilt field by field, or null if any of it fails.
 export function checkFloor(floor) {
   if (!own(floor, ['room', 'door', 'pods', 'desks']) || !own(floor.room, ['width', 'depth']) || !own(floor.door, ['x', 'z'])) return null;
@@ -104,10 +116,12 @@ export function checkFloor(floor) {
   if (!Array.isArray(pods) || pods.length > MAX_PODS || !Array.isArray(desks) || desks.length > MAX_DESKS) return null;
   if (!pods.every(pod => Array.isArray(pod) && pod.length === 2 && pod.every(n => Number.isInteger(n) && n >= 0 && n < 64))) return null;
   const ids = new Set(desks.map(desk => desk?.id));
-  const clean = desks.map(desk => own(desk, ['id', 'pod', 'slot', 'parent', 'look', 'status']) && /^d[0-9]{1,3}$/.test(desk.id) && Number.isInteger(desk.pod) && desk.pod >= 0 && desk.pod < pods.length
-    && Number.isInteger(desk.slot) && desk.slot >= 0 && desk.slot < 64 && (desk.parent === null || (ids.has(desk.parent) && desk.parent !== desk.id)) && lookOk(desk.look) && statusOk(desk.status)
-    ? { id: desk.id, pod: desk.pod, slot: desk.slot, parent: desk.parent, look: { fruit: desk.look.fruit, color: desk.look.color, accessories: [...desk.look.accessories], trim: desk.look.trim, habits: { ...desk.look.habits }, props: [...(desk.look.props ?? [])], notes: desk.look.notes ?? 0 },
-      status: { pose: desk.status.pose, expression: desk.status.expression, screen: desk.status.screen, since: desk.status.since, wear: desk.status.wear, cups: desk.status.cups } } : null);
+  const clean = desks.map(desk => {
+    if (!own(desk, ['id', 'pod', 'slot', 'parent', 'look', 'status']) || !/^d[0-9]{1,3}$/.test(desk.id) || !Number.isInteger(desk.pod) || desk.pod < 0 || desk.pod >= pods.length
+      || !Number.isInteger(desk.slot) || desk.slot < 0 || desk.slot >= 64 || !(desk.parent === null || (ids.has(desk.parent) && desk.parent !== desk.id))) return null;
+    const look = lookOf(desk.look), status = statusOf(desk.status);
+    return look && status ? { id: desk.id, pod: desk.pod, slot: desk.slot, parent: desk.parent, look, status } : null;
+  });
   if (!clean.every(Boolean) || ids.size !== desks.length) return null;
   return { room: { width: room.width, depth: room.depth }, door: { x: door.x, z: door.z }, pods: pods.map(([col, row]) => [col, row]), desks: clean };
 }
