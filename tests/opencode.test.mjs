@@ -2,6 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OpenCodeAdapter, OpenCodeClient, openCodeConfig } from '../server/opencode.mjs';
 import { openCodeMessages, openCodeSession, usageRecords, usagePeriods } from '../server/opencode-data.mjs';
+
+test('OpenCode keeps completed edit paths without inferring shell or pending changes', () => {
+  const tool = (id, name, status, input) => ({ id, type: 'tool', tool: name, state: { status, input, time: { start: 50, end: 100 } } });
+  const messages = openCodeMessages([{ info: { role: 'assistant', time: { created: 10 } }, parts: [
+    tool('edit', 'edit', 'completed', { filePath: '/work/repo/src/main.js' }),
+    tool('write', 'write', 'completed', { filePath: '/work/repo/new.js' }),
+    tool('failed', 'edit', 'error', { filePath: '/work/repo/failed.js' }),
+    tool('pending', 'edit', 'running', { filePath: '/work/repo/pending.js' }),
+    tool('read', 'read', 'completed', { filePath: '/work/repo/read.js' }),
+    tool('shell', 'bash', 'completed', { command: 'touch /work/repo/shell.js' }),
+  ] }]);
+  assert.deepEqual(messages.find(message => message.id === 'edit').editPaths, ['/work/repo/src/main.js']);
+  assert.deepEqual(messages.find(message => message.id === 'write').editPaths, ['/work/repo/new.js']);
+  assert.equal(messages.find(message => message.id === 'edit').timestamp, 100);
+  for (const id of ['failed', 'pending', 'read', 'shell']) assert.equal(messages.find(message => message.id === id).editPaths, undefined, id);
+});
 import { RequestStore, mergeSessions } from '../server/requests.mjs';
 import { costPeriodView } from '../client/usage-presentation.js';
 import { messagingUnavailableReason } from '../client/messaging-status.js';

@@ -28,7 +28,7 @@ import { shotStrip, shotUrl, takeShotContainer } from './shot-strip.js';
 import { ImagePanZoom } from './image-pan-zoom.js';
 import { imageWindowUrl } from './image-window.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
-import { SessionActivity, compareSessions, compareProjects, sessionPriority, recentlyActive } from './session-order.js';
+import { SessionActivity, compareSessions, compareProjects, sessionPriority, recentlyActive, activeSessionGroups } from './session-order.js';
 import { feedGroups, feedNow } from './feed.js';
 import { messagingUnavailableReason } from './messaging-status.js';
 import { ComposerInput, followKeyboard } from './composer-input.js';
@@ -45,13 +45,22 @@ import { agentSettings } from './agent-settings.js';
 import { budgetDialog } from './spend.js';
 import { createFolderField, hireCaret, hireRows } from './scene-ui.js';
 import { alertSettings, saveAlerts, canNotify, statusEvents, signal, playSound, enableNotifications, disableNotifications, restoreNotifications, listenForOpen, faviconBadge } from './alerts.js';
+import { reviewQueue } from './workspace-navigation.js';
+import { showCommandPalette } from './command-palette.js';
+import { showThemeGallery } from './theme-gallery.js';
+import { reducedAtmosphere } from './atmosphere.js';
+import './workspace-controls.css';
+import './theme-signals.css';
+import './ui-refinements.css';
+import './workflow.css';
+import { Workflow } from './workflow.js';
+import { filterFeed, quietSession, lastObservedActivity } from './workflow-data.js';
 
 const app = document.querySelector('#app');
 const firstVisit = !hasSavedTheme();
 applyTheme(savedTheme());
 const idleMs = 10 * 60_000;
 const sessionActivity = new SessionActivity();
-const messageDrafts = new Map();
 const statValues = new Map();
 const previousStatuses = new Map();
 // Older history fetched for an open panel: session id → { limit, messages, more }.
@@ -88,7 +97,7 @@ function markSeen(id) {
   seen.set(id, Date.now());
   try { localStorage.setItem(seenKey, JSON.stringify([...seen].sort((a, b) => b[1] - a[1]).slice(0, 300))); } catch { /* per tab only */ }
 }
-const unread = session => session.status === 'idle' && !session.parentId && (session.statusSince || 0) > (seen.get(session.id) || seen.get('*'));
+const unread = session => workflow.review(session);
 const liveRender = new LiveRender(() => renderData());
 const groupingKey = 'ai-control-grouping';
 const savedGrouping = () => { try { return localStorage.getItem(groupingKey) === 'flat' ? 'flat' : 'project'; } catch { return 'project'; } };
@@ -102,13 +111,22 @@ function selectFilter(value) {
 const outlinesKey = 'ai-control-office-outlines';
 let outlined = (() => { try { return localStorage.getItem(outlinesKey) !== 'off'; } catch { return true; } })();
 const state = { csrf: '', snapshot: null, filter: savedFilter(), project: '', provider: 'all', grouping: savedGrouping(), search: '', selected: null, error: '', lastActivity: Date.now() };
+const workflow = new Workflow({ api, getState: () => state, toast, openSession: openPanel, openFeed, renderRequests: renderSessionRequests, refresh,
+  onPaneActivity: () => { if (state.csrf) state.lastActivity = Date.now(); },
+  changed: () => { panelSignature = ''; liveRender.request(); },
+  setView: view => { if (state.selected) { navigation.reset(); hidePanel(); } Object.assign(state, { project: view.project || '', provider: view.provider || 'all', search: view.search || '' }); selectFilter(view.filter || 'all'); const search = document.querySelector('.toolbar input[type=search]'); if (search) search.value = state.search; if (scene) setSceneList(true); else renderData(); },
+});
+const messageDrafts = workflow.drafts.entries;
+document.documentElement.toggleAttribute('data-workflow-pane', new URLSearchParams(location.search).has('pane'));
 const navigation = new PanelNavigation(window, id => {
   if (!state.csrf) return;
   if (!id) { hidePanel(); return; }
   state.selected = id; panelSignature = '';
   if (id === 'access') renderAccessPanel(); else if (id === 'feed') renderFeed(); else if (state.snapshot) renderPanel();
+  syncMobileNavigation();
 });
 let poll, touching = 0, activityTimer, panelSignature = '', loading = false, clearing = false;
+let palette = null, radarSelection = null;
 const statuses = { working: ['Working', 'green'], idle: ['Idle', 'gray'], permission: ['Permission', 'amber'], question: ['Question', 'amber'], offline: ['Offline', 'gray'], error: ['Error', 'red'], unknown: ['Unknown', 'gray'] };
 const icons = {
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
@@ -163,12 +181,11 @@ function uuid() {
 function chooseTheme(id) {
   applyTheme(id);
   for (const card of document.querySelectorAll('#groups .session-card')) delete card.dataset.sig; // A look may draw its cards differently.
-  // Picking a scene theme opens its scene, even if its list was showing last.
-  if (sceneFor(document.documentElement.dataset.theme) && sceneList) setSceneList(false); else syncScene();
+  // Keep the list/panel choice while changing looks; the scene button is an explicit way in.
+  syncScene();
   dressTheme();
+  renderData();
 }
-// The picker's Nodes entry stands for all its looks.
-const sameChoice = (option, id) => option === id || (option === 'nodes' && !!id?.startsWith('nodes-'));
 function themeMenu() {
   const control = el('div', 'theme-menu');
   const open = button('', 'quiet-button', () => showThemePicker(open), 'theme');
@@ -213,8 +230,12 @@ function alertsMenu() {
 // Each theme names the control room after its own computer; CSS shows the active one.
 wearColours(paletteFor(savedColour()));
 const brandNames = { modern: 'AI Control', bridge: 'Bridge', alien: 'MU/TH/UR', command: 'EVA', simpsons: 'Springfield', heroes: 'Heroes', zelda: 'Zelda', diablo: 'Sanctuary', city: 'Metropolis', fantasy: 'Fantasy Battle', bricks: 'Brick Knights', nodes: 'Nodes' };
-function brand() {
-  const logo = el('div', 'brand'); logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control');
+function brand(openMenu) {
+  const logo = el(openMenu ? 'button' : 'div', 'brand');
+  if (openMenu) {
+    logo.type = 'button'; logo.title = 'Open menu'; logo.setAttribute('aria-label', 'Open menu'); logo.setAttribute('aria-haspopup', 'dialog');
+    logo.onclick = () => openMenu(logo);
+  } else { logo.setAttribute('role', 'img'); logo.setAttribute('aria-label', 'AI Control'); }
   for (const [id, name] of Object.entries(brandNames)) {
     const variant = el('span', `brand-variant ${id}`), mark = el('span', 'brand-mark');
     if (id === 'modern') for (let i = 0; i < 3; i++) mark.append(el('i'));
@@ -242,6 +263,8 @@ async function api(path, body, options = {}) {
 }
 
 function showLogin(message = '') {
+  workflow.reset();
+  palette?.close(); closeAccountMenu?.();
   disposeHistory();
   disposeComposer(); liveRender.cancel();
   messageDrafts.clear(); shots.clear(); docs.clear();
@@ -275,6 +298,77 @@ function showLogin(message = '') {
   }).catch(() => {});
 }
 
+function highlightRadarSession(id) {
+  for (const card of document.querySelectorAll('.session-card')) card.toggleAttribute('data-radar-selected', document.documentElement.dataset.theme === 'command' && card.dataset.sessionId === id);
+}
+function syncThemeConsole() {
+  if (!state.snapshot) return;
+  if (!state.snapshot.sessions.some(s => s.id === radarSelection)) radarSelection = null;
+  renderThemeConsole(document.querySelector('#theme-console'), state.snapshot.sessions, {
+    disconnected: !!state.error, selectedId: radarSelection, onSelect: openPanel,
+    onInspect: (id, { selected = false } = {}) => { if (selected) radarSelection = id; highlightRadarSession(id || radarSelection); },
+    onNext: id => { const next = nextWaiting(id); if (next) openPanel(next.id); },
+  });
+}
+function mobileNavigation() {
+  const nav = el('nav', 'mobile-nav'); nav.setAttribute('aria-label', 'Workspace tabs');
+  for (const [view, label, glyph] of [['all', 'Sessions', 'grid'], ['attention', 'Needs you', 'bell'], ['feed', 'Feed', 'live']]) {
+    const item = button(label, 'mobile-nav-button', () => view === 'feed' ? openFeed() : showSessionList(view), glyph);
+    item.dataset.mobileView = view; item.append(el('span', 'mobile-nav-count')); nav.append(item);
+  }
+  return nav;
+}
+function syncMobileNavigation() {
+  const count = (state.snapshot?.sessions || []).filter(needsInput).length;
+  const mobileFeed = state.selected === 'feed' && !!document.querySelector('.mobile-nav')?.getClientRects().length;
+  document.querySelector('#panel')?.setAttribute('aria-modal', String(!mobileFeed && !document.body.classList.contains('wf-split-open')));
+  for (const item of document.querySelectorAll('[data-mobile-view]')) {
+    const view = item.dataset.mobileView, current = state.selected === 'feed' ? 'feed' : state.filter === 'attention' ? 'attention' : 'all';
+    if (view === current) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
+    const badge = item.querySelector('.mobile-nav-count'); badge.textContent = view === 'attention' && count ? count : '';
+  }
+}
+function showSessionList(filter = 'all') {
+  if (state.selected) { navigation.reset(); hidePanel(); }
+  selectFilter(filter); state.project = ''; state.provider = 'all'; state.search = '';
+  const search = document.querySelector('.toolbar input[type=search]'); if (search) search.value = '';
+  if (sceneFor(document.documentElement.dataset.theme)) setSceneList(true); else renderData();
+}
+function workspaceCommands() {
+  const sessions = state.snapshot?.sessions || [];
+  return [
+    ...workflow.commands(),
+    { id: 'needs', label: 'Needs you', detail: 'Waiting questions and permissions', shortcut: 'n', run: () => nextWaiting(state.selected) ? openNext() : showSessionList('attention') },
+    { id: 'sessions', label: 'All sessions', detail: 'Open the session list', run: () => showSessionList('all') },
+    { id: 'feed', label: 'Live feed', detail: 'Every session on one timeline', shortcut: 'f', run: openFeed },
+    { id: 'search', label: 'Find a session', detail: 'Search sessions and projects', shortcut: '/', run: () => { showSessionList('all'); document.querySelector('.toolbar input[type=search]')?.focus(); } },
+    { id: 'new', label: 'New agent', detail: 'Choose a folder and provider', disabled: !!state.error, run: () => { showSessionList('all'); const menu = document.querySelector('#new-agent-menu'); if (menu) menu.open = true; } },
+    { id: 'themes', label: 'Themes', detail: 'Gallery, favourites and atmosphere', run: () => showThemePicker(document.activeElement) },
+    ...sessions.toSorted(compareSessions).map(session => ({ id: `session:${session.id}`, label: session.title || 'Untitled session', detail: [session.project, providerName(session.provider), (statuses[session.status] || statuses.unknown)[0]].join(' · '), keywords: `${session.cwd || ''} ${session.model || ''} ${session.branch || ''}`, run: () => { if (state.snapshot?.sessions.some(s => s.id === session.id)) openPanel(session.id); } })),
+    ...themes.map(theme => ({ id: `theme:${theme.id}`, label: theme.name, detail: 'Theme', keywords: `appearance ${theme.id} ${theme.look || ''}`, run: () => chooseTheme(theme.id) })),
+  ];
+}
+function openCommands(trigger = document.activeElement) {
+  if (!state.csrf || document.querySelector('dialog[open]')) return;
+  closeAccountMenu?.();
+  palette = showCommandPalette({ trigger, commands: workspaceCommands(), onClose: () => { palette = null; } });
+}
+function renderReviewQueue(header, session) {
+  const queue = reviewQueue(state.snapshot.sessions, session.id);
+  let row = header.querySelector('.review-queue');
+  if (!queue.total) { row?.remove(); return; }
+  if (!row) {
+    row = el('div', 'review-queue');
+    const next = button('', 'review-next', openNext); next.title = 'Next waiting (n)';
+    row.append(el('strong', 'review-position'), el('span', 'review-age'), next); header.append(row);
+  }
+  setProperty(row.querySelector('.review-position'), 'textContent', queue.position ? `${queue.position} of ${queue.total}` : `${queue.total} waiting`);
+  setProperty(row.querySelector('.review-age'), 'textContent', queue.waitMs == null ? '' : `Waiting ${duration(queue.waitMs)}`);
+  const next = row.querySelector('.review-next'); next.hidden = !queue.next;
+  setProperty(next.lastElementChild, 'textContent', queue.next ? `Next: ${queue.next.title}` : '');
+  next.title = queue.next ? `Next waiting (n): ${queue.next.project} · ${queue.next.title}` : '';
+}
+
 function showWorkspace() {
   app.innerHTML = '';
   const shell = el('div', 'shell');
@@ -286,10 +380,10 @@ function showWorkspace() {
   shell.append(aside);
   const content = el('div', 'workspace');
   const topbar = el('header', 'topbar');
-  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; const feedButton = button('Feed', 'quiet-button feed-button', openFeed, 'live'); feedButton.title = 'Live feed (f)'; const officeButton = button('Office', 'quiet-button office-button', () => setSceneList(false), 'office'); officeButton.title = 'Back to the office'; topActions.append(live, officeButton, feedButton, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand()); content.append(topbar);
+  const topActions = el('div', 'top-actions'); const live = el('span', 'live-label', 'Connecting…'); live.id = 'connection'; const access = button('PIN', 'quiet-button access-button', () => { previousFocus = document.activeElement; navigation.open('access'); }, 'key'); access.title = 'Change PIN / password'; const lockButton = button('Lock', 'quiet-button', () => lock(), 'lock'); lockButton.title = 'Lock now'; const feedButton = button('Feed', 'quiet-button feed-button', openFeed, 'live'); feedButton.title = 'Live feed (f)'; const officeButton = button('Office', 'quiet-button office-button', () => setSceneList(false), 'office'); officeButton.title = 'Back to the office'; topActions.append(live, officeButton, feedButton, alertsMenu(), themeMenu(), access, lockButton); topbar.append(brand(openCommands)); content.append(topbar);
   // Desktop has no top bar: its controls sit at the bottom of the sidebar.
   const wide = matchMedia('(min-width: 641px)'), placeActions = () => (wide.matches ? aside : topbar).append(topActions);
-  wide.onchange = placeActions; placeActions();
+  wide.onchange = () => { placeActions(); syncMobileNavigation(); }; placeActions();
   const main = el('main', 'main-content');
   const heading = el('div', 'page-heading'); const headingText = el('div'); headingText.append(el('h1', '', 'Sessions')); heading.append(headingText);
   const machineLabel = el('span', 'machine-label'); machineLabel.id = 'machine'; heading.append(machineLabel); const statusLine = el('div', 'status-line'); statusLine.id = 'status-line'; main.append(statusLine, heading);
@@ -302,11 +396,16 @@ function showWorkspace() {
   for (const [value, label] of [['all', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude Code'], ['opencode', 'OpenCode']]) { const tab = button(label, 'tab', () => { state.provider = value; menu.open = false; renderData(); }); tab.dataset.provider = value; tabs.append(tab); }
   tabs.append(el('span', 'sidebar-label', 'GROUP'));
   for (const [value, label] of [['project', 'By project'], ['flat', 'Flat list']]) { const tab = button(label, 'tab', () => { state.grouping = value; try { localStorage.setItem(groupingKey, value); } catch { /* per-tab only */ } menu.open = false; renderData(); }); tab.dataset.grouping = value; tabs.append(tab); }
+  tabs.append(el('span', 'sidebar-label', 'VIEW'));
+  for (const [value, label] of [['all', 'All sessions'], ['active', 'Active'], ['attention', 'Needs you'], ['working', 'Working'], ['idle', 'Idle']]) {
+    const tab = button(label, 'tab', () => { selectFilter(value); state.project = ''; menu.open = false; renderData(); scene?.pick(picked(), true); }); tab.dataset.sessionFilter = value; tabs.append(tab);
+  }
   const searchBox = el('label', 'search'); searchBox.append(icon('search')); const search = el('input'); search.type = 'search'; search.placeholder = 'Find a session…'; search.title = '/ search · j k move · n next waiting · f live feed'; search.setAttribute('aria-label', 'Search sessions and projects'); search.oninput = () => { state.search = search.value; liveRender.interact(); liveRender.request(); }; searchBox.append(search);
   // Folded to an icon button until used, styled as one by every theme; the label still focuses the input, so a click or / opens it.
   const fold = () => { const folded = !search.value && document.activeElement !== search; searchBox.classList.toggle('folded', folded); searchBox.classList.toggle('search', !folded); searchBox.classList.toggle('quiet-button', folded); }; search.onfocus = search.onblur = fold; fold(); searchBox.title = 'Find a session (/)'; menu.append(tabs); // The scene themes' way back, where the eye is while looking for a session; the small one in the sidebar footer is easy to miss.
   const sceneSwitch = button('Scene', 'quiet-button scene-switch', () => setSceneList(false), 'office'); sceneSwitch.title = 'Back to the scene';
-  toolbar.append(sceneSwitch, searchBox, menu, newAgentMenu()); main.append(toolbar);
+  const commands = button('', 'quiet-button command-trigger', () => openCommands(commands), 'terminal'); commands.title = 'Commands (Ctrl / ⌘ K)'; commands.setAttribute('aria-label', 'Commands'); commands.setAttribute('aria-haspopup', 'dialog');
+  toolbar.append(sceneSwitch, searchBox, commands, menu, newAgentMenu()); workflow.mount(toolbar); main.append(toolbar);
   const create = button('New OpenCode session', 'tab new-session-button', () => { menu.open = false; newOpenCodeSession(); }, 'plus');
   tabs.append(create);
   const lost = el('section', 'lost'); lost.id = 'lost'; lost.hidden = true; lost.setAttribute('aria-label', 'Lost sessions'); main.append(lost);
@@ -327,8 +426,9 @@ function showWorkspace() {
   backdrop.onpointermove = event => { if (event.pointerType !== 'mouse' || !scene?.at) return; backdrop.style.cursor = through(event) || command(event) ? 'pointer' : ''; scene.hover?.(event.clientX, event.clientY); };
   backdrop.onpointerleave = () => scene?.hover?.(null);
   const panel = el('section', 'detail-panel'); panel.id = 'panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-label', 'Session details');
-  app.append(backdrop, panel);
+  app.append(backdrop, panel, mobileNavigation());
   restoreNotifications(api);
+  workflow.load();
   poll = setInterval(refresh, 3000);
   navigation.sync();
   if (!document.querySelector('.theme-picker')) bootSequence();
@@ -340,7 +440,8 @@ async function refresh() {
   try {
     const snapshot = await api('snapshot');
     if (!state.csrf) return;
-    snapshot.sessions = sessionActivity.observe(snapshot.sessions);
+    workflow.adopt(snapshot.workspace);
+    snapshot.sessions = sessionActivity.observe(snapshot.sessions).map(session => ({ ...session, originalTitle: session.title, title: workflow.title(session) }));
     signal(statusEvents(previousStatuses, snapshot.sessions));
     state.snapshot = snapshot; state.error = ''; liveRender.request();
   } catch (error) {
@@ -411,6 +512,9 @@ function syncScene() {
 
 const editBudget = account => budgetDialog(account, async budget => { await api('usage/opencode/budget', budget); toast('Budget saved'); await refresh(); });
 function renderData() {
+  workflow.update();
+  palette?.update(workspaceCommands());
+  syncMobileNavigation();
   document.querySelector('.new-session-dialog')?.updateConnection?.();
   if (!state.snapshot || !document.querySelector('#groups')) {
     const error = document.querySelector('#error'); if (error && state.error) { error.hidden = false; error.textContent = state.error; } return;
@@ -435,7 +539,7 @@ function renderData() {
   const usage = document.querySelector('#usage'), usageSignature = JSON.stringify([state.snapshot.usage, !!state.error, Math.floor(Date.now() / 60_000)]);
   if (usage.dataset.sig !== usageSignature) { usage.dataset.sig = usageSignature; renderUsage(usage, state.snapshot.usage, { disconnected: !!state.error, editBudget }); }
   renderLost(document.querySelector('#lost'), state.snapshot.lost || [], state.snapshot.lostChecking || 0);
-  renderThemeConsole(document.querySelector('#theme-console'), sessions, { disconnected: !!state.error, onSelect: openPanel });
+  syncThemeConsole();
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
   const active = state.filter === 'active', flat = active || state.grouping === 'flat';
   const setFilter = value => () => { selectFilter(value); state.project = ''; renderData(); scene?.pick(picked(), true); };
@@ -468,13 +572,14 @@ function renderData() {
     tab.classList.toggle('active', selected); tab.setAttribute('aria-pressed', String(selected));
     tab.disabled = active; tab.title = active ? 'Active sessions are ordered by status' : '';
   }
+  for (const tab of document.querySelectorAll('[data-session-filter]')) tab.setAttribute('aria-pressed', String(tab.dataset.sessionFilter === state.filter));
   const filterMenu = document.querySelector('#agent-filter-menu'); filterMenu.classList.toggle('filtered', state.provider !== 'all'); filterMenu.querySelector('summary').setAttribute('aria-label', `Session options: ${state.provider === 'all' ? 'All agents' : providerName(state.provider)}`);
   const focusedSession = document.activeElement?.classList.contains('session-card') ? document.activeElement.dataset.sessionId : null;
   const groups = document.querySelector('#groups');
   const pick = picked(), visible = sessions.filter(s => (!pick || pick(s)) && (state.provider === 'all' || s.provider === state.provider) && `${s.title} ${s.project} ${s.cwd} ${s.model}`.toLowerCase().includes(state.search.toLowerCase()));
   const visibleGroups = new Map(); for (const session of visible) { const key = session.cwd || session.project; if (!visibleGroups.has(key)) visibleGroups.set(key, []); visibleGroups.get(key).push(session); }
   // Current sessions stay in status order; recent ones follow below their own divider.
-  const sorted = active ? [['', visible.filter(s => sessionPriority(s) < 2)], ['recent', visible.filter(s => sessionPriority(s) > 1)]].filter(([, list]) => list.length)
+  const sorted = active ? activeSessionGroups(sessions, visible)
     : flat ? (visible.length ? [['', visible]] : []) : [...visibleGroups].sort(compareProjects);
   const before = flipPositions(groups);
   syncList(groups, visible.length ? sorted.map(([cwd]) => [cwd, null]) : [['empty', [state.filter === 'attention', sessions.length]]], data => {
@@ -498,22 +603,30 @@ function renderData() {
     } else if (!flat && header.dataset.sig !== headerSignature) {
       header.dataset.sig = headerSignature;
       const title = el('div', 'group-title'); title.append(el('h2', '', list[0].project), el('span', 'group-count', list.length));
-      header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')), spawnButtons(cwd));
+      header.replaceChildren(title, el('span', 'project-path', cwd.replace(/^\/home\/[^/]+/, '~')), projectSpawn(cwd));
     }
     // Outside Active, subagents sit directly under their parent; orphans keep their own place.
-    const ordered = list.sort(recent ? (a, b) => b.inactiveSince - a.inactiveSince || a.id.localeCompare(b.id) : compareSessions), ids = new Set(ordered.map(s => s.id));
+    const ordered = active ? list : list.sort((a, b) => Number(!!workflow.meta(b).pinned) - Number(!!workflow.meta(a).pinned) || compareSessions(a, b)), ids = new Set(ordered.map(s => s.id));
     const withChildren = s => [s, ...ordered.filter(child => child.parentId === s.id).flatMap(withChildren)];
     const cards = active ? ordered : ordered.filter(s => !ids.has(s.parentId)).flatMap(withChildren);
     syncList(group.lastChild, cards.map(session => {
       sessionsById.set(session.id, session);
       const lastMessage = session.messages?.at(-1);
-      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, branch: session.branch, parentId: session.parentId, nested: !!session.parentId && !active, agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && (active || !session.parentId) ? session.project : '', needs: needsInput(session), waitingOn: session.waitingOn, detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
+      return [session.id, { id: session.id, provider: session.provider, status: session.status, title: `${workflow.meta(session).pinned ? '★ ' : ''}${workflow.title(session)}`, branch: session.branch, parentId: session.parentId, nested: !!session.parentId && ids.has(session.parentId), agentKind: session.agentKind, kind: session.parentId ? session.model : '', project: flat && !session.parentId ? session.project : '', needs: needsInput(session), waitingOn: session.waitingOn, detail: cardDetail(session), last: lastMessage && [lastMessage.role, plainText(lastMessage.text).slice(0, 400)],
         plan: planProgress(session), mode: modeLabels[session.permissionMode] ? session.permissionMode : '', context: contextPercent(session.context), compacting: compacting(session), unread: unread(session) }];
     }), renderCard);
   }
   for (const card of groups.querySelectorAll('.session-card')) {
     const session = sessionsById.get(card.dataset.key);
+    card.classList.toggle('wf-no-activity', quietSession(session, workflow.saved.preferences.quietMinutes ?? 15));
+    let quietBadge = card.querySelector('.wf-quiet-badge');
+    if (card.classList.contains('wf-no-activity')) {
+      if (!quietBadge) { quietBadge = el('span', 'wf-quiet-badge'); card.querySelector('.session-body').append(quietBadge); }
+      quietBadge.textContent = `No activity · ${Math.floor((Date.now() - lastObservedActivity(session)) / 60000)}m`;
+      quietBadge.title = `Last observed event: ${new Date(lastObservedActivity(session)).toLocaleString()}`;
+    } else quietBadge?.remove();
     setProperty(card.querySelector('.session-age'), 'textContent', active && sessionPriority(session) > 1 ? age(session.inactiveSince) : stateAge(session));
+    card.toggleAttribute('data-radar-selected', document.documentElement.dataset.theme === 'command' && session.id === radarSelection);
   }
   flipFrom(groups, before);
   if (focusedSession && document.activeElement?.dataset.sessionId !== focusedSession) [...groups.querySelectorAll('[data-session-id]')].find(card => card.dataset.sessionId === focusedSession)?.focus({ preventScroll: true });
@@ -555,8 +668,10 @@ const tokens = n => n >= 1e6 ? `${Number((n / 1e6).toFixed(1))}M` : `${Math.roun
 function chip(text, className, title) { const node = el('span', `chip ${className}`, text); if (title) node.title = title; return node; }
 function renderCard(session, previous) {
   const card = el('button', `session-card ${session.needs ? 'needs-input' : ''} ${session.nested ? 'subagent' : ''}`); card.type = 'button'; card.onclick = () => openPanel(session.id);
+  card.onfocus = card.onpointerenter = () => { if (document.documentElement.dataset.theme === 'command') { radarSelection = session.id; syncThemeConsole(); highlightRadarSession(session.id); } };
   // Long card loops run on a page-wide clock, so a rebuilt card continues them instead of restarting.
   card.style.setProperty('--since-load', `${-Math.round(performance.now())}ms`); card.dataset.sessionId = session.id; card.dataset.status = session.status; card.setAttribute('aria-label', `${session.title}, ${providerName(session.provider)}, ${(statuses[session.status] || statuses.unknown)[0]}`);
+  card.toggleAttribute('data-status-changed', !!previous && previous.dataset.status !== session.status);
   const mark = el('span', `agent-mark ${session.provider}`); mark.append(providerIcon(session.provider)); mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', providerName(session.provider)); mark.title = providerName(session.provider);
   if (document.documentElement.dataset.theme === 'fantasy') import('./fantasy/portraits.js').then(({ paintPortrait }) => paintPortrait(mark, session)).catch(() => {});
   if (session.unread) card.classList.add('unread');
@@ -564,14 +679,14 @@ function renderCard(session, previous) {
   const body = el('span', 'session-body');
   const chips = [session.branch && el('span', 'branch', session.branch), session.plan && chip(`${session.plan[0]}/${session.plan[1]}`, 'plan-chip', 'Plan steps done'), session.waitingOn && chip(`Waiting · ${session.waitingOn}`, 'plan-chip', 'Still running'),
     session.mode && chip(modeLabels[session.mode], `mode-chip ${session.mode}`, 'Permission mode'), session.compacting ? chip('compacting', 'compact-chip', 'Compacting context') : session.context >= 80 && chip(`ctx ${session.context}%`, 'ctx-chip', 'Context window used')].filter(Boolean);
-  if (chips.length) { const meta = el('span', 'session-meta'); meta.append(...chips); body.append(meta); }
+  const meta = el('span', 'session-meta'); if (chips.length) meta.append(...chips);
   const title = el('strong', 'session-title'); if (session.project) title.append(el('span', 'project-tag', session.project)); if (session.parentId) { const workflow = session.agentKind === 'workflow', tag = el('span', `subagent-tag${workflow ? ' workflow-tag' : ''}`, workflow ? 'Workflow' : 'Subagent'); tag.title = session.kind || ''; title.append(tag); } title.append(session.title); body.append(title);
   const text = document.createTextNode(session.last ? session.last[1] : session.detail);
   const preview = session.last ? el('span', 'message-preview') : el('span', 'session-description');
   if (session.last?.[0] === 'user') preview.append(el('strong', '', 'You: '));
-  preview.append(text); body.append(preview);
+  preview.append(text); body.append(preview); if (chips.length) body.append(meta);
   const before = previous?.querySelector('.message-preview, .session-description')?.textContent;
-  if (before !== undefined && before !== preview.textContent) typewrite(text);
+  if (before !== undefined && before !== preview.textContent && document.documentElement.dataset.theme !== 'alien') typewrite(text);
   const right = el('span', 'session-right'); right.append(badge(session.status), el('span', 'session-age'));
   if (session.unread) { const dot = el('i', 'unread-dot'); dot.title = 'New since you last looked'; mark.append(dot); }
   card.append(mark, body, right); return card;
@@ -606,7 +721,7 @@ function typewrite(node) {
 
 // FLIP: moved cards and headers slide from their old spot; new ones fade in.
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const stillInterface = () => reducedMotion.matches || document.documentElement.dataset.theme === 'paper';
+const stillInterface = () => reducedMotion.matches || reducedAtmosphere() || document.documentElement.dataset.theme === 'paper';
 const flipKey = node => node.classList.contains('group-heading') ? `#${node.parentElement.dataset.key}` : node.dataset.key;
 function flipPositions(root) { return new Map([...root.querySelectorAll('.session-card, .group-heading')].map(node => [flipKey(node), node.getBoundingClientRect().top])); }
 function flipFrom(root, before) {
@@ -620,8 +735,8 @@ function flipFrom(root, before) {
 }
 
 let previousFocus;
-function openPanel(id) { previousFocus = document.activeElement; navigation.open(id); document.querySelector('#panel button')?.focus(); }
-function closePanel() { navigation.close(); }
+function openPanel(id) { previousFocus = document.activeElement; radarSelection = id; syncThemeConsole(); navigation.open(id); syncMobileNavigation(); document.querySelector('#panel button')?.focus(); }
+function closePanel() { if (new URLSearchParams(location.search).has('pane') && window.parent !== window) { window.parent.postMessage({ type: 'ai-control-close-pane' }, location.origin); return; } workflow.closeSplit(); navigation.close(); }
 function hidePanel() { scene?.panelClosed(); const closedId = state.selected; markSeen(closedId); older.delete(closedId); state.selected = null; panelSignature = ''; const panel = document.querySelector('#panel'); if (!panel) return; const open = !panel.hidden; disposeHistory(); disposeComposer(); liveRender.cancel(); panel.dataset.sessionId = ''; delete panel.dataset.view; panel.hidden = true; document.querySelector('#backdrop').hidden = true; document.querySelector('.shell')?.removeAttribute('inert'); document.body.classList.remove('panel-open'); renderData();
   // Closing twice (the call, then the history step it takes) mustn't pull focus back from whatever the first close handed it to.
   if (!open) return;
@@ -644,7 +759,8 @@ function renderPanel() {
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
-    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireSignature(session.cwd)]);
+    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireSignature(session.cwd),
+    lastObservedActivity(session), Math.floor(Date.now() / 60000), workflow.saved.preferences.quietMinutes, workflow.meta(session), state.snapshot.overlaps]);
   const settingsActive = panel.querySelector('.agent-settings:focus-within, .agent-settings[data-busy]');
   if (signature !== panelSignature && (!settingsActive || state.error)) {
     panelSignature = signature;
@@ -658,11 +774,12 @@ function renderPanel() {
   }
   renderRecentMessages(session);
   renderComposer(session);
+  renderReviewQueue(panel.querySelector('.chat-header'), session);
   dressTheme();
 }
 
 // Triage: the next session waiting for you, in overview order.
-function nextWaiting(currentId) { return (state.snapshot?.sessions || []).filter(s => needsInput(s) && s.id !== currentId).sort(compareSessions)[0]; }
+function nextWaiting(currentId) { return reviewQueue(state.snapshot?.sessions || [], currentId).next; }
 function openNext() { const next = nextWaiting(state.selected); if (!next) return; if (state.selected && state.selected !== 'feed') navigation.open(next.id, { replace: true }); else openPanel(next.id); }
 function renderSessionHeader(header, session) {
   const expanded = !!header.querySelector('.chat-info')?.open, planOpen = !!header.querySelector('.plan-info')?.open;
@@ -676,7 +793,7 @@ function renderSessionHeader(header, session) {
   actions.append(themeMenu(), badge(session.status)); const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions'; head.append(back, actions); header.append(head);
   const identity = el('div', 'agent-identity'), portrait = el('span', `agent-mark ${session.provider}`);
   portrait.append(providerIcon(session.provider)); portrait.setAttribute('aria-hidden', 'true');
-  const heading = el('div', 'agent-heading'), title = el('h2', 'panel-title', session.title); title.title = session.title;
+  const heading = el('div', 'agent-heading'), title = el('h2', 'panel-title', workflow.title(session)); title.title = session.originalTitle || session.title;
   const byline = el('div', 'agent-byline'); byline.append(el('span', 'agent-provider', providerName(session.provider)), el('span', 'agent-project', [session.account, session.project].filter(Boolean).join(' · '))); byline.title = [providerName(session.provider), session.account, session.cwd].filter(Boolean).join(' · ');
   heading.append(title, byline); identity.append(portrait, heading); header.append(identity);
   const metadata = el('details', 'chat-info'); metadata.open = expanded;
@@ -708,6 +825,7 @@ function renderSessionHeader(header, session) {
     const list = el('ol', 'plan-steps'); for (const step of session.plan) list.append(el('li', step.status, step.step));
     plan.append(line, list); header.append(plan);
   }
+  workflow.header(header, session);
   if (state.error) header.append(el('p', 'connection-error', 'Reconnecting. Actions are temporarily disabled.'));
 }
 // The first click arms it for a few seconds; the second goes ahead. The server refuses if anything is still running.
@@ -807,13 +925,13 @@ function renderSessionRequests(requests, session) {
 function disposeComposer() {
   const region = document.querySelector('#message-composer');
   region?.draftInput?.destroy();
+  if (region?.currentSession) workflow.drafts.flush(region.currentSession.id);
 }
 
 function renderComposer(session) {
   const region = document.querySelector('#message-composer'); if (!region) return;
   region.currentSession = session;
-  let draft = messageDrafts.get(session.id);
-  if (!draft) { draft = { text: '', images: [], busy: false, error: '' }; messageDrafts.set(session.id, draft); }
+  const draft = workflow.draft(session.id);
   if (!region.querySelector('form')) {
     const queue = el('div', 'message-queue');
     const form = el('form', 'message-form');
@@ -841,10 +959,11 @@ function renderComposer(session) {
     form.addEventListener('drop', event => { if (imageFiles(event.dataTransfer?.files).length) { event.preventDefault(); add(event.dataTransfer.files); } });
     const feedback = el('p', 'composer-feedback'); feedback.setAttribute('role', 'status');
     const draftInput = region.draftInput = new ComposerInput(input, draft, () => update());
+    input.addEventListener('input', () => workflow.editDraft(session.id, input.value));
     const acceptSuggestion = () => {
       const text = region.currentSession.suggestion;
       if (suggestion.hidden || draft.busy || !draftInput.acceptSuggestion(text)) return false;
-      draft.acceptedSuggestion = text; update(); input.focus(); return true;
+      workflow.editDraft(session.id, input.value); draft.acceptedSuggestion = text; update(); input.focus(); return true;
     };
     suggestion.onclick = acceptSuggestion;
     input.onkeydown = event => {
@@ -864,7 +983,7 @@ function renderComposer(session) {
       draft.busy = true; draft.error = ''; update();
       try {
         const result = await api(`sessions/${encodeURIComponent(session.id)}/messages`, draft.submission);
-        draft.text = ''; draft.revision = (draft.revision || 0) + 1; draft.submission = null; releaseImages(draft.images); draft.images = [];
+        await workflow.clearDraft(session.id); draft.revision = (draft.revision || 0) + 1; draft.submission = null; releaseImages(draft.images); draft.images = [];
         if (result.status === 'cleared' && result.session && state.snapshot) {
           state.snapshot.sessions = [...state.snapshot.sessions.filter(item => item.id !== result.session.id), result.session];
           if (state.selected === session.id) navigation.open(result.sessionId, { replace: true });
@@ -876,11 +995,16 @@ function renderComposer(session) {
       finally { draft.busy = false; update(); if (state.selected === session.id) document.querySelector('#message-composer')?.updateComposer?.(); }
     };
     form.append(previews, suggestion, row, files, feedback); region.append(queue, form);
+    const draftTools = workflow.composer(region, session, text => {
+      const next = `${input.value}${input.value ? '\n\n' : ''}${text}`;
+      if (next.length > 12000) { toast('Draft exceeds 12,000 characters. Shorten it before inserting.'); return false; }
+      input.value = next; input.dispatchEvent(new Event('input')); input.focus(); return true;
+    });
     function update() {
       const current = region.currentSession;
       const unavailable = messagingUnavailableReason(current, state.snapshot);
       const available = current.messaging?.send && !unavailable;
-      draftInput.syncReset();
+      draftInput.syncReset(); draftTools.sync();
       if (current.suggestion && current.suggestion !== draft.acceptedSuggestion) draft.acceptedSuggestion = '';
       const suggested = available && !draft.busy && !draftInput.hasText && !draft.images.length && current.suggestion && current.suggestion !== draft.acceptedSuggestion ? current.suggestion : '';
       setProperty(suggestion, 'hidden', !suggested);
@@ -936,7 +1060,7 @@ function renderComposer(session) {
           // Remove the queued copy before offering it for immediate delivery.
           // A message that already started must never become another draft.
           await api(`sessions/${encodeURIComponent(session.id)}/queue/${encodeURIComponent(message.id)}/cancel`, {});
-          draft.text = message.text; draft.revision = (draft.revision || 0) + 1; draft.submission = null;
+          workflow.editDraft(session.id, message.text); draft.revision = (draft.revision || 0) + 1; draft.submission = null;
           toast('Removed from the queue');
           await refresh();
         } catch (error) { draft.error = error.message; }
@@ -1069,19 +1193,36 @@ function renderFeed() {
     const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions';
     head.append(back, actions);
     const title = el('h2', 'panel-title'); title.append(icon('live'), el('span', '', 'Live feed'));
-    header.append(head, title);
+    header.append(head, title, el('div', 'wf-feed-filters'));
     const now = el('nav', 'feed-now'); now.setAttribute('aria-label', 'Busy and waiting');
     const recent = el('section', 'recent-messages'); recent.id = 'recent-messages';
     panel.append(header, now, recent);
     back.focus({ preventScroll: true });
   }
-  const sessions = state.snapshot.sessions, now = panel.querySelector('.feed-now');
+  syncFeedFilters(panel.querySelector('.wf-feed-filters'));
+  const sessions = filterFeed(state.snapshot.sessions, feedPrefs), now = panel.querySelector('.feed-now');
   const busy = feedNow(sessions, { subagents: feedPrefs.subagents, unread });
   syncList(now, busy.map(session => [session.id, { id: session.id, provider: session.provider, status: session.status, title: session.title, project: session.project, detail: cardDetail(session), plan: planProgress(session), sub: !!session.parentId, unread: unread(session) }]), feedNowItem);
   now.hidden = !busy.length;
   for (const item of now.children) item.title = `${item.dataset.label} · ${stateAge(sessions.find(s => s.id === item.dataset.key))}`;
-  renderFeedTimeline(panel.querySelector('#recent-messages'), feedGroups(sessions, feedShots, feedPrefs));
+  renderFeedTimeline(panel.querySelector('#recent-messages'), feedGroups(sessions, feedPrefs.kind && feedPrefs.kind !== 'all' ? () => [] : feedShots, feedPrefs));
   dressTheme();
+}
+function syncFeedFilters(region) {
+  const sessions = state.snapshot.sessions;
+  const choices = {
+    project: [['', 'All projects'], ...[...new Set(sessions.map(s => s.cwd).filter(Boolean))].map(cwd => [cwd, sessions.find(s => s.cwd === cwd).project])],
+    provider: [['', 'All agents'], ['codex', 'Codex'], ['claude', 'Claude'], ['opencode', 'OpenCode']],
+    session: [['', 'All sessions'], ...sessions.map(s => [s.id, workflow.title(s)])],
+    kind: [['all', 'All activity'], ['replies', 'Final replies'], ['errors', 'Failures']],
+  };
+  for (const [key, entries] of Object.entries(choices)) {
+    let select = region.querySelector(`[data-feed-filter="${key}"]`);
+    if (!select) { select = el('select'); select.dataset.feedFilter = key; select.setAttribute('aria-label', `Feed ${key}`); select.onchange = () => { feedPrefs[key] = select.value; try { localStorage.setItem(feedKey, JSON.stringify(feedPrefs)); } catch {} renderFeed(); }; region.append(select); }
+    const signature = JSON.stringify(entries);
+    if (select.dataset.signature !== signature && document.activeElement !== select) { select.dataset.signature = signature; select.replaceChildren(...entries.map(([value, label]) => { const option = el('option', '', label); option.value = value; return option; })); }
+    select.value = feedPrefs[key] || (key === 'kind' ? 'all' : '');
+  }
 }
 function feedNowItem(session) {
   const item = el('button', `feed-now-item${session.unread ? ' unread' : ''}`); item.type = 'button'; item.dataset.status = session.status;
@@ -1316,11 +1457,14 @@ function renderAccessPanel() {
 
 async function respond(request, payload, container, error) {
   if (state.error) return;
+  if (container.dataset.busy) return;
+  container.dataset.busy = 'true';
   const controls = [...container.querySelectorAll('button, input')]; controls.forEach(b => b.disabled = true); error.textContent = '';
   try {
     await api(`requests/${request.id}/respond`, payload);
     toast('Response delivered'); panelSignature = ''; await refresh();
   } catch (e) { error.textContent = e.message; controls.forEach(b => b.disabled = false); }
+  finally { delete container.dataset.busy; }
 }
 
 function toast(text) { const node = el('div', 'toast', text); node.setAttribute('role', 'status'); app.append(node); setTimeout(() => node.remove(), 3500); }
@@ -1371,16 +1515,26 @@ function spawnButtons(cwd) {
   }
   return actions;
 }
+function projectSpawn(cwd) {
+  const control = button('', 'quiet-button spawn-button project-spawn', () => {
+    const choices = hireChoices(state.snapshot, cwd).flatMap(choice => choice.accounts ? choice.accounts.map(account => ({ ...account, label: `Claude · ${account.label}` })) : [choice]);
+    toggleAccountMenu(control, cwd, choices, 'New agent');
+  }, 'plus');
+  control.title = 'New agent in this project'; control.setAttribute('aria-label', 'New agent in this project'); control.setAttribute('aria-haspopup', 'menu'); control.setAttribute('aria-expanded', 'false');
+  return control;
+}
 // In the top layer and outside the list: no scrolling parent clips it, and a panel or header redraw can't close it mid-pick.
 let closeAccountMenu = null;
-function toggleAccountMenu(control, cwd, accounts) {
+function toggleAccountMenu(control, cwd, accounts, label = 'Claude account') {
   const reopen = closeAccountMenu?.control !== control;
   closeAccountMenu?.();
   if (!reopen) return;
-  const menu = el('div', 'filter-options account-options'); menu.popover = 'manual'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Claude account');
+  const menu = el('div', 'filter-options account-options'); menu.popover = 'manual'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', label);
   const items = accounts.map(account => {
     const item = button(account.label, 'tab', () => { close(); spawnAgent(cwd, account, control); });
-    item.setAttribute('role', 'menuitem'); item.title = `New ${account.name} in tmux${account.last ? ' · last used here' : ''}`;
+    item.setAttribute('role', 'menuitem'); item.title = `New ${account.name}${account.provider === 'opencode' ? ' session' : ' in tmux'}${account.last ? ' · last used here' : ''}`;
+    item.disabled = !!state.error;
+    if (label === 'New agent') item.prepend(providerIcon(account.provider));
     if (account.last) item.append(el('span', 'last', 'last'));
     return item;
   });
@@ -1499,12 +1653,17 @@ async function spawnAgent(cwd, choice, control, slot) {
 }
 
 async function lock() {
+  disposeComposer(); await workflow.flushDrafts();
   const logout = api('logout', {}, { keepalive: true });
   navigation.reset();
   showLogin(); document.title = 'AI Control';
   try { await logout; } catch { /* local display still locks if offline */ }
 }
 document.addEventListener('keydown', event => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+    if (!state.csrf || document.querySelector('dialog[open]:not(.command-palette)')) return;
+    event.preventDefault(); if (palette) palette.close(); else openCommands(); return;
+  }
   if (document.querySelector('dialog[open]')) return;
   if (event.key !== 'Escape' && event.key !== 'Tab') return;
   const openTheme = document.querySelector('.theme-menu[open]');
@@ -1513,8 +1672,9 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && menu) { menu.open = false; menu.querySelector('summary').focus(); return; }
   // Esc in a dialog closes that dialog, not the panel behind it.
   if (event.key === 'Escape' && state.selected && !event.target.closest?.('dialog')) closePanel();
-  if (event.key === 'Tab' && state.selected) {
-    const controls = [...document.querySelector('#panel').querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), summary, a[href], [tabindex]:not([tabindex="-1"])')].filter(node => node.getClientRects().length);
+  if (event.key === 'Tab' && state.selected && !workflow.splitFrame) {
+    const regions = [document.querySelector('#panel'), ...(state.selected === 'feed' ? [document.querySelector('.mobile-nav')] : [])].filter(Boolean);
+    const controls = regions.flatMap(region => [...region.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), summary, a[href], [tabindex]:not([tabindex="-1"])')]).filter(node => node.getClientRects().length);
     const first = controls[0], last = controls.at(-1);
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -1522,7 +1682,7 @@ document.addEventListener('keydown', event => {
 });
 // Single-key shortcuts outside text fields: / search, j k move between cards, n next waiting session.
 document.addEventListener('keydown', event => {
-  if (!state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open], #new-agent-menu[open]')) return;
+  if (!workflow.shortcuts || !state.csrf || event.ctrlKey || event.metaKey || event.altKey || event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open], details[open].theme-menu, #agent-filter-menu[open], #new-agent-menu[open]')) return;
   if (event.key === 'n' && nextWaiting(state.selected)) { event.preventDefault(); if (scene && !state.selected) scene.talkTo(nextWaiting().id); else openNext(); return; }
   if (event.key === 'f') { event.preventDefault(); openFeed(); return; }
   if (state.selected) return;
@@ -1543,6 +1703,7 @@ for (const name of ['pointerdown', 'pointermove', 'keydown', 'input', 'wheel', '
   if (!event.isTrusted || !state.csrf) return;
   if (Date.now() - state.lastActivity >= idleMs) { lock(); return; }
   state.lastActivity = Date.now();
+  workflow.activity();
   if (name === 'input') liveRender.interact();
   if (Date.now() - touching >= 10_000) sendActivity();
   else if (!activityTimer) activityTimer = setTimeout(sendActivity, 10_000 - (Date.now() - touching));
@@ -1570,47 +1731,10 @@ restoreLogin();
 
 // One preview picker for first visits and every theme control. Closing without a choice keeps the current look.
 function showThemePicker(trigger, welcome = false) {
-  if (document.querySelector('.theme-picker')) return;
-  const current = document.documentElement.dataset.themeChoice;
-  const focusRegion = trigger?.closest('.chat-header, .login-screen, .top-actions');
-  const dialog = el('dialog', 'theme-picker'); dialog.setAttribute('aria-label', 'Themes');
-  const heading = el('div', 'theme-picker-heading');
-  const close = button('', 'theme-picker-close', () => dialog.close(), 'close'); close.setAttribute('aria-label', 'Close themes'); close.title = 'Close (Esc)';
-  heading.append(el('h2', '', 'Themes'), close);
-  const body = el('div', 'theme-picker-body');
-  if (current === 'office') {
-    const label = el('label', 'theme-picker-setting');
-    const input = el('input'); input.type = 'checkbox'; input.checked = outlined;
-    input.onchange = () => { outlined = input.checked; try { localStorage.setItem(outlinesKey, outlined ? 'on' : 'off'); } catch { /* per tab only */ } scene?.outlines?.(outlined); };
-    label.append(input, el('span', '', 'Office outlines')); label.title = 'Off: only on what you point at'; body.append(label);
-  }
-  if (sameChoice('nodes', current)) {
-    const label = el('label', 'theme-picker-setting', 'Nodes look'), select = el('select');
-    for (const theme of themes.filter(theme => theme.node)) { const option = el('option', '', theme.node); option.value = theme.id; select.append(option); }
-    select.value = current; select.onchange = () => dialog.close(select.value); label.append(select); body.append(label);
-  }
-  const grid = el('div', 'theme-picker-grid');
-  for (const theme of themes.filter(theme => !theme.node || theme.id === 'nodes')) {
-    const choice = button(theme.name, 'theme-picker-choice', () => dialog.close(theme.id === 'nodes' && sameChoice('nodes', current) ? current : theme.id));
-    choice.dataset.themeChoice = theme.id; choice.setAttribute('aria-label', theme.name); choice.setAttribute('aria-pressed', String(sameChoice(theme.id, current)));
-    choice.prepend(el('span', `theme-preview ${theme.id}`)); grid.append(choice);
-  }
-  body.append(grid); dialog.append(heading, body);
-  const outside = event => { const r = dialog.getBoundingClientRect(); return event.target === dialog && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom); };
-  let pressedOutside = false;
-  dialog.onpointerdown = event => { pressedOutside = outside(event); };
-  dialog.onclick = event => { if (pressedOutside && outside(event)) dialog.close(); };
-  dialog.onclose = () => {
-    dialog.remove();
-    if (dialog.returnValue) chooseTheme(dialog.returnValue);
-    if (welcome) bootSequence();
-    // Polling can replace a session header's controls while the modal is open.
-    if (trigger) {
-      const next = trigger.isConnected ? trigger : (focusRegion?.isConnected && focusRegion.querySelector('[aria-label="Change theme"]')) || document.querySelector('.top-actions [aria-label="Change theme"], .login-screen [aria-label="Change theme"]');
-      next?.focus({ preventScroll: true });
-    }
-  };
-  document.body.append(dialog); dialog.showModal();
-  const selected = grid.querySelector('[aria-pressed=true]'); selected?.focus({ preventScroll: true }); selected?.scrollIntoView({ block: 'nearest' });
+  showThemeGallery({
+    trigger, current: document.documentElement.dataset.themeChoice, onChoose: chooseTheme, outlined,
+    onOutlinesChange: value => { outlined = value; try { localStorage.setItem(outlinesKey, value ? 'on' : 'off'); } catch { /* per tab only */ } scene?.outlines?.(value); },
+    onClose: () => { if (welcome) bootSequence(); },
+  });
 }
 if (firstVisit) showThemePicker(undefined, true);

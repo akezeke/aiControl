@@ -66,6 +66,7 @@ input:is([type=checkbox], [type=radio]) { width: 18px; height: 18px; margin: 0; 
 
 /* Brand */
 .brand { display: flex; align-items: center; gap: 10px; font: 700 16px/1 var(--display); letter-spacing: -.02em; white-space: nowrap; color: var(--text); }
+button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; text-align: left; cursor: pointer; }
 .brand-variant { display: none; align-items: center; gap: inherit; min-width: 0; }
 :root:is(:not([data-theme]), [data-theme=modern], [data-theme=office]) .brand-variant.modern, :root[data-theme=bridge] .brand-variant.bridge, :root[data-theme=city] .brand-variant.city, :root[data-theme=fantasy] .brand-variant.fantasy, :root[data-theme=alien] .brand-variant.alien, :root[data-theme=command] .brand-variant.command { display: flex; }
 .brand-name { overflow: hidden; text-overflow: ellipsis; }

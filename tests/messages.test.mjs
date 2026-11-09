@@ -179,6 +179,31 @@ test('Codex tool items, notices and failures become one-line entries', () => {
   assert.equal(line({ type: 'reasoning', summary: ['x'] }), null);
 });
 
+test('confirmed Codex edits retain full paths without attributing shell or failed changes', () => {
+  const item = { type: 'fileChange', id: 'edit', status: 'completed', changes: [{ path: '/work/repo/one/src/main.js' }, { path: '/work/repo/two/src/main.js' }] };
+  const result = codexMessage({ item, completedAtMs: 1234 });
+  assert.deepEqual(result.editPaths, ['/work/repo/one/src/main.js', '/work/repo/two/src/main.js']);
+  assert.equal(result.timestamp, 1234);
+  assert.equal(codexMessage({ ...item, status: 'failed' }).editPaths, undefined);
+  assert.equal(codexMessage({ ...item, status: 'inProgress' }).editPaths, undefined);
+  assert.equal(codexMessage({ type: 'commandExecution', id: 'shell', command: 'touch /work/repo/file', exitCode: 0 }).editPaths, undefined);
+});
+
+test('Claude records edit paths only after a successful file tool result', () => {
+  const edit = (id, name, input) => row(id, 'assistant', [{ type: 'tool_use', id, name, input }]);
+  const result = (id, is_error = false) => row(`result-${id}`, 'user', [{ type: 'tool_result', tool_use_id: id, is_error, content: 'done' }]);
+  const messages = claudeMessages([
+    edit('success', 'Edit', { file_path: '/work/repo/src/main.js' }), result('success'),
+    edit('failed', 'Write', { file_path: '/work/repo/failed.js' }), result('failed', true),
+    edit('pending', 'Edit', { file_path: '/work/repo/pending.js' }),
+    edit('read', 'Read', { file_path: '/work/repo/read.js' }), result('read'),
+    edit('notebook', 'NotebookEdit', { notebook_path: '/work/repo/book.ipynb' }), result('notebook'),
+  ], sessionId);
+  assert.deepEqual(messages.find(message => message.id.endsWith(':success')).editPaths, ['/work/repo/src/main.js']);
+  assert.deepEqual(messages.find(message => message.id.endsWith(':notebook')).editPaths, ['/work/repo/book.ipynb']);
+  for (const id of ['failed', 'pending', 'read']) assert.equal(messages.find(message => message.id.endsWith(`:${id}`)).editPaths, undefined, id);
+});
+
 test('main Claude sessions show tool lines, failed calls, API errors and harness notices', () => {
   const lines = [
     row('u1', 'user', 'Run the tests'),

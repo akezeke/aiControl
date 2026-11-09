@@ -82,8 +82,48 @@ test('push displays questions, completed work, and missing session details clear
   const handlers = {}, shown = [];
   const self = { addEventListener: (type, fn) => { handlers[type] = fn; }, registration: { showNotification: async (title, options) => shown.push({ title, body: options.body }) } };
   runInNewContext(await readFile(new URL('../client/public/sw.js', import.meta.url), 'utf8'), { self, URLSearchParams });
-  for (const data of [{ kind: 'input', status: 'question', title: 'Investigate' }, { kind: 'ready', title: 'Review', project: 'App' }, { kind: 'input' }]) {
+  for (const data of [{ kind: 'input', status: 'question', title: 'Investigate' }, { kind: 'ready', title: 'Review', project: 'App' }, { kind: 'error', status: 'error', title: 'Failed build', project: 'App' }, { kind: 'input' }]) {
     let pending; handlers.push({ data: { json: () => data }, waitUntil: promise => { pending = promise; } }); await pending;
   }
-  assert.deepEqual(shown, [{ title: 'Question for you', body: 'Investigate' }, { title: 'Done', body: 'App · Review' }, { title: 'Needs you', body: 'Open AI Control' }]);
+  assert.deepEqual(shown, [{ title: 'Question for you', body: 'Investigate' }, { title: 'Done', body: 'App · Review' }, { title: 'Error', body: 'App · Failed build' }, { title: 'Needs you', body: 'Open AI Control' }]);
+});
+
+test('background push uses category and project policy without replaying suppressed transitions', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'ai-push-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const sent = [];
+  const push = await new PushNotifications(join(dir, 'push.json'), { send: async (_, payload) => sent.push(JSON.parse(payload)) }).load();
+  await push.subscribe(subscription('https://web.push.apple.com/policy'));
+  push.setPolicy({ categories: { permissions: false, completions: false }, mutedProjects: ['/work/muted'] });
+  const sessions = statuses => statuses.map((status, index) => ({ id: String(index), status, cwd: index === 3 ? '/work/muted' : '/work/app' }));
+  await push.update(sessions(['working', 'working', 'working', 'working', 'working']));
+  await push.update(sessions(['permission', 'question', 'idle', 'error', 'error']));
+  assert.deepEqual(sent.map(event => [event.id, event.kind]), [['1', 'input'], ['4', 'error']]);
+  push.setPolicy({});
+  await push.update(sessions(['permission', 'question', 'idle', 'error', 'error']));
+  assert.equal(sent.length, 2);
+  push.setPolicy({ categories: { questions: false, errors: false } });
+  await push.update(sessions(['working', 'working', 'working', 'working', 'working']));
+  await push.update(sessions(['permission', 'question', 'idle', 'error', 'error']));
+  assert.deepEqual(sent.slice(2).map(event => [event.id, event.kind]), [['0', 'input'], ['2', 'ready']]);
+});
+
+test('background push observes overnight quiet hours in the configured time zone', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'ai-push-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const sent = [];
+  let now = Date.parse('2026-11-09T21:00:00Z'); // 22:00 in Stockholm.
+  const push = await new PushNotifications(join(dir, 'push.json'), { send: async (_, payload) => sent.push(JSON.parse(payload)), now: () => now }).load();
+  await push.subscribe(subscription('https://web.push.apple.com/quiet'));
+  push.setPolicy({ quietHours: { enabled: true, start: '22:00', end: '07:00', timeZone: 'Europe/Stockholm' } });
+  await push.update([{ id: 'a', status: 'working' }]);
+  await push.update([{ id: 'a', status: 'permission' }]);
+  now = Date.parse('2026-11-10T05:59:00Z'); // 06:59 in Stockholm.
+  await push.update([{ id: 'a', status: 'working' }]);
+  await push.update([{ id: 'a', status: 'error' }]);
+  assert.equal(sent.length, 0);
+  now = Date.parse('2026-11-10T06:00:00Z');
+  await push.update([{ id: 'a', status: 'error' }]);
+  assert.equal(sent.length, 0, 'quiet events are consumed rather than queued for later');
+  await push.update([{ id: 'a', status: 'working' }]);
+  await push.update([{ id: 'a', status: 'idle' }]);
+  assert.deepEqual(sent.map(event => event.kind), ['ready']);
 });

@@ -18,15 +18,16 @@ async function body(req, limit = 64 * 1024) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push, workflow }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
+    // The second session pane is the same authenticated app in a same-origin frame.
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'");
     if (origins[0].startsWith('https:')) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     try {
       if (!hosts.includes(req.headers.host)) throw fail('Unrecognized host.', 403);
@@ -64,6 +65,34 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
       if (path === '/api/push/subscribe' && req.method === 'POST') { if (!push) throw fail('Push notifications are unavailable.', 503); await push.subscribe(await body(req)); json(res, 200, { ok: true }); return; }
       if (path === '/api/push/unsubscribe' && req.method === 'POST') { if (!push) throw fail('Push notifications are unavailable.', 503); const data = await body(req); await push.unsubscribe(data.endpoint); json(res, 200, { ok: true }); return; }
       if (path === '/api/snapshot' && req.method === 'GET') { json(res, 200, snapshot(), req); return; }
+      if (path === '/api/workspace' && workflow) {
+        const result = req.method === 'GET' ? workflow.workspace.snapshot() : await workflow.patch(await body(req, 256 * 1024));
+        if (req.method === 'POST') auth.touch(session);
+        json(res, 200, result); return;
+      }
+      if (path === '/api/history/search' && req.method === 'GET' && workflow) {
+        const query = new URL(req.url, origins[0]).searchParams, provider = query.get('provider') || '', project = query.get('project') || '';
+        if (provider.length > 80 || project.length > 8192) throw fail('Invalid history search.', 400);
+        json(res, 200, await workflow.history.search(query.get('q') || '', { provider, project })); return;
+      }
+      if (path === '/api/history/session' && req.method === 'GET' && workflow) {
+        const archived = await workflow.history.session(new URL(req.url, origins[0]).searchParams.get('id'));
+        if (!archived) throw fail('History is unavailable for this session.', 404);
+        json(res, 200, archived); return;
+      }
+      if (path === '/api/decisions' && req.method === 'GET' && workflow) {
+        const query = new URL(req.url, origins[0]).searchParams;
+        json(res, 200, await workflow.decisions({ session: query.get('session') || '', q: query.get('q') || '' })); return;
+      }
+      if (path === '/api/providers/health' && req.method === 'GET' && workflow) { json(res, 200, workflow.health()); return; }
+      const providerRetry = /^\/api\/providers\/([a-z]+)\/retry$/.exec(path);
+      if (providerRetry && req.method === 'POST' && workflow) { const result = await workflow.retry(providerRetry[1]); auth.touch(session); json(res, 200, result); return; }
+      const repositoryRoute = /^\/api\/sessions\/([^/]+)\/repository$/.exec(path);
+      if (repositoryRoute && req.method === 'GET' && workflow) {
+        let id; try { id = decodeURIComponent(repositoryRoute[1]); } catch { throw fail('Invalid session ID.'); }
+        const query = new URL(req.url, origins[0]).searchParams;
+        json(res, 200, await workflow.repository(id, query.has('path') ? query.get('path') : null)); return;
+      }
       if (path === '/api/usage/opencode/budget' && req.method === 'POST') {
         if (!budget) throw fail('Spend budgets are unavailable.', 503);
         const result = await budget(await body(req)); auth.touch(session); json(res, 200, result); return;

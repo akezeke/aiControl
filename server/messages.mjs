@@ -30,7 +30,7 @@ const unwrapShell = command => typeof command === 'string' ? command.replace(/^(
 // Reasoning, hook prompts and sleeps stay out: they are noise next to the conversation.
 export function codexMessage(entry) {
   const item = entry.item ?? entry;
-  const time = entry.completedAtMs ?? entry.startedAtMs;
+  const time = entry.completedAtMs ?? entry.startedAtMs ?? item.completedAtMs ?? item.startedAtMs;
   const failed = ['failed', 'declined'].includes(item.status) || (item.exitCode != null && item.exitCode !== 0) || item.success === false || !!item.error;
   switch (item.type) {
     case 'agentMessage': case 'plan': return message(item.id, 'assistant', item.text || '', time);
@@ -39,7 +39,7 @@ export function codexMessage(entry) {
     case 'enteredReviewMode': return notice(item.id, 'Review started', time);
     case 'contextCompaction': return notice(item.id, 'Context compacted', time);
     case 'commandExecution': return toolLine(item.id, item.exitCode ? `Shell (exit ${item.exitCode})` : 'Shell', unwrapShell(item.command), time, failed);
-    case 'fileChange': return toolLine(item.id, 'Edit', (item.changes ?? []).map(change => shortPath(change.path || '')).join(', '), time, failed);
+    case 'fileChange': return { ...toolLine(item.id, 'Edit', (item.changes ?? []).map(change => shortPath(change.path || '')).join(', '), time, failed), ...(!failed && item.status === 'completed' ? { editPaths: (item.changes ?? []).map(change => change.path).filter(path => typeof path === 'string' && path.length <= 4096 && !path.includes('\0')).slice(0, 200) } : {}) };
     case 'mcpToolCall': return toolLine(item.id, [item.server, item.tool].filter(Boolean).join('/') || 'MCP tool', '', time, failed);
     case 'dynamicToolCall': return toolLine(item.id, item.tool || 'Tool', '', time, failed);
     case 'collabAgentToolCall': return toolLine(item.id, 'Agent', item.prompt, time, failed);
@@ -85,7 +85,7 @@ function claudeUserRow(row, text) {
 const systemNotices = new Set(['informational', 'away_summary', 'scheduled_task_fire', 'agents_killed', 'model_refusal_fallback']);
 // Tool calls become one-line entries; the client folds runs of them in a main session.
 export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent = false, all = false } = {}) {
-  const messages = new Map(), tools = new Map();
+  const messages = new Map(), tools = new Map(), editPaths = new Map();
   for (const line of lines) {
     try {
       let row = JSON.parse(line);
@@ -100,15 +100,24 @@ export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent
       }
       if (!['user', 'assistant'].includes(row.type)) continue;
       const blocks = Array.isArray(row.message?.content) ? row.message.content : [];
-      // A failed tool call turns its line red.
-      for (const block of blocks) if (block.type === 'tool_result' && block.is_error && tools.has(block.tool_use_id)) tools.get(block.tool_use_id).failed = true;
+      // Edits become evidence only after a successful result, never from pending
+      // calls, descriptive labels or shell commands that might mention a path.
+      for (const block of blocks) if (block.type === 'tool_result' && tools.has(block.tool_use_id)) {
+        const tool = tools.get(block.tool_use_id);
+        if (block.is_error) { tool.failed = true; delete tool.editPaths; }
+        else if (editPaths.has(block.tool_use_id)) { tool.editPaths = editPaths.get(block.tool_use_id); tool.timestamp = time || tool.timestamp; }
+      }
       const content = textContent(row.message?.content), images = blocks.filter(block => block.type === 'image').length;
       if (row.isApiErrorMessage) { const value = notice(row.uuid, content || 'API error', time, true); if (value) messages.set(value.id, value); continue; }
       const [role, text] = row.type === 'user' ? claudeUserRow(row, content) : ['assistant', content];
       const shown = (images && role === 'user' ? `[image${images > 1 ? ` ×${images}` : ''}] ` : '') + (agent && role === 'user' ? taskText(text) : text);
       const value = message(agent ? row.uuid : row.message?.id || row.uuid, role, shown, time);
       if (value) messages.set(value.id, value);
-      if (row.type === 'assistant') for (const block of blocks) if (block.type === 'tool_use') { const tool = toolMessage(row, block); messages.set(tool.id, tool); tools.set(block.id, tool); }
+      if (row.type === 'assistant') for (const block of blocks) if (block.type === 'tool_use') {
+        const tool = toolMessage(row, block); messages.set(tool.id, tool); tools.set(block.id, tool);
+        const path = block.input?.file_path || block.input?.path || block.input?.notebook_path;
+        if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(block.name) && typeof path === 'string' && path.length <= 4096 && !path.includes('\0')) editPaths.set(block.id, [path]);
+      }
     } catch { /* partially flushed and truncated first lines are skipped */ }
   }
   const list = [...messages.values()];

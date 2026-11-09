@@ -64,8 +64,11 @@ export function openCodeMessages(rows, limit = messageLimit) {
       } else if (part.type === 'tool') {
         const input = part.state?.input || {}, detail = input.command || input.filePath || input.path || input.pattern || input.url || input.prompt || '';
         const label = input.description || part.state?.title || (typeof detail === 'string' ? detail : '');
+        const editPath = input.filePath || input.path;
+        const edited = part.state?.status === 'completed' && ['edit', 'write', 'multiedit'].includes(part.tool) && typeof editPath === 'string' && editPath.length <= 4096 && !editPath.includes('\0');
         messages.push({ ...base, tool: true, text: [part.tool, String(label).replace(/\s+/g, ' ').slice(0, 200)].filter(Boolean).join(' · '),
-          ...(typeof detail === 'string' && detail ? { detail: detail.slice(0, 2000) } : {}), ...(part.state?.status === 'error' ? { failed: true } : {}) });
+          ...(typeof detail === 'string' && detail ? { detail: detail.slice(0, 2000) } : {}), ...(part.state?.status === 'error' ? { failed: true } : {}),
+          ...(edited ? { editPaths: [editPath], timestamp: part.state?.time?.end || base.timestamp } : {}) });
       } else if (part.type === 'file') {
         messages.push({ ...base, text: `[${part.mime?.startsWith('image/') ? 'image' : 'file'}] ${part.filename || ''}`.trim() });
       } else if (part.type === 'compaction') messages.push({ ...base, role: 'notice', text: 'Context compacted' });

@@ -3,7 +3,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { appendFile, writeFile, rename, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { hostname as machineName } from 'node:os';
+import { hostname as machineName, homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
@@ -25,6 +25,10 @@ import { Battlefields } from './battlefields.mjs';
 import { Recovery, resumeArgs } from './recovery.mjs';
 import { PromptHistory } from './prompt-history.mjs';
 import { PushNotifications } from './push.mjs';
+import { WorkspaceStore } from './workspace.mjs';
+import { HistorySearch, openCodeHistorySource } from './history-search.mjs';
+import { WorkflowService } from './workflow.mjs';
+import { launchPreset } from './workflow-launch.mjs';
 import { root, authFile, dataDir, hookSocket, port, claudeAccounts, readSettings } from './config.mjs';
 
 export async function startServer({ host, hostname, tls = null }) {
@@ -44,6 +48,9 @@ export async function startServer({ host, hostname, tls = null }) {
   const defaults = new AgentDefaults();
   const spendBudget = await new SpendBudget().load();
   opencode.budget = spendBudget.value;
+  const workspace = await new WorkspaceStore(join(dataDir, 'workspace.json')).load();
+  const history = await new HistorySearch({ file: join(dataDir, 'history-search.json'), codexRoots: [process.env.CODEX_HOME || join(homedir(), '.codex')], claudeAccounts: accounts,
+    sources: opencode.config ? [() => opencode.api ? openCodeHistorySource(opencode.api)() : { sessions: [], partial: true, truncated: false }] : [] }).load();
   // One usage row per Claude account, each with its own credentials.
   const claudeUsage = accounts.map(({ dir, label }) => ({ label, poller: new UsagePoller('claude', label ? `Claude Code · ${label}` : 'Claude Code', claudeUsageReader({ credentialsFile: join(dir, '.credentials.json') })) }));
   // Loading the .mjs directly avoids temporary bundled configs triggering Node 22's imported-module watcher.
@@ -63,9 +70,13 @@ export async function startServer({ host, hostname, tls = null }) {
     const sessions = mergeSessions([...live, ...launches.list().filter(launch => !live.some(session => session.id === launch.id))], store.list());
     return sessions;
   };
+  const workflow = new WorkflowService({ workspace, history, sessions: currentSessions, decisionsFile: join(dataDir, 'decisions.jsonl'), push,
+    providers: [{ id: 'codex', name: 'Codex', adapter: codex, retry: () => codex.connected ? codex.refresh() : codex.connect() },
+      { id: 'claude', name: 'Claude Code', adapter: claude, retry: () => claude.refresh() },
+      ...opencode.config ? [{ id: 'opencode', name: 'OpenCode', adapter: opencode, retry: () => opencode.refresh() }] : []] });
   const snapshot = () => {
     const sessions = currentSessions();
-    return { sessions, office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), lostChecking: recovery.checking(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: [{ name: 'Codex', connected: codex.connected, detail: codex.detail }, { name: 'Claude Code', connected: claude.connected, detail: claude.detail }, ...opencode.config ? [{ name: 'OpenCode', connected: opencode.connected, detail: opencode.detail }] : []] };
+    return { sessions, ...workflow.snapshot(), office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), lostChecking: recovery.checking(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, workflow: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: workflow.health().providers };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -104,7 +115,9 @@ export async function startServer({ host, hostname, tls = null }) {
   };
   // Any existing directory (~ expands), or with `create` a new one in an existing directory. Claude starts under the account
   // asked for, or the one the project last used. `slot` is the desk or lot the agent was asked for, if any.
-  const spawn = async ({ cwd: typed, provider, account: label, slot, create } = {}) => {
+  const spawn = async (body = {}) => {
+    if (body?.presetId !== undefined) return launchPreset(body, { workspace, codex, claude, opencode, defaults, seats, launches, spawnAgent });
+    const { cwd: typed, provider, account: label, slot, create } = body || {};
     const cwd = agentFolder(typed, { create: create === true });
     if (provider === 'opencode') {
       const created = await opencode.spawn(cwd, await defaults.read(provider));
@@ -139,7 +152,7 @@ export async function startServer({ host, hostname, tls = null }) {
     },
     dismiss: ids => { recovery.dismiss(ids); return { ok: true }; },
   };
-  const handler = createHandler({ auth, store, snapshot, push, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
+  const handler = createHandler({ auth, store, snapshot, push, workflow, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {
@@ -152,8 +165,11 @@ export async function startServer({ host, hostname, tls = null }) {
   codex.start();
   opencode.start();
   for (const { poller } of claudeUsage) poller.start();
-  push.update(currentSessions()).catch(error => console.error('[Push]', error.message));
-  const pushing = setInterval(() => push.update(currentSessions()).catch(error => console.error('[Push]', error.message)), 3000);
+  const observe = () => {
+    push.update(currentSessions()).catch(error => console.error('[Push]', error.message));
+    workflow.observe().catch(error => console.error('[Workflow]', error.message));
+  };
+  observe(); const pushing = setInterval(observe, 3000);
   // At once, so sessions a reboot took show up as lost without waiting for the first tick.
   const recoverNow = () => recover().catch(error => console.error('[Recovery]', error.message));
   recoverNow(); const recovering = setInterval(recoverNow, 4000);
@@ -166,6 +182,7 @@ export async function startServer({ host, hostname, tls = null }) {
     if (closing) return; closing = true;
     auth.persist(loginsFile);
     clearInterval(recovering); clearInterval(pushing); launches.stop(); codex.stop(); opencode.stop(); for (const { poller } of claudeUsage) poller.stop(); await claude.stop(); await vite.close();
+    await workflow.observing?.catch(() => {});
     await closeServers();
     await unlink(join(dataDir, 'server.json')).catch(() => {});
   }

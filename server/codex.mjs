@@ -181,6 +181,7 @@ export class CodexAdapter {
         if (!current()) return;
         loaded.push(...page.data); cursor = page.nextCursor;
       } while (cursor);
+      this.lastSuccessAt = Date.now();
       for (const id of this.archived) if (!loaded.includes(id)) this.archived.delete(id);
       for (const id of this.sessions.keys()) if (!loaded.includes(id)) { this.store.removeSession(`codex:${id}`); this.sessions.delete(id); this.joined.delete(id); this.fresh.delete(id); this.images.delete(id); }
       // Only join already-loaded threads; never resume a saved conversation from disk.
@@ -452,6 +453,21 @@ export class CodexAdapter {
     if (!this.modelCatalog.size) await this.loadModels();
     return [...this.modelCatalog.values()].filter(model => !model.hidden || model.id === session.model);
   }
+  async spawn(cwd, { model = '', effort = '' } = {}) {
+    if (!this.connected) throw fail('Codex is disconnected.', 503);
+    if (model || effort) {
+      if (!this.modelCatalog.size) await this.loadModels();
+      const selected = this.modelCatalog.get(model);
+      if (!selected) throw fail('The preset model is unavailable. Choose a model.', 400);
+      if (effort && !selected.efforts?.includes(effort)) throw fail('The preset effort is unavailable for this model.', 400);
+    }
+    const result = await this.rpc('thread/start', { cwd, ...(model ? { model } : {}), config: effort ? { model_reasoning_effort: effort } : {}, historyMode: 'paginated' });
+    if (!result.thread?.id) throw fail('The new session was not confirmed. Check the session list before retrying.', 502);
+    this.upsert({ ...result.thread, model: result.model || result.thread.model || model, reasoningEffort: result.reasoningEffort || effort });
+    this.sessions.get(result.thread.id).messagesState = 'empty';
+    this.fresh.add(result.thread.id);
+    return { sessionId: `codex:${result.thread.id}` };
+  }
   fire(threadId, options) { return fireCodex(this, threadId, options); }
   forgetArchived(id) {
     this.archived.add(id); this.sessions.delete(id); this.joined.delete(id); this.fresh.delete(id); this.images.delete(id); this.store.removeSession(`codex:${id}`);
@@ -545,7 +561,7 @@ export class CodexAdapter {
       }
     }
     if (message.method === 'item/completed') {
-      const session = this.sessions.get(p.threadId), value = p.item && codexMessage(p.item);
+      const session = this.sessions.get(p.threadId), value = p.item && codexMessage({ item: p.item, completedAtMs: Date.now() });
       if (session && p.item) this.images.remember(p.threadId, p.item, session.cwd);
       if (session && value) { session.messages = recentMessages([...session.messages.filter(m => m.id !== value.id), value]); session.messagesState = 'ready'; session.updatedAt = Date.now(); }
       if (session && p.item?.type === 'contextCompaction' && session.activity === 'compacting') { session.activity = ''; session.detail = ''; }

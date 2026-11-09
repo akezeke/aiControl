@@ -1,14 +1,18 @@
 // Attention signals. The favicon badge is always on; notifications (with vibration) and the theme's
 // sound are opt-in. Orbit chimes, MU/TH/UR chatters like a teletype, EVA speaks.
+import { normalizeNotificationPolicy, notificationAllowed } from './notification-policy.js';
+
 const key = 'ai-control-alerts';
 export const alertSettings = { notify: false, sound: false };
 try { Object.assign(alertSettings, JSON.parse(localStorage.getItem(key) || '{}')); } catch { /* defaults */ }
 export function saveAlerts() { try { localStorage.setItem(key, JSON.stringify(alertSettings)); } catch { /* per tab only */ } }
+let notificationPolicy = normalizeNotificationPolicy();
+export function setNotificationPolicy(policy) { notificationPolicy = normalizeNotificationPolicy(policy); }
 // Notifications need HTTPS (or localhost) for the service worker that shows them on phones too.
 export const canNotify = () => !!globalThis.isSecureContext && 'Notification' in globalThis && 'serviceWorker' in navigator && 'PushManager' in globalThis;
 
 const needsInput = status => status === 'question' || status === 'permission';
-// 'input' when a session starts waiting for you, 'ready' when a top-level session finishes working.
+// Preserve input/ready transitions; error transitions use the same stream and never fire on first sight.
 export function statusEvents(previous, sessions) {
   const events = [];
   for (const session of sessions) {
@@ -16,6 +20,7 @@ export function statusEvents(previous, sessions) {
     if (before && before !== session.status) {
       if (needsInput(session.status) && !needsInput(before)) events.push({ kind: 'input', session });
       else if (before === 'working' && session.status === 'idle' && !session.parentId) events.push({ kind: 'ready', session });
+      else if (session.status === 'error') events.push({ kind: 'error', session });
     }
     previous.set(session.id, session.status);
   }
@@ -46,7 +51,7 @@ const sounds = {
   city: kind => kind === 'input' ? (tone(880, 0, .07, 'square', .03), tone(880, .12, .07, 'square', .03)) : tone(523.25, 0, .12, 'square', .03),
   // A menu's rising confirm when someone needs you, a short fanfare when they're done.
   fantasy: kind => (kind === 'input' ? [659.25, 880] : [523.25, 659.25, 783.99, 1046.5]).forEach((note, i) => tone(note, i * .08, .1, 'square', .03)),
-  command: kind => speak({ input: 'Orders required', ready: 'Unit ready', on: 'EVA online' }[kind]) || tone(440, 0, .2, 'sawtooth', .04),
+  command: kind => speak({ input: 'Orders required', ready: 'Unit ready', error: 'Unit error', on: 'EVA online' }[kind]) || tone(440, 0, .2, 'sawtooth', .04),
   // An original, quiet dungeon bell; enabled only through the existing Sound control.
   diablo: kind => { const notes = kind === 'input' ? [146.83, 155.56] : [146.83, 220]; notes.forEach((note, i) => { tone(note, i * .22, 1.1, 'triangle', .055); tone(note * 3, i * .22, .65, 'sine', .018); }); },
   // A short, original lute-like arpeggio. As with every theme, sound stays opt-in.
@@ -90,9 +95,10 @@ export function listenForOpen(open) {
   navigator.serviceWorker.addEventListener('message', event => { if (typeof event.data?.open === 'string') open(event.data.open); });
 }
 
-export async function signal(events) {
-  if (!events.length) return;
-  const event = events.find(item => item.kind === 'input') || events[0];
+export async function signal(events, now = Date.now()) {
+  const allowed = events.filter(event => notificationAllowed(event, notificationPolicy, now));
+  if (!allowed.length) return;
+  const event = allowed.find(item => item.kind === 'input') || allowed.find(item => item.kind === 'error') || allowed[0];
   if (alertSettings.sound) playSound(event.kind);
 }
 

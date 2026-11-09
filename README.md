@@ -7,12 +7,16 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 ## Features
 
 - Sessions grouped by project, with status, subagents, context and progress.
+- An inline attention inbox, explicit review queue, pinned session names, saved views and a command palette (**Ctrl/Cmd+K**).
+- Saved text drafts, prompt snippets, project launch presets, editable handoffs and two session panes. Pins, views and review state follow you between devices.
+- Conversation search covers retained history and local archives within size limits. Inspect shared Git changes, observed overlapping edits, past decisions and connection health.
 - Answer permissions and questions, send messages with pasted or picked images (Claude needs tmux), stop turns and start agents. Nothing is auto-approved.
 - Switch models and supported effort levels from session headers; remember choices for new sessions.
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
 - [Live feed](#live-feed) (**f**): all sessions' replies, tool calls and screenshots on one timeline, so you can follow every agent without switching.
 - Chat history with Markdown, diffs, tool calls, screenshots, older messages on demand and the Markdown files a session writes.
 - Account usage limits, notifications and sounds when a session needs you.
+- Filter the feed by project, agent, session, final replies or failures; choose alert categories, muted projects and quiet hours in **Workspace → Preferences**.
 - OpenCode spend HUDs, daily cost charts, token mix and editable weekly or monthly budgets, in every theme: a Bridge console row, a Metropolis plant, a Fantasy treasury and a line on the Office whiteboard.
 - Sessions lost to a crash, a killed tmux or a shutdown come back with their last prompt and reply, to resume in a click.
 - Light, dark and themed interfaces, including calm e-ink Parchment and Graphite, a walkable 3D Office and a starship Bridge you run from the captain's chair or walk around, with holograms for its colours and who's waiting. Heroes, Zelda, Sanctuary and Metropolis have animated pixel wallpapers: waterfalls and rivers, waving flags, guttering candles, dripping blood, cranes and welders.

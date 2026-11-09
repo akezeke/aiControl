@@ -1,6 +1,7 @@
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import { generateVAPIDKeys, sendNotification } from 'web-push';
 import { statusEvents } from '../client/alerts.js';
+import { normalizeNotificationPolicy, notificationAllowed } from '../client/notification-policy.js';
 import { fail } from './requests.mjs';
 
 function validSubscription(value) {
@@ -15,7 +16,8 @@ function validSubscription(value) {
 }
 
 export class PushNotifications {
-  constructor(file, { send = sendNotification, credentialFile } = {}) { this.file = file; this.send = send; this.credentialFile = credentialFile; this.previous = new Map(); this.subscriptions = new Map(); this.pending = Promise.resolve(); }
+  constructor(file, { send = sendNotification, credentialFile, now = Date.now } = {}) { this.file = file; this.send = send; this.credentialFile = credentialFile; this.now = now; this.policy = normalizeNotificationPolicy(); this.previous = new Map(); this.subscriptions = new Map(); this.pending = Promise.resolve(); }
+  setPolicy(policy) { this.policy = normalizeNotificationPolicy(policy); }
   async load() {
     try {
       const saved = JSON.parse(await readFile(this.file, 'utf8'));
@@ -52,7 +54,9 @@ export class PushNotifications {
     const events = statusEvents(this.previous, sessions);
     const ids = new Set(sessions.map(session => session.id));
     for (const id of this.previous.keys()) if (!ids.has(id)) this.previous.delete(id);
+    const now = this.now();
     for (const event of events) {
+      if (!notificationAllowed(event, this.policy, now)) continue;
       // Keep push payloads small and readable, even when a session title comes from a long prompt.
       const text = value => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, 160) : '';
       const payload = JSON.stringify({ kind: event.kind, id: event.session.id, status: event.session.status, title: text(event.session.title), project: text(event.session.project) });
