@@ -111,8 +111,22 @@ test('the hub drops a flood and keeps the rest', async t => {
   const got = b.inbox.filter(m => m.type === 'pos').length; assert.ok(got >= 15 && got <= 20, `got ${got}`);
   assert.equal(a.closed, null); assert.equal((await lastRoster(b)).length, 2);
   for (let i = 0; i < 30; i++) a.send({ type: 'pos', x: i, y: 0, z: 0, yaw: 0, pose: 'walking' });
-  assert.equal(await a.closes(), 1008);
+  assert.equal(await a.closes(), 1006);
   await new Promise(r => setTimeout(r, 100)); assert.equal((await lastRoster(b)).length, 1);
+});
+
+test("a flooder cut off relays nothing more, even one that never reads the hub's close", async t => {
+  let clock = 5000;
+  const h = await setup(t, { now: () => clock });
+  const a = await h.join('a'), b = await h.join('b');
+  a.send({ type: 'where', at: 'meeting' }); b.send({ type: 'where', at: 'meeting' }); await lastRoster(a);
+  a.ws._socket.pause(); // it keeps writing, and never reads (or answers) a close
+  for (let i = 0; i < 45; i++) a.send({ type: 'pos', x: i, y: 0, z: 0, yaw: 0, pose: 'walking' });
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal((await lastRoster(b)).length, 1, 'dropped from the room at once');
+  clock += 1000; b.inbox.length = 0;
+  for (let i = 0; i < 5; i++) a.send({ type: 'pos', x: i, y: 0, z: 0, yaw: 0, pose: 'walking' });
+  assert.equal((await b.quiet('pos', 200)).length, 0);
 });
 
 test('a ninth visitor is refused', async t => {
@@ -135,6 +149,16 @@ test('the same token twice keeps one player', async t => {
   assert.equal(await a.closes(), 4000);
   const roster = await lastRoster(watcher); assert.equal(roster.length, 2);
   assert.ok(roster.some(p => p.id === again.welcome.id) && !roster.some(p => p.id === a.welcome.id));
+});
+
+test("a connection replaced by the same player's newer one says nothing more, even one that never reads its close", async t => {
+  const h = await setup(t);
+  const a = await h.join('a'), b = await h.join('b');
+  a.send({ type: 'where', at: 'meeting' }); b.send({ type: 'where', at: 'meeting' }); await lastRoster(b);
+  a.ws._socket.pause();
+  await h.join('a2', { tok: token('a') }); await lastRoster(b);
+  a.send({ type: 'pos', x: 1, y: 0, z: 0, yaw: 0, pose: 'walking' });
+  assert.equal((await b.quiet('pos', 200)).length, 0);
 });
 
 test('a hostile request target cannot crash the hub', async t => {

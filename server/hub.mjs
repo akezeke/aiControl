@@ -120,9 +120,10 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     if (mine.host) hostSocket = ws;
     if (old) { drop(old); old.close(4000); if (mine.host) hostSocket = ws; }
     ws.on('message', (data, binary) => {
+      if (ws.readyState !== 1) return; // closing (replaced, refused): it says nothing more to anyone
       const t = now();
       if (t - ws.p.windowStart >= 1000) { ws.p.windowStart = t; ws.p.count = 0; }
-      if (++ws.p.count > 2 * PER_SECOND) return ws.close(1008);
+      if (++ws.p.count > 2 * PER_SECOND) return ws.terminate(); // not close(): a flooder needn't answer it, and would keep sending
       if (ws.p.count > PER_SECOND || binary) return;
       let m; try { m = checkUp(JSON.parse(data.toString('utf8'))); } catch { return; }
       if (m) heard(ws, m);
