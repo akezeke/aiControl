@@ -105,9 +105,10 @@ test('image endpoints need a login and send only the image', async t => {
   const { dir } = await transcript(t), file = join(dir, 'auth.json'), password = 'correct horse testing battery';
   await savePassword(file, password);
   const origin = 'https://control.test:47841', calls = [];
+  let imageBytes = png;
   const handler = createHandler({ auth: new Auth(file), origin, store: new RequestStore(), snapshot: () => ({}), vite: () => {}, messages: {
     images: async id => { calls.push(id); return { images: [{ id: `${uuid(1)}:0`, type: 'image/png' }] }; },
-    image: async (id, imageId) => { calls.push([id, imageId]); return { type: 'image/png', data: png }; },
+    image: async (id, imageId) => { calls.push([id, imageId]); return { type: imageType(imageBytes), data: imageBytes }; },
   } });
   const request = async (path, { method = 'GET', headers = {}, body } = {}) => {
     const req = Readable.from(body ? [JSON.stringify(body)] : []);
@@ -121,13 +122,35 @@ test('image endpoints need a login and send only the image', async t => {
   assert.equal(calls.length, 0);
   const login = await request('/api/login', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: { password } });
   const cookie = login.headers['set-cookie'].split(';')[0];
-  assert.equal(JSON.parse((await request(path, { headers: { cookie } })).raw).images.length, 1);
+  const list = await request(path, { headers: { cookie } });
+  assert.equal(JSON.parse(list.raw).images.length, 1);
+  assert.equal(list.headers['cache-control'], 'no-store');
   const res = await request(`${path}/${uuid(1)}%3A0`, { headers: { cookie } });
   assert.equal(res.headers['content-type'], 'image/png');
   assert.equal(res.headers['x-content-type-options'], 'nosniff');
   assert.equal(res.headers['content-security-policy'], "default-src 'none'");
-  assert.equal(res.headers['cache-control'], 'no-store');
+  assert.equal(res.headers['cache-control'], 'private, no-cache');
+  assert.equal(res.headers.vary, 'Cookie');
+  assert.ok(res.headers.etag);
   assert.deepEqual(res.raw, png);
   assert.deepEqual(calls, [`claude:${sessionId}`, [`claude:${sessionId}`, `${uuid(1)}:0`]]);
+  const imagePath = `${path}/${uuid(1)}%3A0`, etag = res.headers.etag;
+  const cached = await request(imagePath, { headers: { cookie, 'if-none-match': etag } });
+  assert.equal(cached.statusCode, 304);
+  assert.equal(cached.raw, undefined);
+  assert.equal(cached.headers.etag, etag);
+  assert.equal((await request(imagePath, { headers: { cookie, 'if-none-match': `"other", W/${etag}` } })).statusCode, 304);
+  // A local screenshot may be overwritten without changing its transcript ID.
+  imageBytes = jpeg;
+  const changed = await request(imagePath, { headers: { cookie, 'if-none-match': etag } });
+  assert.equal(changed.statusCode, 200);
+  assert.notEqual(changed.headers.etag, etag);
+  assert.equal(changed.headers['content-type'], 'image/jpeg');
+  assert.deepEqual(changed.raw, jpeg);
+  const before = calls.length;
+  const locked = await request(imagePath, { headers: { 'if-none-match': changed.headers.etag } });
+  assert.equal(locked.statusCode, 401);
+  assert.equal(locked.headers['cache-control'], 'no-store');
+  assert.equal(calls.length, before);
   assert.equal((await request(path, { method: 'POST', headers: { cookie, origin } })).statusCode, 403);
 });

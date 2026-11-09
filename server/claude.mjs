@@ -16,6 +16,7 @@ export { processMatches } from './processes.mjs';
 export const hookTimeoutMs = 24 * 3600_000;
 // How long a session must have been idle before it can be fired.
 const QUIET_MS = 5000;
+const registrationStates = { idle: 'idle', shell: 'idle', busy: 'working', running: 'working', working: 'working', waiting: 'question', waiting_for_permission: 'permission', needs_permission: 'permission' };
 
 // Claude's own "don't ask again" option: one button applying every suggested permission update.
 function suggestionLabel(suggestions) {
@@ -79,6 +80,16 @@ export class ClaudeAdapter {
     await this.refresh();
     this.timer = setInterval(() => this.refresh().catch(() => {}), 4000);
   }
+  hookState(record) {
+    if (record.parkedJobId) return null;
+    const hook = this.hooks.get(record.sessionId), status = registrationStates[record.status];
+    // A missed Stop hook must not override a newer registration transition forever.
+    // Heartbeats are not transitions; live requests and compaction still own their state.
+    if (hook && status && record.statusUpdatedAt > hook.updatedAt && !hook.compacting && !this.store.list().some(request => request.sessionId === `claude:${record.sessionId}`)) {
+      return { ...hook, status, detail: '', updatedAt: record.statusUpdatedAt };
+    }
+    return hook;
+  }
   async refresh() {
     if (this.refreshing) return;
     this.refreshing = true;
@@ -90,14 +101,13 @@ export class ClaudeAdapter {
           const record = JSON.parse(await readFile(join(account.sessionsDir, file), 'utf8'));
           if (!await this.alive(record.pid, record.procStart) || !record.sessionId) return;
           // A parked session (handed off to a background job) keeps the last status of its registration and hooks, so it can say busy for days.
-          const hook = record.parkedJobId ? null : this.hooks.get(record.sessionId);
-          const states = { idle: 'idle', shell: 'idle', busy: 'working', running: 'working', working: 'working', waiting: 'question', waiting_for_permission: 'permission', needs_permission: 'permission' };
+          const hook = this.hookState(record);
           const transcript = hook?.transcriptPath || join(account.projectsDir, (record.cwd || '').replace(/[^a-zA-Z0-9-]/g, '-'), `${record.sessionId}.jsonl`);
           const { step, modifiedAt, ...history } = await this.transcripts.read(transcript, record.sessionId);
           const via = await this.messaging.available(record), canSend = !!via;
           registrations.set(record.sessionId, { record, account }); owners.set(record.sessionId, account);
           paths.set(`claude:${record.sessionId}`, transcript);
-          const status = hook?.status || (record.parkedJobId ? 'idle' : states[record.status]) || 'unknown', tmux = via === 'tmux', agents = await this.subagents(record, transcript, paths);
+          const status = hook?.status || (record.parkedJobId ? 'idle' : registrationStates[record.status]) || 'unknown', tmux = via === 'tmux', agents = await this.subagents(record, transcript, paths);
           if (tmux) await this.terminalPrompt(record, status).catch(() => {});
           const suggestion = status === 'idle' && tmux ? await this.messaging.suggestion?.(record).catch(() => '') : '';
           sessions.set(record.sessionId, { id: `claude:${record.sessionId}`, nativeId: record.sessionId, provider: 'claude', title: claudeSessionTitle(record, history), cwd: record.cwd, project: basename(record.cwd || 'Unknown'), account: account.label, status, waitingOn: claudeWaitingOn(status, record, agents), parked: !!record.parkedJobId, updatedAt: Math.max(hook?.updatedAt || 0, record.updatedAt || 0), version: record.version || '', detail: status === 'working' && !hook?.compacting && turnTool(history.messages) || hook?.detail || '', activity: hook?.compacting ? 'compacting' : claudeActivity(status, step, modifiedAt), control: !!hook || canSend, messaging: { send: canSend, queue: false, via, images: tmux, interrupt: tmux, effort: tmux, fire: tmux || record.kind === 'interactive', clear: tmux && !record.parkedJobId }, suggestion, efforts: claudeEfforts, pid: record.pid, ...history, queuedMessages: status === 'working' ? history.queuedMessages : [] });
@@ -307,7 +317,7 @@ export class ClaudeAdapter {
   // A parked session's status is stale, so only what it still runs counts; its job carries on without it.
   // All of it is checked again just before Enter (with /exit typed) or the signal.
   async quiet(sessionId) {
-    const record = await this.record(sessionId), parked = !!record.parkedJobId, hook = parked ? null : this.hooks.get(sessionId), transcript = this.paths.get(`claude:${sessionId}`);
+    const record = await this.record(sessionId), parked = !!record.parkedJobId, hook = this.hookState(record), transcript = this.paths.get(`claude:${sessionId}`);
     if (!parked && record.status === 'shell') throw Object.assign(fail('Background shells are still running. Stop them first.', 409), { code: 'force_available' });
     if ((!parked && record.status !== 'idle') || (hook && hook.status !== 'idle') || hook?.compacting) throw fail('Claude is working. Stop it first.', 409);
     if (Date.now() - Math.max(record.statusUpdatedAt || record.updatedAt || 0, hook?.updatedAt || 0) < QUIET_MS) throw fail('Claude only just finished. Try again in a moment.', 409);

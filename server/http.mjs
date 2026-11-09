@@ -1,4 +1,5 @@
 import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { fail } from './requests.mjs';
 import { uploadBodyLimit } from './uploads.mjs';
 
@@ -92,6 +93,11 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         try { id = decodeURIComponent(imageRoute[1]); imageId = imageRoute[2] && decodeURIComponent(imageRoute[2]); } catch { throw fail('Invalid session ID.'); }
         if (!imageId) { json(res, 200, await messages.images(id)); return; }
         const { type, data } = await messages.image(id, imageId);
+        // Revalidate after authentication: local files can change under the same image ID.
+        // Browsers may reuse the bytes, but shared caches and logged-out requests cannot.
+        const etag = `"${createHash('sha256').update(type).update(data).digest('hex')}"`;
+        res.setHeader('Cache-Control', 'private, no-cache'); res.setHeader('Vary', 'Cookie'); res.setHeader('ETag', etag);
+        if (req.headers['if-none-match']?.split(',').some(value => ['*', etag].includes(value.trim().replace(/^W\//, '')))) { res.statusCode = 304; res.end(); return; }
         res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Content-Length', data.length); res.setHeader('Content-Security-Policy', "default-src 'none'"); res.end(data); return;
       }
       // A session's Markdown files: the list, or one file's text.

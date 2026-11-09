@@ -24,6 +24,7 @@ import { PanelNavigation } from './navigation.js';
 import { HistoryScroll } from './history-scroll.js';
 import { populateOnOpen } from './lazy-details.js';
 import { placeShots } from './history-shots.js';
+import { shotStrip, shotUrl, takeShotContainer } from './shot-strip.js';
 import { ImagePanZoom } from './image-pan-zoom.js';
 import { imageWindowUrl } from './image-window.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
@@ -72,7 +73,6 @@ function sessionList(cache, session, kind) {
 }
 // Screenshots a session looked at (server/images.mjs for Claude and its subagents, server/codex-images.mjs for Codex).
 const shots = new Map(); // session id → { items, changed, fetched }
-const shotUrl = (id, imageId) => `/api/sessions/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`;
 const sessionShots = session => sessionList(shots, session, 'images');
 // Markdown files a session wrote or named (server/documents.mjs).
 const docs = new Map(); // session id → { items, changed, fetched }
@@ -1012,6 +1012,7 @@ function renderRecentMessages(session, savedPosition) {
   const saved = savedPosition || flow.capture();
   const content = region.querySelector('.history-content');
   const existing = new Map([...content.querySelectorAll('[data-message-id]')].map(node => [node.dataset.messageId, node]));
+  const shotContainers = new Set(content.querySelectorAll('.history-shots'));
   const children = [];
   region.dataset.signature = signature;
   if (moreAvailable && messages.length) {
@@ -1027,9 +1028,10 @@ function renderRecentMessages(session, savedPosition) {
     if (message.tool && Array.isArray(run) && run[0].tool) run.push(message); else entries.push(message.tool ? [message] : message);
   }
   for (const entry of placeShots(entries.flatMap(item => Array.isArray(item) && (item.length < 3 || session.parentId) ? item : [item]), images, documents.filter(document => document.written))) {
-    const id = entry.docs ? `docs:${entry.docs[0].id}` : entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id, previous = existing.get(id), entrySignature = JSON.stringify(entry);
+    const id = entry.docs ? `docs:${entry.docs[0].id}` : entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id;
+    const previous = entry.shots ? takeShotContainer(shotContainers, entry.shots, undefined, existing.get(id)) : existing.get(id), entrySignature = JSON.stringify(entry);
     if (previous?.dataset.signature === entrySignature) { children.push(previous); continue; }
-    const node = entry.docs ? docStrip(session, entry.docs) : entry.shots ? shotStrip(session.id, entry) : Array.isArray(entry) ? toolRun(entry, !!previous?.open) : messageNode(entry, session, previous);
+    const node = entry.docs ? docStrip(session, entry.docs) : entry.shots ? shotStrip(session.id, entry, previous, showShot) : Array.isArray(entry) ? toolRun(entry, !!previous?.open) : messageNode(entry, session, previous);
     node.dataset.messageId = id; node.dataset.signature = entrySignature; children.push(node);
   }
   // Keep unchanged messages mounted so expanded text and keyboard focus survive polling.
@@ -1104,8 +1106,9 @@ function renderFeedTimeline(region, groups) {
   if (region.dataset.signature !== signature) {
     region.dataset.signature = signature;
     const saved = flow.capture(), existing = new Map([...content.children].map(node => [node.dataset.messageId, node]));
+    const containers = new Set(existing.values());
     const empty = () => { const note = el('p', 'muted history-empty', 'Nothing yet.'); note.dataset.messageId = 'empty'; return note; };
-    const nodes = groups.length ? groups.map(group => feedGroup(group, existing.get(group.key))) : [existing.get('empty') || empty()];
+    const nodes = groups.length ? groups.map(group => feedGroup(group, takeShotContainer(containers, group.entries.flatMap(entry => entry.shots || []), group.session.id, existing.get(group.key)))) : [existing.get('empty') || empty()];
     for (const node of [...content.children]) if (!nodes.includes(node)) node.remove();
     nodes.forEach((node, index) => { if (content.children[index] !== node) content.insertBefore(node, content.children[index] || null); });
     flow.restore(saved);
@@ -1119,9 +1122,10 @@ function renderFeedTimeline(region, groups) {
 function feedGroup({ session, key, entries, at }, node) {
   const headSignature = JSON.stringify([session.title, session.project, session.status, session.provider, session.parentId, session.model]);
   if (!node) {
-    node = el('section', 'feed-group'); node.dataset.messageId = key;
+    node = el('section', 'feed-group');
     node.append(el('button', 'feed-head'), el('div', 'feed-entries'));
   }
+  node.dataset.messageId = key; node.dataset.sessionId = session.id;
   const head = node.firstChild;
   if (head.dataset.signature !== headSignature) {
     head.dataset.signature = headSignature; head.type = 'button'; head.onclick = () => openPanel(session.id); head.title = `Open ${session.title}`;
@@ -1133,10 +1137,12 @@ function feedGroup({ session, key, entries, at }, node) {
     node.dataset.status = session.status;
   }
   const box = node.lastChild, existing = new Map([...box.children].map(child => [child.dataset.entryId, child])), children = [];
+  const shotContainers = new Set(box.querySelectorAll('.history-shots'));
   for (const entry of entries) {
-    const id = entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id, previous = existing.get(id), signature = JSON.stringify(entry);
+    const id = entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id;
+    const previous = entry.shots ? takeShotContainer(shotContainers, entry.shots, undefined, existing.get(id)) : existing.get(id), signature = JSON.stringify(entry);
     if (previous?.dataset.signature === signature) { children.push(previous); continue; }
-    const child = entry.shots ? shotStrip(session.id, entry) : Array.isArray(entry) ? entry.length > 1 ? toolRun(entry, !!previous?.open) : toolLine(entry[0]) : messageNode(entry, session, previous);
+    const child = entry.shots ? shotStrip(session.id, entry, previous, showShot) : Array.isArray(entry) ? entry.length > 1 ? toolRun(entry, !!previous?.open) : toolLine(entry[0]) : messageNode(entry, session, previous);
     child.dataset.entryId = id; child.dataset.signature = signature; children.push(child);
   }
   for (const child of [...box.children]) if (!children.includes(child)) child.remove();
@@ -1183,16 +1189,6 @@ function showDocument(session, documentId) {
     meta.textContent = name; meta.title = path; body.innerHTML = renderDocument(text); body.scrollTop = 0;
     linkDocuments(body, listed(), session.cwd, doc => showDocument(session, doc.id));
   }, error => { body.textContent = error.message; });
-}
-function shotStrip(id, { shots: group, user }) {
-  const strip = el('div', `history-shots${user ? ' user' : ''}`);
-  for (const image of group) {
-    const thumb = el('button', 'history-shot'); thumb.type = 'button'; thumb.setAttribute('aria-label', 'Screenshot');
-    thumb.title = [image.agent, image.at && new Date(image.at).toLocaleString()].filter(Boolean).join(' · ');
-    const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = shotUrl(id, image.id);
-    thumb.append(img); thumb.onclick = () => showShot(id, image.id); strip.append(thumb);
-  }
-  return strip;
 }
 // One screenshot big over a strip of them all: pinch/scroll to zoom, drag to pan; a thumbnail, ‹ ›, ←/→ or a swipe at fit size steps; Esc or the backdrop closes.
 function showShot(id, imageId, images = shots.get(id)?.items || [], closed) {
