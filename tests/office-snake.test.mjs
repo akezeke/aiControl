@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { walkGrid, index, CELL } from '../client/office/path.js';
-import { newSnake, turn, go, step, tick, reach, settled, spine, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
+import { newSnake, turn, go, step, tick, reach, settled, spine, roomy, placeApple, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
 
 const box = (x1, z1, x2, z2) => new THREE.Box3(new THREE.Vector3(x1, 0, z1), new THREE.Vector3(x2, 1, z2));
 const V = (x, z) => new THREE.Vector3(x, 0, z), first = () => 0;
@@ -107,6 +107,19 @@ test('an apple is somewhere it can get to, a few metres off; eating it grows it 
   assert.equal(s.eaten, 1); assert.ok(s.rate > newSnake(open, V(5, 5)).rate);
   for (let k = 1; k < GROW + 2; k++) step(s, open);
   assert.equal(s.body.length, LENGTH + GROW);
+});
+
+test('an apple never goes where the snake could get in but not out: a dead end one cell wide', () => {
+  // Two desks with a gap between them one cell wide (x 3–3.25), from the back wall to z 5.3; the room's open below that.
+  const narrow = walkGrid([box(0, 0, 2.68, 5), box(3.57, 0, 10, 5)], { width: 10, depth: 10 }), inGap = ([x, z]) => x > 2.9 && x < 3.4 && z < 5.3;
+  assert.ok(reach(narrow, [3.125, 7.125])[index(narrow, { x: 3.125, z: 3.125 })] > 0, 'the gap is open and reachable');
+  const ok = roomy(narrow);
+  assert.equal(ok[index(narrow, { x: 3.125, z: 3.125 })], 0); assert.equal(ok[index(narrow, { x: 5.125, z: 7.125 })], 1);
+  const s = newSnake(narrow, V(3, 7.5), 0, first); s.apple = null;
+  for (let k = 0; k < 2000; k++) { const apple = placeApple(s, narrow, () => k / 2000); assert.ok(apple && !inGap(apple), `${apple}`); }
+  // Two cells wide, it can turn round in there: that's fine.
+  const wide = walkGrid([box(0, 0, 2.68, 5), box(3.82, 0, 10, 5)], { width: 10, depth: 10 });
+  assert.equal(roomy(wide)[index(wide, { x: 3.125, z: 3.125 })], 1);
 });
 
 test('a crash keeps the best and sees whether it was one', () => {

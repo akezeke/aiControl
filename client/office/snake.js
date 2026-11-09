@@ -33,6 +33,9 @@ const shut = (s, grid, blocks) => {
 };
 const centre = (grid, k) => [grid.left + (k % grid.cols + 0.5) * CELL, grid.back + (Math.floor(k / grid.cols) + 0.5) * CELL];
 
+// A cell's four neighbours on the grid (-1 off its side; off its top or bottom is past the ends of the cells).
+const around = (k, cols) => [k - cols, k + cols, k % cols ? k - 1 : -1, k % cols < cols - 1 ? k + 1 : -1];
+
 // How many steps each cell is from `from` round the furniture (-1: no way there). ponytail: the body doesn't block it, so an
 // apple can land behind the snake's own coils; fine until the snake fills whole aisles.
 export function reach(grid, from) {
@@ -40,17 +43,37 @@ export function reach(grid, from) {
   if (start < 0) return steps;
   let tail = 0; steps[start] = 0; queue[tail++] = start;
   for (let q = 0; q < tail; q++) {
-    const k = queue[q], i = k % cols;
-    for (const n of [k - cols, k + cols, i ? k - 1 : -1, i < cols - 1 ? k + 1 : -1]) if (n >= 0 && open[n] && steps[n] < 0) { steps[n] = steps[k] + 1; queue[tail++] = n; }
+    const k = queue[q];
+    for (const n of around(k, cols)) if (n >= 0 && open[n] && steps[n] < 0) { steps[n] = steps[k] + 1; queue[tail++] = n; }
   }
   return steps;
 }
-// Somewhere off the snake it can reach, NEAR to FAR metres' crawl away if anywhere is; null if nowhere is.
+// 1 for each cell with room to turn round in (part of a 2×2 that's all open) in the biggest stretch of them joined up
+// through each other: the office floor. Not a dead end one cell wide, nor a pocket behind a gap that narrow: the snake
+// can't reverse, and coming back out its own body would be in the gap.
+export function roomy(grid) {
+  const { cols, open } = grid, wide = new Uint8Array(open.length), group = new Int32Array(open.length).fill(-1), queue = new Int32Array(open.length);
+  for (let k = 0; k < open.length - cols; k++) if (k % cols < cols - 1 && open[k] && open[k + 1] && open[k + cols] && open[k + cols + 1]) wide[k] = wide[k + 1] = wide[k + cols] = wide[k + cols + 1] = 1;
+  let biggest = -1, most = 0;
+  for (let k = 0; k < open.length; k++) { // each stretch is known by the first cell found in it
+    if (!wide[k] || group[k] >= 0) continue;
+    let tail = 0; queue[tail++] = k; group[k] = k;
+    for (let q = 0; q < tail; q++) for (const n of around(queue[q], cols)) if (n >= 0 && wide[n] && group[n] < 0) { group[n] = k; queue[tail++] = n; }
+    if (tail > most) { most = tail; biggest = k; }
+  }
+  return Uint8Array.from(group, g => g >= 0 && g === biggest ? 1 : 0);
+}
+// Somewhere off the snake it can reach and get away from again (roomy), NEAR to FAR metres' crawl off if anywhere is; any
+// spot it can reach if none's roomy; null if it can reach nowhere.
 export function placeApple(s, grid, rand = Math.random) {
-  const steps = reach(grid, s.body[0]), taken = new Set(s.body.map(([x, z]) => index(grid, { x, z }))), spots = [], near = [];
-  for (let k = 0; k < steps.length; k++) if (steps[k] > 0 && !taken.has(k)) { spots.push(k); if (steps[k] * SPAN >= NEAR && steps[k] * SPAN <= FAR) near.push(k); }
-  const pool = near.length ? near : spots;
-  return pool.length ? centre(grid, pool[Math.floor(rand() * pool.length)]) : null;
+  const steps = reach(grid, s.body[0]), taken = new Set(s.body.map(([x, z]) => index(grid, { x, z }))), ok = roomy(grid), pools = [[], [], []];
+  for (let k = 0; k < steps.length; k++) {
+    if (steps[k] <= 0 || taken.has(k)) continue;
+    pools[2].push(k); if (!ok[k]) continue;
+    pools[1].push(k); if (steps[k] * SPAN >= NEAR && steps[k] * SPAN <= FAR) pools[0].push(k);
+  }
+  const pool = pools.find(p => p.length);
+  return pool ? centre(grid, pool[Math.floor(rand() * pool.length)]) : null;
 }
 
 // A snake at the open cell nearest `at`, all of it there until it moves off, facing the longest way clear.
