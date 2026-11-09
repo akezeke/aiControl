@@ -36,8 +36,9 @@ test('it does not connect unless joined, and relays the server', () => {
   const r = rig(); r.joined = false; r.live.refresh(); assert.equal(r.sockets.length, 0);
   r.joined = true; r.live.refresh(); const s = r.sockets[0]; s.open();
   const got = []; r.live.on('roster', () => got.push(1));
-  s.say({ type: 'welcome', id: 'a', colour: '#fff', at: 'home' }); s.say({ type: 'roster', players: [{ id: 'a' }] }); s.say({ type: 'floor', floor: { x: 1 } });
-  assert.deepEqual(r.live.roster(), [{ id: 'a' }]); assert.deepEqual(r.live.floor(), { x: 1 }); assert.equal(got.length, 1);
+  const me = { id: 'a', name: 'Anna', fruit: 'kiwi', colour: '#3a86ff', at: 'home' };
+  s.say({ type: 'welcome', id: 'a', colour: '#3a86ff', at: 'home' }); s.say({ type: 'roster', players: [me] });
+  assert.deepEqual(r.live.roster(), [me]); assert.equal(r.live.id(), 'a'); assert.equal(got.length, 1);
   r.joined = false; r.live.refresh(); assert.ok(s.closed); assert.deepEqual(r.live.roster(), []); assert.equal(r.live.floor(), null);
 });
 
@@ -61,4 +62,28 @@ test('setLook posts the look and shows what came back', async () => {
   const calls = [], online = createOnline({ api: async (path, body) => { calls.push([path, body]); return { joined: true, name: 'A', host: 'h', board: null, look: body }; }, scores: () => ({}) });
   await online.setLook('kiwi', '#3a86ff');
   assert.deepEqual(calls, [['office/look', { fruit: 'kiwi', colour: '#3a86ff' }]]); assert.deepEqual(online.state().look, { fruit: 'kiwi', colour: '#3a86ff' });
+});
+
+test('server messages are checked: malformed ones change nothing and emit nothing', () => {
+  const r = rig(); r.live.refresh(); const s = r.sockets[0]; s.open();
+  const me = { id: 'a', name: 'Anna', fruit: 'kiwi', colour: '#3a86ff', at: 'home' }, seen = [];
+  for (const type of ['welcome', 'roster', 'floor', 'pos', 'throw']) r.live.on(type, m => seen.push(m.type));
+  s.say({ type: 'welcome', id: 'a', colour: '#3a86ff', at: 'home' }); s.say({ type: 'roster', players: [me] });
+  s.say({ type: 'pos', id: 'b', x: 1, y: 0, z: 1, yaw: 0, pose: 'walking' });
+  s.say({ type: 'throw', id: 'b', kind: 'mug', pos: [1, 1, 1], vel: [1, 1, 1], spin: [0, 0, 0] });
+  s.say({ type: 'floor', floor: null });
+  assert.deepEqual(seen, ['welcome', 'roster', 'pos', 'throw', 'floor']);
+  seen.length = 0;
+  s.say({ type: 'roster', players: [{ ...me, name: 'x'.repeat(200) }] }); s.say({ type: 'roster', players: [{ ...me, colour: '#123456' }] });
+  s.say({ type: 'floor', floor: { pods: 'no' } }); s.say({ type: 'welcome', id: '!!', colour: '#3a86ff', at: 'home' }); s.say({ type: 'nope' });
+  assert.deepEqual(seen, []); assert.deepEqual(r.live.roster(), [me]); assert.equal(r.live.floor(), null); assert.equal(r.live.id(), 'a');
+});
+
+test('a pose flapping every frame still sends at most 10 a second, and the last pose lands', () => {
+  const r = rig(); r.live.refresh(); const s = r.sockets[0]; s.open(); s.sent.length = 0;
+  for (let i = 0; i < 62; i++) { r.live.presence(sample(0, i % 2 ? 'walking' : 'standing')); r.advance(16); }
+  r.live.presence(sample(0, 'running')); r.advance(200);
+  const pos = s.sent.filter(m => m.type === 'pos');
+  assert.ok(pos.length <= 11, String(pos.length)); // 10 in the second of flapping, one more after
+  assert.equal(pos.at(-1).pose, 'running');
 });
