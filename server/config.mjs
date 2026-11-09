@@ -23,8 +23,8 @@ export function readSettings() {
   try { return JSON.parse(readFileSync(settingsFile, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return {}; throw e; }
 }
 
-// [latitude, longitude] the office windows' sun is worked out for: settings.location, else the main city of this machine's
-// time zone in the tz database's zone.tab (Linux, macOS), whose ISO 6709 ±DDMM[SS]±DDDMM[SS] it parses; null when neither (the windows then use Stockholm).
+// [latitude, longitude] the themes' sun (client/sun.js) is worked out for: settings.location, else the main city of this machine's
+// time zone in the tz database's zone.tab (Linux, macOS), whose ISO 6709 ±DDMM[SS]±DDDMM[SS] it parses; null when neither (the client then uses Stockholm).
 export function location(settings = readSettings(), zone = Intl.DateTimeFormat().resolvedOptions().timeZone, tab = '/usr/share/zoneinfo/zone.tab') {
   if (Array.isArray(settings.location) && settings.location.length === 2 && settings.location.every(Number.isFinite)) return settings.location;
   try {

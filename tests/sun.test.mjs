@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sun } from '../client/office/windows.js';
+import { sun } from '../client/sun.js';
 import { location } from '../server/config.mjs';
 
 const stockholm = [59.3333, 18.05];

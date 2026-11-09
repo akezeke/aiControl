@@ -74,15 +74,14 @@ test('streets have lamps, and a lamp is lit', () => {
   assert.ok(lamp().h < 12, 'too short to hide anything');
 });
 
-const local = (hour, minute = 0) => new Date(2026, 5, 15, hour, minute);
 const meadowOf = cells => { const a = -60 - cells.x0, b = -60 - cells.z0, seen = new Set(); for (let z = 0; z < 40; z++) for (let x = 0; x < 40; x++) { const i = (a + x + (b + z) * cells.w) * 3; seen.add(hex2(cells.rgb, i)); } return seen; };
 const hex2 = (rgb, i) => `#${[rgb[i], rgb[i + 1], rgb[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('')}`;
-test('the ground goes by the clock: sage from seven, dusk from six', () => {
-  assert.equal(timeOfDay(local(6, 59)), 'night');
-  assert.equal(timeOfDay(local(7)), 'day');
-  assert.equal(timeOfDay(local(17, 59)), 'day');
-  assert.equal(timeOfDay(local(18)), 'night');
-  assert.equal(timeOfDay(local(0)), 'night');
+test('the ground goes by the sun: a short November day and a light midsummer evening in Stockholm', () => {
+  assert.equal(timeOfDay(new Date('2026-11-09T06:30+01:00')), 'night');
+  assert.equal(timeOfDay(new Date('2026-11-09T08:00+01:00')), 'day');
+  assert.equal(timeOfDay(new Date('2026-11-09T16:30+01:00')), 'night');
+  assert.equal(timeOfDay(new Date('2026-06-21T22:00+02:00')), 'day');
+  assert.equal(timeOfDay(new Date('2026-06-22T01:00+02:00')), 'night');
 });
 test('day and night are different ground, and neither is still the old olive', () => {
   const day = meadowOf(groundCells(plan, 'day')), night = meadowOf(groundCells(plan, 'night'));

@@ -6,12 +6,12 @@ import { lakeOf, TRAIL_W } from './lake.js';
 import { powerLines } from './power.js';
 import { LOT, PLOT, ROAD, WALK, PLANT, unproject, screen } from './plan.js';
 import { SHADOW } from './sprite.js';
+import { isNight, sunNow } from '../sun.js';
 
 const C = Object.fromEntries(Object.entries({ block: '#484a77', road: '#3e3546', walk: '#966c6c', dash: '#9babb2', zebra: '#c7dcd0', shadow: '#2e222f',
   trail: '#ab947a', water: '#0b5e65', water2: '#0b8a8f', paving: '#966c6c', paving2: '#ab947a', court: '#a24b6f', line: '#c7dcd0', tarmac: '#3e3546', sea: '#0b5e65', ripple: '#0b8a8f', foam: '#8ff8e2', sand: '#ab947a', flower: '#fbb954', rose: '#cf657f', shallow: '#0eaf9b', mud: '#7f5f5a', plank: '#966c6c', lily: '#239063', lily2: '#1ebc73', bloom: '#ed8099', stake: '#7f708a', bush: '#239063', bud: '#1ebc73' }).map(([k, v]) => [k, hex(v)]));
-// The land goes by the viewer's clock, sage by day and dusk blue by night, so the lit windows have the dark to glow against once it's dark out.
-const DAWN = 7, DUSK = 18;
-export const timeOfDay = (date = new Date()) => { const hour = date.getHours(); return hour >= DAWN && hour < DUSK ? 'day' : 'night'; };
+// The land goes by the sun (sun.js), sage by day and dusk blue by night, so the lit windows have the dark to glow against once it's dark out.
+export const timeOfDay = (time = Date.now()) => isNight(sunNow(+time).elevation) ? 'night' : 'day';
 const SOILS = { day: { land: hex('#4b7058'), land2: hex('#547e64'), tuft: hex('#92a984') }, night: { land: hex('#323353'), land2: hex('#3a3a60'), tuft: hex('#484a77') } };
 export const soilOf = time => SOILS[time];
 const MARGIN = 180, ROADW = ROAD + WALK * 2, DARK = .7, INSET = 2, CARS = ['#e83b3b', '#4d9be6', '#f9c22b', '#c7dcd0', '#0eaf9b'];

@@ -8,6 +8,7 @@ import { createCard, createMenu } from '../scene-ui.js';
 import { hireChoices } from '../hire.js';
 import { cityPlan, screen, unproject, annexAt, lotAt, spawnTarget, LOT, PLOT } from './plan.js';
 import { bareCells, groundCells, paintGround, paintHood, paintLotShade, timeOfDay, WIRE_SAG } from './ground.js';
+import { setSunPlace } from '../sun.js';
 import { buildTower, annex, boat, duck, dust, crane, craneSpot, car, siteCrane, JIB_BEATS, coolingPlant, stackPlant, tankPlant, PYLON_ARM, PYLON_REACH } from './generator.js';
 import { Bloom, glowPixels, lampOffset, lampSize } from './bloom.js';
 import { renderSprite, SpriteCache } from './sprite.js';
@@ -540,13 +541,14 @@ export function mountCity(box, hooks = {}) {
   };
   document.addEventListener('visibilitychange', onVisible);
   // Dawn and dusk. Twice a day it repaints the ground and everything cut from it, so once a minute is plenty to notice.
-  clock = setInterval(() => {
+  const daylight = () => {
     const now = timeOfDay();
     if (now === hour) return;
     hour = now; grounds.clear(); seas.clear(); litHoods.clear(); lotShades.clear(); mapRev++;
     if (plan) cells = groundCells(plan, hour);
     wake();
-  }, 60000);
+  };
+  clock = setInterval(daylight, 60000);
   const resize = new ResizeObserver(() => { if (camera) { halt(); fit(); settle(); } else place(); if (camera) wake(); });
   resize.observe(box);
 
@@ -786,6 +788,7 @@ export function mountCity(box, hooks = {}) {
       if (failure) throw failure;
       if (ctx.isContextLost?.()) throw new Error('City lost its canvas');
       snapshot = next; error = problem;
+      if (setSunPlace(snapshot.location)) daylight();
       sessions = new Map(snapshot.sessions.map(session => [session.id, session]));
       layout = snapshot.office ? sharedLayout(snapshot.office) : layoutOffice(snapshot.sessions, layout);
       const before = plan, now = performance.now();
