@@ -18,7 +18,7 @@ async function body(req, limit = 64 * 1024) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push, workflow }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push, workflow, online }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -105,6 +105,18 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
       if (path === '/api/spawn' && req.method === 'POST') {
         if (!spawn) throw fail('Starting agents is not available.', 503);
         const result = await spawn(await body(req)); auth.touch(session); json(res, 200, result); return;
+      }
+      // Office online (office-online.mjs): joining a hub or leaving it, and this browser's bests out with the board back.
+      // A sync runs by itself, so it isn't activity; joining and leaving are.
+      if (path === '/api/office/online' || path === '/api/office/scores') {
+        if (!online) throw fail('Office online is not available.', 503);
+        if (path === '/api/office/online' && req.method === 'GET') { json(res, 200, online.status()); return; }
+        if (req.method === 'POST') {
+          const data = await body(req, 4096);
+          if (path === '/api/office/scores') { json(res, 200, await online.sync(data?.scores)); return; }
+          const result = data?.leave ? await online.leave() : await online.join(data ?? {});
+          auth.touch(session); json(res, 200, result); return;
+        }
       }
       // Lost sessions (recovery.mjs): resumed in tmux, or let go.
       const lostAction = /^\/api\/lost\/(resume|dismiss)$/.exec(path);

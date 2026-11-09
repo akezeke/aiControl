@@ -20,6 +20,7 @@ import { AgentDefaults } from './agent-defaults.mjs';
 import { SpendBudget } from './spend-budget.mjs';
 import { agentFolder, folderState } from './folders.mjs';
 import { OfficeSeats } from './seats.mjs';
+import { createOfficeOnline } from './office-online.mjs';
 import { CityTowers } from './towers.mjs';
 import { Battlefields } from './battlefields.mjs';
 import { Recovery, resumeArgs } from './recovery.mjs';
@@ -56,6 +57,7 @@ export async function startServer({ host, hostname, tls = null }) {
   // Loading the .mjs directly avoids temporary bundled configs triggering Node 22's imported-module watcher.
   const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), configLoader: 'native', server: { middlewareMode: true, hmr: false, allowedHosts: origins.map(o => new URL(o).hostname) } });
   const seats = new OfficeSeats(join(dataDir, 'office-seats.json'));
+  const online = createOfficeOnline({ file: join(dataDir, 'office-online.json') });
   const towers = new CityTowers(join(dataDir, 'city-towers.json'));
   const battlefields = new Battlefields(join(dataDir, 'fantasy-battlefields.json'));
   // Kept up whether or not anyone's looking, so a crash leaves the file as it was seconds before.
@@ -153,7 +155,7 @@ export async function startServer({ host, hostname, tls = null }) {
     },
     dismiss: ids => { recovery.dismiss(ids); return { ok: true }; },
   };
-  const handler = createHandler({ auth, store, snapshot, push, workflow, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
+  const handler = createHandler({ auth, store, snapshot, push, workflow, online, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];
   const closeServers = () => Promise.all(servers.map(([server]) => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); }));
   for (const [server, address] of servers) {
