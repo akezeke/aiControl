@@ -20,7 +20,7 @@ export function walkGrid(colliders, room) {
 // Changes when a box or the room does (the room hands over a new list of the same boxes with every snapshot).
 export const gridKey = (colliders, room) => `${room.left ?? 0},${room.back ?? 0}:${room.width}x${room.depth}:${colliders.map(b => [b.min.x, b.min.z, b.max.x, b.max.z].map(v => v.toFixed(2)).join()).join(';')}`;
 
-const index = (grid, at) => { const i = Math.floor((at.x - grid.left) / CELL), j = Math.floor((at.z - grid.back) / CELL); return i >= 0 && j >= 0 && i < grid.cols && j < grid.rows ? j * grid.cols + i : -1; };
+export const index = (grid, at) => { const i = Math.floor((at.x - grid.left) / CELL), j = Math.floor((at.z - grid.back) / CELL); return i >= 0 && j >= 0 && i < grid.cols && j < grid.rows ? j * grid.cols + i : -1; };
 const centre = (grid, k) => new THREE.Vector3(grid.left + (k % grid.cols + 0.5) * CELL, 0, grid.back + (Math.floor(k / grid.cols) + 0.5) * CELL);
 const clear = (grid, a, b) => {
   const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (CELL / 3)));

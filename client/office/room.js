@@ -451,7 +451,8 @@ export function createRoom(scene, renderer) {
     for (const [i, x] of xs.entries()) {
       if (i) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
     }
-    place(plant('tree'), 0.5, 0.5); place(plant('snake'), width - 0.5, 0.5);
+    // The snake plant in the corner starts the snake game (room.onSnake, from office.js; snake.js).
+    place(plant('tree'), 0.5, 0.5); room.snakePlant = place(plant('snake'), width - 0.5, 0.5); room.snakePlant.userData.toggle = () => room.onSnake?.();
 
     // Door in the front wall, facing into the room, with a coat rack, an extinguisher and the light switch beside it.
     const doorGroup = new THREE.Group(); doorGroup.position.set(door.x - width / 2, -WALL_H / 2, -WALL_T / 2 - 0.02); doorGroup.rotation.y = Math.PI; front.add(doorGroup);
