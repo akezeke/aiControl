@@ -192,18 +192,38 @@ function themeMenu() {
   open.setAttribute('aria-label', 'Change theme'); open.setAttribute('aria-haspopup', 'dialog'); open.title = 'Change theme';
   control.append(open); return control;
 }
-// The sidebar scrolls and would clip the list, so open it against the viewport there. A list longer than the room it has
-// scrolls inside itself (the page behind a scene doesn't scroll), opened at the current choice.
+// Keep menus in the top layer, clear of scrolling parents, viewport edges and the phone tabs.
 function placeMenu(menu, summary, choices) {
-  menu.ontoggle = () => {
+  choices.popover = 'manual';
+  let listening;
+  const position = () => {
+    if (!menu.isConnected) { listening?.abort(); return; }
+    const viewport = window.visualViewport, x = viewport?.offsetLeft || 0, y = viewport?.offsetTop || 0;
+    const width = viewport?.width || innerWidth, height = viewport?.height || innerHeight;
+    const nav = document.querySelector('.mobile-nav'), floor = Math.min(y + height, nav?.getClientRects().length ? nav.getBoundingClientRect().top : y + height);
+    const r = summary.getBoundingClientRect(), above = Math.max(0, r.top - y - 14), below = Math.max(0, floor - r.bottom - 14);
+    Object.assign(choices.style, { position: 'fixed', margin: '0', inset: 'auto', maxWidth: `${width - 16}px`, overflowY: 'auto', overscrollBehavior: 'contain' });
+    const up = (menu.closest('.sidebar') || choices.scrollHeight > below) && above > below;
+    choices.style.maxHeight = `${Math.max(0, Math.min(up ? above : below, floor - y - 16))}px`;
+    choices.style.left = `${Math.max(x + 8, Math.min(r.right - choices.offsetWidth, x + width - choices.offsetWidth - 8))}px`;
+    choices.style.top = `${Math.max(y + 8, Math.min(up ? r.top - choices.offsetHeight - 6 : r.bottom + 6, floor - choices.offsetHeight - 8))}px`;
+  };
+  menu.addEventListener('toggle', () => {
+    listening?.abort();
+    if (!menu.isConnected) return;
     choices.removeAttribute('style');
-    if (!menu.open) return;
-    const r = summary.getBoundingClientRect(), up = !!menu.closest('.sidebar');
-    if (up) Object.assign(choices.style, { position: 'fixed', top: 'auto', right: 'auto', left: `${Math.max(8, Math.min(r.left, innerWidth - choices.offsetWidth - 8))}px`, bottom: `${innerHeight - r.top + 6}px` });
-    Object.assign(choices.style, { maxHeight: `${Math.max(160, (up ? r.top : innerHeight - r.bottom) - 14)}px`, overflowY: 'auto', overscrollBehavior: 'contain' });
+    if (!menu.open) { choices.hidePopover(); return; }
+    choices.showPopover(); position();
+    listening = new AbortController();
+    const options = { signal: listening.signal };
+    window.addEventListener('resize', position, options);
+    window.visualViewport?.addEventListener('resize', position, options);
+    window.visualViewport?.addEventListener('scroll', position, options);
+    document.addEventListener('scroll', event => { if (!choices.contains(event.target)) position(); }, { ...options, capture: true });
+    choices.querySelector('input')?.focus({ preventScroll: true });
     const current = choices.querySelector('[aria-pressed=true]');
     if (current && choices.scrollHeight > choices.clientHeight) choices.scrollTop = current.offsetTop - 6;
-  };
+  });
 }
 // Opt-in notifications and the theme's sound; turning sound on plays it once.
 function alertsMenu() {
@@ -312,7 +332,7 @@ function syncThemeConsole() {
 }
 function mobileNavigation() {
   const nav = el('nav', 'mobile-nav'); nav.setAttribute('aria-label', 'Workspace tabs');
-  for (const [view, label, glyph] of [['all', 'Sessions', 'grid'], ['attention', 'Needs you', 'bell'], ['feed', 'Feed', 'live']]) {
+  for (const [view, label, glyph] of [['all', 'Sessions', 'grid'], ['active', 'Active', 'play'], ['attention', 'Needs you', 'bell'], ['feed', 'Feed', 'live']]) {
     const item = button(label, 'mobile-nav-button', () => view === 'feed' ? openFeed() : showSessionList(view), glyph);
     item.dataset.mobileView = view; item.append(el('span', 'mobile-nav-count')); nav.append(item);
   }
@@ -323,7 +343,7 @@ function syncMobileNavigation() {
   const mobileFeed = state.selected === 'feed' && !!document.querySelector('.mobile-nav')?.getClientRects().length;
   document.querySelector('#panel')?.setAttribute('aria-modal', String(!mobileFeed && !document.body.classList.contains('wf-split-open')));
   for (const item of document.querySelectorAll('[data-mobile-view]')) {
-    const view = item.dataset.mobileView, current = state.selected === 'feed' ? 'feed' : state.filter === 'attention' ? 'attention' : 'all';
+    const view = item.dataset.mobileView, current = state.selected === 'feed' ? 'feed' : ['active', 'attention'].includes(state.filter) ? state.filter : 'all';
     if (view === current) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
     const badge = item.querySelector('.mobile-nav-count'); badge.textContent = view === 'attention' && count ? count : '';
   }
@@ -408,6 +428,7 @@ function showWorkspace() {
   toolbar.append(sceneSwitch, searchBox, commands, menu, newAgentMenu()); workflow.mount(toolbar); main.append(toolbar);
   const create = button('New OpenCode session', 'tab new-session-button', () => { menu.open = false; newOpenCodeSession(); }, 'plus');
   tabs.append(create);
+  placeMenu(menu, summary, tabs);
   const lost = el('section', 'lost'); lost.id = 'lost'; lost.hidden = true; lost.setAttribute('aria-label', 'Lost sessions'); main.append(lost);
   const groups = el('div', 'groups'); groups.id = 'groups'; groups.append(el('div', 'empty', 'Connecting to your local agents…')); main.append(groups);
   const integrations = el('section', 'integrations'); integrations.id = 'integrations'; main.append(integrations);
@@ -543,7 +564,7 @@ function renderData() {
   const working = sessions.filter(s => s.status === 'working').length, idle = sessions.filter(s => s.status === 'idle').length;
   const active = state.filter === 'active', flat = active || state.grouping === 'flat';
   const setFilter = value => () => { selectFilter(value); state.project = ''; renderData(); scene?.pick(picked(), true); };
-  // Desktop filters live here; the stat row below replaces them on phones.
+  // Desktop filters live here; phones use the bottom tabs and Session options.
   syncList(document.querySelector('#navigation'), [['all', 'All sessions', 'grid', sessions.length], ['active', 'Active', 'play', count + working], ['attention', 'Needs you', 'bell', count], ['working', 'Working', 'activity', working], ['idle', 'Idle', 'moon', idle]]
     .map(([value, label, glyph, number]) => [value, [value, label, glyph, number, state.filter === value && !state.project]]),
     ([value, label, glyph, number, active]) => { const b = button(label, `nav-item ${active ? 'active' : ''}`, setFilter(value), glyph); b.append(el('span', 'nav-count', number)); return b; });
@@ -1635,8 +1656,8 @@ function newAgentMenu() {
       if (choice.account === undefined) b.insertBefore(providerIcon(choice.provider), b.lastChild);
       b.title = `New ${choice.name}${choice.provider === 'opencode' ? ' session' : ' in tmux'}`; return b;
     }));
-    field.input.focus();
   };
+  placeMenu(menu, summary, options);
   return menu;
 }
 // `choice.create`: a typed folder (a scene's + or the toolbar's), made first if it isn't there yet.
