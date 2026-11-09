@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
-import { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { hubState, startHub } from '../server/hub.mjs';
 import { createOfficeOnline, liveUpgrade } from '../server/office-online.mjs';
 import { createHandler } from '../server/http.mjs';
@@ -43,8 +43,8 @@ async function setup(t) {
   hub.server.on('upgrade', count);
   const code = `http://127.0.0.1:${port}/${hubState(hubFile).key}`, players = [];
   t.after(async () => { for (const online of players) online.close(); await hub.close(); });
-  const player = async (name, { host = false, file = join(dir(), 'office-online.json') } = {}) => {
-    const online = createOfficeOnline({ file, ...host && { hubFile }, lingerMs: 150, retryMs: 50 });
+  const player = async (name, { host = false, file = join(dir(), 'office-online.json'), ...options } = {}) => {
+    const online = createOfficeOnline({ file, ...host && { hubFile }, lingerMs: 150, retryMs: 50, ...options });
     await online.join({ code, name }); players.push(online);
     return online;
   };
@@ -196,6 +196,34 @@ test('a hub restart: pages hear it went, and the link comes back saying where yo
   await s.restart();
   await until(() => ap.last('roster')?.players.length === 0 && ap.last('floor')?.floor === null, 'an empty roster and no floor');
   await until(() => bp.sees('Anna')?.at === 'meeting' && bp.last('roster').players.length === 2, 'Anna back at the meeting', 5000);
+});
+
+// A hub that takes a join and answers hello, then never says anything again, not even a pong: a network that died without
+// the connection noticing. `lives`: every live connection it got.
+async function quietHub(t) {
+  const lives = [], server = createServer((req, res) => { req.resume(); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ day: '2026-11-09', players: [] })); });
+  const wss = new WebSocketServer({ noServer: true, autoPong: false });
+  server.on('upgrade', (req, socket, head) => wss.handleUpgrade(req, socket, head, ws => {
+    lives.push(ws);
+    ws.on('message', data => { if (JSON.parse(data).type === 'hello') ws.send(JSON.stringify({ type: 'welcome', id: 'me', colour: COLOURS[0], at: 'home' })); });
+  }));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { for (const ws of wss.clients) ws.terminate(); server.close(); });
+  return { code: `http://127.0.0.1:${server.address().port}/${'k'.repeat(22)}`, lives };
+}
+
+test('a hub gone quiet is noticed: pages hear the room went, and the link comes back', async t => {
+  const hub = await quietHub(t), anna = createOfficeOnline({ file: join(dir(), 'office-online.json'), retryMs: 50, beatMs: 50 });
+  t.after(() => anna.close());
+  await anna.join({ code: hub.code, name: 'Anna' });
+  const page = open(anna);
+  await until(() => page.last('welcome'), 'welcome');
+  await until(() => page.last('roster')?.players.length === 0 && page.last('floor')?.floor === null && hub.lives.length === 2, 'the quiet link dropped and opened again');
+  // A hub that answers its pings keeps the link.
+  const s = await setup(t), bob = await s.player('Bob', { beatMs: 50 }), bp = open(bob);
+  await until(() => bp.last('welcome'), "Bob's welcome");
+  await wait(400);
+  assert.equal(s.upgrades(), 1); assert.ok(bp.sees('Bob'));
 });
 
 test("a page can't speak for another or send what checkUp drops", async t => {

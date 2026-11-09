@@ -80,7 +80,7 @@ export function liveUpgrade({ auth, origins, hosts, online, beatMs = 30_000 }) {
 }
 
 // `hubFile`: the hub's own file (scripts/hub.mjs), there only on the hub's machine; its hostKey makes this AI Control the host.
-export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.json'), fetch = globalThis.fetch, now = Date.now, lingerMs = 5000, retryMs = 1000 }) {
+export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.json'), fetch = globalThis.fetch, now = Date.now, lingerMs = 5000, retryMs = 1000, beatMs = 15_000 }) {
   // The file as last read or written; the last good board, the scores it was sent with and when; the request in flight.
   let saved = {}, text = null, last = null, sent = '', at = -Infinity, inflight = null;
   // Re-read on every call: `npm run hub` signs in by writing this file while the server runs (and the token must stay one
@@ -164,14 +164,24 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       maxPayload: MAX_BYTES, handshakeTimeout: TIMEOUT_MS, followRedirects: false,
     });
     l.ws = ws;
-    ws.on('open', () => { const hello = checkUp({ type: 'hello', name: l.name, ...look() }); if (hello) ws.send(JSON.stringify(hello)); });
+    // A hub gone quiet (a dead network the connection hasn't noticed) is let go like any lost link: anything heard counts,
+    // a ping goes every beat, and two beats with nothing back drop it.
+    let beat = null, quiet = 0;
+    const alive = () => { quiet = 0; };
+    ws.on('ping', alive); ws.on('pong', alive);
+    ws.on('open', () => {
+      const hello = checkUp({ type: 'hello', name: l.name, ...look() }); if (hello) ws.send(JSON.stringify(hello));
+      beat = setInterval(() => { if (quiet === 2) return ws.terminate(); quiet++; ws.ping(); }, beatMs); beat.unref();
+    });
     ws.on('message', (data, binary) => {
+      alive();
       if (l.ws !== ws || binary) return;
       let m; try { m = checkDown(JSON.parse(data.toString('utf8'))); } catch { return; }
       if (m) heard(l, m);
     });
     ws.on('error', () => {}); // 'close' follows
     ws.on('close', () => {
+      clearInterval(beat);
       if (l.ws !== ws) return;
       l.ws = null; gone(l);
       if (link !== l) return;
