@@ -267,6 +267,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       ghosts.add(root, mesh, kind, thrown);
       return true;
     },
+    clearGhosts() { ghosts.clear(); }, // through the door: they were the other office's
 
     update(dt) {
       const size = bounds(); if (!size) return;

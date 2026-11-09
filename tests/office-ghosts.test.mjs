@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ghostLife, MOST } from '../client/office/ghosts.js';
+import { createGhosts, ghostLife, MOST } from '../client/office/ghosts.js';
 import { KINDS } from '../client/office/meeting.js';
 import { BALLS, LOOSE, createProps } from '../client/office/props.js';
 import { ITEMS, STARTS } from '../client/office/levels.js';
@@ -83,11 +83,12 @@ test("a friend's throw flies, lands and is gone, and nothing of yours moves or m
   assert.ok(copy.position.y < 0.06, `it lands: ${copy.position.toArray()}`);
   assert.deepEqual(yours(), was, 'the football and the paper balls are where they were');
   assert.deepEqual(heard, [], 'nobody minds');
-  // Faded once at rest, then gone, its own material with it.
+  // Faded once at rest, then gone. Its own material is kept for the next copy (a disposed one would take its shader with it), until the office goes.
   const material = copy.material; let disposed = false; material.addEventListener('dispose', () => { disposed = true; });
   assert.ok(material.transparent && material !== BALLS[1].material);
   a.run(4.5);
-  assert.equal(root.children.length, count); assert.equal(copy.parent, null); assert.ok(disposed);
+  assert.equal(root.children.length, count); assert.equal(copy.parent, null); assert.equal(disposed, false);
+  props.dispose(); assert.ok(disposed);
 });
 
 test('a copy fades out over a second once it rests, and its ink goes with the fade', () => {
@@ -131,6 +132,34 @@ test('with reduced motion a copy is just where it lands, whole, and gone a secon
   a.run(0.6); assert.equal(root.children.length, count);
 });
 
+test('going through the door takes every copy along: clearGhosts', () => {
+  const a = office(), { props, root } = a, count = root.children.length;
+  props.ghost({ kind: 'paper', pos: [3, 1, 3], vel: [2, 1, 0], spin: [1, 0, 0] }); props.ghost({ kind: 'football', pos: [4, 1, 4], vel: [0, 2, 1], spin: [0, 1, 0] });
+  const copies = root.children.slice(count);
+  assert.equal(copies.length, 2);
+  props.clearGhosts();
+  assert.equal(root.children.length, count); for (const copy of copies) assert.equal(copy.parent, null);
+  a.run(0.5); assert.equal(root.children.length, count, 'and nothing comes back');
+});
+
+// A thrown thing's materials, for the next copy: a new transparent one would be a new shader to compile on a phone, each throw.
+test("a copy that's gone keeps its material for the next of its kind: no new clone and nothing disposed in between; dispose lets them go", () => {
+  const source = new THREE.MeshBasicMaterial(), clone = source.clone.bind(source); let clones = 0, disposed = 0;
+  source.clone = () => { clones++; const m = clone(); m.addEventListener('dispose', () => { disposed++; }); return m; };
+  const kind = { radius: 0.05, low: 0.05, bounce: 0.3, roll: 4, drag: 0.3, tumble: 1, upright: false };
+  const ghosts = createGhosts({ world: () => ({ colliders: [], columns: [], ceiling: 3 }) }), parent = new THREE.Group();
+  const throwOne = () => { const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), source); ghosts.add(parent, mesh, kind, { pos: [0, 0.5, 0], vel: [1, 0, 0], spin: [0, 0, 0] }); return mesh; };
+  const first = throwOne(), material = first.material;
+  assert.notEqual(material, source); assert.equal(material.transparent, true); assert.equal(clones, 1);
+  for (let i = 0; i < 7 * 60 && parent.children.length; i++) ghosts.update(1 / 60);
+  assert.equal(first.parent, null, 'faded and gone'); assert.equal(disposed, 0);
+  const second = throwOne();
+  assert.equal(second.material, material); assert.equal(material.opacity, 1); assert.equal(clones, 1); assert.equal(disposed, 0);
+  ghosts.clear(); assert.equal(second.parent, null); assert.equal(disposed, 0);
+  throwOne(); throwOne(); assert.equal(clones, 2, 'two at once need two');
+  ghosts.dispose(); assert.equal(disposed, 2); assert.equal(parent.children.length, 0);
+});
+
 // Trickshot on a stand-in kitchen, as tests/office-trickshot.test.mjs has it.
 const ORIGIN = { x: -0.2, z: 5 };
 function kitchen({ reduced = false } = {}) {
@@ -167,6 +196,10 @@ test("a kitchen throw is told in the office's frame with no spin, and a friend's
   assert.ok(new THREE.Raycaster(V(...result.pos).setY(2), V(0, -1, 0)).intersectObject(new THREE.Mesh(copy.geometry, copy.material).copy(copy, false)).length, 'the ray goes through it');
   for (let t = 0; t < 6; t += DT) friend.game.update(DT, null, false, true);
   assert.equal(copy.parent, null);
+  // Going through the door takes a kitchen copy along too.
+  friend.game.ghost(thrown); const again = friend.group.children.at(-1);
+  assert.equal(again.parent, friend.group);
+  friend.game.clearGhosts(); assert.equal(again.parent, null); assert.equal(friend.group.children.length, count);
 });
 
 test("Trickshot plays only its own throws: one of its items, with no spin", () => {

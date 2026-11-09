@@ -1,7 +1,9 @@
 // Copies of what friends throw at a meeting (props.js and trickshot.js make them, office.js hears the throws): each flies by flight.js
 // through this office's own boxes, where it hits nobody minds, then it fades and is gone. It's not one of your things: nothing of yours
-// moves for it and it can't be clicked. Its looks are shared but for its materials, its own to fade. With reduced motion it's just
-// where it lands, for as long as a fade would take. No document here.
+// moves for it and it can't be clicked. Its looks are shared but for its materials, its own to fade, and kept for the next copy of the
+// same thing when it's gone: a see-through material is its own shader, and the last one of it disposed would take that shader along,
+// to be compiled again (on a phone, a stutter) at the next throw. With reduced motion it's just where it lands, for as long as a fade
+// would take. No document here.
 import * as THREE from 'three';
 import { advance, makeBody, turnBy } from './flight.js';
 
@@ -14,8 +16,13 @@ export const ghostLife = (t, rested = null) => THREE.MathUtils.clamp((Math.min(r
 
 // `world(pos)`: the boxes, columns and ceiling where it is (no onContact); `hidden(pos)`: in a room that isn't drawn now.
 export function createGhosts({ world, hidden = () => false, reducedMotion = () => false }) {
-  const ghosts = [];
-  const drop = g => { g.mesh.removeFromParent(); for (const material of g.faded) material.dispose(); };
+  // spare: a material → its see-through copies not in use, never more than MOST (no more copies are ever out at once); sourceOf: copy → material.
+  const ghosts = [], spare = new Map(), sourceOf = new Map();
+  const seeThrough = source => { const material = spare.get(source)?.pop() ?? Object.assign(source.clone(), { transparent: true }); sourceOf.set(material, source); return material; };
+  const drop = g => {
+    g.mesh.removeFromParent();
+    for (const material of g.faded) { const source = sourceOf.get(material); material.opacity = 1; if (!spare.has(source)) spare.set(source, []); spare.get(source).push(material); }
+  };
   const draw = (g, shown) => {
     const { body: b, mesh, centre } = g;
     mesh.visible = !hidden(b.pos); mesh.quaternion.copy(b.turn);
@@ -32,7 +39,7 @@ export function createGhosts({ world, hidden = () => false, reducedMotion = () =
       mesh.traverse(node => {
         node.raycast = ignore;
         if (node.userData.outline) inks.push(node);
-        else if (node.material) { node.material = node.material.clone(); node.material.transparent = true; faded.push(node.material); }
+        else if (node.material) { node.material = seeThrough(node.material); faded.push(node.material); }
       });
       const g = { body, mesh, centre: kind.centre ?? ZERO, faded, inks, t: 0, rested: null };
       if (reducedMotion()) { for (let i = 0; i < 600 && !body.rest; i++) { advance(body, 1 / 60, world(body.pos)); turnBy(body, 1 / 60); } g.rested = 0; }
@@ -50,6 +57,8 @@ export function createGhosts({ world, hidden = () => false, reducedMotion = () =
         if (life <= 0) { drop(g); ghosts.splice(i, 1); } else draw(g, still ? 1 : life);
       }
     },
-    dispose() { for (const g of ghosts) drop(g); ghosts.length = 0; },
+    // Every copy gone at once (going through the door: they're this office's), their materials kept.
+    clear() { for (const g of ghosts) drop(g); ghosts.length = 0; },
+    dispose() { this.clear(); for (const material of sourceOf.keys()) material.dispose(); spare.clear(); sourceOf.clear(); },
   };
 }

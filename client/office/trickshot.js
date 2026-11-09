@@ -282,6 +282,7 @@ export function createTrickshot({ kitchen, hand, props, view, onPlay, aim, score
       ghosts.add(group, items[MONDAY.find(e => e.item === thrown.kind).id].clone(), item, { pos: [x - kitchen.origin.x, y, z - kitchen.origin.z], vel: thrown.vel, spin: [-vz / across * item.tumble, 0, vx / across * item.tumble] });
       return true;
     },
+    clearGhosts() { ghosts.clear(); }, // through the door: they were the other office's
     reset() {
       if (!entry) return;
       const r = keepMade();

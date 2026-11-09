@@ -207,8 +207,8 @@ export function mountOffice(container, hooks) {
   const showDoor = (at, focus) => { const choice = doorChoice(); if (choice) door.show(choice, () => step('door'), at, focus); else door.close(); };
   room.onDoor = () => { nobody = false; if (view.overview || !doorChoice()) return; player.unlock(); card.show(null); menu.close(); showDoor(dot ? player.centre : mouse || pressed, true); };
   const fadeTo = (on, then) => { clearTimeout(fading); const still = reducedAtmosphere(); fade.classList.toggle('still', still); fade.classList.toggle('on', on); if (then) fading = setTimeout(then, still ? 0 : FADE_MS); };
-  // A whole other room: what's in it is just there (no desks rising, nobody walking in), and nothing of the last one is left up.
-  const switchRooms = () => { room.synced = false; cast.synced = false; play(null); menu.close(); door.close(); card.show(null); unhover(); office.talking = null; };
+  // A whole other room: what's in it is just there (no desks rising, nobody walking in), and nothing of the last one is left up, friends' throws included.
+  const switchRooms = () => { room.synced = false; cast.synced = false; play(null); menu.close(); door.close(); card.show(null); unhover(); office.talking = null; props.clearGhosts(); trickshot.clearGhosts(); };
   const does = {
     ask() { live.where('meeting'); showDoor(); clearTimeout(asking); asking = setTimeout(() => { if (visit.at === 'leaving' && !visit.fading) step('floorGone'); }, WAIT_MS); },
     fadeOut() { door.close(); fadeTo(true, () => step('faded')); },
@@ -240,7 +240,7 @@ export function mountOffice(container, hooks) {
   live.on('pos', m => friends.move(m.id, m));
   // Throws at the meeting: yours go to everyone there, and theirs fly here as copies that move nothing of yours (a shot in the kitchen, else the office's things).
   props.onThrow = trickshot.onThrow = thrown => { if (atMeeting()) live.send({ type: 'throw', ...thrown }); };
-  live.on('throw', m => { if (atMeeting()) trickshot.ghost(m) || props.ghost(m); });
+  live.on('throw', m => { if (atMeeting()) (m.spin.some(Boolean) ? props : trickshot).ghost(m); }); // a shot has no spin; the office's throws always tumble
   frames.add(dt => {
     const { x, z } = player.position, fast = dt > 0 ? Math.hypot(x - lastX, z - lastZ) / dt : 0, moved = fast > 12 ? 0 : fast; lastX = x; lastZ = z; // a jump (the door) isn't a run
     speed += (moved - speed) * Math.min(1, dt * 12);
