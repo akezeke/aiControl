@@ -12,6 +12,7 @@
     "attach": "tmux attach-session -t aiControl",
     "stop": "node scripts/stop.mjs",
     "restart": "npm stop && npm start",
+    "hub": "node scripts/hub.mjs",
     "dev": "node scripts/start.mjs",
     "dev:local": "node scripts/start.mjs --local",
     "build": "vite build",

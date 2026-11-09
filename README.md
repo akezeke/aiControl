@@ -79,6 +79,7 @@ Click the spend panel's balance to set a USD budget: weekly (Monday reset) or mo
 npm run attach             # Server terminal
 npm stop                   # Stop
 npm restart                # Restart
+npm run hub                # Host Office online; prints the join code (--new-code, --stop)
 npm run setup              # Network, HTTPS, Claude accounts and OpenCode
 npm run password           # Change PIN/password; sign out everywhere
 npm run dev:local          # Localhost only
