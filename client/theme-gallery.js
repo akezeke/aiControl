@@ -53,10 +53,6 @@ export function showThemeGallery({ trigger, current, onChoose, outlined, onOutli
         const variants = el('div', 'theme-segments theme-variants'); variants.setAttribute('aria-label', 'Orbit appearance');
         for (const theme of group.variants) { const variant = button('', ({ modern: 'Auto', 'modern-light': 'Light', 'modern-dark': 'Dark' })[theme.id], () => dialog.close(theme.id)); variant.setAttribute('aria-pressed', String(theme.id === current)); variants.append(variant); }
         tile.append(variants);
-      } else if (group.id === 'nodes') {
-        const select = el('select', 'theme-variants'); select.setAttribute('aria-label', 'Nodes look');
-        for (const theme of group.variants) { const option = el('option', '', theme.node); option.value = theme.id; select.append(option); }
-        select.value = group.choice.id; select.onchange = () => dialog.close(select.value); tile.append(select);
       }
       grid.append(tile);
     }

@@ -1,9 +1,9 @@
-const groupId = theme => theme.node ? 'nodes' : /^modern(?:-|$)/.test(theme.id) ? 'modern' : theme.id;
+const groupId = theme => /^modern(?:-|$)/.test(theme.id) ? 'modern' : theme.id;
 export function groupThemes(themes, current, favourites = []) {
   const groups = new Map();
   for (const theme of themes) {
     const id = groupId(theme);
-    if (!groups.has(id)) groups.set(id, { id, name: id === 'modern' ? 'Orbit' : id === 'nodes' ? 'Nodes' : theme.name, variants: [] });
+    if (!groups.has(id)) groups.set(id, { id, name: id === 'modern' ? 'Orbit' : theme.name, variants: [] });
     groups.get(id).variants.push(theme);
   }
   return [...groups.values()].map(group => ({ ...group, choice: group.variants.find(theme => theme.id === current) || group.variants[0], selected: group.variants.some(theme => theme.id === current), favourite: favourites.includes(group.id) }))

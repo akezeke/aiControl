@@ -1,0 +1,82 @@
+Assets: client/public/theme-previews/*.webp
+Generated individually with the built-in imagegen tool (2026-11-09).
+Each image was center-fitted to 640x400, stripped of metadata, and saved as WebP at quality 82 with ImageMagick.
+These illustrations replace the previous screenshot thumbnails. Orbit auto uses modern-light.webp.
+
+Exact final prompts are the common prefix, the relevant subject below, and the common suffix, concatenated without additional separators.
+
+COMMON PREFIX
+Use case: stylized-concept
+Asset type: production theme selector thumbnail for AI Control, one standalone landscape image, 8:5 aspect ratio.
+Primary request: Generate polished original theme artwork that remains immediately recognizable when displayed at 180 by 112 pixels.
+Subject and style: 
+
+SUBJECTS
+modern-light.webp (Orbit light)
+A luminous blue planetary horizon seen from low orbit, pearly white clouds across the lower third, a graceful thin orbital arc and small moon, airy periwinkle and icy blue sky. Refined minimalist space illustration, soft white daylight, calm and spacious.
+
+modern-dark.webp (Orbit dark)
+A midnight-blue planet curving across the lower third, a razor-thin electric violet atmospheric rim, graceful orbital arc and small moon against a deep navy star field. Refined cinematic space illustration with restrained indigo and violet light, calm and spacious.
+
+parchment.webp (Parchment)
+A beautifully arranged cream parchment folio and one black fountain pen with brass nib resting diagonally, a few layered paper edges, muted olive bookmark. Close-up editorial still life on warm ivory paper, subtle paper grain, soft daylight and gentle shadows. Simple sculptural arrangement, elegant and calm. All sheets blank.
+
+graphite.webp (Graphite)
+A beautifully arranged charcoal notebook with textured graphite paper and one brushed dark metal fountain pen resting diagonally, muted sage bookmark, a few layered paper edges. Close-up editorial still life on dark olive-grey desk, soft warm side light, restrained desaturated charcoal and sage, elegant and calm. All pages blank.
+
+alien.webp (MU/TH/UR)
+One iconic retro-futurist spaceship mainframe terminal, chunky weathered black housing and curved green phosphor CRT, a luminous concentric radar-like signal on screen, tiny warm indicator lamps, dark industrial spaceship corridor receding behind it. 1979 analogue science fiction mood, deep black and acid green, cinematic practical lighting, strong terminal silhouette. No glyphs on screen.
+
+command.webp (EVA)
+A Command and Conquer inspired military command console: a luminous emerald wireframe globe floating over a sturdy olive metal tactical radar pedestal, riveted gunmetal panels and a restrained yellow hazard-stripe detail. Dramatic emerald lighting with warm amber indicators, 1990s real-time-strategy game key art, clear bold shapes, premium hand-painted finish, distinct from a retro computer terminal.
+
+simpsons.webp (Springfield)
+A large appetizing pink-frosted ring doughnut with colorful sprinkles floating above a tiny friendly cartoon suburb, bright blue sky and two puffy white clouds, pastel house roofs and green lawn near bottom. Playful classic American television cel-animation style, thick confident dark outlines, cheerful flat colors and clean shapes. Doughnut is the dominant focal point.
+
+diablo.webp (Sanctuary)
+A dark gothic sanctuary doorway carved from blackened stone and aged iron, a single glowing blood-red crystal suspended at its center, two small candle flames at its base, sculpted skeletal ornament worked into the arch. Classic dark fantasy action-RPG inventory art, painterly textured finish, black, warm bronze and deep crimson, menacing but refined. Clearly visible focal shape and illuminated edges.
+
+heroes.webp (Heroes)
+A proud medieval castle with cream stone towers and cobalt-blue pennants rising above a lush green valley, golden sunset and blue mountains behind it. Rich hand-painted classic 1990s fantasy strategy-game key art, jewel-like royal blue and antique gold, crisp architectural silhouette, magical and adventurous, clean focal tower cluster.
+
+zelda.webp (Zelda)
+A noble silver sword with a blue hilt standing upright in a mossy stone pedestal in an enchanted emerald forest clearing, a small golden three-triangle relic hovering softly above it, distant ancient stone arch and warm shafts of light. Vivid hand-painted classic adventure-game illustration, deep forest green, jade and gold, readable iconic sword silhouette, lush but uncluttered.
+
+office.webp (Office)
+A charming isometric miniature office desk vignette: warm oak desk, small blue computer monitor showing a single simple luminous shape, terracotta swivel chair, leafy potted plant and pinboard with blank cream notes. Polished tactile 3D illustration, friendly rounded objects, warm cork and cream palette with teal and orange accents, soft daylight and ambient shadows, clean toy-diorama composition.
+
+bridge.webp (Bridge)
+A futuristic starship bridge viewed from behind its central empty command chair, two sweeping dark control consoles, a panoramic forward window revealing a luminous lavender-blue ringed planet and stars. Elegant retro science-fiction illustration with rich deep purple, navy and restrained magenta console light. Strong symmetrical silhouette, clear planet focal point, polished cinematic atmosphere, no text on controls.
+
+city.webp (Metropolis)
+An isometric pixel-art miniature city block with three distinct high-rise towers, one yellow construction crane, small green park and simple crossing roads on a floating square of land. Carefully crafted authentic pixel art with crisp intentional pixel clusters, slate blue, warm concrete, terracotta, mustard and teal, dark muted teal backdrop. Compact clear silhouette, no dense metropolis clutter.
+
+fantasy.webp (Fantasy Battle)
+A small classic polygonal fantasy adventurer with a broad sword and blue cloak facing a round amber creature across a lush meadow battle arena, distant jade forest and painterly mountain background. 1990s console JRPG key art combining charming low-poly characters and a hand-painted backdrop, emerald green, teal and warm gold. Simple readable duel composition, no UI, no violence or damage.
+
+bricks.webp (Brick Knights)
+A charming medieval castle gate constructed entirely from glossy interlocking toy bricks, gray block towers, bright royal-blue roof pieces and two red flags, a tiny friendly green toy dragon perched beside the gate. Polished 3D toy photography style, warm sunlight, clear blue sky, vivid primary colors, satisfying visible round studs, clean centered miniature silhouette.
+
+nodes.webp (Nodes Clean)
+A minimal elegant radial network sculpture: one central glossy blue-violet glass orb connected by fine gently curving luminous lines to six smaller pearl-white and pale-blue glass nodes, floating over a soft warm-white background. Premium clean 3D product illustration, subtle soft shadows and a quiet hint of lilac, balanced hub-and-spoke composition. Nodes have no content.
+
+nodes-clean-dark.webp (Nodes Clean dark)
+A minimal elegant radial network sculpture: one central luminous violet-blue glass orb connected by fine gently curving luminous lines to six smaller lavender and ice-blue glass nodes floating against deep charcoal navy. Premium clean 3D product illustration, restrained glow and rich clean dark surfaces, balanced hub-and-spoke composition. Nodes have no content.
+
+nodes-neurons.webp (Nodes Neurons)
+A single luminous blue-violet neuron with a softly glowing cell body and six graceful branching dendrites connecting a few smaller points of light. Elegant microscopic scientific art in deep midnight blue with electric cobalt, lavender and subtle amber impulses. Central organic radial silhouette, tactile soft cellular translucency, dark uncluttered background.
+
+nodes-synthetic.webp (Nodes Synthetic)
+A precisely crafted futuristic cyan processor core suspended in the middle of a dark graphite circuit board, four to six clean luminous cyan circuit pathways connecting small geometric modules. Refined synthetic machine intelligence illustration, machined dark metal, teal glass, tiny restrained amber accents. Strong central square silhouette and clean radial geometry, no labels.
+
+nodes-steampunk.webp (Nodes Steampunk)
+An elegant antique brass network mechanism: a central glowing amber glass vacuum tube on a round copper hub, linked by curving brass pipes to four small gears and two warm filament bulbs. Victorian scientific instrument still life on deep dark brown, polished aged brass, warm amber illumination and subtle steam. Carefully spaced radial silhouette, rich tactile materials, uncluttered.
+
+nodes-mycelium.webp (Nodes Mycelium)
+A small cluster of bioluminescent ivory mushrooms growing from a piece of dark moss-covered forest floor, delicate luminous green mycelium threads radiating below and around them to a few smaller organic nodes. Beautiful botanical illustration with a polished tactile miniature feel, muted olive, pale cream, warm umber and restrained soft green light. Clear central mushroom silhouette on a dark forest background.
+
+COMMON SUFFIX (starts with a newline)
+
+Composition: One clear focal grouping occupying roughly 65 percent of the frame, strong silhouette, generous breathing room, visual center in the middle of the image. Full-bleed artwork, carefully lit, confidently composed, attractive at small scale.
+Constraints: One image only. No text, letters, numbers, captions, logos, watermarks, UI, app screenshots, borders, frames around the image, collage or contact sheet. Avoid tiny busy details, muddy dark exposure, exaggerated bloom and clutter. Landscape 8:5.
+

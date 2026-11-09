@@ -29,7 +29,7 @@ export const themes = [
   { id: 'fantasy', scheme: 'dark', name: 'Fantasy Battle', color: '#123b33' },
   // Glossy toy bricks under a bright sky: the sidebar is a wall, each session a brick, each status a colour.
   { id: 'bricks', scheme: 'light', name: 'Brick Knights', color: '#2f8fe4' },
-  // Every session a node round You, in one of five looks (`node`). They share one scene, so switching looks keeps it; the menu lists them under Nodes.
+  // Every session a node round You. Each look has its own gallery tile; they share one scene, so switching looks keeps it.
   { id: 'nodes', scheme: 'light', name: 'Nodes', node: 'Clean', color: '#eceef2' },
   { id: 'nodes-clean-dark', look: 'nodes', scheme: 'dark', name: 'Nodes · Clean dark', node: 'Clean dark', color: '#15171c' },
   { id: 'nodes-neurons', look: 'nodes', scheme: 'dark', name: 'Nodes · Neurons', node: 'Neurons', color: '#07060d' },
