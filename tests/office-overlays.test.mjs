@@ -9,12 +9,13 @@ function element(tag) {
     tag, parent: null, children: [], style: {}, hidden: false, attributes: {},
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     setAttribute(name, value) { node.attributes[name] = value; }, getAttribute: name => node.attributes[name],
-    addEventListener() {}, removeEventListener() {}, focus() {}, blur() {}, select() {},
+    listeners: {}, addEventListener(type, fn) { node.listeners[type] = fn; }, removeEventListener() {}, focus() {}, blur() {}, select() {},
     append(...kids) { for (const kid of kids) if (typeof kid === 'object') { kid.parent = node; node.children.push(kid); } },
     appendChild(kid) { node.append(kid); return kid; },
     remove() { if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1); node.parent = null; },
     contains: other => other === node || node.children.some(kid => kid.contains(other)),
     querySelector: () => element('path'),
+    replaceChildren() { node.children = []; },
     set innerHTML(_) {},
   };
   return node;
@@ -72,4 +73,18 @@ test('with the item away the throw button is another go, and a throw again once 
   overlays.showThrow(true); assert.equal(button.textContent, 'Throw');
   overlays.showThrow(true, true); assert.equal(button.textContent, '↻'); assert.equal(button.getAttribute('aria-label'), 'Try again'); assert.equal(button.hidden, false);
   overlays.showThrow(true, false); assert.equal(button.textContent, 'Throw'); assert.equal(button.getAttribute('aria-label'), 'Throw');
+});
+
+test('a chip in the score bar is a button whose press picks, and stops the press at the bar', t => {
+  const was = globalThis.document;
+  globalThis.document = { createElement: element, createElementNS: (_, tag) => element(tag) };
+  t.after(() => { globalThis.document = was; });
+  const container = element('div'), noop = () => {}, overlays = createOverlays(container, { onNext: noop, onList: noop, onOverview: noop, onNew: noop, onLeave: noop, onCopy: noop, onThrow: { press: () => true, release: noop, cancel: noop } });
+  const score = container.children.find(kid => kid.className === 'office-score');
+  let picked = 0; overlays.setScore([{ text: 'Best 3' }, { text: '↔ Swipe', on: true, pick: () => { picked++; } }, { text: '👆 Tap', on: false, pick: noop }], null, false);
+  const chips = score.children[0].children.filter(kid => kid.tag === 'button');
+  assert.deepEqual(chips.map(c => [c.textContent, c.attributes['aria-pressed']]), [['↔ Swipe', 'true'], ['👆 Tap', 'false']]);
+  let stopped = 0; chips[0].listeners.pointerdown({ stopPropagation() { stopped++; } });
+  chips[0].listeners.click({ stopPropagation() { stopped++; } });
+  assert.equal(picked, 1); assert.equal(stopped, 2);
 });

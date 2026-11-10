@@ -72,6 +72,8 @@
 .office-score { position: absolute; left: 50%; top: 68px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 12px; width: max-content; max-width: calc(100% - 24px); padding: 5px 12px; border-radius: 12px; background: #1b1a1fcc; color: #fff; font: 600 14px system-ui, sans-serif; text-align: center; pointer-events: none; }
 .office-score[hidden] { display: none; }
 .office-score s { opacity: .6; }
+.office-score button { pointer-events: auto; margin: 0 2px; padding: 2px 8px; border: 1px solid #fff5; border-radius: 10px; background: none; color: inherit; font: inherit; font-size: 13px; cursor: pointer; touch-action: manipulation; }
+.office-score button[aria-pressed="true"] { background: #ffe14d; border-color: #ffe14d; color: #1b1a1f; }
 .office-score b { color: #ffe14d; font-size: 22px; font-weight: 800; white-space: nowrap; }
 /* Paper planes' stick (planes.js): drawn where a finger or the mouse went down, the knob where it's dragged. */
 .office-planes .office-bubble { opacity: .35; pointer-events: none; transition: opacity .3s; }

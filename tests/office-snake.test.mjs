@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { walkGrid, index, CELL } from '../client/office/path.js';
-import { newSnake, turn, go, step, tick, reach, settled, spine, roomy, placeApple, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
+import { createSnake, newSnake, turn, go, step, tick, reach, settled, spine, roomy, placeApple, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
 
 const box = (x1, z1, x2, z2) => new THREE.Box3(new THREE.Vector3(x1, 0, z1), new THREE.Vector3(x2, 1, z2));
 const V = (x, z) => new THREE.Vector3(x, 0, z), first = () => 0;
@@ -141,3 +141,55 @@ test('a ring keeps to its bit of the body, steady while the body turns a corner'
   for (let k = 1; k < xs.length; k++) assert.ok(xs[k] >= xs[k - 1] - 1e-9, `frame ${k}: ${xs[k - 1]} → ${xs[k]}`);
 });
 
+
+// Phone controls: a canvas that records its listeners, storage and a coarse pointer.
+function phone(stored) {
+  const saved = {}, was = { storage: globalThis.localStorage, media: globalThis.matchMedia, document: globalThis.document };
+  const ctx = () => new Proxy({}, { get: (o, k) => k in o ? o[k] : () => ({ addColorStop() {} }), set: (o, k, v) => { o[k] = v; return true; } });
+  globalThis.document = { createElement: () => ({ getContext: ctx }) }; // the 3D's textures draw on canvases
+  const store = { getItem: k => saved[k] ?? null, setItem: (k, v) => { saved[k] = v; } };
+  if (stored !== undefined) saved['ai-control-snake-touch'] = stored;
+  Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true, writable: true });
+  globalThis.matchMedia = () => ({ matches: true });
+  const on = {}, canvas = { addEventListener: (type, fn) => { on[type] = fn; }, getBoundingClientRect: () => ({ left: 0, width: 400 }) };
+  const bars = [], snake = createSnake({ canvas, grid: () => open, home: () => V(0, 0), score: goal => bars.push(goal) });
+  snake.enter();
+  const fire = (type, x, y = 0, id = 1) => on[type]({ pointerType: 'touch', pointerId: id, clientX: x, clientY: y });
+  const restore = () => { Object.defineProperty(globalThis, 'localStorage', { value: was.storage, configurable: true, writable: true }); globalThis.matchMedia = was.media; if (was.document) globalThis.document = was.document; else delete globalThis.document; };
+  return { snake, fire, bars, saved, restore, bar: () => bars.at(-1) };
+}
+
+test('swipe by default: 12 px sideways turns at once, a tap does nothing', t => {
+  const p = phone(); t.after(p.restore);
+  p.fire('pointerdown', 200); assert.equal(p.snake.game.mode, 'play'); // sets it going
+  p.fire('pointerup', 200);
+  p.fire('pointerdown', 100); p.fire('pointerup', 100);
+  assert.deepEqual(p.snake.game.turns, [], 'a tap while playing');
+  p.fire('pointerdown', 100, 50, 2); p.fire('pointermove', 111, 50, 2); assert.deepEqual(p.snake.game.turns, []);
+  p.fire('pointermove', 112, 50, 2); assert.deepEqual(p.snake.game.turns, [1], 'before it is lifted');
+  p.fire('pointermove', 200, 50, 2); assert.deepEqual(p.snake.game.turns, [1], 'one turn a finger');
+});
+
+test('tap chosen: a finger turns to its half as it lands', t => {
+  const p = phone('tap'); t.after(p.restore);
+  p.fire('pointerdown', 300); assert.equal(p.snake.game.mode, 'play');
+  p.fire('pointerdown', 100, 0, 2); assert.deepEqual(p.snake.game.turns, [-1]);
+  p.fire('pointerdown', 300, 0, 3); assert.deepEqual(p.snake.game.turns, [-1, 1]);
+});
+
+test('the chips pick, save and are read back; anything unknown is swipe', t => {
+  const p = phone(); t.after(p.restore);
+  const chips = () => p.bar().filter(item => item.pick);
+  assert.deepEqual(chips().map(c => [c.text, c.on]), [['↔ Swipe', true], ['👆 Tap', false]]);
+  assert.equal(p.bar().at(-1).text, 'Tap to go');
+  chips()[1].pick();
+  assert.equal(p.saved['ai-control-snake-touch'], 'tap');
+  assert.deepEqual(chips().map(c => c.on), [false, true], 'the bar is redrawn');
+  assert.equal(p.snake.game.mode, 'ready');
+  const again = phone(p.saved['ai-control-snake-touch']); again.fire('pointerdown', 300); again.fire('pointerdown', 100, 0, 2);
+  assert.deepEqual(again.snake.game.turns, [-1], 'read back');
+  again.restore();
+  const odd = phone('sideways'); odd.fire('pointerdown', 300); odd.fire('pointerdown', 100, 0, 2);
+  assert.deepEqual(odd.snake.game.turns, [], 'swipe');
+  odd.restore();
+});

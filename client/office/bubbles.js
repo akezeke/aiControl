@@ -130,7 +130,14 @@ export function createOverlays(container, { onNext, onList, onOverview, onNew, o
       score.hidden = !goal; score.replaceChildren(); copy.hidden = !canCopy; bar.classList.toggle('level', !!goal);
       if (!goal) return;
       const asks = score.appendChild(document.createElement('span'));
-      goal.forEach(({ text, done }, i) => { if (i) asks.append(' · '); asks.appendChild(document.createElement(done ? 's' : 'span')).textContent = text; });
+      // A chip ({ text, on, pick }) is a button: pick() on a press, kept off the canvas and the office behind it.
+      goal.forEach(({ text, done, on, pick }, i) => {
+        if (i) asks.append(pick ? ' ' : ' · ');
+        if (!pick) { asks.appendChild(document.createElement(done ? 's' : 'span')).textContent = text; return; }
+        const chip = asks.appendChild(document.createElement('button')); chip.type = 'button'; chip.textContent = text; chip.setAttribute('aria-pressed', String(!!on));
+        for (const type of ['pointerdown', 'pointerup']) chip.addEventListener(type, event => event.stopPropagation());
+        chip.addEventListener('click', event => { event.stopPropagation(); pick(); });
+      });
       if (verdict) { const said = score.appendChild(document.createElement('b')); said.textContent = verdict; }
     },
     showCopy(text) { field.value = text; line.hidden = false; field.focus(); field.select(); },

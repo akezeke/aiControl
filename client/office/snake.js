@@ -1,6 +1,7 @@
 // Snake on the office floor. Click the snake plant in the back corner (or E on it) and the view drops in behind a snake curled
-// at its pot. ← → (A D) turn it left or right of where it's heading, as does a swipe that way or a tap on that half of the screen;
-// ↑ ↓, W S or Space (or a tap, before it's off) sets it off, and again after a crash. Esc or ✕ steps back and pauses it.
+// at its pot. ← → (A D) turn it left or right of where it's heading, as does a click on that half of the screen. On a phone you pick, before it's off,
+// Swipe (the default: a finger that moves sideways turns it at once) or Tap (a finger turns it towards its half the moment it lands).
+// ↑ ↓, W S or Space (or a touch, before it's off) sets it off, and again after a crash. Esc or ✕ steps back and pauses it.
 // It runs on path.js's walk grid a cell (25 cm) a step, so a turn never waits long. Furniture, walls and its own body end the
 // run, though about to hit one it holds a moment first, shivering, for a turn to save it. The grid shows on the floor round it
 // while it plays, faint red where it would crash. One apple at a time, somewhere it can get to a few metres off, under a beam
@@ -131,7 +132,7 @@ const BACK = 1.7, NEAREST = 0.4, UP = 1.75, AHEAD = 2.2, FOV = 70, VIEW_TURN = 1
 // The body: its radius (m); rings along it at most, points round each, rings a segment (4 cm apart); how many segments either
 // side of a corner it's rounded off; how long the tail tapers, at most (m).
 const R = 0.1, RINGS = 1200, AROUND = 12, PER = 6, ROUND = 0.36, TAIL = 1.2;
-const GRID = 5, BEST = 'ai-control-snake-best'; // metres round the head the grid shows
+const GRID = 5, BEST = 'ai-control-snake-best', TOUCH = 'ai-control-snake-touch'; // metres round the head the grid shows
 const GREEN = '#5cae4f', DARK = '#3d7d3c', BELLY = '#f0e2a6', INK = '#1b1a1f';
 const ball = (r, x, y, z, sx = 1, sy = 1, sz = 1) => new THREE.SphereGeometry(r, 16, 12).scale(sx, sy, sz).translate(x, y, z);
 const spin = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
@@ -172,6 +173,7 @@ function gridMaterial() {
 // the score bar (null clears it); `blocks()`: what's moving about to keep off ({ x, z, r }: the goose); `bump()`: one was hit.
 export function createSnake({ canvas, grid, home, score, blocks = () => [], bump = () => {} }) {
   let best = 0; try { best = Number(localStorage.getItem(BEST)) || 0; } catch { /* no storage here */ }
+  let touchMode = 'swipe'; try { if (localStorage.getItem(TOUCH) === 'tap') touchMode = 'tap'; } catch { /* no storage here */ }
   let s = null, active = false, linger = 0, shake = 0, gulp = 0, bulge = Infinity, headYaw = 0, viewYaw = 0, distance = 0, fresh = true, bumped = false, shown = '', gridKey = '';
   const held = new Set(), from = new THREE.Vector3(), look = new THREE.Vector3(), wobble = new THREE.Vector3(), at = new THREE.Vector3(), follow = new THREE.Vector3();
   const root = new THREE.Group(); root.visible = false;
@@ -206,18 +208,20 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
   const restart = () => { const g = grid(), spot = home(); s = g && spot ? newSnake(g, spot, best) : null; if (s) headYaw = viewYaw = Math.atan2(...DIRS[s.dir]); bulge = Infinity; fresh = true; bumped = false; };
   const press = () => { if (!s) return; if (settled(s)) restart(); else go(s); };
   const showScore = () => {
-    const over = s?.mode === 'over', line = s ? [s.eaten, best, s.mode, bumped].join() : '';
+    const over = s?.mode === 'over', touch = globalThis.matchMedia?.('(pointer: coarse)')?.matches, line = s ? [s.eaten, best, s.mode, bumped, touch && touchMode].join() : '';
     if (line === shown) return; shown = line;
     if (!s) { score(null); return; }
-    const touch = globalThis.matchMedia?.('(pointer: coarse)')?.matches;
-    const hint = s.mode === 'ready' ? (touch ? 'Tap to go · swipe to turn' : '↑ go · ← → turn') : over ? (touch ? 'Tap again' : '↑ again') : null;
-    score([{ text: `🍎 ${s.eaten}` }, { text: `Best ${best}` }, ...hint ? [{ text: hint }] : []], over ? (s.record ? 'New best!' : bumped ? 'Honk!' : 'Crash!') : null);
+    const pick = mode => () => { touchMode = mode; try { localStorage.setItem(TOUCH, mode); } catch { /* no storage here */ } shown = ''; showScore(); };
+    const chips = s.mode === 'ready' && touch ? [['swipe', '↔ Swipe'], ['tap', '👆 Tap']].map(([mode, text]) => ({ text, on: touchMode === mode, pick: pick(mode) })) : [];
+    const hint = s.mode === 'ready' ? (touch ? 'Tap to go' : '↑ go · ← → turn') : over ? (touch ? 'Tap again' : '↑ again') : null;
+    score([{ text: `🍎 ${s.eaten}` }, { text: `Best ${best}` }, ...chips, ...hint ? [{ text: hint }] : []], over ? (s.record ? 'New best!' : bumped ? 'Honk!' : 'Crash!') : null);
   };
   // ↓ and S as well as ↑: unclaimed, they'd be walking keys, which step out of a game (office.js).
   const KEYS = { ArrowLeft: -1, KeyA: -1, ArrowRight: 1, KeyD: 1, ArrowUp: 0, KeyW: 0, ArrowDown: 0, KeyS: 0, Space: 0 };
 
   const snake = {
     root,
+    get game() { return s; }, // for tests
     enter() { active = true; fresh = true; if (!s || s.mode === 'over') restart(); else s.mode = 'ready'; shown = ''; showScore(); },
     leave() { active = false; held.clear(); linger = 0.6; score(null); shown = ''; }, // drawn on while the view comes back
     blur() { held.clear(); },
@@ -318,16 +322,16 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
     floor.scale.set(cols * CELL, 1, rows * CELL); floor.position.set(g.left + cols * CELL / 2, 0.02, g.back + rows * CELL / 2);
   }
 
-  // Presses. A swipe left or right turns that way as soon as it's gone SWIPE px, before the finger's lifted; a tap turns to the
-  // side of the screen it was on when it's let go (so it isn't a swipe's start), a click as it's pressed (no swiping with a
-  // mouse). Before it's off, or after a crash, a press sets it going.
-  const SWIPE = 24, downs = new Map(); // css px; pointer → where it went down, null once it's swiped
+  // Presses. Swipe: a finger that goes SWIPE px sideways (more than up or down) turns that way at once, before it's lifted, once
+  // a finger. Tap: a finger turns to its side of the screen as it lands. A click turns as it's pressed. Before it's off, or after
+  // a crash, any press sets it going.
+  const SWIPE = 12, downs = new Map(); // css px; pointer → where it went down, null once it's swiped
   const half = x => { const r = canvas.getBoundingClientRect(); return x < r.left + r.width / 2 ? -1 : 1; };
   const playing = () => active && s?.mode === 'play';
   canvas.addEventListener('pointerdown', event => {
     if (!active || !s || event.pointerType === 'mouse' && event.button !== 0) return;
     if (s.mode !== 'play') press();
-    else if (event.pointerType === 'mouse') turn(s, half(event.clientX));
+    else if (event.pointerType === 'mouse' || touchMode === 'tap') turn(s, half(event.clientX));
     else downs.set(event.pointerId, { x: event.clientX, y: event.clientY });
   });
   canvas.addEventListener('pointermove', event => {
@@ -335,10 +339,7 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
     if (!down || !playing() || Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(event.clientY - down.y)) return;
     downs.set(event.pointerId, null); turn(s, Math.sign(dx));
   });
-  const lift = event => {
-    const down = downs.get(event.pointerId); downs.delete(event.pointerId);
-    if (down && playing() && event.type === 'pointerup' && Math.hypot(event.clientX - down.x, event.clientY - down.y) < SWIPE) turn(s, half(down.x));
-  };
+  const lift = event => { downs.delete(event.pointerId); };
   canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);
   return snake;
 }
