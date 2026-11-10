@@ -8,7 +8,7 @@ import { piece } from './furniture.js';
 import { toonMaterial, withOutline } from './toon.js';
 import { findPath, nearestOpen, index } from './path.js';
 import { reach as flood } from './snake.js';
-import { standSpots, nearestSpot, nextSpot, gooseRole, routeAt, gapOf, eased, planOf, planKey, planDue, round2 } from './goose-plan.js';
+import { standSpots, nearestSpot, nextSpot, gooseRole, routeAt, gapOf, eased, planOf, planKey, planDue, round2, PLAN_EVERY } from './goose-plan.js';
 
 export const GOOSE = 'goose'; // its id for the bubbles and props.js's hits
 // m/s by mode (you walk at 4), standing in the rest; metres per radian of a leg's swing.
@@ -236,8 +236,9 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   const poked = (why, icon) => { if (role !== 'home' && reducedMotion()) honk(icon); else if (role === 'watcher') net({ type: 'poke', why }); else provoke(LONG, icon); };
   // Keeping it: its plan to the others when one's due (goose-plan.js), on a change or someone new come at most twice a second,
   // else every 2 s (give or take a µs: t is a sum of frame times, so 30 of them can come to 0.4999…). What would change it
-  // (planKey) comes from the probe, so a whole plan is built only to go out.
+  // (planKey) comes from the probe, so a whole plan is built only to go out, and nothing at all till one could be.
   function share() {
+    if (t + 1e-6 - sentAt < PLAN_EVERY) return;
     const end = path?.[Math.min(path.length, 32) - 1];
     probe.mode = mode; probe.idle = idle; probe.carry = loot?.carried ? loot.kind.key : null; probe.target = target && aimed; probe.route = end ? ends : none;
     if (target) { aimed[0] = r2(target.x); aimed[1] = r2(target.y); aimed[2] = r2(target.z); }
