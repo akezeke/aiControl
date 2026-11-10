@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { walkGrid, index, CELL } from '../client/office/path.js';
-import { createSnake, newSnake, turn, go, step, tick, reach, settled, roomy, placeApple, pack, unpack, due, KEEP, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
+import { createSnake, newSnake, turn, go, step, tick, reach, settled, roomy, placeApple, pack, unpack, due, plantBubble, plantOf, KEEP, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
 import { createSnakeModel, snakeColours, spine } from '../client/office/snake-model.js';
 import { movedOn, createPlayback } from '../client/office/snakes.js';
 import { fruitFood } from '../client/office/fruit.js';
@@ -303,6 +303,20 @@ test('a minute of play sends under the hub\'s limit', () => {
     assert.ok(win.filter(s => s[1] === 'snake').length <= 9); assert.ok(win.length <= 10);
   }
   for (let i = 1; i < snakes.length; i++) assert.ok(snakes[i][0] - snakes[i - 1][0] <= KEEP + 0.05);
+});
+
+test('at rate 8 on 60 Hz frames every step sends', () => {
+  let last = { at: 0, mode: 'play' }, acc = 0, steps = 0, sent = 0;
+  for (let f = 1; f <= 1200; f++) {
+    const t = f / 60; acc += 1 / 60; const moved = acc >= 1 / 8 - 1e-9; if (moved) { acc -= 1 / 8; steps++; }
+    if (due(last, t, 'play', moved)) { last = { at: t, mode: 'play' }; sent++; } else assert.ok(!moved, `step at ${t} not sent`);
+  }
+  assert.ok(steps > 100 && sent >= steps);
+});
+
+test('plant bubble ids round-trip', () => {
+  for (let i = 0; i < 4; i++) assert.equal(plantOf(plantBubble(i)), i);
+  assert.equal(plantOf('abc'), -1); assert.equal(plantOf('snake-plant-x'), -1);
 });
 
 test('in play with no step for 2 s it still says so', () => {

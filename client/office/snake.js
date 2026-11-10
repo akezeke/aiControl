@@ -144,7 +144,12 @@ export const unpack = m => {
 };
 // When to send: at least SEND s after the last in play (after a step), every KEEP s whatever the mode, and when the mode changes.
 export const SEND = 1 / 8, KEEP = 2;
-export const due = (last, now, mode, moved) => !last || mode !== last.mode || now - last.at >= KEEP || (mode === 'play' && moved && now - last.at >= SEND);
+// A frame of tolerance: at rate 8 the steps land 7 or 8 frames apart at 60 Hz, and every one should send.
+export const due = (last, now, mode, moved) => !last || mode !== last.mode || now - last.at >= KEEP || (mode === 'play' && moved && now - last.at >= SEND - 1 / 60);
+// The id of the speech bubble over a taken plant, and back (-1 if it isn't one).
+const PLANT_BUBBLE = 'snake-plant-';
+export const plantBubble = i => PLANT_BUBBLE + i;
+export const plantOf = id => { const m = typeof id === 'string' && id.startsWith(PLANT_BUBBLE) && /^\d+$/.test(id.slice(PLANT_BUBBLE.length)); return m ? +id.slice(PLANT_BUBBLE.length) : -1; };
 
 // The 3D. Behind and above the head, looking on ahead of it; how fast the view swings round after the head, the view follows
 // the head, and the view comes in (when something's behind) and goes back out again.
