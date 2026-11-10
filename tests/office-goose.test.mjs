@@ -90,7 +90,7 @@ test("a watcher's goose: hidden and out of the way till the keeper's plan, then 
   assert.ok(Math.abs(a.at()[0] - 3.5) < 0.05 && Math.abs(a.at()[1] - 2) < 0.01, 'an aged plan counts from when it was sent');
 });
 
-test('a plan heard before the roster: the goose shows there once the roster names its sender (the host coming back)', () => {
+test("a plan heard before the roster: the goose shows there once the roster names its sender (a guest whose roster comes after the keeper's plan)", () => {
   const a = goose(); a.run(0.5); // at home, by the lounge
   a.g.heard(plan({ route: [], speed: 0, mode: 'loiter' })); a.run(0.1);
   assert.ok(Math.hypot(a.at()[0] - 2, a.at()[1] - 2) > 1, 'at home it plays nothing');
@@ -355,10 +355,11 @@ test('as keeper, a sleeper honked awake goes out as a wake by their seat', () =>
   assert.deepEqual(a.woken, ['s1']);
 });
 
-test("into a meeting, reset keeps the keeper's plan heard before the floor and shows it; going home, it waits for the next", () => {
+// office.js resets going into a meeting while still at home; the roster naming the keeper comes after.
+test("into a meeting, reset keeps the keeper's plan heard before the floor, for the roster to show at once; going home, it waits for the next", () => {
   for (const into of [true, false]) {
-    const a = watching(); a.run(0.5); a.g.heard(plan({ at: [6, 6], route: [], speed: 0, mode: 'loiter' })); a.run(0.1);
-    a.g.reset(into); a.run(1 / 60);
+    const a = goose(); a.run(0.5); a.g.heard(plan({ at: [6, 6], route: [], speed: 0, mode: 'loiter' })); a.run(0.1);
+    a.g.reset(into); a.g.roster([P('a'), P('b', { goose: true })], 'a'); a.run(1 / 60);
     assert.equal(a.g.root.visible, into);
     if (into) assert.ok(Math.hypot(a.at()[0] - 6, a.at()[1] - 6) < 0.01, "at the plan's spot");
     else { a.run(2); assert.equal(a.g.root.visible, false, 'hidden till the next plan'); a.g.heard(plan({ at: [6, 6], route: [], speed: 0, mode: 'loiter' })); a.run(1 / 60); assert.equal(a.g.root.visible, true); }
