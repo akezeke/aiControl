@@ -101,6 +101,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
 
   const honk = (icon = '🪿') => { honkUntil = t + 0.6; say(icon, pick(LINES)); };
   const tell = m => { if (role === 'keeper') net(m); }; // what the keeper's goose did, for the others to act out
+  const alone = () => role === 'keeper' && present.size < 2; // keeping it with nobody else there: it acts as at home
   const bill = () => head.localToWorld(tip.copy(TIP)); // the beak's tip, where what it carries goes (props.js)
   const loiter = (seconds = rand(LOITER)) => { mode = 'loiter'; path = null; target = null; until = t + seconds; idle = pick(IDLE); side = Math.random() < 0.5 ? 1 : -1; };
   const go = (to, next) => { const way = to && findPath(walkable(), at, to); if (way) { path = way; mode = next; } return !!way; };
@@ -155,10 +156,10 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   const quarry = id => { if (id === me()) return you(); if (role === 'keeper') for (const o of others()) if (o.id === id) return o; return null; };
   const close = p => !p.busy && Math.hypot(p.x - at.x, p.z - at.z) < NEAR;
   const near = () => { if (close(you())) return yourself; if (role === 'keeper') for (const o of others()) if (close(o)) return o; return null; };
-  // Gets cross: drops what it has, honks, and goes for `id` for `seconds`, unless they're busy. At home with reduced motion it
-  // only honks; a keeper goes for them whatever its own page's setting.
+  // Gets cross: drops what it has, honks, and goes for `id` for `seconds`, unless they're busy. At home (or keeping it alone) with
+  // reduced motion it only honks; a keeper goes for them whatever its own page's setting.
   const provoke = (seconds, icon = '🪿', id = me()) => {
-    if (role === 'home' && reducedMotion()) { honk(icon); return; }
+    if ((role === 'home' || alone()) && reducedMotion()) { honk(icon); return; }
     drop(); honk(icon); tell({ type: 'goosed', what: 'honk', icon });
     const p = quarry(id); if (!p || p.busy) return;
     mode = 'chase'; prey = id; chaseUntil = Math.max(chaseUntil, t + seconds); replanAt = 0;
@@ -186,7 +187,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     if (loot?.held) { const taken = mine; drop(); if (taken) poked('took', '💢'); else loiter(); } // you got there first, or took it back
     if (mode !== 'chase' && t > calmUntil) { const p = near(); if (p) provoke(SHORT, '🪿', p.id); } // come too close and it charges
     if (mode === 'loiter' || mode === 'walk') { honkIn -= dt; stealIn -= dt; prankIn -= dt; if (foods().length) visitIn -= dt; }
-    if (honkIn < 0) { honkIn = rand(HONKS); if (role !== 'keeper') honk(); } // kept, it honks only at something, which the others hear of
+    if (honkIn < 0) { honkIn = rand(HONKS); if (role !== 'keeper' || alone()) honk(); } // kept for others, it honks only at something, which they hear of
     // Off again when its stay is up, or once the food's gone (eaten, or its snake with it).
     if ((mode === 'visit' || mode === 'mill') && (t > visiting.leaveAt || !foods().some(f => Math.hypot(f.food[0] - visiting.food[0], f.food[1] - visiting.food[1]) < 0.01))) { visiting = null; loiter(); }
     if (mode === 'chase') {
@@ -372,7 +373,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       else {
         // In by the lounge on the first frame there's a room (a second after going through the door), facing into it.
         if (!root.visible) { if (t < spawnAt) return; root.visible = true; const home = nearestOpen(walkable(), new THREE.Vector3(room.width - 2.4, 0, room.depth - 2.7)); if (home) at.copy(home); yaw = Math.atan2(room.width / 2 - at.x, room.depth / 2 - at.z); loiter(); }
-        if (still && role === 'home') { drop(); if (mode !== 'loiter') loiter(); } else think(dt);
+        if (still && (role === 'home' || alone())) { drop(); if (mode !== 'loiter') loiter(); } else think(dt);
         if (role === 'keeper') share();
       }
       strike(dt, still); // at a meeting with reduced motion it still moves, without the waddle, wings or neck

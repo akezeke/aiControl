@@ -213,7 +213,7 @@ test("a hidden watcher's goose ignores events; its first plan's carry puts the b
   a.g.heard(plan({ carry: 'mug' })); a.run(0.1); assert.equal(a.ghosts.at(-1).kind, 'mug');
 });
 
-const keeping = (o = {}) => { const a = goose(o); a.g.roster([P('a', { goose: true })], 'a'); return a; };
+const keeping = (o = {}) => { const a = goose(o); a.g.roster([P('a', { goose: true }), P('b')], 'a'); return a; }; // with b there too
 const plans = a => a.sent.filter(m => m.type === 'goose'), events = a => a.sent.filter(m => m.type === 'goosed');
 
 test('a keeper sends plans, on a change at most twice a second and every 2 s, and no random honks', () => {
@@ -251,8 +251,19 @@ test('a poke while it carries something: the drop goes out before the honk', () 
 });
 
 test('a new arrival gets a plan within half a second', () => {
-  const a = keeping(); a.run(3); const before = plans(a).length;
+  const a = goose(); a.g.roster([P('a', { goose: true })], 'a'); a.run(3); const before = plans(a).length;
   a.g.roster([P('a', { goose: true }), P('b')], 'a'); a.run(0.5); assert.ok(plans(a).length > before);
+});
+
+// Nobody's watching: a host alone at their own meeting has it as at home.
+test('a keeper alone honks at random and with reduced motion stands still, till a second person makes it a meeting', () => {
+  const a = goose(); a.g.roster([P('a', { goose: true })], 'a'); a.run(120);
+  assert.ok(a.said.length >= 2, 'honks at random, as at home');
+  a.g.roster([P('a', { goose: true }), P('b')], 'a'); const said = a.said.length; a.run(120); assert.equal(a.said.length, said, 'no random honks with b there');
+  const b = goose({ still: true }); b.g.roster([P('a', { goose: true })], 'a'); b.run(1 / 60); const from = b.at(); b.run(60);
+  assert.deepEqual(b.at(), from); assert.equal(b.g.mode, 'loiter');
+  b.g.roster([P('a', { goose: true }), P('b')], 'a');
+  assert.ok(b.run(30, () => Math.hypot(b.at()[0] - from[0], b.at()[1] - from[1]) > 0.1), 'moves again with reduced motion');
 });
 
 test('taking over carries on from where the goose is: a walk finishes its route, and the plan goes at once', () => {
