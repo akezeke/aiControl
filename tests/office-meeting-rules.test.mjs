@@ -67,6 +67,19 @@ test('checks drop every malformed message', () => {
   assert.deepEqual(checkDown({ ...snake, id: 'a1' }), { ...snake, id: 'a1' });
   assert.deepEqual(checkDown({ type: 'snake', mode: 'off', id: 'a1' }), { type: 'snake', mode: 'off', id: 'a1' });
   assert.equal(checkDown(snake), null);
+  const plan = { type: 'goose', at: [2.5, 3.25], yaw: 1.57, mode: 'visit', idle: 'peck', speed: 0.75, route: [[3, 3.25], [3.5, 4]], carry: null, target: null };
+  const events = [{ type: 'goosed', what: 'nip', who: 'b7' }, { type: 'goosed', what: 'take', kind: 'mug', spot: [1, 0.4, 2] }, { type: 'goosed', what: 'drop' },
+    { type: 'goosed', what: 'wake', spot: [4.5, 6] }, { type: 'goosed', what: 'honk', icon: '💢' }, { type: 'goosed', what: 'honk', icon: '🪿' }];
+  const pokes = ['hit', 'click', 'took'].map(why => ({ type: 'poke', why }));
+  for (const msg of [plan, { ...plan, mode: 'mill', speed: 0, route: [] }, { ...plan, carry: 'mug', target: [1, 0.4, 2] }, ...events, ...pokes]) assert.deepEqual(checkUp(msg), msg);
+  assert.deepEqual(checkUp({ ...plan, age: 5 }), plan, "age is only ever the server's");
+  assert.deepEqual(checkUp({ type: 'goosed', what: 'drop', kind: 'mug', who: 'b7' }), { type: 'goosed', what: 'drop' });
+  for (const msg of [
+    { ...plan, at: [201, 0] }, { ...plan, at: [1] }, { ...plan, yaw: 'x' }, { ...plan, mode: 'swim' }, { ...plan, idle: 'nap' }, { ...plan, speed: 4.5 }, { ...plan, speed: -1 },
+    { ...plan, route: Array(33).fill([1, 1]) }, { ...plan, route: [[1]] }, { ...plan, route: undefined }, { ...plan, carry: 'sofa' }, { ...plan, target: [1, 2] }, { ...plan, target: [1, 2, 300] },
+    { type: 'goosed', what: 'bite' }, { type: 'goosed', what: 'nip', who: 'B!' }, { type: 'goosed', what: 'take', kind: 'sofa', spot: [1, 0.4, 2] }, { type: 'goosed', what: 'take', kind: 'mug', spot: [1, 2] },
+    { type: 'goosed', what: 'wake', spot: [1, 2, 3] }, { type: 'goosed', what: 'honk', icon: '🦆' }, { type: 'poke', why: 'kick' },
+  ]) assert.equal(checkUp(msg), null, JSON.stringify(msg));
   assert.equal(PROTOCOL, 1);
   assert.equal(checkUp({ type: 'hello', name: 'Ann', fruit: 'apple', colour: COLOURS[0] }).v, 1, "an AI Control from before the number speaks the first one");
   assert.equal(checkUp({ type: 'hello', v: 7, name: 'Ann', fruit: 'apple', colour: COLOURS[0] }).v, 7, 'the hub decides what a number it does not speak means');
@@ -80,6 +93,12 @@ test('checks drop every malformed message', () => {
     { type: 'welcome', id: 'a1', colour: COLOURS[2], at: 'meeting' },
   ];
   for (const msg of down) assert.deepEqual(checkDown(msg), msg);
+  for (const msg of [{ ...plan, id: 'a1' }, { ...plan, id: 'a1', age: 2500 }, ...events.map(e => ({ ...e, id: 'a1' })), ...pokes.map(p => ({ ...p, id: 'a1' }))]) assert.deepEqual(checkDown(msg), msg);
+  for (const msg of [{ ...plan, id: 'a1', age: 10001 }, { ...plan, id: 'a1', age: -1 }, plan, ...events, ...pokes]) assert.equal(checkDown(msg), null, JSON.stringify(msg));
+  assert.deepEqual(checkDown({ type: 'goosed', what: 'drop', kind: 'mug', id: 'a1' }), { type: 'goosed', id: 'a1', what: 'drop' });
+  assert.deepEqual(checkDown({ type: 'roster', players: [{ ...player, goose: true }, { ...player, goose: false }, player] }).players.map(p => p.goose), [true, undefined, undefined]);
+  assert.ok(!('goose' in checkDown({ type: 'roster', players: [{ ...player, goose: false }] }).players[0]));
+  assert.equal(checkDown({ type: 'roster', players: [{ ...player, goose: 'yes' }] }), null);
   for (const msg of [
     null, { type: 'roster', players: Array.from({ length: 33 }, () => player) }, { type: 'roster', players: [{ ...player, id: 'BAD ID' }] },
     { type: 'roster', players: [{ ...player, at: 'x' }] }, { type: 'pos', x: 1, y: 0, z: 1, yaw: 0, pose: 'standing' },

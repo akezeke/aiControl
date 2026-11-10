@@ -25,6 +25,9 @@ const word = v => typeof v === 'string' && /^[a-z]{1,16}$/.test(v);
 const colour = v => COLOURS.includes(v);
 const vec = (v, limit) => Array.isArray(v) && v.length === 3 && v.every(n => num(n, -limit, limit));
 const id = v => typeof v === 'string' && /^[a-z0-9]{1,12}$/.test(v);
+const cell = v => Array.isArray(v) && v.length === 2 && v.every(n => num(n, -12, 200));
+// The shared goose: what its keeper plans (modes, idle poses) and what happens to it.
+const GOOSE_MODES = ['loiter', 'walk', 'fetch', 'reach', 'haul', 'drop', 'sneak', 'aim', 'chase', 'visit', 'mill'], GOOSE_IDLES = ['look', 'peck', 'preen'];
 
 // What a player wears: a stable look from their name, their fruit, their colour on the trim, and a cap (a bow for a banana).
 export function playerLook(name, fruit, shade) {
@@ -48,17 +51,32 @@ const checks = {
   // A snake game for the watchers: `path` is the body cell by cell from the head ('-' unknown, 0-3 the way to the next), `plant` a plant spot.
   snake: m => {
     if (m.mode === 'off') return { type: 'snake', mode: 'off' };
-    const cell = v => Array.isArray(v) && v.length === 2 && v.every(n => num(n, -12, 200));
     return own(m, ['head', 'path', 'dir', 'rate', 'food', 'plant']) && ['ready', 'play', 'over'].includes(m.mode) && cell(m.head) && (m.food === null || cell(m.food))
       && typeof m.path === 'string' && /^[0-3-]{0,1200}$/.test(m.path) && Number.isInteger(m.dir) && m.dir >= 0 && m.dir <= 3 && num(m.rate, 1, 32) && Number.isInteger(m.plant) && m.plant >= 0 && m.plant <= 3
       ? { type: 'snake', mode: m.mode, head: [...m.head], path: m.path, dir: m.dir, rate: m.rate, food: m.food && [...m.food], plant: m.plant } : null;
   },
+  // The goose's plan: where it is, what it does next and the cells it walks, for the other pages to replay. `age` is only the server's.
+  goose: m => own(m, ['at', 'yaw', 'mode', 'idle', 'speed', 'route', 'carry', 'target']) && cell(m.at) && num(m.yaw) && GOOSE_MODES.includes(m.mode) && GOOSE_IDLES.includes(m.idle) && num(m.speed, 0, 4)
+    && Array.isArray(m.route) && m.route.length <= 32 && m.route.every(cell) && (m.carry === null || KINDS.includes(m.carry)) && (m.target === null || Array.isArray(m.target) && m.target.length === 3 && m.target.every(n => num(n, -12, 200)))
+    ? { type: 'goose', at: [...m.at], yaw: m.yaw, mode: m.mode, idle: m.idle, speed: m.speed, route: m.route.map(c => [...c]), carry: m.carry, target: m.target && [...m.target] } : null,
+  // What happened to the goose, each kind keeping only its own fields.
+  goosed: m => {
+    switch (m.what) {
+      case 'nip': return id(m.who) ? { type: 'goosed', what: 'nip', who: m.who } : null;
+      case 'take': return KINDS.includes(m.kind) && Array.isArray(m.spot) && m.spot.length === 3 && m.spot.every(n => num(n, -12, 200)) ? { type: 'goosed', what: 'take', kind: m.kind, spot: [...m.spot] } : null;
+      case 'drop': return { type: 'goosed', what: 'drop' };
+      case 'wake': return cell(m.spot) ? { type: 'goosed', what: 'wake', spot: [...m.spot] } : null;
+      case 'honk': return m.icon === '🪿' || m.icon === '💢' ? { type: 'goosed', what: 'honk', icon: m.icon } : null;
+      default: return null;
+    }
+  },
+  poke: m => ['hit', 'click', 'took'].includes(m.why) ? { type: 'poke', why: m.why } : null,
 };
 const run = (table, msg) => own(msg, ['type']) && Object.hasOwn(table, msg.type) ? table[msg.type](msg) : null;
 export const checkUp = msg => run(checks, msg);
 
 const player = p => own(p, ['id', 'name', 'fruit', 'colour', 'at']) && id(p.id) && cleanName(p.name) && fruitIds.includes(p.fruit) && colour(p.colour) && (p.at === 'home' || p.at === 'meeting')
-  ? { id: p.id, name: cleanName(p.name), fruit: p.fruit, colour: p.colour, at: p.at } : null;
+  && (p.goose === undefined || typeof p.goose === 'boolean') ? { id: p.id, name: cleanName(p.name), fruit: p.fruit, colour: p.colour, at: p.at, ...p.goose === true && { goose: true } } : null;
 const withId = (type, fields) => m => { const inner = checks[type](m); return inner && id(m.id) ? { type, id: m.id, ...Object.fromEntries(fields.filter(f => inner[f] !== undefined).map(f => [f, inner[f]])) } : null; };
 const down = {
   roster: m => {
@@ -69,6 +87,9 @@ const down = {
   pos: withId('pos', ['x', 'y', 'z', 'yaw', 'pose', 't']),
   throw: withId('throw', ['kind', 'pos', 'vel', 'spin']),
   snake: withId('snake', ['mode', 'head', 'path', 'dir', 'rate', 'food', 'plant']),
+  goose: m => { const msg = withId('goose', ['at', 'yaw', 'mode', 'idle', 'speed', 'route', 'carry', 'target'])(m); return msg && m.age === undefined ? msg : msg && num(m.age, 0, 10000) ? { ...msg, age: m.age } : null; },
+  goosed: withId('goosed', ['what', 'who', 'kind', 'spot', 'icon']),
+  poke: withId('poke', ['why']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,
   // The hub's answer to hello: your id in the roster, the colour you got and where you are.
