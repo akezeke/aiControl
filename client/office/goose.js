@@ -1,16 +1,19 @@
 // The office goose: it waddles about between the desks, honks, makes off with things (props.js), creeps up on whoever's asleep
-// at their desk to honk them awake, and won't have the boss near it. Come close and it charges, wings out, and nips; hit it with anything, click it or take back what it took, and it chases
-// you for longer. Its ways round the furniture come from path.js. With reduced motion it stands still and a click just honks.
+// at their desk to honk them awake, now and then stands about by a snake's food (never in its way), and won't have the boss near it. Come close and it charges, wings out, and nips; hit it
+// with anything, click it or take back what it took, and it chases you for longer. Its ways round the furniture come from path.js. With reduced motion it stands still and a click just honks.
 import * as THREE from 'three';
 import { piece } from './furniture.js';
 import { toonMaterial, withOutline } from './toon.js';
 import { findPath, nearestOpen } from './path.js';
+import { standSpots, nearestSpot, nextSpot } from './goose-plan.js';
 
 export const GOOSE = 'goose'; // its id for the bubbles and props.js's hits
-const WADDLE = 0.75, HAUL = 0.95, CHASE = 2.6, STRIDE = 0.07; // m/s (you walk at 4); metres per radian of a leg's swing
+// m/s by mode (you walk at 4), standing in the rest; metres per radian of a leg's swing.
+const SPEED = { walk: 0.75, fetch: 0.75, visit: 0.75, haul: 0.95, sneak: 0.45, chase: 2.6 }, STRIDE = 0.07;
 const NEAR = 1.3, NIP = 0.55, NECK = 0.95, SHOVE = 0.35; // metres
 const SHORT = 2.5, LONG = 6, CALM = 8, REPLAN = 0.5; // seconds: a chase for coming close, and for anything worse; then it leaves you be; how often a chase looks for you again
-const HONKS = [20, 40], THEFTS = [40, 90], PRANKS = [45, 120], LOITER = [2, 6]; // seconds
+// Seconds: between honks, thefts, pranks and visits to the food; a loiter; a while at one spot by the food, and at the food in all.
+const HONKS = [20, 40], THEFTS = [40, 90], PRANKS = [45, 120], VISITS = [30, 60], LOITER = [2, 6], MILL = [2, 4], STAY = [6, 12];
 const LINES = ['HONK!', 'Honk!', 'HONK HONK!'], WOKEN = ['Wha—?!', "I'm up! I'm up!", 'Huh?!', 'Not again…'], IDLE = ['look', 'peck', 'preen'];
 const WHITE = '#f7f5ef', ORANGE = '#ff9f1c', INK = '#1b1a1f';
 // The shoulder the head is placed from; where the neck starts, deep in the chest so it grows out of the body at any angle; the
@@ -70,15 +73,18 @@ function bendNeck(tube, { lean, turn, len, bend, bow }) {
 }
 
 // `walkable()`: path.js's grid of the room as it is now; `busy()`: you're in the overview or off to someone, so it lets you be;
-// `say(icon, text)`: its speech bubble; `sleepers()`: [{ id, at }] of who's asleep and their seat; `wake(id, line)`: one jumps.
-export function createGoose(scene, { props, player, walkable, bounds, busy, reducedMotion, say, sleepers, wake }) {
+// `say(icon, text)`: its speech bubble; `sleepers()`: [{ id, at }] of who's asleep and their seat; `wake(id, line)`: one jumps;
+// `foods()`: [{ food: [x, z], head: [x, z] }] of each snake's food and its head; `others()`: [{ id, x, z, busy }] of the others at a
+// meeting; `me()`: your id; `net(message)`: one to the meeting.
+export function createGoose(scene, { props, player, walkable, bounds, busy, reducedMotion, say, sleepers, wake, foods = () => [], others = () => [], me = () => null, net = () => {} }) {
   const { root, body, neck, head, jaw, wings, legs } = model(); root.visible = false; scene.add(root);
   const at = root.position, pose = { ...REST }, aim = { ...REST }, dir = new THREE.Vector3(), local = new THREE.Vector3(), tip = new THREE.Vector3(), above = new THREE.Vector3();
   let t = 0, yaw = 0, phase = 0, stepping = 0, mode = 'loiter', idle = 'look', side = 1, until = 0, path = null, loot = null, mine = false, last = null, victim = null; // mine: it's had it in its beak; last: what it took last time
-  let chaseUntil = 0, replanAt = 0, calmUntil = 0, honkUntil = 0, honkIn = rand(HONKS), stealIn = rand(THEFTS), prankIn = rand(PRANKS);
+  let chaseUntil = 0, replanAt = 0, calmUntil = 0, honkUntil = 0, honkIn = rand(HONKS), stealIn = rand(THEFTS), prankIn = rand(PRANKS), visitIn = rand(VISITS);
+  let target = null, visiting = null; // what it has its eye on (strike); the food it's by: { food, spots, spot, leaveAt }
 
   const honk = (icon = '🪿') => { honkUntil = t + 0.6; say(icon, pick(LINES)); };
-  const loiter = (seconds = rand(LOITER)) => { mode = 'loiter'; path = null; until = t + seconds; idle = pick(IDLE); side = Math.random() < 0.5 ? 1 : -1; };
+  const loiter = (seconds = rand(LOITER)) => { mode = 'loiter'; path = null; target = null; until = t + seconds; idle = pick(IDLE); side = Math.random() < 0.5 ? 1 : -1; };
   const go = (to, next) => { const way = to && findPath(walkable(), at, to); if (way) { path = way; mode = next; } return !!way; };
   // An open spot at least `far` away, from a few tries.
   const spot = far => {
@@ -104,6 +110,17 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       if (stand && flat(stand, s.at) < 1.2 && go(stand, 'sneak')) { victim = s; return; }
     }
   };
+  // Off to the snake's food nearest it, to the nearest spot 0.75–1 m from it that still leaves the snake a way in (goose-plan.js).
+  const visit = () => {
+    const list = foods(), food = nearestSpot(list.map(f => f.food), [at.x, at.z]); if (!food) return;
+    const spots = standSpots(walkable(), food, list.find(f => f.food === food).head), stand = nearestSpot(spots, [at.x, at.z]);
+    if (stand && go(new THREE.Vector3(stand[0], 0, stand[1]), 'visit')) visiting = { food, spots, spot: stand, leaveAt: Infinity };
+  };
+  // A while at a spot by the food, looking about or pecking; its stay counts from first getting there.
+  const mill = () => {
+    mode = 'mill'; path = null; until = t + rand(MILL); idle = Math.random() < 0.5 ? 'look' : 'peck'; side = Math.random() < 0.5 ? 1 : -1;
+    if (visiting.leaveAt === Infinity) visiting.leaveAt = t + rand(STAY);
+  };
   const drop = () => { if (loot?.carried) props.drop(loot); loot = null; mine = false; };
   // Gets cross: drops what it has and goes for you, for `seconds`.
   const provoke = (seconds, icon) => {
@@ -112,11 +129,11 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     drop(); mode = 'chase'; chaseUntil = Math.max(chaseUntil, t + seconds); replanAt = 0;
   };
   const face = (p, dt) => { const turn = Math.atan2(p.x - at.x, p.z - at.z) - yaw; yaw += Math.atan2(Math.sin(turn), Math.cos(turn)) * Math.min(1, dt * 8); };
-  // Along the path at `speed`; true once at its end.
-  const follow = (speed, dt) => {
+  // Along the path at the mode's speed; true once at its end.
+  const follow = dt => {
     while (path.length > 1 && flat(at, path[0]) < 0.05) path.shift();
     const next = path[0], d = flat(at, next); if (d < 0.05) return true;
-    const step = Math.min(d, speed * dt);
+    const step = Math.min(d, SPEED[mode] * dt);
     at.x += (next.x - at.x) / d * step; at.z += (next.z - at.z) / d * step; phase += step / STRIDE; stepping = 1;
     face(next, dt);
     return false;
@@ -127,34 +144,45 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     const you = player.position;
     if (loot?.held) { const taken = mine; drop(); if (taken) provoke(LONG, '💢'); else loiter(); } // you got there first, or took it back
     if (mode !== 'chase' && t > calmUntil && flat(you, at) < NEAR && !busy()) provoke(SHORT);
-    if (mode === 'loiter' || mode === 'walk') { honkIn -= dt; stealIn -= dt; prankIn -= dt; }
+    if (mode === 'loiter' || mode === 'walk') { honkIn -= dt; stealIn -= dt; prankIn -= dt; if (foods().length) visitIn -= dt; }
     if (honkIn < 0) { honkIn = rand(HONKS); honk(); }
+    // Off again when its stay is up, or once the food's gone (eaten, or its snake with it).
+    if ((mode === 'visit' || mode === 'mill') && (t > visiting.leaveAt || !foods().some(f => Math.hypot(f.food[0] - visiting.food[0], f.food[1] - visiting.food[1]) < 0.01))) { visiting = null; loiter(); }
     if (mode === 'chase') {
       if (busy() || t > chaseUntil) { calmUntil = t + 2; loiter(1); return; }
       if (t > replanAt) { replanAt = t + REPLAN; path = findPath(walkable(), at, you) || [you.clone().setY(0)]; }
-      follow(CHASE, dt);
+      follow(dt);
       // Caught you: a nip, a shove and a honk, and that'll do for a while.
       if (flat(you, at) < NIP) { player.step(dir.set(you.x - at.x, 0, you.z - at.z).normalize().multiplyScalar(SHOVE)); honk('💢'); calmUntil = t + CALM; loiter(); }
-    } else if (mode === 'walk') { if (follow(WADDLE, dt)) loiter(); }
-    else if (mode === 'fetch') {
-      if (follow(WADDLE, dt)) { mode = 'reach'; until = t + 0.9; }
+    } else if (mode === 'walk') { if (follow(dt)) loiter(); }
+    else if (mode === 'visit') { if (follow(dt)) mill(); }
+    // Facing the food; then on to another spot by it, or a while longer here.
+    else if (mode === 'mill') {
+      face(dir.set(visiting.food[0], 0, visiting.food[1]), dt);
+      if (t > until) { const next = nextSpot(visiting.spots, visiting.spot); if (next && go(new THREE.Vector3(next[0], 0, next[1]), 'visit')) visiting.spot = next; else mill(); }
+    } else if (mode === 'fetch') {
+      if (follow(dt)) { mode = 'reach'; until = t + 0.9; }
     } else if (mode === 'reach') {
       face(loot.pos, dt);
       if (!loot.carried && !reach(at, loot.pos)) { loot = null; loiter(); } // it moved
       else if (!loot.carried) { if (t > until - 0.4) mine = props.carry(loot, () => head.localToWorld(tip.copy(TIP))); }
       else if (t > until && !go(spot(3), 'haul')) { mode = 'drop'; until = t + 0.6; } // nowhere to take it: down it goes here
-    } else if (mode === 'haul') { if (follow(HAUL, dt)) { mode = 'drop'; until = t + 0.6; } }
+    } else if (mode === 'haul') { if (follow(dt)) { mode = 'drop'; until = t + 0.6; } }
     else if (mode === 'drop') { if (t > until) { drop(); honk(); loiter(); } }
-    else if (mode === 'sneak') { if (follow(WADDLE * 0.6, dt)) { mode = 'aim'; until = t + 0.8; } }
+    else if (mode === 'sneak') { if (follow(dt)) { mode = 'aim'; until = t + 0.8; } }
     // A moment lining up on them, then the honk, if they're still asleep.
     else if (mode === 'aim') {
       face(victim.at, dt);
       if (t > until) { if (sleepers().some(s => s.id === victim.id)) { honk(); wake(victim.id, pick(WOKEN)); } victim = null; loiter(); }
     } else if (t > until) {
+      // Whatever's due, in turn, while it's still loitering: one that finds nothing to do doesn't hold up the next.
       if (stealIn < 0) { stealIn = rand(THEFTS); steal(); }
-      else if (prankIn < 0) { prankIn = rand(PRANKS); prank(); }
+      if (mode === 'loiter' && prankIn < 0) { prankIn = rand(PRANKS); prank(); }
+      if (mode === 'loiter' && visitIn < 0) { visitIn = rand(VISITS); visit(); }
       if (mode === 'loiter' && !go(spot(1), 'walk')) loiter(1);
     }
+    // The thing it's reaching for, or the seat of whoever it's creeping up on.
+    target = mode === 'reach' ? loot?.pos ?? null : mode === 'sneak' || mode === 'aim' ? victim?.at ?? null : null;
   }
 
   // How it holds itself for what it's doing, eased toward.
@@ -162,14 +190,14 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     Object.assign(aim, REST);
     if (still) { /* stands as it is */ }
     else if (mode === 'chase') Object.assign(aim, { lean: 1.2, len: 0.36, bend: 0.3, pitch: -0.15, jaw: 0.35 + Math.sin(t * 30) * 0.1, wings: 0.85 + Math.sin(t * 14) * 0.15 });
-    else if (mode === 'reach' && !loot?.carried && loot) {
-      root.updateMatrixWorld(); root.worldToLocal(local.copy(loot.pos)).sub(PIVOT);
+    else if (mode === 'reach' && !loot?.carried && target) {
+      root.updateMatrixWorld(); root.worldToLocal(local.copy(target)).sub(PIVOT);
       const d = local.length();
       Object.assign(aim, { lean: Math.acos(THREE.MathUtils.clamp(local.y / d, -1, 1)), turn: Math.atan2(local.x, local.z), len: THREE.MathUtils.clamp(d - 0.13, 0.25, NECK), bend: 0.06, pitch: Math.atan2(-local.y, Math.hypot(local.x, local.z)) });
     } else if (mode === 'drop') Object.assign(aim, { lean: 1.7, len: 0.3, bend: 0, bow: -0.3, pitch: 0.7 });
     else if (loot?.carried) Object.assign(aim, { lean: 0.55, pitch: 0.25 });
     else if (mode === 'sneak' || mode === 'aim') Object.assign(aim, { lean: 1.05, len: 0.38, bend: 0.1, pitch: -0.05 }); // creeping, neck out low
-    else if (mode === 'walk' || mode === 'fetch') aim.lean = 0.3 + Math.sin(phase * 2) * 0.08; // bobbing along
+    else if (mode === 'walk' || mode === 'fetch' || mode === 'visit') aim.lean = 0.3 + Math.sin(phase * 2) * 0.08; // bobbing along
     else if (idle === 'look') { aim.turn = Math.sin(t * 0.8 + side) * 0.35; aim.look = Math.sin(t * 0.8 + side) * 0.6; }
     else if (idle === 'peck') { const peck = Math.sin(t * 1.3 + side) > 0 ? Math.max(0, Math.sin(t * 11)) ** 3 : 0; Object.assign(aim, { lean: 1.95 + 0.4 * peck, len: 0.42, bend: 0.05, bow: -0.35, pitch: 1 }); }
     else if (idle === 'preen') Object.assign(aim, { lean: 1.3, turn: side * 2.5, len: 0.26, bend: 0, bow: -0.5, pitch: 0.5 + Math.sin(t * 12) * 0.15 });
@@ -182,8 +210,10 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
 
   const goose = {
     root,
+    get mode() { return mode; }, // what it's up to
     // For props.js: things thrown, and coffee, hit it.
     get column() { return { id: GOOSE, x: at.x, z: at.z, r: 0.2, top: 0.55 }; },
+    columns() { return root.visible ? [goose.column] : []; }, // what's in the way of things on the floor (the snake): nothing while it's not there
     // Just over its head, for its bubble.
     top() { return root.visible ? head.getWorldPosition(above).setY(above.y + 0.16) : null; },
     hit() { provoke(LONG, '💢'); },
