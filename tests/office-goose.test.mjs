@@ -329,3 +329,13 @@ test('as keeper, a sleeper honked awake goes out as a wake by their seat', () =>
   assert.deepEqual(events(a), [{ type: 'goosed', what: 'wake', spot: [4, 4] }]); assert.deepEqual(checkUp(events(a)[0]), events(a)[0]);
   assert.deepEqual(a.woken, ['s1']);
 });
+
+test("into a meeting, reset keeps the keeper's plan heard before the floor and shows it; going home, it waits for the next", () => {
+  for (const into of [true, false]) {
+    const a = watching(); a.run(0.5); a.g.heard(plan({ at: [6, 6], route: [], speed: 0, mode: 'loiter' })); a.run(0.1);
+    a.g.reset(into); a.run(1 / 60);
+    assert.equal(a.g.root.visible, into);
+    if (into) assert.ok(Math.hypot(a.at()[0] - 6, a.at()[1] - 6) < 0.01, "at the plan's spot");
+    else { a.run(2); assert.equal(a.g.root.visible, false, 'hidden till the next plan'); a.g.heard(plan({ at: [6, 6], route: [], speed: 0, mode: 'loiter' })); a.run(1 / 60); assert.equal(a.g.root.visible, true); }
+  }
+});

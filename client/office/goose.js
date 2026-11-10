@@ -355,8 +355,12 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       else if (m.type === 'poke' && role === 'keeper' && root.visible) provoke(LONG, m.why === 'click' ? '🪿' : '💢', m.id);
     },
     // Through the door: it lets go, the plans kept were that meeting's, and it's away a second, so a guest arriving never sees a
-    // stray goose before the roster says whose it is.
-    reset() { drop(true); took = false; kept = plan = null; root.visible = false; spawnAt = t + 1; },
+    // stray goose before the roster says whose it is. Into a meeting (the floor arriving after the roster and the keeper's first
+    // plan) the plan kept stays, and a watcher shows it at once; going home, they were that meeting's.
+    reset(into = false) {
+      drop(true); took = false; plan = null; if (!into) kept = null; root.visible = false; spawnAt = t + 1;
+      if (into && role === 'watcher' && kept?.m.id === keeper) adopt(kept);
+    },
     update(dt) {
       const room = bounds(); if (!room) return;
       const still = reducedMotion();
