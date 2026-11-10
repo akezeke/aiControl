@@ -185,7 +185,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     const alive = () => { quiet = 0; };
     ws.on('ping', alive); ws.on('pong', alive);
     ws.on('open', () => {
-      const hello = checkUp({ type: 'hello', v: PROTOCOL, name: l.name, ...look() }); if (hello) ws.send(JSON.stringify(hello));
+      hello(ws, l);
       beat = setInterval(() => { if (quiet === 2) return ws.terminate(); quiet++; ws.ping(); }, beatMs); beat.unref();
     });
     ws.on('message', (data, binary) => {
@@ -194,22 +194,28 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       let m; try { m = checkDown(JSON.parse(data.toString('utf8'))); } catch { return; }
       if (m) heard(l, m);
     });
+    // The hub turned the link away at the door (401): not signed in there any more, or the code was replaced.
+    let refused = false;
+    ws.on('unexpected-response', (_req, res) => { refused = res.statusCode === 401; ws.terminate(); });
     ws.on('error', () => {}); // 'close' follows
     ws.on('close', code => {
       clearInterval(beat);
       if (l.ws !== ws) return;
       l.ws = null; gone(l);
       if (link !== l || l.outdated) return;
-      // Removed by the host: ask the hub (not the cache) at once; signed out means the pages are told and there's no reconnecting,
-      // anything else (the hub says nothing of it, or can't be reached) is any other close.
-      if (code === 4003) {
+      // Removed by the host, or refused at the door (away 2 days, or removed while the link was down): ask the hub (not the
+      // cache) at once; signed out means the pages are told why and there's no reconnecting, anything else (the hub says
+      // you're still in, or can't be reached) is any other close.
+      if (code === 4003 || refused) {
         at = -Infinity;
-        online.sync({}).then(r => { if (!r.joined) toPages({ type: 'refused', why: 'removed' }); else if (link === l && !l.ws && !l.retry) retry(l); }, () => { if (link === l && !l.ws && !l.retry) retry(l); });
+        const again = () => { if (link === l && !l.ws && !l.retry) retry(l); };
+        online.sync({}).then(r => { if (r.joined) again(); else if (r.out) toPages({ type: 'refused', why: r.out }); }, again);
         return;
       }
       retry(l);
     });
   }
+  function hello(ws, l) { const m = checkUp({ type: 'hello', v: PROTOCOL, name: l.name, ...look() }); if (m) ws.send(JSON.stringify(m)); }
   function retry(l) {
     l.retry = setTimeout(() => { l.retry = null; if (link === l) connect(l); }, l.delay); l.retry.unref();
     l.delay = Math.min(l.delay * 2, RETRY_MAX_MS);
@@ -312,8 +318,15 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       load();
       const m = checkUp({ type: 'look', fruit: given?.fruit, colour: given?.colour });
       if (!m) throw fail('Pick a fruit and a colour.', 400);
-      // An open link has said hello first, so the hub takes it; a link not open yet says hello with this look.
-      if (m.fruit !== saved.fruit || m.colour !== saved.colour) { save({ ...saved, fruit: m.fruit, colour: m.colour }); up(m); }
+      // An open link has said hello first, so the hub takes it; a link not open yet says hello with this look. One with no
+      // welcome (the hub refused its hello's colour) says hello again in this look, now: a fresh link if the hub let it go.
+      if (m.fruit !== saved.fruit || m.colour !== saved.colour) {
+        save({ ...saved, fruit: m.fruit, colour: m.colour });
+        const l = link;
+        if (l && !l.me && l.ws?.readyState === WebSocket.OPEN) hello(l.ws, l);
+        else if (l?.retry) { clearTimeout(l.retry); l.retry = null; connect(l); }
+        up(m);
+      }
       return joined() ? result() : { ...signedOut(), look: look() };
     },
 
@@ -350,7 +363,8 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
           if (m.at === 'meeting' && already && link.floor) put(socket, JSON.stringify({ type: 'floor', floor: link.floor }));
           return;
         }
-        if (m.type === 'remove') { if (link?.hostKey && link.me) up(m); return; }
+        // The board kept still has them in: the next sync (the slip asks for one) goes to the hub.
+        if (m.type === 'remove') { if (link?.hostKey && link.me) { up(m); at = -Infinity; } return; }
         if (socket === speaker() && link?.me) up(m);
       });
       socket.on('error', () => socket.terminate?.());

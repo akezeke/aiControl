@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
-import { hubState, startHub } from '../server/hub.mjs';
+import { AWAY, hubState, startHub } from '../server/hub.mjs';
 import { createOfficeOnline, liveUpgrade } from '../server/office-online.mjs';
 import { createHandler } from '../server/http.mjs';
 import { COLOURS, PROTOCOL, meetingFloor } from '../client/office/meeting.js';
@@ -378,11 +378,13 @@ test('removed by the host: signed out at once, the pages told, no reconnecting',
   const host = await s.player('Host', { host: true }), anna = await s.player('Anna'), hp = open(host), ap = open(anna);
   await until(() => hp.sees('Anna'), 'Anna in');
   ap.say({ type: 'remove', name: 'Host' }); await wait(100); assert.ok(hp.sees('Host'), "a visitor's remove goes nowhere");
+  assert.equal((await host.sync({})).board.players.find(p => p.name === 'Anna').in, true);
   hp.say({ type: 'remove', name: 'anna' });
   await until(() => ap.last('refused')?.why === 'removed', 'Anna told');
   const r = await anna.sync({}); assert.equal(r.joined, false); assert.equal(r.name, 'Anna'); assert.equal(r.out, 'removed');
   const n = s.upgrades(); await wait(300); assert.equal(s.upgrades(), n, 'no reconnect');
   await until(() => !hp.sees('Anna'), 'gone from the roster');
+  assert.equal((await host.sync({})).board.players.find(p => p.name === 'Anna').in, undefined, "the host's next sync asks the hub, not the board kept");
 });
 
 test('a removal that does not sign you out reconnects and tells the pages nothing', async t => {
@@ -395,4 +397,47 @@ test('a removal that does not sign you out reconnects and tells the pages nothin
   hp.say({ type: 'remove', name: 'Anna' });
   await until(() => s.upgrades() > n, 'a reconnect');
   assert.equal(ap.last('refused'), undefined);
+});
+
+// A laptop asleep over a weekend, or a removal while its link was down: the hub won't let the link back in (401), so it asks
+// the hub why, as for 4003.
+const away = async online => { const page = open(online); await until(() => page.last('welcome'), 'welcome'); page.close(); await wait(250); };
+test('signed out while the link was down: refused at the door, the pages told why (away or removed), no reconnecting', async t => {
+  let skew = 0; const s = await setup(t, { hubNow: () => Date.now() + skew });
+  const host = await s.player('Host', { host: true }), anna = await s.player('Anna'), bob = await s.player('Bob'), hp = open(host);
+  await away(anna); await away(bob);
+  hp.say({ type: 'remove', name: 'Bob' }); await wait(100);
+  skew = AWAY + 60_000;
+  const ap = open(anna), bp = open(bob);
+  await until(() => ap.last('refused')?.why === 'away' && bp.last('refused')?.why === 'removed', 'both told');
+  assert.equal(anna.status().out, 'away'); assert.equal(bob.status().out, 'removed');
+  const n = s.upgrades(); await wait(300); assert.equal(s.upgrades(), n, 'no reconnecting');
+});
+test('refused at the door while the hub says you are still in: the link keeps trying, asking each time, and the pages hear nothing', async t => {
+  let skew = 0, lie = false, asked = 0; const s = await setup(t, { hubNow: () => Date.now() + skew });
+  const fake = (url, init) => { if (!lie || JSON.parse(init.body).join !== false) return fetch(url, init); asked++; return Promise.resolve(new Response(JSON.stringify({ day: '2026-11-09', players: [] }), { status: 200 })); };
+  const anna = await s.player('Anna', { fetch: fake }); await away(anna);
+  skew = AWAY + 60_000; lie = true; const n = s.upgrades(), ap = open(anna);
+  await until(() => s.upgrades() >= n + 3 && asked >= 2, 'trying again, and asking');
+  assert.equal(ap.last('refused'), undefined); assert.equal(anna.status().joined, true);
+});
+
+// The hub refused your hello for its colour: a new pick says hello again at once, on the open link or (the hub let it go) a
+// new one, rather than when the backoff is up.
+test('a new look after the hub refused your hello goes up at once in a fresh hello', async t => {
+  let shut = false;
+  const hub = await fakeHub(t, (ws, m) => {
+    if (m.type !== 'hello') return;
+    if (m.colour !== COLOURS[0]) return ws.send(JSON.stringify({ type: 'welcome', id: 'me', colour: m.colour, at: 'home' }));
+    ws.send(JSON.stringify({ type: 'refused', why: 'colour' })); if (shut) ws.close();
+  });
+  for (const closed of [false, true]) {
+    shut = closed; const anna = createOfficeOnline({ file: join(dir(), 'office-online.json'), retryMs: 60_000 }); t.after(() => anna.close());
+    await anna.join({ code: hub.code, name: 'Anna' });
+    const lives = hub.lives.length, page = open(anna);
+    await until(() => page.last('refused')?.why === 'colour', 'the hello refused'); await wait(100);
+    page.say({ type: 'look', fruit: 'pear', colour: COLOURS[2] });
+    await until(() => page.last('welcome')?.colour === COLOURS[2], 'welcomed in the new colour', 1000);
+    assert.equal(hub.lives.length, lives + (closed ? 2 : 1), closed ? 'a new link, now' : 'the same link');
+  }
 });

@@ -145,11 +145,11 @@ test('the room going while you are in a meeting asks again, so the clipboard can
   assert.equal(calls, 0);
 });
 
-test('a colour refusal is sent again, and the live link hearing one, or a removal, asks again', async () => {
+test('a colour refusal is sent again, and the live link hearing one, or a removal or sign-in lapse, asks again', async () => {
   const calls = [], reply = { joined: true, name: 'Anna', host: 'h', board, refused: 'colour', taken: ['#3a86ff'] };
   const online = createOnline({ api: async path => { calls.push(path); return reply; }, scores: () => ({ darts: 1 }) });
   await online.sync(); await online.sync(); assert.equal(calls.length, 2, 'not marked sent');
   const on = {}; online.follow({ on: (type, fn) => { on[type] = fn; } });
-  on.refused({ type: 'refused', why: 'full' }); on.refused({ type: 'refused', why: 'colour' }); on.refused({ type: 'refused', why: 'removed' });
-  await new Promise(r => setTimeout(r)); assert.equal(calls.length, 4);
+  on.refused({ type: 'refused', why: 'full' }); on.refused({ type: 'refused', why: 'colour' }); on.refused({ type: 'refused', why: 'removed' }); on.refused({ type: 'refused', why: 'away' });
+  await new Promise(r => setTimeout(r)); assert.equal(calls.length, 5);
 });

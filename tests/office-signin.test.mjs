@@ -95,8 +95,9 @@ test('swatches grey what others hold: roster, signed-in board players, the last 
   const swatch = i => all(container).find(n => n.title === COLOUR_NAMES[i]);
   assert.deepEqual([0, 1, 2, 3, 4].map(i => swatch(i).disabled), [false, true, true, false, true]);
   const chips = () => all(container).filter(n => n.title?.startsWith('Remove '));
-  assert.deepEqual(chips().map(n => [n.textContent, n.title]), [['Bo ✕', 'Remove Bo']]);
-  chips()[0].onclick(); assert.deepEqual(sent, [{ type: 'remove', name: 'Bo' }]); assert.ok(chips().every(n => n.hidden));
+  assert.deepEqual(chips().map(n => [n.textContent, n.title, n.getAttribute('aria-label')]), [['Bo ✕', 'Remove Bo', 'Remove Bo']]);
+  chips()[0].onclick(); assert.deepEqual(sent, [{ type: 'remove', name: 'Bo' }]);
+  assert.deepEqual(chips().map(n => [n.title, n.disabled, /\bdim\b/.test(n.className), n.hidden]), [['Remove Bo', true, true, false]], 'dimmed, not gone');
   state = { ...state, hosting: false, code: undefined }; slip.refresh(); assert.equal(chips().length, 0, 'only the host');
   state = { ...state, hosting: true, code: 'h/abc', board: { day: '2026-11-10', players: players.map(({ in: _, ...p }) => p) } }; slip.refresh(); assert.equal(chips().length, 0, 'an older hub: no chips');
 });
@@ -122,4 +123,41 @@ test('a Join refused a colour greys what it says is taken', async t => {
   const slip = createSignIn(container, { state: () => null, setLook: async () => {}, signIn: refuse, signOut: async () => {} }, { roster: () => [], id: () => null }); slip.open();
   await all(container).find(n => n.tagName === 'FORM').onsubmit({ preventDefault() {} });
   assert.equal(all(container).find(n => n.title === COLOUR_NAMES[5] && /swatch/.test(n.className)).disabled, true);
+});
+test("a removal chip stays dimmed until a newer board, then follows it: gone once they're out, back while they're in", async t => {
+  const was = globalThis.document; t.after(() => { if (was === undefined) delete globalThis.document; else globalThis.document = was; });
+  const { container, all } = fakeDom(); const { createSignIn } = await import('../client/office/signin.js');
+  const bo = { name: 'Bo', scores: {}, seen: 2, in: true, colour: COLOURS[2] }, cy = { name: 'Cy', scores: {}, seen: 1, in: true, colour: COLOURS[3] }, anna = { name: 'Anna', scores: {}, seen: 3, in: true, colour: COLOURS[0], host: true };
+  const at = players => ({ joined: true, name: 'Anna', host: 'h', hosting: true, code: 'h/abc', board: { day: '2026-11-10', players }, look: { fruit: 'apple', colour: COLOURS[0] } });
+  let state = at([bo, cy, anna]), syncs = 0;
+  const online = { state: () => state, sync: async () => { syncs++; }, setLook: async () => {}, signIn: async () => {}, signOut: async () => {} };
+  const slip = createSignIn(container, online, { roster: () => [], id: () => 'me', on() {}, send() {} }, { recheckMs: 30 }); slip.open();
+  const chip = name => all(container).find(n => n.title === `Remove ${name}`), dim = name => [chip(name)?.disabled, /\bdim\b/.test(chip(name)?.className)];
+  chip('Bo').onclick(); assert.deepEqual(dim('Bo'), [true, true]);
+  state = { ...state, look: { fruit: 'pear', colour: COLOURS[0] } }; slip.refresh(); assert.deepEqual(dim('Bo'), [true, true], 'the same board: still dimmed');
+  state = at([{ name: 'Bo', scores: {}, seen: 2 }, cy, anna]); slip.refresh(); assert.equal(chip('Bo'), undefined, 'a newer board has them out');
+  state = at([bo, cy, anna]); slip.refresh(); assert.deepEqual(dim('Bo'), [false, false], 'back in (rejoined): a chip again');
+  // A remove that never went up: the board doesn't change, and the slip's own sync shortly after brings the chip back.
+  chip('Cy').onclick(); assert.deepEqual(dim('Cy'), [true, true]);
+  await new Promise(r => setTimeout(r, 60)); assert.equal(syncs, 2); assert.deepEqual(dim('Cy'), [false, false]);
+  // A board newer than the click that still has them in brings the chip back at once.
+  chip('Cy').onclick(); state = at([bo, { ...cy, scores: { darts: 5 } }, anna]); slip.refresh(); assert.deepEqual(dim('Cy'), [false, false]);
+});
+test('what a refusal said goes with putting the slip away, Leave, and a Join that works; a live refusal keeps focus', async t => {
+  const was = globalThis.document; t.after(() => { if (was === undefined) delete globalThis.document; else globalThis.document = was; });
+  const { container, all } = fakeDom(); const { createSignIn, COLOUR_NAMES } = await import('../client/office/signin.js');
+  let state = { joined: true, name: 'Anna', host: 'h', look: { fruit: 'apple', colour: COLOURS[1] } }, refuse = true;
+  const online = { state: () => state, setLook: async () => {}, signOut: async () => { state = { joined: false }; },
+    signIn: async () => { if (refuse) throw Object.assign(new Error('That colour is taken.'), { taken: [COLOURS[5]] }); state = { joined: true, name: 'Anna', host: 'h', look: { fruit: 'apple', colour: COLOURS[1] } }; } };
+  const on = {}, live = { roster: () => [], id: () => null, on: (type, fn) => { on[type] = fn; }, send() {} };
+  const slip = createSignIn(container, online, live); slip.open();
+  const said = () => all(container).find(n => n.className === 'office-signin-error')?.textContent, button = label => all(container).find(n => n.tagName === 'BUTTON' && n.getAttribute('aria-label') === label);
+  button('kiwi').focus(); on.refused({ type: 'refused', why: 'colour' });
+  assert.equal(said(), 'That colour is taken.'); assert.equal(globalThis.document.activeElement, button('kiwi'), 'focus kept');
+  slip.close(); slip.open(); assert.equal(said(), undefined, 'put away and up again');
+  on.refused({ type: 'refused', why: 'colour' }); await all(container).find(n => n.textContent === 'Leave').onclick(); assert.equal(said(), undefined, 'Leave');
+  const join = () => all(container).find(n => n.tagName === 'FORM').onsubmit({ preventDefault() {} }), swatch = i => all(container).find(n => n.title === COLOUR_NAMES[i] && /swatch/.test(n.className));
+  await join(); assert.equal(swatch(5).disabled, true); assert.equal(said(), 'That colour is taken.');
+  on.refused({ type: 'refused', why: 'colour' }); refuse = false; await join();
+  assert.equal(swatch(5).disabled, false, 'a Join that works'); assert.equal(said(), undefined);
 });

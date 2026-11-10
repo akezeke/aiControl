@@ -16,16 +16,24 @@ export const slipLook = (picked, mine, saved) => ({ fruit: picked?.fruit ?? mine
 // Short names for the swatches' aria-labels, in COLOURS' order.
 export const COLOUR_NAMES = ['pink', 'blue', 'purple', 'mint', 'yellow', 'orange', 'cyan', 'white'];
 
-// `live` (optional): the page's live link, for whose colours are taken.
-export function createSignIn(container, online, live = null) {
+// `live` (optional): the page's live link, for whose colours are taken. `recheckMs`: how soon after a removal the slip asks for a fresh board.
+export function createSignIn(container, online, live = null, { recheckMs = 1000 } = {}) {
   const slip = el('div', { className: 'office-copyline office-signin', hidden: true }); container.append(slip);
   const close = () => { if (slip.hidden) return; slip.hidden = true; if (slip.contains(document.activeElement)) document.activeElement.blur(); };
   slip.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); event.preventDefault(); close(); } });
   const away = event => { if (!slip.hidden && !slip.contains(event.target)) close(); };
   document.addEventListener('pointerdown', away, true);
   let typed = { code: '', name: '' }, picked = null; // a fruit and colour chosen before joining, kept for Join
-  let note = '', joinTaken = null, gone = new Set(); // the live link's colour refusal; what a refused Join says is taken; names just removed
-  live?.on?.('refused', m => { if (m?.why === 'colour') { note = 'That colour is taken.'; picked = null; render(); } });
+  let note = '', joinTaken = null, gone = new Map(); // the live link's colour refusal; what a refused Join says is taken; names just removed, with the board then
+  const fresh = () => { note = ''; joinTaken = null; }, timers = new Set();
+  live?.on?.('refused', m => { if (m?.why === 'colour') { note = 'That colour is taken.'; picked = null; refresh(); } });
+  // A removal sent: its chip stays dimmed until a board newer than the click, and the slip asks for one shortly after (the same
+  // board back, the remove never got there: the chip comes back).
+  const removing = (key, board) => {
+    const mark = { board }; gone.set(key, mark);
+    const back = () => { if (gone.get(key) === mark) { gone.delete(key); refresh(); } };
+    const t = setTimeout(() => { timers.delete(t); Promise.resolve(online.sync?.(true)).then(back, back); }, recheckMs); timers.add(t);
+  };
 
   // What the slip says now; `error`, what went wrong last. Typed text survives a redraw.
   function render(error = '', taken) {
@@ -33,7 +41,9 @@ export function createSignIn(container, online, live = null) {
     const state = online.state(), mode = slipMode(state), said = error || mode.said || note;
     slip.replaceChildren();
     const roster = live?.roster() ?? [], mine = pickerState(roster, live?.id?.()), { fruit, colour } = slipLook(picked, mine, state?.look);
-    const pick = next => { note = ''; joinTaken = null; picked = { fruit, colour, ...next }; if (state?.joined) online.setLook(picked.fruit, picked.colour).then(() => { picked = null; render(); }, e => render(e.message)); else render(); };
+    const pick = next => { fresh(); picked = { fruit, colour, ...next }; if (state?.joined) online.setLook(picked.fruit, picked.colour).then(() => { picked = null; render(); }, e => render(e.message)); else render(); };
+    const board = JSON.stringify(state?.board ?? null);
+    for (const [key, mark] of gone) if (mark.board !== board) gone.delete(key); // a newer board: the chip follows it
     const me = state?.name?.toLowerCase(), players = (state?.board?.players ?? []).filter(p => p.in && p.name.toLowerCase() !== me);
     const held = new Set([...mine.taken, ...players.map(p => p.colour), ...(joinTaken ?? state?.taken ?? [])]);
     const fruits = el('div', { className: 'office-signin-row office-signin-fruit' }), swatches = el('div', { className: 'office-signin-row office-signin-colours' });
@@ -51,7 +61,7 @@ export function createSignIn(container, online, live = null) {
       const go = el('button', { type: 'submit', textContent: 'Join' });
       form.onsubmit = async event => {
         event.preventDefault(); typed = { code: code.value, name: name.value }; go.disabled = true;
-        try { if (picked) { await online.setLook(picked.fruit, picked.colour); picked = null; } await online.signIn(code.value, name.value); typed = { code: '', name: '' }; render(); } catch (e) { render(e.message, e.taken); }
+        try { if (picked) { await online.setLook(picked.fruit, picked.colour); picked = null; } await online.signIn(code.value, name.value); typed = { code: '', name: '' }; fresh(); render(); } catch (e) { render(e.message, e.taken); }
       };
       form.append(code, name, go); slip.append(form);
     }
@@ -61,17 +71,17 @@ export function createSignIn(container, online, live = null) {
       const copied = () => { copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 1200); };
       copy.onclick = () => copyText(mode.code, copied, () => { field.focus(); field.select(); });
       slip.append(field, copy);
-      for (const n of [...gone]) if (!players.some(p => p.name.toLowerCase() === n)) gone.delete(n);
       for (const { name } of players) {
-        if (gone.has(name.toLowerCase())) continue;
-        const chip = el('button', { type: 'button', className: 'office-signin-chip', textContent: `${name} ✕`, title: `Remove ${name}` });
-        chip.onclick = () => { live?.send?.({ type: 'remove', name }); gone.add(name.toLowerCase()); chip.hidden = true; };
+        const key = name.toLowerCase(), dim = gone.has(key);
+        const chip = el('button', { type: 'button', className: 'office-signin-chip' + (dim ? ' dim' : ''), disabled: dim, textContent: `${name} ✕`, title: `Remove ${name}` });
+        chip.setAttribute('aria-label', chip.title);
+        chip.onclick = () => { live?.send?.({ type: 'remove', name }); removing(key, board); chip.disabled = true; chip.className += ' dim'; };
         slip.append(chip);
       }
     }
     if (mode.signOut) {
       const out = el('button', { type: 'button', textContent: 'Leave', title: `Leave the meeting at ${state.host}` });
-      out.onclick = async () => { out.disabled = true; try { await online.signOut(); render(); } catch (e) { render(e.message); } };
+      out.onclick = async () => { out.disabled = true; try { await online.signOut(); fresh(); render(); } catch (e) { render(e.message); } };
       slip.append(out);
     }
     if (said) slip.append(el('span', { className: 'office-signin-error', textContent: said, role: 'status' }));
@@ -79,18 +89,20 @@ export function createSignIn(container, online, live = null) {
     x.setAttribute('aria-label', 'Close'); x.onclick = close; slip.append(x);
   }
 
+  // The board or the room changed while the slip is up (a sync came back, someone took a colour): say so, unless something's
+  // being typed. A focused button is focused again after.
+  function refresh() {
+    const at = document.activeElement, mine = slip.contains(at);
+    if (slip.hidden || (mine && at.tagName === 'INPUT')) return;
+    const label = mine ? at.getAttribute('aria-label') || at.textContent : null;
+    render();
+    if (label) [...slip.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') || b.textContent) === label)?.focus();
+  }
+
   return {
-    open() { render(); slip.hidden = false; (slip.querySelector('input:placeholder-shown') || slip.querySelector('button'))?.focus(); },
+    open() { fresh(); render(); slip.hidden = false; (slip.querySelector('input:placeholder-shown') || slip.querySelector('button'))?.focus(); },
     close,
-    // The board or the room changed while the slip is up (a sync came back, someone took a colour): say so, unless something's
-    // being typed. A focused button is focused again after.
-    refresh() {
-      const at = document.activeElement, mine = slip.contains(at);
-      if (slip.hidden || (mine && at.tagName === 'INPUT')) return;
-      const label = mine ? at.getAttribute('aria-label') || at.textContent : null;
-      render();
-      if (label) [...slip.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') || b.textContent) === label)?.focus();
-    },
-    dispose() { document.removeEventListener('pointerdown', away, true); slip.remove(); },
+    refresh,
+    dispose() { for (const t of timers) clearTimeout(t); document.removeEventListener('pointerdown', away, true); slip.remove(); },
   };
 }
