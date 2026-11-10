@@ -184,7 +184,8 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
         const next = nextSpot(visiting.spots.filter(s => gap(visiting.spot, s, visiting.food) >= BERTH), visiting.spot), way = next && wayTo(next, visiting.food);
         if (way) { path = way; mode = 'visit'; visiting.spot = next; } else mill();
       }
-    } else if (mode === 'fetch') {
+    } else if (!loot && (mode === 'fetch' || mode === 'reach' || mode === 'haul')) loiter(); // let go of it (a keeper change): that theft's off
+    else if (mode === 'fetch') {
       if (follow(dt)) { mode = 'reach'; until = t + 0.9; }
     } else if (mode === 'reach') {
       face(loot.pos, dt);
@@ -221,8 +222,8 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     if (!m.carry) { took = false; drop(); } else if (!took && !carrying()) ghost = props.holdGhost(m.carry, bill);
   }
   // The keeper's goose played back, a frame at a time: where the plan's route puts it by now, plus what's left of the offset. It
-  // faces along the route while that goes on (routeAt calls a route with no speed moving) and turns to the plan's yaw when it
-  // stands; its feet go by how far it's drawn moving.
+  // faces along the route while that goes on (routeAt calls a route with no speed moving), keeps that heading once a walk's
+  // route runs out, and turns to the plan's yaw when it stands; its feet go by how far it's drawn moving.
   function play(dt) {
     if (loot?.held) { drop(); took = true; poked('took', '💢'); } // you took it back: yours at once
     if (!plan) return; // standing where it is till the new keeper's first plan
@@ -231,7 +232,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     const x = now.at[0] + offset[0], z = now.at[1] + offset[1], moved = Math.hypot(x - at.x, z - at.z);
     at.x = x; at.z = z;
     if (moved > dt * 0.05) { phase += moved / STRIDE; stepping = 1; } // over 5 cm/s
-    turnTo(m.speed > 0 && now.moving ? Math.atan2(now.dir[0], now.dir[1]) : m.yaw, dt);
+    if (!(m.speed > 0)) turnTo(m.yaw, dt); else if (now.moving) turnTo(Math.atan2(now.dir[0], now.dir[1]), dt); // the yaw it set off with is stale
   }
   // What the keeper's goose did, acted out here: a nip shoves you if it's you; a take puts your own thing of that kind by its spot
   // in the beak, else a copy; a wake startles your sleeper by that seat. A nip, drop and wake each come with their honk.

@@ -162,3 +162,39 @@ test("a plan with no speed and a route: it stands, turned to the plan's yaw, fee
   assert.ok(Math.hypot(a.at()[0] - 3, a.at()[1] - 2) < 1e-9); assert.ok(Math.abs(a.g.root.rotation.y - 1.5) < 0.01, `yaw ${a.g.root.rotation.y}`);
   assert.ok(Math.abs(leg.rotation.x) < 0.01, `leg at ${leg.rotation.x}`);
 });
+
+// roster() lets go of what it carries; a theft on its way must end there, not reach for nothing (face(loot.pos) would throw).
+test('a keeper change mid-theft: it lets go and loiters, home to keeper while fetching and keeper to home while reaching', () => {
+  const mug = () => ({ kind: { key: 'mug' }, pos: V(5, 0.05, 5), rest: true });
+  const a = goose({ things: [mug()] }); assert.ok(a.run(150, () => a.g.mode === 'fetch'), 'off to steal');
+  a.g.roster([P('a', { goose: true })], 'a'); a.run(20); // long enough for the fetch walk to have ended
+  assert.ok(['loiter', 'walk'].includes(a.g.mode), a.g.mode);
+  const thing = mug(), b = goose({ things: [thing] }); b.g.roster([P('a', { goose: true })], 'a');
+  assert.ok(b.run(150, () => b.g.mode === 'reach'), 'reaching for it');
+  b.g.roster([], 'a'); b.run(5);
+  assert.ok(['loiter', 'walk'].includes(b.g.mode), b.g.mode); assert.ok(!thing.carried);
+});
+
+test("a walk's route run out: it keeps its heading, not the yaw sent before it set off", () => {
+  const a = watching(); a.g.heard(plan({ yaw: -1.5 })); a.run(3); // east, done after 2 s
+  assert.ok(Math.abs(a.g.root.rotation.y - Math.PI / 2) < 0.01, `yaw ${a.g.root.rotation.y}`);
+});
+
+test('a take after you took it back: the keeper has moved on, so a later lost take shows its copy again', () => {
+  const mug = { kind: { key: 'mug' }, pos: V(3, 0.05, 3), rest: true };
+  const a = watching({ things: [mug] }); a.g.heard(plan()); a.run(0.1);
+  a.g.heard({ type: 'goosed', id: 'b', what: 'take', kind: 'mug', spot: [3, 0.05, 3] }); a.run(0.1);
+  mug.held = true; a.run(1 / 60); // took it back
+  a.g.heard({ type: 'goosed', id: 'b', what: 'take', kind: 'paper', spot: [6, 0.05, 6] }); a.g.heard({ type: 'goosed', id: 'b', what: 'drop' }); a.run(0.1);
+  assert.equal(a.ghosts.length, 1); assert.ok(a.ghosts[0].gone);
+  a.g.heard(plan({ carry: 'paper' })); a.run(0.1); assert.equal(a.ghosts.length, 2, 'its take was lost: a copy');
+});
+
+test("a hidden watcher's goose ignores events; its first plan's carry puts the beak right", () => {
+  const mug = { kind: { key: 'mug' }, pos: V(3, 0.05, 3), rest: true };
+  const a = watching({ busy: false, things: [mug], sleepers: [{ id: 's1', at: V(4, 0, 4) }] }); a.run(0.1); const from = a.player.position.clone();
+  for (const m of [{ what: 'nip', who: 'a' }, { what: 'take', kind: 'mug', spot: [3, 0.05, 3] }, { what: 'wake', spot: [4, 4] }, { what: 'honk', icon: '💢' }, { what: 'drop' }]) a.g.heard({ type: 'goosed', id: 'b', ...m });
+  a.run(0.1);
+  assert.deepEqual(a.said, []); assert.deepEqual(a.woken, []); assert.deepEqual(a.ghosts, []); assert.ok(!mug.carried); assert.ok(a.player.position.equals(from));
+  a.g.heard(plan({ carry: 'mug' })); a.run(0.1); assert.equal(a.ghosts.at(-1).kind, 'mug');
+});
