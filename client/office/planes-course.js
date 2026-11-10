@@ -1,21 +1,26 @@
 // Paper planes' rules: how a paper plane flies, a course of rings fitted round the office, and flying through them. Pure (no
 // document, no three), so node --test flies whole courses; planes.js draws it and takes the controls.
-// The plane glides: nose up trades speed for height, nose down the other way, and drag takes speed all the while. Slowing, it
-// can lift its nose less and less, so pulled up it levels off and floats rather than stalling. Each ring it goes through pushes
-// it on and lifts it a little, so the rings are what keep it up: there's no clock, the run ends when it touches anything.
+// The plane glides: nose down trades height for speed, nose up the other way, and climbing costs less than diving gives, so a
+// dive pulled up comes out higher than it went in. The air carries it on a little, so left be it settles to a gentle glide down,
+// and held up it always climbs, the slower the gentler (faster, it can lift its nose more). Each ring it goes through pushes it
+// on and lifts it a little: there's no clock, the run ends when it touches anything.
 // Two ways to play: the day's course (makeCourse), or endless rings laid one at a time ahead of it (endless).
 import { fnv1a, mulberry32 } from './daily.js';
 
 export const STEP = 1 / 120; // seconds a step
 const G = 9.8;
 // Pitch (radians): what it trims to with nothing pressed, the most nose up and down; how quickly it gets there.
-const GLIDE = -0.08, UP = 0.5, DOWN = 0.6, PITCH = 5;
-// Height and speed trade as if gravity were FLOAT of itself: a paper plane here floats more than a real one.
-const FLOAT = 0.6;
-// Turning at full (rad/s), drag (per metre), what a full turn costs (m/s²); thrown at, a ring's push and the fastest (m/s).
-export const TURN = 2, DRAG = 0.078, TURN_DRAG = 0.18, LAUNCH = 3.8, BOOST = 0.55, FASTEST = 6.5;
-// Its nose comes all the way up only over CLIMBS (m/s), less and less slower, and not above trim at SLOW.
+const GLIDE = -0.05, UP = 0.5, DOWN = 0.6, PITCH = 5;
+// Diving, height turns to speed as if gravity were FLOAT of itself (a paper plane here floats more than a real one); climbing
+// costs CLIMB of that.
+const FLOAT = 0.6, CLIMB = 0.35;
+// Turning at full (rad/s), drag (per metre), what a full turn costs, the air carrying it on (m/s²); thrown at, a ring's push
+// and the fastest (m/s). Left be, it glides at about 2.8 m/s, sinking 0.14 m/s.
+export const TURN = 2, DRAG = 0.14, TURN_DRAG = 0.18, PUSH = 0.8, LAUNCH = 3.8, BOOST = 0.55, FASTEST = 6.5;
+// Its nose comes all the way up only over CLIMBS (m/s), less and less slower, to LEAST at SLOW: held up there, it still climbs
+// (about 0.2 m/s).
 export const SLOW = 1.6, CLIMBS = 3.2;
+const LEAST = 0.15;
 // A ring's lift: LIFT m/s up, dying away (about a third of that in metres all told).
 const LIFT = 0.6;
 export const SIZE = 0.06, HOLE = 0.42; // what the plane touches things from (m); a ring's opening
@@ -25,11 +30,12 @@ const SIDE = 1.5;
 const NARROW = 0.005, SMALLEST = 0.3;
 
 // The course: up to RINGS rings, NEAR to FAR metres on from the last and turning at most BEND (radians) from the way it was going,
-// LOW to HIGH up and at most RISE up or FALL down from the last. A ring's middle keeps CLEAR of things, the way to it PATH, other
+// LOW to HIGH up and up to SWING up or down from the last, a little toward the middle. A ring's middle keeps CLEAR of things, the way to it PATH, other
 // rings APART. Anything lower than SEATED from the floor up is somewhere people sit or stand: rings keep above that, or out in the open.
 // So do the people at the desks (`people`: { x, z, r, top }, in the chair and stood up behind it), whichever they're doing now.
 export const RINGS = 10;
-const NEAR = 2.4, FAR = 4, BEND = 1.1, LOW = 0.75, HIGH = 2.45, RISE = 0.4, FALL = 0.6;
+const NEAR = 2.4, FAR = 4, BEND = 1.1, LOW = 0.75, HIGH = 2.45, SWING = 0.8;
+const height = rand => p => p.y + (rand() * 2 - 1) * SWING + ((LOW + HIGH) / 2 - p.y) * 0.25;
 const CLEAR = 0.6, PATH = 0.3, APART = 1.4, SEATED = 1.45, TRIES = 80, BACKS = 40, ATTEMPTS = 8;
 // The autopilot that tries each course flies with a smaller hole than you do, slower and as fast (a faster plane turns wider),
 // so what it gets round you can too.
@@ -76,11 +82,13 @@ export function fly(f, input, world, course, dt) {
 
 export function stepFlight(f, input, world, course, events = [], drag = 1) {
   const h = STEP, steer = clamp(input.steer || 0), climb = clamp(input.climb || 0);
-  const aim = climb > 0 ? GLIDE + climb * (UP - GLIDE) * clamp((f.speed - SLOW) / (CLIMBS - SLOW), 0, 1) : GLIDE + climb * (DOWN + GLIDE);
+  const top = LEAST + (UP - LEAST) * clamp((f.speed - SLOW) / (CLIMBS - SLOW), 0, 1);
+  const aim = climb > 0 ? GLIDE + climb * (top - GLIDE) : GLIDE + climb * (DOWN + GLIDE);
   f.pitch += (aim - f.pitch) * (1 - Math.exp(-h * PITCH));
   f.yaw -= steer * TURN * h; // right turns the heading clockwise seen from above
   f.roll += (steer * 0.8 - f.roll) * (1 - Math.exp(-h * 6));
-  f.speed = clamp(f.speed + (-G * FLOAT * Math.sin(f.pitch) - DRAG * drag * f.speed * f.speed - TURN_DRAG * Math.abs(steer)) * h, 0.3, FASTEST);
+  const lift = Math.sin(f.pitch) * G * FLOAT * (f.pitch > 0 ? CLIMB : 1);
+  f.speed = clamp(f.speed + (PUSH - lift - DRAG * drag * f.speed * f.speed - TURN_DRAG * Math.abs(steer)) * h, 0.3, FASTEST);
   const px = f.x, py = f.y, pz = f.z, level = Math.cos(f.pitch), d = f.speed * h;
   f.x += Math.sin(f.yaw) * level * d; f.y += Math.sin(f.pitch) * d + f.rise * h; f.z += Math.cos(f.yaw) * level * d; f.time += h;
   f.rise *= Math.exp(-h * 3);
@@ -159,11 +167,11 @@ function face(rings, i, start) {
 
 // Rings from `start` on, each where `rand` picks among places that fit; facing along the way through them.
 function lay(start, boxes, office, count, rand) {
-  const room = field(boxes, office), height = p => p.y - FALL + rand() * (FALL + RISE);
+  const room = field(boxes, office);
   // Nowhere left to go, it takes the last ring back and tries again from the one before (up to BACKS times).
   const rings = [], yaws = [start.yaw]; let longest = [], backs = 0;
   while (rings.length < count) {
-    const i = rings.length, pick = places(room, i ? rings[i - 1] : start, yaws[i], rings, rand, { first: !i, last: i === count - 1, height })[0];
+    const i = rings.length, pick = places(room, i ? rings[i - 1] : start, yaws[i], rings, rand, { first: !i, last: i === count - 1, height: height(rand) })[0];
     if (pick) { rings.push(pick.q); yaws.push(pick.a); if (rings.length > longest.length) longest = rings.slice(); continue; }
     if (!i || backs++ >= BACKS) break;
     rings.pop(); yaws.pop();
@@ -204,7 +212,6 @@ const SPARE = 3, REACH = 4;
 export function endless({ start, boxes, people, width, depth, ceiling = 3, seed = null }) {
   const { tall, world } = office(boxes, people, width, depth, ceiling), room = field(tall, { width, depth, ceiling });
   const rand = seed == null ? Math.random : mulberry32(fnv1a(`planes-endless:${seed}`));
-  const height = p => p.y + (rand() * 2 - 1) * RISE + (1.55 - p.y) * 0.25;
   const thrown = newFlight(start); launch(thrown);
   // How the autopilot's come through each ring, slower and as fast (TRIAL.drags), to fly on from.
   const rings = [], yaws = [start.yaw], states = [TRIAL.drags.map(() => thrown)];
@@ -218,7 +225,7 @@ export function endless({ start, boxes, people, width, depth, ceiling = 3, seed 
   const add = () => {
     const i = rings.length, p = rings[i - 1] || start;
     for (const bend of [BEND, BEND * 1.8, Math.PI]) {
-      for (const { q, a } of places(room, p, yaws[i], rings.slice(-6), rand, { first: !i, bend, height }).slice(0, 8)) {
+      for (const { q, a } of places(room, p, yaws[i], rings.slice(-6), rand, { first: !i, bend, height: height(rand) }).slice(0, 8)) {
         const ring = { ...q, hole: Math.max(SMALLEST, HOLE - NARROW * i) }, n = Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z);
         Object.assign(ring, { nx: (q.x - p.x) / n, ny: (q.y - p.y) / n, nz: (q.z - p.z) / n });
         const through = TRIAL.drags.map((drag, k) => reach(states[i][k], ring, drag));

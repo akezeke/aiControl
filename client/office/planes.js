@@ -1,11 +1,11 @@
 // Paper planes round the office. Click the stack of paper on the filing cabinet by the printer (or E on it) and the view drops
 // in behind a paper plane, held out over the room with today's rings strung out across it on a dotted line. Tap, click, Space
 // or ↑ throws it; then hold and drag (a finger or the mouse), or the arrows or WASD, to steer: sideways turns, up and down
-// pitch. It glides, slowing as it climbs and speeding up as it dives, and each ring it goes through pushes it on, so there's
-// no clock: the run ends when it touches anything (the floor, a wall, a desk, someone's head). Through all of them is the
-// time to beat, with a medal for it against the autopilot's (gold, silver, bronze); the next one to go for shows before a
-// throw. Again (tap, Space) for another plane, straight away once through the last; Esc or ✕ steps back. People's bubbles
-// fade back while you play, so they don't hide the rings.
+// pitch. Left be it glides gently down; held up it always climbs, and a dive pulled up comes out higher (planes-course.js).
+// Each ring it goes through pushes it on; there's no clock: the run ends when it touches anything (the floor, a wall, a desk,
+// someone's head). Through all of them is the time to beat, with a medal for it against the autopilot's (gold, silver,
+// bronze); the next one to go for shows before a throw. Again (tap, Space) for another plane, straight away once through the
+// last; Esc or ✕ steps back. People's bubbles fade back while you play, so they don't hide the rings.
 // The course is laid round the office as it is (planes-course.js), the day's own, and kept while it still fits as desks come
 // and go. `endless` (the yellow plane on the printer): rings laid on ahead as it goes, each a little smaller, a new lot every
 // plane; the score is how many. Bests are kept per browser, per course and endless. With reduced motion the view doesn't

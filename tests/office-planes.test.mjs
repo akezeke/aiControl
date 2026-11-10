@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutOffice, DESK_W, DESK_D } from '../client/office/layout.js';
-import { touch, gap, newFlight, launch, fly, stepFlight, autopilot, makeCourse, endless, better, medal, medalTime, STEP, SLOW, HOLE, RINGS, LAUNCH, AHEAD } from '../client/office/planes-course.js';
+import { touch, gap, newFlight, launch, fly, stepFlight, autopilot, makeCourse, endless, better, medal, medalTime, STEP, HOLE, RINGS, LAUNCH, AHEAD } from '../client/office/planes-course.js';
 
 const box = (x0, y0, z0, x1, y1, z1) => ({ min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 } });
 const room = (boxes = []) => ({ boxes, columns: [], ceiling: 3, width: 10, depth: 10 });
@@ -63,16 +63,24 @@ test('steering right turns it right, banking the same way', () => {
   assert.ok(f.x < 5 && f.yaw < 0 && f.roll > 0.3);
 });
 
-test('held nose up it climbs, slows and levels off: no dip first, no nosing over', () => {
-  const f = newFlight({ x: 1, y: 1.5, z: 5, yaw: Math.PI / 2 }), world = { ...room(), width: 99 }; launch(f);
-  let lowest = f.y, top = 0, lowestPitch = Infinity;
-  for (let i = 0; i < 4 / STEP && f.mode === 'fly'; i++) {
-    stepFlight(f, { climb: 1 }, world, { rings: [] }); lowest = Math.min(lowest, f.y); top = Math.max(top, f.y);
+test('held nose up it climbs, slowing to a gentle climb that keeps on: no dip first, no nosing over', () => {
+  const f = newFlight({ x: 1, y: 1.5, z: 5, yaw: Math.PI / 2 }), world = { ...room(), width: 99, ceiling: 99 }; launch(f);
+  let lowest = f.y, lowestPitch = Infinity, at4 = 0;
+  for (let i = 0; i < 8 / STEP && f.mode === 'fly'; i++) {
+    stepFlight(f, { climb: 1 }, world, { rings: [] }); lowest = Math.min(lowest, f.y);
     if (i * STEP > 1) lowestPitch = Math.min(lowestPitch, f.pitch);
+    if (i === Math.round(4 / STEP)) at4 = f.y;
   }
   assert.equal(f.mode, 'fly'); assert.equal(lowest, 1.5, 'never below where it was thrown');
-  assert.ok(top > 2, 'climbs'); assert.ok(f.y > top - 0.3, 'then floats');
-  assert.ok(lowestPitch > -0.1, 'never noses over'); assert.ok(f.speed > SLOW * 0.95, 'keeps flying speed');
+  assert.ok(at4 > 2.5, 'climbs'); assert.ok(f.y > at4 + 0.5, 'and keeps climbing, slow as it is');
+  assert.ok(lowestPitch > 0, 'never noses over'); assert.ok(f.speed > 1, 'keeps flying speed');
+});
+
+test('a dive pulled up comes out higher than it went in', () => {
+  const f = newFlight({ x: 1, y: 5, z: 5, yaw: Math.PI / 2 }), world = { ...room(), width: 99, ceiling: 99 }; launch(f);
+  ahead(f, 10 / STEP, {}, world); const from = f.y; // gliding as it settles to, left be
+  ahead(f, 0.7 / STEP, { climb: -1 }, world); assert.ok(f.y < from - 0.3, 'down');
+  ahead(f, 2.3 / STEP, { climb: 1 }, world); assert.ok(f.y > from + 0.2, 'and up past where it was');
 });
 
 test('a ring lifts it a little as well as pushing it on', () => {
