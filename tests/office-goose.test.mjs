@@ -98,6 +98,20 @@ test('a plan heard before the roster: the goose shows there once the roster name
   assert.equal(a.g.root.visible, true); assert.ok(Math.hypot(a.at()[0] - 2, a.at()[1] - 2) < 0.01);
 });
 
+// The plan kept while watching is long out of date by the time the keeper's handed back.
+test("the goose handed back to its keeper: it stays where it's drawn, with no ghost, till the keeper's next plan", () => {
+  const a = watching(); a.g.heard(plan({ carry: 'mug' })); a.run(1); // b's goose, with a mug
+  a.g.roster([P('a', { goose: true }), P('b')], 'a'); a.run(30); // b hid their tab: a keeps it
+  const was = a.at(); a.g.roster([P('a'), P('b', { goose: true })], 'a'); a.run(1);
+  assert.deepEqual(a.at(), was, 'no jump'); assert.ok(a.ghosts.every(h => h.gone), 'no ghost');
+  a.g.heard(plan({ at: [was[0] - 0.5, was[1]], route: [], speed: 0, mode: 'loiter' })); a.run(1 / 60);
+  assert.ok(Math.abs(a.at()[0] - was[0]) < 0.1, 'eases onto it'); a.run(1.5); assert.ok(Math.hypot(a.at()[0] - was[0] + 0.5, a.at()[1] - was[1]) < 0.01);
+  a.g.heard(plan({ at: [was[0] - 3, was[1]], route: [], speed: 0, mode: 'loiter' })); a.run(1 / 60); assert.ok(Math.abs(a.at()[0] - was[0] + 3) < 0.01, 'jumps over 1 m');
+  const b = goose(); b.run(0.5); b.g.heard(plan({ carry: 'mug' })); b.run(10.5);
+  b.g.roster([P('a'), P('b', { goose: true })], 'a'); b.run(1 / 60);
+  assert.equal(b.g.root.visible, false, 'a plan over 10 s old is let be'); assert.deepEqual(b.ghosts, []);
+});
+
 test('through the door: reset hides the goose, and it comes back at home a second later', () => {
   const a = goose(); a.run(0.5); a.g.reset();
   assert.equal(a.g.root.visible, false); assert.deepEqual(a.g.columns(), []);

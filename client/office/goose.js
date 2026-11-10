@@ -256,6 +256,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     loiter();
     if (on) { mode = 'walk'; path = now.route.map(([x, z]) => new THREE.Vector3(x, 0, z)); }
   }
+  const fresh = p => !!p && t - p.r + p.age / 1000 < STALE; // a plan heard recently enough to run the goose from
   // A plan from the keeper: a hidden goose shows where it puts it by now; a shown one stays where it's drawn and eases onto it
   // (jumping a gap over a metre). The beak is put right, should a take or drop have been lost on the way.
   function adopt(p) {
@@ -333,8 +334,9 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     poke() { poked('click', '🪿'); },
     // The meeting's roster, each time it changes: this page's role (goose-plan.js). A new keeper means every page's goose lets go
     // of what it carries; a watcher's then stands where it is (hidden, coming from home) till the new keeper's plan, played at
-    // once if one's in already. Keeping it or home again, a watcher's goose runs on from where it's drawn, and one from home from
-    // a plan heard under STALE s ago, else as it was; a new keeper's first plan goes at once.
+    // once if one under STALE s old is in already. Keeping it or home again, a watcher's goose runs on from where it's drawn, and
+    // one from home from a plan heard under STALE s ago, else as it was; a new keeper's first plan goes at once, and the plans
+    // kept are no more use to it (its own goose is the truth now: handed back later, it mustn't jump to one from before).
     roster(players, myId) {
       const was = role, from = keeper, played = plan;
       ({ role, keeper } = gooseRole(players, myId));
@@ -343,9 +345,10 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       if (role === 'home' && was !== 'home') kept = null; // that meeting's plans are no use at home
       if (keeper === from) return;
       drop(true); took = false; plan = null; sentAt = -Infinity;
-      if (role === 'watcher') { if (was === 'home') root.visible = false; else loiter(); if (kept?.m.id === keeper) adopt(kept); }
+      if (role === 'watcher') { if (was === 'home') root.visible = false; else loiter(); if (kept?.m.id === keeper && fresh(kept)) adopt(kept); }
       else if (was === 'watcher') { if (played) carryOn(played); else loiter(); }
-      else if (was === 'home' && kept && t - kept.r + kept.age / 1000 < STALE) carryOn(kept, true);
+      else if (was === 'home' && fresh(kept)) carryOn(kept, true);
+      if (role === 'keeper') kept = null;
     },
     // A message from the meeting, checked and with its sender's id. A plan from anyone is kept; the keeper's plans and what its
     // goose did are played on a watcher (one still hidden waits for a plan). A poke sets the keeper's goose on whoever sent it.
