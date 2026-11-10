@@ -73,3 +73,92 @@ test('the nearest spot walled off on its own: it goes to the next nearest it can
     assert.ok(a.run(110, () => { if (a.g.mode === 'loiter') a.g.root.position.set(5.125, 0, 7.125); return a.g.mode === 'mill'; }), 'went to the food');
   });
 });
+
+const plan = (extra = {}) => ({ type: 'goose', id: 'b', at: [2, 2], yaw: 0, mode: 'walk', idle: 'look', speed: 1, route: [[4, 2]], carry: null, target: null, ...extra });
+const watching = (o = {}) => { const a = goose(o); a.g.roster([P('a'), P('b', { goose: true })], 'a'); return a; };
+
+test("a watcher's goose: hidden and out of the way till the keeper's plan, then walks it", () => {
+  const a = watching(); a.run(1);
+  assert.equal(a.g.root.visible, false); assert.deepEqual(a.g.columns(), []);
+  a.g.heard(plan({ id: 'c', at: [8, 8] })); a.run(0.1); assert.equal(a.g.root.visible, false, "not the keeper's");
+  a.g.heard(plan()); a.run(1); assert.ok(Math.hypot(a.at()[0] - 3, a.at()[1] - 2) < 0.05); assert.equal(a.g.columns().length, 1);
+  a.run(2); assert.ok(Math.hypot(a.at()[0] - 4, a.at()[1] - 2) < 0.01, 'stands at the end');
+  a.g.heard(plan({ at: [4.5, 2], route: [], speed: 0, mode: 'loiter' })); a.run(1 / 60); assert.ok(a.at()[0] < 4.1, 'eases, no jump');
+  a.run(1.5); assert.ok(Math.abs(a.at()[0] - 4.5) < 0.01);
+  a.g.heard(plan({ at: [8, 8], route: [], speed: 0, mode: 'loiter' })); a.run(1 / 60); assert.ok(Math.hypot(a.at()[0] - 8, a.at()[1] - 8) < 0.01, 'jumps over 1 m');
+  a.g.heard(plan({ at: [2, 2], route: [[6, 2]], age: 1500 })); a.run(1 / 60);
+  assert.ok(Math.abs(a.at()[0] - 3.5) < 0.05 && Math.abs(a.at()[1] - 2) < 0.01, 'an aged plan counts from when it was sent');
+});
+
+test('a plan heard before the roster: the goose shows there once the roster names its sender (the host coming back)', () => {
+  const a = goose(); a.run(0.5); // at home, by the lounge
+  a.g.heard(plan({ route: [], speed: 0, mode: 'loiter' })); a.run(0.1);
+  assert.ok(Math.hypot(a.at()[0] - 2, a.at()[1] - 2) > 1, 'at home it plays nothing');
+  a.g.roster([P('a'), P('b', { goose: true })], 'a'); a.run(1 / 60);
+  assert.equal(a.g.root.visible, true); assert.ok(Math.hypot(a.at()[0] - 2, a.at()[1] - 2) < 0.01);
+});
+
+test('through the door: reset hides the goose, and it comes back at home a second later', () => {
+  const a = goose(); a.run(0.5); a.g.reset();
+  assert.equal(a.g.root.visible, false); assert.deepEqual(a.g.columns(), []);
+  a.run(0.9); assert.equal(a.g.root.visible, false); a.run(0.2); assert.equal(a.g.root.visible, true);
+});
+
+test('a take finds your own thing within 0.5 m, else a ghost; a drop lets either go', () => {
+  const mug = { kind: { key: 'mug' }, pos: V(3, 0.05, 3), rest: true };
+  const a = watching({ things: [mug] }); a.g.heard(plan()); a.run(0.1);
+  a.g.heard({ type: 'goosed', id: 'b', what: 'take', kind: 'mug', spot: [3.2, 0.05, 3] }); a.run(0.1);
+  assert.equal(typeof mug.carried, 'function'); assert.equal(a.ghosts.length, 0);
+  a.g.heard(plan({ carry: 'mug' })); a.run(0.1); assert.equal(a.ghosts.length, 0, 'the plan agrees: no copy');
+  a.g.heard({ type: 'goosed', id: 'b', what: 'drop' }); a.run(0.1); assert.equal(mug.carried, null); assert.ok(a.said.length);
+  a.g.heard({ type: 'goosed', id: 'b', what: 'take', kind: 'mug', spot: [3.6, 0.05, 3] }); a.run(0.1);
+  assert.equal(mug.carried, null); assert.equal(a.ghosts.at(-1).kind, 'mug');
+  a.g.heard({ type: 'goosed', id: 'b', what: 'drop' }); a.run(0.1); assert.ok(a.ghosts.at(-1).gone);
+});
+
+test("a keeper change drops what's carried; a plan's carry puts a lost take or drop right", () => {
+  const mug = { kind: { key: 'mug' }, pos: V(3, 0.05, 3), rest: true };
+  const a = watching({ things: [mug] }); a.g.heard(plan()); a.run(0.1);
+  a.g.heard({ type: 'goosed', id: 'b', what: 'take', kind: 'mug', spot: [3, 0.05, 3] }); a.run(0.1);
+  a.g.roster([P('a'), P('b'), P('c', { goose: true })], 'a'); assert.equal(mug.carried, null);
+  const b = watching(); b.g.heard(plan({ carry: 'paper' })); b.run(0.1); assert.equal(b.ghosts.at(-1).kind, 'paper'); // its take was lost
+  b.g.heard(plan()); b.run(0.1); assert.ok(b.ghosts.at(-1).gone); // and its drop
+});
+
+test('taking it back from the beak: a poke, and no copy while the keeper catches up', () => {
+  const mug = { kind: { key: 'mug' }, pos: V(3, 0.05, 3), rest: true };
+  const a = watching({ things: [mug] }); a.g.heard(plan()); a.run(0.1);
+  a.g.heard({ type: 'goosed', id: 'b', what: 'take', kind: 'mug', spot: [3, 0.05, 3] }); a.run(0.1);
+  mug.held = true; a.run(1 / 60);
+  assert.deepEqual(a.sent.filter(m => m.type === 'poke'), [{ type: 'poke', why: 'took' }]);
+  a.g.heard(plan({ carry: 'mug' })); a.run(0.1); assert.equal(a.ghosts.length, 0);
+  a.g.heard(plan()); a.g.heard(plan({ carry: 'mug' })); a.run(0.1); assert.equal(a.ghosts.length, 1, 'a later theft whose take was lost');
+});
+
+test('a nip shoves only the one nipped, and not while busy; a wake startles your sleeper by that seat', () => {
+  const a = watching({ busy: false, sleepers: [{ id: 's1', at: V(4, 0, 4) }] }); a.g.heard(plan({ at: [1, 2], route: [] })); a.run(0.1);
+  const from = a.player.position.clone();
+  a.g.heard({ type: 'goosed', id: 'b', what: 'nip', who: 'c' }); a.run(1 / 60); assert.ok(a.player.position.equals(from)); assert.equal(a.said.at(-1), '💢');
+  a.g.heard({ type: 'goosed', id: 'b', what: 'nip', who: 'a' }); a.run(1 / 60); assert.ok(Math.abs(a.player.position.distanceTo(from) - 0.35) < 1e-6);
+  a.g.heard({ type: 'goosed', id: 'b', what: 'wake', spot: [5, 4] }); assert.deepEqual(a.woken, []);
+  a.g.heard({ type: 'goosed', id: 'b', what: 'wake', spot: [4.2, 4] }); assert.deepEqual(a.woken, ['s1']);
+  const b = watching({ busy: true }); b.g.heard(plan()); b.run(0.1); const was = b.player.position.clone();
+  b.g.heard({ type: 'goosed', id: 'b', what: 'nip', who: 'a' }); b.run(1 / 60); assert.ok(b.player.position.equals(was));
+});
+
+test('a watcher pokes the keeper; with reduced motion it only honks', () => {
+  const a = watching(); a.g.heard(plan()); a.run(0.1); a.g.poke(); a.g.hit();
+  assert.deepEqual(a.sent.filter(m => m.type === 'poke'), [{ type: 'poke', why: 'click' }, { type: 'poke', why: 'hit' }]); assert.deepEqual(a.said, []);
+  const b = watching({ still: true }); b.g.heard(plan()); b.run(0.1); b.g.poke(); b.g.hit();
+  assert.deepEqual(b.sent.filter(m => m.type === 'poke'), []); assert.deepEqual(b.said, ['🪿', '💢']);
+  b.run(0.9); assert.ok(Math.abs(b.at()[0] - 3) < 0.05, 'with reduced motion it still moves at a meeting');
+});
+
+// routeAt calls a route with no speed moving, with a heading: the watcher's goose mustn't walk on the spot or face along it.
+test("a plan with no speed and a route: it stands, turned to the plan's yaw, feet still", () => {
+  const a = watching(); a.g.heard(plan({ route: [[3, 2]] })); a.run(1.5); // walked a metre, so its legs have swung
+  a.g.heard(plan({ at: [3, 2], route: [[3, 4]], speed: 0, yaw: 1.5, mode: 'loiter' })); a.run(1);
+  const [, leg] = a.g.root.children;
+  assert.ok(Math.hypot(a.at()[0] - 3, a.at()[1] - 2) < 1e-9); assert.ok(Math.abs(a.g.root.rotation.y - 1.5) < 0.01, `yaw ${a.g.root.rotation.y}`);
+  assert.ok(Math.abs(leg.rotation.x) < 0.01, `leg at ${leg.rotation.x}`);
+});
