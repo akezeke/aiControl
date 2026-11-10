@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { connect as tcp } from 'node:net';
 import { WebSocket } from 'ws';
-import { hubState, startHub } from '../server/hub.mjs';
+import { AWAY, hubState, startHub } from '../server/hub.mjs';
 import { COLOURS, PROTOCOL } from '../client/office/meeting.js';
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), 'hub-live-')), 'hub.json');
@@ -15,12 +16,15 @@ const FLOOR = { room: { width: 10, depth: 8 }, door: { x: 5, z: 8 }, pods: [[0, 
   status: { pose: 'sitting', expression: 'calm', screen: 'green', since: null, wear: 0.5, cups: 1 } }] };
 
 async function setup(t, options = {}) {
-  const file = fresh(), h = await startHub({ port: 0, file, ...options }), port = h.server.address().port, state = hubState(file), sockets = [];
+  const { players, ...rest } = options, file = fresh();
+  if (players) { const st = hubState(file); for (const [c, entry] of Object.entries(players)) st.players[createHash('sha256').update(token(c)).digest('hex')] = entry; writeFileSync(file, JSON.stringify(st)); }
+  const h = await startHub({ port: 0, file, ...rest }), port = h.server.address().port, state = hubState(file), sockets = [];
   t.after(() => { for (const s of sockets) s.terminate(); return h.close(); });
   // A client that keeps every message; `next(type)` waits for one more of a type (or the next already unread), with a timeout.
-  const register = (tok, name) => fetch(`http://127.0.0.1:${port}/scores`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${state.key}` }, body: JSON.stringify({ token: tok, name, scores: {} }) });
-  const connect = async (c, { key = state.key, host = false, auth = true, tok = token(c), name = c, signed = true } = {}) => {
-    if (signed) assert.equal((await register(tok, name)).status, 200);
+  const post = body => fetch(`http://127.0.0.1:${port}/scores`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${state.key}` }, body: JSON.stringify(body) });
+  const register = (tok, name, body) => post({ token: tok, name, scores: {}, ...body });
+  const connect = async (c, { key = state.key, host = false, auth = true, tok = token(c), name = c, signed = true, body } = {}) => {
+    if (signed) assert.equal((await register(tok, name, body)).status, 200);
     return new Promise((resolve, reject) => {
     const headers = { 'x-player': tok, ...(auth ? { authorization: `Bearer ${key}` } : {}), ...(host ? { 'x-host': state.hostKey } : {}) };
     const ws = new WebSocket(`ws://127.0.0.1:${port}/live`, { headers }); sockets.push(ws);
@@ -43,7 +47,7 @@ async function setup(t, options = {}) {
     const p = await connect(c, o); p.send({ type: 'hello', v: PROTOCOL, name: 'whatever', fruit: 'apple', colour: COLOURS[0], ...hello });
     p.welcome = await p.next('welcome'); return p;
   };
-  return { ...h, state, file, port, connect, join };
+  return { ...h, state, file, port, connect, join, post };
 }
 const lastRoster = async p => { await new Promise(r => setTimeout(r, 100)); return p.inbox.filter(m => m.type === 'roster').at(-1)?.players; };
 
@@ -198,4 +202,54 @@ test('a peer that stops answering pings is dropped, and a vanished host takes th
   host.ws._socket.pause(); b.ws._socket.pause();
   assert.equal((await a.next('floor', 1500)).floor, null);
   const roster = await lastRoster(a); assert.deepEqual(roster.map(p => p.id), [a.welcome.id]);
+});
+
+const seen = async (s, c) => { await s.flush(); return hubState(s.file).players[createHash('sha256').update(token(c)).digest('hex')].seen; };
+const near = (a, b) => Math.abs(a - b) < 1000;
+test('only a signed-in player gets in; connected, you stay in past 2 days; hello, leaving and the heartbeat count as last on', async t => {
+  let skew = 0; const s = await setup(t, { now: () => Date.now() + skew, heartbeatMs: 50 });
+  skew = 5000; const a = await s.join('a'); assert.ok(near(await seen(s, 'a'), Date.now() + 5000), 'hello');
+  skew = 9000; await new Promise(r => setTimeout(r, 120)); assert.ok(near(await seen(s, 'a'), Date.now() + 9000), 'heartbeat');
+  skew = AWAY + 60_000; assert.equal((await s.post({ token: token('a'), name: 'a', scores: {}, join: false })).status, 200, 'connected');
+  skew = 2 * AWAY; a.ws.close(); await a.closes(); await new Promise(r => setTimeout(r, 50));
+  assert.ok(near(await seen(s, 'a'), Date.now() + 2 * AWAY), 'drop');
+  skew = 3 * AWAY + 60_000; await assert.rejects(s.connect('a', { signed: false }), { status: 401 });
+});
+test('hello: the colour asked if free, else yours, else the first free for an entry with none, else refused', async t => {
+  const now = Date.now(), s = await setup(t, { players: { x: { name: 'x', scores: {}, seen: now, colour: COLOURS[5] }, y: { name: 'y', scores: {}, seen: now, colour: COLOURS[5] } } });
+  const a = await s.join('a', { body: { colour: COLOURS[1] } }, { colour: COLOURS[2] });
+  assert.equal(a.welcome.colour, COLOURS[2], 'asked, and free');
+  const b = await s.join('b', { body: { colour: COLOURS[3] } }, { colour: COLOURS[2] });
+  assert.equal(b.welcome.colour, COLOURS[3], 'asked is held: your own');
+  const c = await s.join('c', {}, { colour: COLOURS[2] });
+  assert.equal(c.welcome.colour, COLOURS[0], 'no colour of your own: the first free one');
+  const x = await s.connect('x', { signed: false });
+  x.send({ type: 'hello', name: 'x', fruit: 'apple', colour: COLOURS[5] });
+  assert.deepEqual(await x.next('refused'), { type: 'refused', why: 'colour' });
+  x.send({ type: 'hello', name: 'x', fruit: 'apple', colour: COLOURS[6] });
+  assert.equal((await x.next('welcome')).colour, COLOURS[6], 'a second hello, in a free colour');
+});
+test('look: a colour someone holds is refused and you keep yours; a free one is yours and frees the old', async t => {
+  const s = await setup(t), wait = () => new Promise(r => setTimeout(r, 100));
+  const a = await s.join('a', {}, { colour: COLOURS[0] }), b = await s.join('b', {}, { colour: COLOURS[1] });
+  const colours = async () => Object.fromEntries((await lastRoster(a)).map(p => [p.name, [p.fruit, p.colour]]));
+  b.send({ type: 'look', fruit: 'pear', colour: COLOURS[0] });
+  assert.deepEqual(await b.next('refused'), { type: 'refused', why: 'colour' });
+  assert.deepEqual(await colours(), { a: ['apple', COLOURS[0]], b: ['pear', COLOURS[1]] });
+  b.send({ type: 'look', fruit: 'pear', colour: COLOURS[2] }); await wait();
+  a.send({ type: 'look', fruit: 'apple', colour: COLOURS[1] }); await wait();
+  assert.deepEqual(await colours(), { a: ['apple', COLOURS[1]], b: ['pear', COLOURS[2]] });
+});
+test('the host removes a player: signed out, closed with 4003, gone from the roster; a Join brings them back', async t => {
+  const s = await setup(t, { hostToken: () => token('h') }), wait = () => new Promise(r => setTimeout(r, 100));
+  const h = await s.join('h', { host: true }), a = await s.join('a'), b = await s.join('b');
+  b.send({ type: 'remove', name: 'a' }); await wait(); assert.equal(a.closed, null, 'only from the host');
+  h.send({ type: 'remove', name: 'h' }); await wait(); assert.equal(h.closed, null, 'not the host themselves');
+  h.send({ type: 'remove', name: 'A' }); assert.equal(await a.closes(), 4003, 'by name, any case');
+  assert.deepEqual((await lastRoster(h)).map(p => p.name).sort(), ['b', 'h']);
+  const sync = await s.post({ token: token('a'), name: 'a', scores: {}, join: false });
+  assert.equal(sync.status, 403); assert.equal((await sync.json()).why, 'removed');
+  await assert.rejects(s.connect('a', { signed: false }), { status: 401 });
+  assert.equal((await s.post({ token: token('a'), name: 'a', scores: {}, join: true })).status, 200);
+  await s.join('a', { signed: false });
 });
