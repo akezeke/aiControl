@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { homedir } from 'node:os';
+import { delimiter, join } from 'node:path';
 import { fail } from './requests.mjs';
 
 export function claudeModelOptions(models) {
@@ -8,13 +10,15 @@ export function claudeModelOptions(models) {
 }
 
 const cache = new Map();
-// Initialization supplies account/model capabilities without a prompt or inference. Bare mode skips hooks/plugins.
+// Initialization supplies account/model capabilities without a prompt or inference. Not --bare: it skips the login and the
+// account's catalog, leaving a stale built-in list (e.g. no new Fable). Hooks and MCP stay off so no phantom session registers.
+// The native installer's ~/.local/bin is often missing from the server's PATH when an agent shell started it.
 export function claudeModels(cwd, configDir, { launch = spawn, now = Date.now } = {}) {
   const key = JSON.stringify([cwd, configDir]), cached = cache.get(key);
   if (cached && now() - cached.at < 60_000) return cached.promise;
   const promise = new Promise((resolve, reject) => {
-    const child = launch('claude', ['--bare', '--print', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--no-session-persistence'],
-      { cwd, env: { ...process.env, ...configDir ? { CLAUDE_CONFIG_DIR: configDir } : {} }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = launch('claude', ['--print', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--no-session-persistence', '--strict-mcp-config', '--settings', '{"disableAllHooks":true}'],
+      { cwd, env: { ...process.env, PATH: [process.env.PATH, join(homedir(), '.local/bin')].filter(Boolean).join(delimiter), ...configDir ? { CLAUDE_CONFIG_DIR: configDir } : {} }, stdio: ['pipe', 'pipe', 'pipe'] });
     let buffer = '', done = false;
     const finish = (error, value) => { if (done) return; done = true; clearTimeout(timer); child.stdin.end(); child.kill('SIGTERM'); error ? reject(error) : resolve(value); };
     const timer = setTimeout(() => finish(fail('Claude model discovery timed out. Try again.', 503)), 15_000); timer.unref?.();

@@ -30,7 +30,9 @@ test('Claude discovery initializes without inference, strips secrets and closes 
   child.stdin.on('data', data => { request = JSON.parse(data); queueMicrotask(() => child.stdout.write(JSON.stringify({ type: 'control_response', response: { request_id: request.request_id, response: { models: [{ value: 'opus', resolvedModel: 'claude-opus-test', displayName: 'Opus', supportsEffort: true, supportedEffortLevels: ['high', 'max'], apiKey: 'do-not-return' }] } } }) + '\n')); });
   const models = await claudeModels('/work/discovery-test', '/accounts/work', { launch: (...args) => { launchArgs = args; return child; } });
   assert.equal(request.request.subtype, 'initialize'); assert.equal(request.type, 'control_request');
-  assert.ok(launchArgs[1].includes('--bare')); assert.ok(launchArgs[1].includes('--no-session-persistence'));
+  assert.ok(!launchArgs[1].includes('--bare')); assert.ok(launchArgs[1].includes('--no-session-persistence'));
+  assert.ok(launchArgs[1].includes('{"disableAllHooks":true}')); assert.ok(launchArgs[1].includes('--strict-mcp-config'));
+  assert.ok(launchArgs[2].env.PATH.endsWith('/.local/bin'));
   assert.equal(launchArgs[2].env.CLAUDE_CONFIG_DIR, '/accounts/work'); assert.equal(child.killed, 'SIGTERM');
   assert.deepEqual(models, [{ id: 'opus', resolvedModel: 'claude-opus-test', name: 'Opus', efforts: ['high', 'max'] }]);
   assert.deepEqual(claudeModelOptions([{ value: 'basic', supportedEffortLevels: ['high'] }])[0].efforts, []);
