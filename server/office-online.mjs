@@ -14,7 +14,7 @@ import { identity } from '../client/office/status.js';
 import { fail } from './requests.mjs';
 
 const FRESH_MS = 10_000, TIMEOUT_MS = 5000, MAX_BYTES = 64 * 1024, MAX_PLAYERS = 64;
-const RETRY_MAX_MS = 30_000, PER_SECOND = 20, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw']);
+const RETRY_MAX_MS = 30_000, PER_SECOND = 20, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'remove']);
 const object = v => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // `host.tailnet.ts.net/<key>`, or with its own http(s):// in front; the key is the last part of the path.
@@ -45,7 +45,7 @@ function board(data) {
   if (!object(data) || typeof data.day !== 'string' || !/^\d{4}-\d\d-\d\d$/.test(data.day) || !Array.isArray(data.players) || data.players.length > MAX_PLAYERS) return null;
   const players = data.players.flatMap(p => {
     const name = object(p) && cleanName(p.name);
-    return name ? [{ name, scores: clean(p.scores, data.day), seen: Number.isFinite(p.seen) ? p.seen : 0, ...p.host === true && { host: true } }] : [];
+    return name ? [{ name, scores: clean(p.scores, data.day), seen: Number.isFinite(p.seen) ? p.seen : 0, ...p.host === true && { host: true }, ...p.in === true && { in: true }, ...COLOURS.includes(p.colour) && { colour: p.colour } }] : [];
   });
   return { day: data.day, players };
 }
@@ -82,7 +82,8 @@ export function liveUpgrade({ auth, origins, hosts, online, beatMs = 30_000 }) {
 // `hubFile`: the hub's own file (scripts/hub.mjs), there only on the hub's machine; its hostKey makes this AI Control the host.
 export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.json'), fetch = globalThis.fetch, now = Date.now, lingerMs = 5000, retryMs = 1000, beatMs = 15_000 }) {
   // The file as last read or written; the last good board, the scores it was sent with and when; the request in flight.
-  let saved = {}, text = null, last = null, sent = '', at = -Infinity, inflight = null;
+  let saved = {}, text = null, last = null, sent = '', at = -Infinity, inflight = null, refusal = null;
+  // The colour the hub last refused a sync for (and what was held then): shown until another is picked.
   // Re-read on every call: `npm run hub` signs in by writing this file while the server runs (and the token must stay one
   // player's). A file that changed under us drops the board kept for the old one. It's tiny and read only on a request.
   const load = () => {
@@ -103,6 +104,8 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     const m = checkUp({ type: 'look', fruit: saved.fruit, colour: saved.colour });
     return m ? { fruit: m.fruit, colour: m.colour } : { fruit: identity(`player:${(saved.name || '').toLowerCase()}`).fruit, colour: COLOURS[0] };
   };
+  // Not joined: signed out by the hub (away 2 days, or removed) keeps the name and look, and says which.
+  const signedOut = () => ({ joined: false, ...saved.out && { name: saved.name, out: saved.out, look: look() } });
   const kept = () => ({ token: saved.token, ...saved.fruit && { fruit: saved.fruit, colour: saved.colour } });
   // The hub's hostKey when this machine runs the hub you joined, else null.
   const hostKey = () => {
@@ -111,18 +114,24 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     catch { return null; }
   };
 
-  // { status, board } for a 200 with a board, { status } otherwise; throws only when the hub can't be reached.
+  // { status, board } for a 200 with a board, { status, why, taken } for a 403 or 409 (why: 'away', 'removed', 'colour' or 'name'),
+  // { status } otherwise; throws only when the hub can't be reached.
   // A kept-alive connection to a hub that has since restarted dies on first use; scores are safe to send twice (the hub
   // keeps the better), so that one gets a second try on a fresh connection.
-  async function ask(url, key, name, scores) {
+  async function ask(url, key, name, scores, flags) {
     const send = () => fetch(`${url}/scores`, {
       // A hub never redirects: following one would send a player's token wherever it pointed.
       method: 'POST', signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'error',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: JSON.stringify({ token: saved.token, name, scores }),
+      body: JSON.stringify({ token: saved.token, name, scores, ...flags }),
     });
     let response;
     try { response = await send(); } catch (error) { if (error.cause?.code !== 'UND_ERR_SOCKET') throw error; response = await send(); }
+    if (response.status === 403 || response.status === 409) {
+      let data = null; try { data = JSON.parse(await capped(response)); } catch { /* not JSON, or too big */ }
+      const taken = Array.isArray(data?.taken) ? data.taken.filter(c => COLOURS.includes(c)) : [];
+      return { status: response.status, why: typeof data?.why === 'string' ? data.why : null, taken };
+    }
     if (response.status !== 200) { response.body?.cancel().catch(() => {}); return { status: response.status }; }
     let data = null; try { data = JSON.parse(await capped(response)); } catch { /* not JSON, or too big */ }
     return { status: 200, board: board(data) };
@@ -131,7 +140,9 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   // `code`, the meeting's code as `npm run hub` prints it (https:// left off), only for the host's own page: it's the room's key.
   const codeOf = () => `${saved.url.replace(/^https:\/\//, '')}/${saved.key}`;
   // `outdated`: the hub refused the live link for its protocol (meeting.js's PROTOCOL), so someone has to update.
-  const result = extra => ({ joined: true, name: saved.name, host: host(), hosting: !!hostKey(), ...hostKey() && { code: codeOf() }, board: last?.board ?? null, look: look(), ...link?.outdated && { outdated: true }, ...extra });
+  // Your saved colour, for the hub to hold: only once there's a look.
+  const colour = () => { const m = checkUp({ type: 'look', fruit: saved.fruit, colour: saved.colour }); return m ? { colour: m.colour } : {}; };
+  const result = extra => ({ joined: true, name: saved.name, host: host(), hosting: !!hostKey(), ...hostKey() && { code: codeOf() }, board: last?.board ?? null, look: look(), ...link?.outdated && { outdated: true }, ...refusal && refusal.colour === saved.colour && { refused: 'colour', taken: refusal.taken }, ...extra });
 
   // The live link: one socket to the hub's live room, shared by every page of yours, open while a page is (and 5 s after the
   // last goes, so a reload doesn't leave and come back), or all the time while hosting. Up goes only what checkUp passes and
@@ -183,18 +194,24 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       if (m) heard(l, m);
     });
     ws.on('error', () => {}); // 'close' follows
-    ws.on('close', () => {
+    ws.on('close', code => {
       clearInterval(beat);
       if (l.ws !== ws) return;
       l.ws = null; gone(l);
       if (link !== l || l.outdated) return;
+      // Removed by the host: signed out at once, and the pages told if the hub says so; no reconnecting.
+      if (code === 4003) { online.sync({}).then(r => { if (!r.joined) toPages({ type: 'refused', why: 'removed' }); }, () => {}); return; }
       l.retry = setTimeout(() => { l.retry = null; if (link === l) connect(l); }, l.delay); l.retry.unref();
       l.delay = Math.min(l.delay * 2, RETRY_MAX_MS);
     });
   }
   function heard(l, m) {
     if (m.type === 'refused' && m.why === 'version') { l.outdated = true; toPages(m); return; }
-    if (m.type === 'welcome') { l.me = { id: m.id, colour: m.colour, at: m.at }; l.asked = m.at; l.delay = retryMs; toPages(m); place(); return; }
+    if (m.type === 'refused' && m.why === 'colour') {
+      if (l.me && l.me.colour !== saved.colour) save({ ...saved, colour: l.me.colour });
+      toPages(m); return;
+    }
+    if (m.type === 'welcome') { if (m.colour !== saved.colour) save({ ...saved, ...look(), colour: m.colour }); l.me = { id: m.id, colour: m.colour, at: m.at }; l.asked = m.at; l.delay = retryMs; toPages(m); place(); return; }
     if (!l.me) return;
     if (m.type === 'roster') {
       l.roster = m;
@@ -233,7 +250,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   }
 
   const online = {
-    status: () => { load(); return joined() ? { joined: true, name: saved.name, host: host(), ...hostKey() && { code: codeOf() } } : { joined: false }; },
+    status: () => { load(); return joined() ? { joined: true, name: saved.name, host: host(), ...hostKey() && { code: codeOf() } } : signedOut(); },
 
     async join({ code, name } = {}) {
       load();
@@ -241,33 +258,40 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       if (!clean) throw fail('Use 1–16 letters or numbers.', 400);
       if (!saved.token) save({ ...saved, token: randomBytes(18).toString('base64url') });
       let reply;
-      try { reply = await ask(url, key, clean, {}); } catch { throw fail("The meeting can't be reached.", 502); }
+      try { reply = await ask(url, key, clean, {}, { join: true, ...colour() }); } catch { throw fail("The meeting can't be reached.", 502); }
+      if (reply.status === 409 && reply.why === 'colour') throw Object.assign(fail(reply.taken.length >= COLOURS.length ? 'All colours are taken.' : 'That colour is taken.', 409), { taken: reply.taken });
       if (reply.status === 409) throw fail('That name is taken in this meeting.', 409);
       // Not 401: from this server, the page reads a 401 as locked and shows the PIN screen.
       if (reply.status === 401) throw fail('That code is wrong or has been replaced.', 403);
       if (reply.status === 429) throw fail('The meeting is full or busy.', 429);
       if (reply.status !== 200 || !reply.board) throw fail("The meeting can't be reached.", 502);
       save({ ...kept(), url, key, name: clean });
-      last = { board: reply.board }; sent = ''; at = -Infinity;
+      last = { board: reply.board }; sent = ''; at = -Infinity; refusal = null;
       resettle();
       return result();
     },
 
-    async leave() { load(); save(kept()); last = null; sent = ''; at = -Infinity; resettle(); return { joined: false, look: look() }; },
+    async leave() { load(); save(kept()); last = null; sent = ''; at = -Infinity; refusal = null; resettle(); return { ...signedOut(), look: look() }; },
 
     async sync(given = {}) {
       load();
-      if (!joined()) return { joined: false };
+      if (!joined()) return signedOut();
       // The allowlist is kept here, not by the page: known games, possible scores, nothing else.
       const scores = clean(given, dayKey(new Date(now()))), text = JSON.stringify(scores);
       if (inflight) { await inflight.catch(() => {}); return online.sync(given); }
       if (text === sent && last && now() - at < FRESH_MS) return result();
       inflight = (async () => {
         try {
-          const reply = await ask(saved.url, saved.key, saved.name, scores);
+          const reply = await ask(saved.url, saved.key, saved.name, scores, { join: false, ...colour() });
           if (reply.status === 401) return result({ error: 'code' });
+          if (reply.status === 403) {
+            save({ ...kept(), name: saved.name, out: reply.why === 'removed' ? 'removed' : 'away' });
+            last = null; sent = ''; at = -Infinity; refusal = null; resettle();
+            return signedOut();
+          }
+          if (reply.status === 409 && reply.why === 'colour') { refusal = { colour: saved.colour, taken: reply.taken }; return result(); }
           if (reply.status !== 200 || !reply.board) return result({ offline: true });
-          last = { board: reply.board }; sent = text; at = now();
+          last = { board: reply.board }; sent = text; at = now(); refusal = null;
           return result();
         } catch { return result({ offline: true }); }
       })();
@@ -281,7 +305,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       if (!m) throw fail('Pick a fruit and a colour.', 400);
       // An open link has said hello first, so the hub takes it; a link not open yet says hello with this look.
       if (m.fruit !== saved.fruit || m.colour !== saved.colour) { save({ ...saved, fruit: m.fruit, colour: m.colour }); up(m); }
-      return joined() ? result() : { joined: false, look: look() };
+      return joined() ? result() : { ...signedOut(), look: look() };
     },
 
     hosting: () => { load(); return !!hostKey(); },
@@ -317,6 +341,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
           if (m.at === 'meeting' && already && link.floor) put(socket, JSON.stringify({ type: 'floor', floor: link.floor }));
           return;
         }
+        if (m.type === 'remove') { if (link?.hostKey && link.me) up(m); return; }
         if (socket === speaker() && link?.me) up(m);
       });
       socket.on('error', () => socket.terminate?.());

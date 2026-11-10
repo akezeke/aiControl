@@ -36,9 +36,9 @@ const open = online => { const page = new Page(); online.live(page); return page
 
 // A real hub on a free port, counting the live connections it's asked for, and players joined to it. The host's AI Control
 // reads the hub's own file (as on the hub's machine); everyone else has none.
-async function setup(t) {
+async function setup(t, { hubNow } = {}) {
   const hubFile = join(dir(), 'hub.json');
-  let hub = await startHub({ file: hubFile, port: 0 }), upgrades = 0;
+  let hub = await startHub({ file: hubFile, port: 0, ...hubNow && { now: hubNow } }), upgrades = 0;
   const port = hub.server.address().port, count = () => upgrades++;
   hub.server.on('upgrade', count);
   const code = `http://127.0.0.1:${port}/${hubState(hubFile).key}`, players = [];
@@ -48,7 +48,7 @@ async function setup(t) {
     await online.join({ code, name }); players.push(online);
     return online;
   };
-  const restart = async () => { await hub.close(); hub = await startHub({ file: hubFile, port }); hub.server.on('upgrade', count); };
+  const restart = async () => { await hub.close(); hub = await startHub({ file: hubFile, port, ...hubNow && { now: hubNow } }); hub.server.on('upgrade', count); };
   return { code, player, restart, stop: () => hub.close(), upgrades: () => upgrades };
 }
 
@@ -354,4 +354,33 @@ test('look persists and is validated', async t => {
   assert.equal(ok.status, 200); assert.deepEqual(ok.body.look, { fruit: 'lemon', colour: COLOURS[6] });
   assert.equal(touched.length, 1);
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).fruit, 'lemon');
+});
+
+test('the colour the hub gave you is saved, so your next sync asks for it', async t => {
+  const s = await setup(t), file = join(dir(), 'office-online.json');
+  const bob = await s.player('Bob'), bp = open(bob); await until(() => bp.last('welcome'), "Bob's welcome");
+  const anna = await s.player('Anna', { file }), ap = open(anna); await until(() => ap.last('welcome'), "Anna's welcome");
+  const given = ap.last('welcome').colour; assert.notEqual(given, bp.last('welcome').colour);
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).colour, given);
+  const r = await anna.sync({ darts: 1 }); assert.equal(r.refused, undefined); assert.equal(r.look.colour, given);
+});
+test('a look in a colour someone holds is refused, and your saved look goes back to the one you hold', async t => {
+  const s = await setup(t), file = join(dir(), 'office-online.json');
+  const anna = await s.player('Anna', { file }), bob = await s.player('Bob'), ap = open(anna), bp = open(bob);
+  await until(() => ap.sees('Bob') && bp.sees('Anna'), 'both in');
+  const mine = ap.sees('Anna').colour;
+  ap.say({ type: 'look', fruit: 'pear', colour: ap.sees('Bob').colour });
+  await until(() => ap.last('refused')?.why === 'colour', 'refused');
+  await until(() => JSON.parse(readFileSync(file, 'utf8')).colour === mine, 'saved colour back');
+});
+test('removed by the host: signed out at once, the pages told, no reconnecting', async t => {
+  const s = await setup(t);
+  const host = await s.player('Host', { host: true }), anna = await s.player('Anna'), hp = open(host), ap = open(anna);
+  await until(() => hp.sees('Anna'), 'Anna in');
+  ap.say({ type: 'remove', name: 'Host' }); await wait(100); assert.ok(hp.sees('Host'), "a visitor's remove goes nowhere");
+  hp.say({ type: 'remove', name: 'anna' });
+  await until(() => ap.last('refused')?.why === 'removed', 'Anna told');
+  const r = await anna.sync({}); assert.equal(r.joined, false); assert.equal(r.name, 'Anna'); assert.equal(r.out, 'removed');
+  const n = s.upgrades(); await wait(300); assert.equal(s.upgrades(), n, 'no reconnect');
+  await until(() => !hp.sees('Anna'), 'gone from the roster');
 });

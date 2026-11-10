@@ -4,16 +4,18 @@ import { mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseCode, createOfficeOnline } from '../server/office-online.mjs';
-import { hubState, newKey, startHub } from '../server/hub.mjs';
+import { hubState, newKey, startHub, AWAY } from '../server/hub.mjs';
+import { COLOURS } from '../client/office/meeting.js';
 
 const K = 'k'.repeat(22), dir = () => mkdtempSync(join(tmpdir(), 'online-'));
 // A real hub on a free port (or `port`), its code, and an AI Control's side of it counting what it sends.
-async function setup({ port = 0, hubFile = join(dir(), 'hub.json'), now, hostToken } = {}) {
-  const hub = await startHub({ file: hubFile, port, hostToken }), at = hub.server.address().port;
+async function setup({ port = 0, hubFile = join(dir(), 'hub.json'), now, hostToken, hubNow } = {}) {
+  const hub = await startHub({ file: hubFile, port, hostToken, ...hubNow && { now: hubNow } }), at = hub.server.address().port;
   const code = () => `http://127.0.0.1:${at}/${hubState(hubFile).key}`;
   const counter = { calls: 0 }, counting = (...args) => { counter.calls++; return fetch(...args); };
-  const online = createOfficeOnline({ file: join(dir(), 'office-online.json'), fetch: counting, ...now ? { now } : {} });
-  return { hub, hubFile, port: at, code, counter, online };
+  const file = join(dir(), 'office-online.json');
+  const online = createOfficeOnline({ file, fetch: counting, ...now ? { now } : {} });
+  return { hub, hubFile, port: at, code, counter, online, file };
 }
 const status = async promise => { try { await promise; return 0; } catch (error) { return error.status; } };
 
@@ -154,7 +156,7 @@ test('only clean scores leave: the server enforces the allowlist, not the page',
   const online = createOfficeOnline({ file: join(dir(), 'office-online.json'), fetch: fake });
   await online.join({ code: `x.ts.net/${K}`, name: 'Anna' });
   await online.sync({ darts: 9, pinball: -5, history: 'secret session text', trickshotToday: { day: '1999-01-01', score: 5 } });
-  assert.deepEqual(Object.keys(sent.at(-1)).sort(), ['name', 'scores', 'token']);
+  assert.deepEqual(Object.keys(sent.at(-1)).sort(), ['join', 'name', 'scores', 'token']);
   assert.deepEqual(sent.at(-1).scores, { darts: 9 });
 });
 
@@ -194,4 +196,42 @@ test('the code goes to the host and nobody else', async t => {
   const anna = await s.online.join({ code: s.code(), name: 'Anna' });
   for (const r of [anna, await s.online.sync({ darts: 1 }), s.online.status()]) assert.ok(!('code' in r) && !JSON.stringify(r).includes(key), JSON.stringify(r));
   host.close();
+});
+
+test('Join and sync say which they are, with your colour once you have one', async () => {
+  const sent = [], fake = async (url, init) => { sent.push(JSON.parse(init.body)); return new Response(JSON.stringify({ day: '2026-11-09', players: [] }), { status: 200 }); };
+  const online = createOfficeOnline({ file: join(dir(), 'office-online.json'), fetch: fake });
+  await online.join({ code: `x.ts.net/${K}`, name: 'Anna' });
+  assert.equal(sent.at(-1).join, true); assert.equal('colour' in sent.at(-1), false);
+  online.look({ fruit: 'pear', colour: COLOURS[2] }); await online.sync({ darts: 1 });
+  assert.equal(sent.at(-1).join, false); assert.equal(sent.at(-1).colour, COLOURS[2]);
+  const nobody = { day: '2026-11-09', players: [{ name: 'Bo', scores: {}, seen: 1, in: 'yes', colour: '#123456' }, { name: 'Cy', scores: {}, seen: 1, in: true, colour: COLOURS[1] }] };
+  const kept = createOfficeOnline({ file: join(dir(), 'o.json'), fetch: async () => new Response(JSON.stringify(nobody), { status: 200 }) });
+  const { board } = await kept.join({ code: `x.ts.net/${K}`, name: 'Anna' });
+  assert.deepEqual(board.players.map(p => [p.in, p.colour]), [[undefined, undefined], [true, COLOURS[1]]]);
+});
+test('away 2 days: signed out, keeping the token, the look and the name; joining again clears it', async t => {
+  let skew = 0; const s = await setup({ hubNow: () => Date.now() + skew }); t.after(() => { s.online.close(); return s.hub.close(); });
+  await s.online.join({ code: s.code(), name: 'Anna' }); s.online.look({ fruit: 'pear', colour: COLOURS[2] });
+  const token = JSON.parse(readFileSync(s.file, 'utf8')).token;
+  skew = AWAY + 60_000;
+  const out = { joined: false, name: 'Anna', out: 'away', look: { fruit: 'pear', colour: COLOURS[2] } };
+  assert.deepEqual(await s.online.sync({ darts: 1 }), out); assert.deepEqual(await s.online.sync({}), out);
+  assert.equal(JSON.parse(readFileSync(s.file, 'utf8')).token, token);
+  assert.equal((await s.online.join({ code: s.code(), name: 'Anna' })).joined, true);
+  assert.equal((await s.online.sync({})).out, undefined);
+});
+test('a colour someone holds: Join throws with what is taken; a sync stays joined and says so until you pick another', async t => {
+  const s = await setup(); t.after(() => { s.online.close(); return s.hub.close(); });
+  const bo = createOfficeOnline({ file: join(dir(), 'o.json') }); t.after(() => bo.close());
+  bo.look({ fruit: 'apple', colour: COLOURS[1] }); await bo.join({ code: s.code(), name: 'Bo' });
+  s.online.look({ fruit: 'pear', colour: COLOURS[1] });
+  const e = await s.online.join({ code: s.code(), name: 'Anna' }).catch(e => e);
+  assert.equal(e.status, 409); assert.equal(e.message, 'That colour is taken.'); assert.deepEqual(e.taken, [COLOURS[1]]);
+  s.online.look({ fruit: 'pear', colour: COLOURS[2] }); await s.online.join({ code: s.code(), name: 'Anna' });
+  s.online.look({ fruit: 'pear', colour: COLOURS[1] });
+  const r = await s.online.sync({ darts: 3 });
+  assert.equal(r.joined, true); assert.equal(r.refused, 'colour'); assert.deepEqual(r.taken, [COLOURS[1]]); assert.ok(r.board);
+  assert.equal(s.online.look({ fruit: 'pear', colour: COLOURS[3] }).refused, undefined, 'a new pick clears it');
+  assert.equal((await s.online.sync({ darts: 3 })).refused, undefined);
 });
