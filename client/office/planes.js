@@ -21,7 +21,12 @@ const BEST = 'ai-control-planes-best', ENDLESS = 'ai-control-planes-endless', KE
 const THROW = 1.15, HAND = 1.4, STAND = 0.85; // metres out from the stack it's thrown from, and how high; where you stand
 const BACK = 1, LIFT = 0.28, AHEAD = 1.4, NEAREST = 0.35, FOV = 70; // the view behind the plane: how far back, up, looking how far on
 const LOOKS = 1.3; // the plane drawn this much bigger than it flies, to be seen on a phone
-const STICK = 60, DEAD = 6, AGAIN = 0.4; // px a drag goes to full; that a finger may wander first; seconds after a crash before again
+// The stick: px a drag goes to full and that a finger may wander first, each way; how much gentler it starts than it ends (0
+// even). Seconds after a crash before again.
+const STICK = 44, DEAD = 5, EXPO = 0.6, AGAIN = 0.4;
+// One way of the stick (px off where it went down) to -1..1: gentle near the middle for small corrections, quick to the end so a
+// hard bank isn't far for a thumb.
+const axis = px => { const m = Math.min(Math.max((Math.abs(px) - DEAD) / (STICK - DEAD), 0), 1); return Math.sign(px) * m * (1 - EXPO + EXPO * m * m); };
 const NEXT = '#ffd23f', LAST = '#5ee08a';
 
 // Sound, made up as it goes (as pinball's): a whoosh off the hand, a chime a note up the scale for each ring (endless, a
@@ -158,7 +163,8 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
   const input = () => {
     let steer = 0, climb = 0;
     for (const code of keys) if (KEYS[code] && code !== held) { steer += KEYS[code][0]; climb += KEYS[code][1]; }
-    if (stick.id !== null) { const d = Math.hypot(stick.dx, stick.dy), k = d < DEAD ? 0 : (d - DEAD) / (STICK - DEAD) / d; steer += stick.dx * k; climb -= stick.dy * k; }
+    // Each way on its own: a thumb's sweep sideways is seldom level, and shouldn't pitch.
+    if (stick.id !== null) { steer += axis(stick.dx); climb -= axis(stick.dy); }
     return { steer: THREE.MathUtils.clamp(steer, -1, 1), climb: THREE.MathUtils.clamp(climb, -1, 1) };
   };
 
@@ -292,7 +298,11 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
   });
   canvas.addEventListener('pointermove', event => {
     if (event.pointerId !== stick.id) return;
-    stick.dx = event.clientX - stick.x; stick.dy = event.clientY - stick.y; showPad();
+    stick.dx = event.clientX - stick.x; stick.dy = event.clientY - stick.y;
+    // Past full, where it went down comes along: back from there steers back at once, wherever the thumb has wandered.
+    if (Math.abs(stick.dx) > STICK) { const over = stick.dx - Math.sign(stick.dx) * STICK; stick.x += over; stick.dx -= over; }
+    if (Math.abs(stick.dy) > STICK) { const over = stick.dy - Math.sign(stick.dy) * STICK; stick.y += over; stick.dy -= over; }
+    showPad();
   });
   const lift = event => { if (active) hear(); if (event.pointerId === stick.id) letGo(); };
   canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);
