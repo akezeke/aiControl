@@ -15,8 +15,9 @@ export const GOOSE = 'goose'; // its id for the bubbles and props.js's hits
 const SPEED = { walk: 0.75, fetch: 0.75, visit: 0.75, haul: 0.95, sneak: 0.45, chase: 2.6 }, STRIDE = 0.07;
 const NEAR = 1.3, NIP = 0.55, NECK = 0.95, SHOVE = 0.35, BERTH = 0.5; // metres; BERTH: what it keeps off the snake's food on its way by it
 // Seconds: a chase for coming close, and for anything worse; then it leaves you be; how often a chase looks for you again; how old
-// a plan heard at home may be for a new keeper to carry on from (the server's own limit).
-const SHORT = 2.5, LONG = 6, CALM = 8, REPLAN = 0.5, STALE = 10;
+// a plan heard at home may be for a new keeper to carry on from (the server's own limit); how soon after one it acts on another
+// poke from the same friend (each sends a honk, maybe a drop: a burst would go over the keeper's message budget).
+const SHORT = 2.5, LONG = 6, CALM = 8, REPLAN = 0.5, STALE = 10, POKES = 0.5;
 // Seconds: between honks, thefts, pranks and visits to the food; a loiter; a while at one spot by the food, and at the food in all.
 const HONKS = [20, 40], THEFTS = [40, 90], PRANKS = [45, 120], VISITS = [30, 60], LOITER = [2, 6], MILL = [2, 4], STAY = [6, 12];
 const LINES = ['HONK!', 'Honk!', 'HONK HONK!'], WOKEN = ['Wha—?!', "I'm up! I'm up!", 'Huh?!', 'Not again…'], IDLE = ['look', 'peck', 'preen'];
@@ -97,6 +98,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   // Keeping it: when its last plan went and what made it that plan (planKey); you as one it might go for, and what the next plan's
   // key is worked out from, both filled in place.
   let sentAt = -Infinity, sentKey = null;
+  const pokedAt = new Map(); // id → when it last acted on their poke
   const yourself = { id: null, x: 0, z: 0, busy: false }, probe = { mode, idle, carry: null, target: null, route: [] }, aimed = [0, 0, 0], ends = [[0, 0]], none = [];
 
   const honk = (icon = '🪿') => { honkUntil = t + 0.6; say(icon, pick(LINES)); };
@@ -352,11 +354,12 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       if (role === 'keeper') kept = null;
     },
     // A message from the meeting, checked and with its sender's id. A plan from anyone is kept; the keeper's plans and what its
-    // goose did are played on a watcher (one still hidden waits for a plan). A poke sets the keeper's goose on whoever sent it.
+    // goose did are played on a watcher (one still hidden waits for a plan). A poke sets the keeper's goose on whoever sent it, one
+    // each POKES s.
     heard(m) {
       if (m.type === 'goose') { kept = { m, r: t, age: m.age ?? 0 }; if (role === 'watcher' && m.id === keeper) adopt(kept); }
       else if (m.type === 'goosed' && role === 'watcher' && m.id === keeper && root.visible) happened(m);
-      else if (m.type === 'poke' && role === 'keeper' && root.visible) provoke(LONG, m.why === 'click' ? '🪿' : '💢', m.id);
+      else if (m.type === 'poke' && role === 'keeper' && root.visible && t - (pokedAt.get(m.id) ?? -Infinity) >= POKES) { pokedAt.set(m.id, t); provoke(LONG, m.why === 'click' ? '🪿' : '💢', m.id); }
     },
     // Through the door: it lets go, the plans kept were that meeting's, and it's away a second, so a guest arriving never sees a
     // stray goose before the roster says whose it is. Into a meeting (still at home: the keeper's first plan can come before the

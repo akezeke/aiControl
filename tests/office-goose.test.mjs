@@ -239,6 +239,14 @@ test("a friend's poke sets off a chase aimed at them, which ends in a nip; a bus
   assert.deepEqual(events(b), [{ type: 'goosed', what: 'honk', icon: '💢' }]); assert.notEqual(b.g.mode, 'chase');
 });
 
+// Each poke acted on sends a honk (and maybe a drop): a burst mustn't push the keeper over its message budget.
+test("a burst of pokes from one friend: the keeper acts on one each half second", () => {
+  const a = keeping({ others: () => [{ id: 'b', x: 6, z: 3, busy: false }] }); a.run(0.1);
+  for (let i = 0; i < 10; i++) { a.g.heard({ type: 'poke', id: 'b', why: 'click' }); a.run(1 / 30); }
+  assert.equal(events(a).filter(m => m.what === 'honk').length, 1);
+  a.run(0.2); a.g.heard({ type: 'poke', id: 'b', why: 'hit' }); assert.equal(events(a).filter(m => m.what === 'honk').length, 2, 'half a second on');
+});
+
 test('a poke while it carries something: the drop goes out before the honk', () => {
   let friends = [];
   const mug = { kind: { key: 'mug' }, pos: V(5, 0.05, 5), rest: true };
