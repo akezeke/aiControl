@@ -201,6 +201,50 @@ test('a hub restart: pages hear it went, and the link comes back saying where yo
   await until(() => bp.sees('Anna')?.at === 'meeting' && bp.last('roster').players.length === 2, 'Anna back at the meeting', 5000);
 });
 
+const plan = { type: 'goose', at: [2.5, 3.25], yaw: 0, mode: 'walk', idle: 'look', speed: 0.75, route: [[3, 3]], carry: null, target: null };
+test("the goose's plan: kept for a page that opens, with its age, after the welcome and before the roster; not once it's 10 s old", async t => {
+  let skew = 0;
+  const s = await setup(t);
+  const anna = await s.player('Anna'), bob = await s.player('Bob', { now: () => Date.now() + skew });
+  const ap = open(anna), bp = open(bob);
+  await until(() => ap.last('welcome') && bp.last('welcome'), 'welcomes');
+  ap.say({ type: 'where', at: 'meeting' }); await until(() => bp.sees('Anna')?.at === 'meeting', 'Anna there');
+  bp.say({ type: 'where', at: 'meeting' }); await until(() => bp.sees('Bob')?.at === 'meeting' && bp.sees('Anna')?.goose, 'Anna keeps it');
+  ap.say(plan); await until(() => bp.last('goose'), 'the plan');
+  ap.say({ type: 'goosed', what: 'drop' }); await until(() => bp.last('goosed'), 'an event');
+  bp.say({ type: 'poke', why: 'click' }); await until(() => ap.last('poke'), 'a poke');
+  const later = open(bob); await until(() => later.last('roster'), 'the roster');
+  const types = later.got.map(m => m.type);
+  assert.ok(types.indexOf('welcome') < types.indexOf('goose') && types.indexOf('goose') < types.indexOf('roster'));
+  const { age, ...kept } = later.last('goose');
+  assert.deepEqual(kept, { ...plan, id: ap.last('welcome').id }); assert.ok(age >= 0 && age < 10000);
+  skew += 11000;
+  const stale = open(bob); await until(() => stale.last('roster'), 'the roster'); assert.equal(stale.all('goose').length, 0);
+});
+
+test('the kept plan goes when you go home, or the link does', async t => {
+  const s = await setup(t);
+  const anna = await s.player('Anna'), bob = await s.player('Bob');
+  const ap = open(anna), bp = open(bob);
+  await until(() => ap.last('welcome') && bp.last('welcome'), 'welcomes');
+  const meet = async () => {
+    ap.say({ type: 'where', at: 'meeting' }); await until(() => bp.sees('Anna')?.at === 'meeting', 'Anna there');
+    bp.say({ type: 'where', at: 'meeting' }); await until(() => bp.sees('Bob')?.at === 'meeting' && bp.sees('Anna')?.goose, 'Anna keeps it');
+  };
+  await meet();
+  ap.say(plan); await until(() => bp.last('goose'), 'the plan');
+  bp.say({ type: 'where', at: 'home' }); await until(() => ap.sees('Bob')?.at === 'home', 'Bob home');
+  const home = open(bob); await until(() => home.last('roster'), 'the roster'); await new Promise(r => setTimeout(r, 50));
+  assert.equal(home.all('goose').length, 0);
+  await meet();
+  const before = bp.all('goose').length;
+  ap.say(plan); await until(() => bp.all('goose').length > before, 'the plan again');
+  await s.restart();
+  await until(() => bp.last('roster')?.players.length === 0, 'the room gone');
+  const after = open(bob); await until(() => after.last('roster'), 'the roster'); await new Promise(r => setTimeout(r, 50));
+  assert.equal(after.all('goose').length, 0);
+});
+
 // A hub that takes a join and answers each live message with `answer(ws, message)`. `lives`: every live connection it got.
 // `pong: false`: it never answers a ping either.
 async function fakeHub(t, answer, { pong = true } = {}) {

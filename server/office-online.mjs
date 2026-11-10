@@ -13,8 +13,8 @@ import { checkUp, checkDown, meetingFloor, COLOURS, PROTOCOL } from '../client/o
 import { identity } from '../client/office/status.js';
 import { fail } from './requests.mjs';
 
-const FRESH_MS = 10_000, TIMEOUT_MS = 5000, MAX_BYTES = 64 * 1024, MAX_PLAYERS = 64;
-const RETRY_MAX_MS = 30_000, PER_SECOND = 20, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'snake', 'remove']);
+const FRESH_MS = 10_000, PLAN_MS = 10_000, TIMEOUT_MS = 5000, MAX_BYTES = 64 * 1024, MAX_PLAYERS = 64;
+const RETRY_MAX_MS = 30_000, PER_SECOND = 20, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'snake', 'remove', 'goose', 'goosed', 'poke']);
 const object = v => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // `host.tailnet.ts.net/<key>`, or with its own http(s):// in front; the key is the last part of the path.
@@ -168,7 +168,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   const speaker = () => { const said = [...pages].filter(([, page]) => page.where); return (said.findLast(([, page]) => page.where === 'meeting') ?? said.at(-1))?.[0]; };
   // Pages hear the room's gone: nobody's there, and no floor (a visitor's page walks home). The board kept isn't fresh any
   // more either, so the sync a page sends on hearing it (online.js) asks the hub, and can come back offline.
-  const gone = l => { if (!l.me) return; l.me = l.roster = l.floor = null; l.floorText = ''; l.places.clear(); at = -Infinity; toPages({ type: 'roster', players: [] }); toPages({ type: 'floor', floor: null }); };
+  const gone = l => { if (!l.me) return; l.me = l.roster = l.floor = l.plan = null; l.floorText = ''; l.places.clear(); at = -Infinity; toPages({ type: 'roster', players: [] }); toPages({ type: 'floor', floor: null }); };
   function shut() {
     const l = link; if (!l) return;
     link = null; clearTimeout(l.retry); gone(l);
@@ -235,6 +235,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       for (const id of l.places.keys()) if (!m.players.some(p => p.id === id && p.at === 'meeting')) l.places.delete(id);
     } else if (m.type === 'floor') l.floor = m.floor;
     else if (m.type === 'refused') l.asked = l.me.at; // still where it was; a page saying where again asks again
+    if (m.type === 'goose') l.plan = { m, at: now() }; // kept for a page that opens mid-meeting
     const text = toPages(m);
     if (m.type === 'pos') l.places.set(m.id, text);
   }
@@ -261,7 +262,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     const l = link; if (!l?.me) return;
     const at = l.hostKey ? (pages.size || linger ? 'meeting' : 'home') : (pages.get(voice)?.where ?? l.asked);
     if (at === l.asked) return;
-    l.asked = at; if (at === 'home') { l.floor = null; l.places.clear(); }
+    l.asked = at; if (at === 'home') { l.floor = l.plan = null; l.places.clear(); }
     up({ type: 'where', at });
   }
 
@@ -381,7 +382,9 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       // A page opening is someone acting: a link refused for its protocol tries once more (the hub may have been updated).
       if (link?.outdated && !link.ws) { link.outdated = false; connect(link); }
       place();
-      if (link?.me) { put(socket, JSON.stringify({ type: 'welcome', ...link.me })); if (link.roster) put(socket, JSON.stringify(link.roster)); for (const text of link.places.values()) put(socket, text); }
+      if (link?.me) { put(socket, JSON.stringify({ type: 'welcome', ...link.me }));
+        if (link.plan) { const age = Math.round(now() - link.plan.at); if (age < PLAN_MS) put(socket, JSON.stringify({ ...link.plan.m, age })); }
+        if (link.roster) put(socket, JSON.stringify(link.roster)); for (const text of link.places.values()) put(socket, text); }
     },
 
     close() { clearTimeout(linger); linger = null; pages.clear(); spoke = null; shut(); },
