@@ -289,3 +289,43 @@ test('a keeper charges you and shoves you on a nip; with reduced motion your cli
   assert.deepEqual(b.said, ['🪿', '💢']); assert.deepEqual(events(b), []); assert.notEqual(b.g.mode, 'chase');
   const still = near(b); assert.ok(b.run(2, () => events(b).some(m => m.what === 'nip'))); assert.ok(b.player.position.equals(still), 'no shove');
 });
+
+// The paths most likely to break later.
+const taken = { type: 'goosed', what: 'take', kind: 'mug', spot: [5, 0.05, 5] };
+test('your own take-back as keeper: one drop out, then one 💢 honk', () => {
+  const mug = { kind: { key: 'mug' }, pos: V(5, 0.05, 5), rest: true }, a = keeping({ things: [mug] });
+  assert.ok(a.run(150, () => events(a).length > 0), 'stole the mug');
+  mug.held = true; mug.carried = null; a.run(0.5); // as props.js has a pickup
+  assert.deepEqual(events(a), [taken, { type: 'goosed', what: 'drop' }, { type: 'goosed', what: 'honk', icon: '💢' }]);
+  for (const m of events(a)) assert.deepEqual(checkUp(m), m);
+  assert.deepEqual(a.said, ['💢']);
+});
+
+test('a chase ends, with no nip, once its prey is busy or gone from the meeting', () => {
+  for (const end of [friends => { friends[0].busy = true; }, friends => { friends.length = 0; }]) {
+    const friends = [{ id: 'b', x: 2, z: 8, busy: false }], a = keeping({ others: () => friends }); a.run(0.1);
+    a.g.heard({ type: 'poke', id: 'b', why: 'click' }); a.run(0.3); assert.equal(a.g.mode, 'chase');
+    end(friends); a.run(1 / 60); assert.notEqual(a.g.mode, 'chase');
+    a.run(5); assert.notEqual(a.g.mode, 'chase'); assert.ok(!events(a).some(m => m.what === 'nip'));
+  }
+});
+
+test('a keeper change mid-carry or mid-chase, to watching or home: it lets go, runs on and sends nothing', () => {
+  for (const after of [[P('a'), P('b', { goose: true })], []]) {
+    const mug = { kind: { key: 'mug' }, pos: V(5, 0.05, 5), rest: true }, a = keeping({ things: [mug] });
+    assert.ok(a.run(150, () => events(a).length > 0), 'stole the mug'); a.run(0.5); assert.equal(typeof mug.carried, 'function');
+    a.g.roster(after, 'a'); let sent = a.sent.length; a.run(5);
+    assert.equal(mug.carried, null); assert.deepEqual(a.ghosts, []); assert.ok(['loiter', 'walk'].includes(a.g.mode), a.g.mode); assert.equal(a.sent.length, sent);
+    const friends = [{ id: 'b', x: 2, z: 8, busy: false }], b = keeping({ others: () => friends }); b.run(0.1);
+    b.g.heard({ type: 'poke', id: 'b', why: 'click' }); b.run(0.3); assert.equal(b.g.mode, 'chase');
+    b.g.roster(after, 'a'); sent = b.sent.length; b.run(5);
+    assert.ok(['loiter', 'walk'].includes(b.g.mode), b.g.mode); assert.equal(b.sent.length, sent);
+  }
+});
+
+test('as keeper, a sleeper honked awake goes out as a wake by their seat', () => {
+  const a = keeping({ sleepers: [{ id: 's1', at: V(4, 0, 4) }] });
+  assert.ok(a.run(200, () => events(a).length > 0), 'pranked');
+  assert.deepEqual(events(a), [{ type: 'goosed', what: 'wake', spot: [4, 4] }]); assert.deepEqual(checkUp(events(a)[0]), events(a)[0]);
+  assert.deepEqual(a.woken, ['s1']);
+});
