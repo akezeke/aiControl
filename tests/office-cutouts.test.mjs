@@ -244,7 +244,7 @@ test('a snake plant in each corner, clear of the doors, the counter and each oth
   noDocument(t);
   for (const [width, depth] of [[8, 8], [8.5, 8], [9, 8], [9.6, 8], [11.4, 9], [16, 12]]) {
     const { room } = standing(width, depth), door = V(width / 2, 0, depth), kitchen = V(0, 0, kitchenDoor(depth)), at = `${width} by ${depth}`;
-    assert.equal(room.snakePlants.length, 4, at); assert.equal(room.snakePlant, room.snakePlants[1], at);
+    assert.equal(room.snakePlants.length, 4, at);
     const heard = []; room.onSnake = i => heard.push(i); for (const p of room.snakePlants) p.userData.toggle();
     assert.deepEqual(heard, [0, 1, 2, 3], at);
     const [a, b, c, d] = room.snakePlants.map(p => p.position);

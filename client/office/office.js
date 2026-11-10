@@ -177,10 +177,10 @@ export function mountOffice(container, hooks) {
   const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay, online }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay, online });
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay, online });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
-  // Snake, out on the office floor from the snake plant in the corner.
-  const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), home: () => room.snakePlant?.position, score: (goal, verdict) => overlays.setScore(goal && leaderLine(goal, online.top('snake')[0]), verdict, false),
+  // Snake, out on the office floor from whichever corner's snake plant was clicked: you walk to that one (stand) and it starts there.
+  const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), plants: () => room.snakePlants?.map(p => p.position) ?? [], score: (goal, verdict) => overlays.setScore(goal && leaderLine(goal, online.top('snake')[0]), verdict, false),
     blocks: () => goose.root.visible ? [goose.column] : [], bump: () => goose.honk('💢') });
-  scene.add(snake.root); room.onSnake = () => onPlay(snake);
+  scene.add(snake.root); room.onSnake = i => { snake.use(i); onPlay(snake); };
   // Paper planes: from the stack of paper on the filing cabinet by the printer, round the office through the day's rings; from
   // the yellow plane on the printer, through endless ones.
   let flown = { of: null, by: null, boxes: [] };

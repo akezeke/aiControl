@@ -469,10 +469,10 @@ export function createRoom(scene, renderer) {
       if (i) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
     }
     // A snake plant in each corner starts the snake game, one per player (room.onSnake(index), from office.js; snake.js). Plants 0 and 1 are
-    // the back corners, 2 and 3 the front ones either side of the door (placed with the lounge and the coffee corner below). room.snakePlant is the old single one.
+    // the back corners, 2 and 3 the front ones either side of the door (placed with the lounge and the coffee corner below).
     room.snakePlants = [];
-    const snakePlant = (x, z) => { const i = room.snakePlants.length, p = place(plant('snake'), x, z); p.userData.toggle = () => room.onSnake?.(i); room.snakePlants.push(p); return p; };
-    snakePlant(0.5, 0.5); room.snakePlant = snakePlant(width - 0.5, 0.5);
+    const snakePlant = (x, z) => { const i = room.snakePlants.length, p = place(plant('snake'), x, z); p.userData.toggle = () => room.onSnake?.(i); room.snakePlants.push(p); };
+    snakePlant(0.5, 0.5); snakePlant(width - 0.5, 0.5);
 
     // Door in the front wall, facing into the room, with a coat rack, an extinguisher and the light switch beside it. In a
     // meeting it goes to the host's office and back (room.onDoor, from office.js; visit.js).

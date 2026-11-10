@@ -1,5 +1,6 @@
-// Snake on the office floor. Click the snake plant in the back corner (or E on it) and the view drops in behind a snake curled
-// at its pot. ← → (A D) turn it left or right of where it's heading, as does a click on that half of the screen. On a phone you pick, before it's off,
+// Snake on the office floor. Click a snake plant in any corner (or E on it) and the view drops in behind a snake curled at its
+// pot, in your meeting look if you have one (its colour, and your fruit for its food). In a meeting it says where it is, so the
+// others can watch it. ← → (A D) turn it left or right of where it's heading, as does a click on that half of the screen. On a phone you pick, before it's off,
 // Swipe (the default: a finger that moves sideways turns it at once) or Tap (a finger turns it towards its half the moment it lands).
 // ↑ ↓, W S or Space (or a touch, before it's off) sets it off, and again after a crash. Esc or ✕ steps back and pauses it.
 // It runs on path.js's walk grid a cell (25 cm) a step, so a turn never waits long. Furniture, walls and its own body end the
@@ -170,29 +171,42 @@ function gridMaterial() {
   });
 }
 
-// `grid()`: the walk grid (null before there's an office); `home()`: where the snake plant stands; `score(goal, verdict)`:
-// the score bar (null clears it); `blocks()`: what's moving about to keep off ({ x, z, r }: the goose); `bump()`: one was hit.
-export function createSnake({ canvas, grid, home, score, blocks = () => [], bump = () => {} }) {
+// `grid()`: the walk grid (null before there's an office); `plants()`: where the snake plants stand, one per corner (`use(i)`
+// picks the one it's played from); `look()`: your meeting look, { fruit, colour }, or null for the classic green snake;
+// `send(message)`: tells the meeting where it is (pack's, or { type: 'snake', mode: 'off' } on leaving); `score(goal,
+// verdict)`: the score bar (null clears it); `blocks()`: what's moving about to keep off ({ x, z, r }: the goose); `bump()`: one was hit.
+export function createSnake({ canvas, grid, plants, look = () => null, send = () => {}, score, blocks = () => [], bump = () => {} }) {
   let best = 0; try { best = Number(localStorage.getItem(BEST)) || 0; } catch { /* no storage here */ }
   let touchMode = 'swipe'; try { if (localStorage.getItem(TOUCH) === 'tap') touchMode = 'tap'; } catch { /* no storage here */ }
   let s = null, active = false, linger = 0, shake = 0, viewYaw = 0, distance = 0, fresh = true, bumped = false, shown = '', gridKey = '';
-  const held = new Set(), from = new THREE.Vector3(), look = new THREE.Vector3(), wobble = new THREE.Vector3(), follow = new THREE.Vector3();
+  let plant = 0, sent = null; // the plant it's played from; the last message sent ({ at, mode }), null since the last 'off'
+  const held = new Set(), from = new THREE.Vector3(), gaze = new THREE.Vector3(), wobble = new THREE.Vector3(), follow = new THREE.Vector3();
   const root = new THREE.Group(); root.visible = false;
+  const coarse = globalThis.matchMedia?.('(pointer: coarse)'); // read on each score, made once
 
-  // The snake, classic green, and a beam over its apple to find it by from across the office.
-  const model = createSnakeModel(null); root.add(model.root);
+  // The snake, in the look it's in (`${fruit}${colour}`, '' classic; built when first needed and again when the look changes), and
+  // a beam over its food to find it by from across the office, moving to each new model's food.
+  let model = null, worn = null;
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.2, 3, 16, 1, true).translate(0, 1.5, 0), new THREE.MeshBasicMaterial({ color: '#ffe14d', transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-  beam.raycast = () => {}; model.meal.add(beam);
+  beam.raycast = () => {};
+  const dress = () => {
+    const l = look(), key = l ? `${l.fruit}${l.colour}` : '';
+    if (key === worn) return;
+    const was = model; worn = key; model = createSnakeModel(l); root.add(model.root); model.meal.add(beam);
+    if (s) { model.set(s); model.face(); }
+    if (was) { root.remove(was.root); was.dispose(); }
+  };
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), gridMaterial()); floor.raycast = () => {}; root.add(floor);
   // A red circle under each thing moving about, as far out as it's kept off: a disc and a rim, made as they're needed.
   const circles = [], red = new THREE.MeshBasicMaterial({ color: '#ff2e38', transparent: true, opacity: 0.3, depthWrite: false });
   const rim = new THREE.MeshBasicMaterial({ color: '#ff2e38', transparent: true, opacity: 0.8, depthWrite: false });
   const circle = () => { const c = new THREE.Group(); c.add(new THREE.Mesh(new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2), red), new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48).rotateX(-Math.PI / 2), rim)); c.traverse(m => { m.raycast = () => {}; }); root.add(c); return c; };
 
-  const restart = () => { const g = grid(), spot = home(); s = g && spot ? newSnake(g, spot, best) : null; if (s) { model.set(s); model.face(); viewYaw = model.yaw; } fresh = true; bumped = false; };
+  const home = i => plants()?.[i]; // undefined for a plant the room hasn't got
+  const restart = () => { const g = grid(), spot = home(plant); s = g && spot ? newSnake(g, spot, best) : null; dress(); if (s) { model.set(s); model.face(); viewYaw = model.yaw; } fresh = true; bumped = false; };
   const press = () => { if (!s) return; if (settled(s)) restart(); else go(s); };
   const showScore = () => {
-    const over = s?.mode === 'over', touch = globalThis.matchMedia?.('(pointer: coarse)')?.matches, line = s ? [s.eaten, best, s.mode, bumped, touch && touchMode].join() : '';
+    const over = s?.mode === 'over', touch = coarse?.matches, line = s ? [s.eaten, best, s.mode, bumped, touch && touchMode].join() : '';
     if (line === shown) return; shown = line;
     if (!s) { score(null); return; }
     const pick = mode => () => { touchMode = mode; try { localStorage.setItem(TOUCH, mode); } catch { /* no storage here */ } shown = ''; showScore(); };
@@ -206,12 +220,16 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
   const snake = {
     root,
     get game() { return s; }, // for tests
+    get model() { return model; }, // null before the first game
+    // Plays from plant i: the same one as last time keeps the snake (a paused game goes on), another starts afresh there.
+    use(i) { if (i !== plant) { plant = i; s = null; } },
     enter() { active = true; fresh = true; if (!s || s.mode === 'over') restart(); else s.mode = 'ready'; shown = ''; showScore(); },
-    leave() { active = false; held.clear(); linger = 0.6; score(null); shown = ''; }, // drawn on while the view comes back
+    // Drawn on while the view comes back. The meeting hears it's gone, once.
+    leave() { active = false; held.clear(); linger = 0.6; score(null); shown = ''; if (sent) { send({ type: 'snake', mode: 'off' }); sent = null; } },
     blur() { held.clear(); },
-    // In front of the plant, facing it.
-    stand() { const spot = home(), g = grid(), p = spot && g && nearestOpen(g, spot) || spot || new THREE.Vector3(); return { x: p.x, z: p.z, yaw: spot ? Math.atan2(spot.x - p.x, spot.z - p.z) : 0 }; },
-    pose() { return { from: from.clone().add(wobble), look: look.clone().add(wobble), fov: FOV, hands: false, wide: true }; }, // wide: more across on a phone held upright (camera.js)
+    // In front of plant i, facing it.
+    stand(i = plant) { const spot = home(i), g = grid(), p = spot && g && nearestOpen(g, spot) || spot || new THREE.Vector3(); return { x: p.x, z: p.z, yaw: spot ? Math.atan2(spot.x - p.x, spot.z - p.z) : 0 }; },
+    pose() { return { from: from.clone().add(wobble), look: gaze.clone().add(wobble), fov: FOV, hands: false, wide: true }; }, // wide: more across on a phone held upright (camera.js)
     click() { return false; }, // presses steer (below)
     // A key while playing: true if it's one of the snake's (office.js leaves it be); held keys don't repeat.
     key(code, down) {
@@ -225,11 +243,16 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
     update(dt, reduced) {
       if (!active && (linger -= dt) <= 0) { root.visible = false; return; }
       const g = grid(); root.visible = !!s && !!g; if (!root.visible) return;
-      const near = blocks();
-      if (active) for (const happened of tick(s, g, dt, near)) {
-        if (happened === 'eat' && !reduced) model.gulp();
-        if (happened === 'bump') { bumped = true; bump(); }
-        if (happened === 'crash' || happened === 'bump') { if (!reduced) shake = 1; if (s.best > best) { best = s.best; try { localStorage.setItem(BEST, String(best)); } catch { /* no storage here */ } } }
+      const near = blocks(); dress();
+      if (active) {
+        const happened = tick(s, g, dt, near);
+        for (const h of happened) {
+          if (h === 'eat' && !reduced) model.gulp();
+          if (h === 'bump') { bumped = true; bump(); }
+          if (h === 'crash' || h === 'bump') { if (!reduced) shake = 1; if (s.best > best) { best = s.best; try { localStorage.setItem(BEST, String(best)); } catch { /* no storage here */ } } }
+        }
+        // Where it is, for the meeting: as often as due says, on the game's own clock.
+        if (due(sent, s.time, s.mode, happened.length > 0)) { send(pack(s, plant)); sent = { at: s.time, mode: s.mode }; }
       }
       draw(dt, reduced, g, near); if (active) showScore();
     },
@@ -250,7 +273,7 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
     if (fresh) { follow.copy(at); } else follow.lerp(at, 1 - Math.exp(-dt * FOLLOW));
     let room = NEAREST; while (room < BACK && openAt(g, follow.x - ahead.x * (room + 0.05), follow.z - ahead.z * (room + 0.05))) room += 0.05;
     distance = fresh ? room : distance + (room - distance) * (1 - Math.exp(-dt * (room < distance ? IN : OUT))); fresh = false;
-    from.copy(follow).addScaledVector(ahead, -distance).setY(UP); look.copy(follow).addScaledVector(ahead, AHEAD * distance / BACK).setY(0.1);
+    from.copy(follow).addScaledVector(ahead, -distance).setY(UP); gaze.copy(follow).addScaledVector(ahead, AHEAD * distance / BACK).setY(0.1);
     wobble.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.12 * shake); shake = Math.max(0, shake - dt * 3);
 
     if (s.apple) beam.material.opacity = reduced ? 0.22 : 0.18 + Math.sin(s.time * 4) * 0.06;

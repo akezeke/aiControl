@@ -206,7 +206,7 @@ function phone(stored) {
   Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true, writable: true });
   globalThis.matchMedia = () => ({ matches: true });
   const on = {}, canvas = { addEventListener: (type, fn) => { on[type] = fn; }, getBoundingClientRect: () => ({ left: 0, width: 400 }) };
-  const bars = [], snake = createSnake({ canvas, grid: () => open, home: () => V(0, 0), score: goal => bars.push(goal) });
+  const bars = [], snake = createSnake({ canvas, grid: () => open, plants: () => [V(0, 0)], score: goal => bars.push(goal) });
   snake.enter();
   const fire = (type, x, y = 0, id = 1) => on[type]({ pointerType: 'touch', pointerId: id, clientX: x, clientY: y });
   const restore = () => { Object.defineProperty(globalThis, 'localStorage', { value: was.storage, configurable: true, writable: true }); globalThis.matchMedia = was.media; if (was.document) globalThis.document = was.document; else delete globalThis.document; };
@@ -293,4 +293,35 @@ test('a minute of play sends under the hub\'s limit', () => {
 test('in play with no step for 2 s it still says so', () => {
   assert.equal(due({ at: 0, mode: 'play' }, 2, 'play', false), true);
   assert.equal(due({ at: 0, mode: 'play' }, 1.9, 'play', false), false);
+});
+
+const canvas = { addEventListener() {}, removeEventListener() {}, getBoundingClientRect: () => ({ left: 0, width: 100 }) };
+
+test('any of the four plants starts the game in front of it and says so', t => {
+  paper(t);
+  const plants = [V(0.5, 0.5), V(9.5, 0.5), V(9.5, 9.5), V(2.4, 9.55)], sent = [], off = (p, x, z) => Math.hypot(p.x - x, p.z - z);
+  const snake = createSnake({ canvas, grid: () => open, plants: () => plants, send: m => sent.push(m), score() {} });
+  for (const [i, p] of plants.entries()) {
+    snake.use(i); const spot = snake.stand(); assert.ok(off(p, spot.x, spot.z) < 1, `${i}: stands by it`);
+    snake.enter(); snake.update(1 / 60);
+    const ready = sent.at(-1); assert.equal(ready.mode, 'ready', `${i}`); assert.equal(ready.plant, i); assert.ok(off(p, ...ready.head) < 1, `${i}: curled at it`);
+    const before = sent.length; snake.key('ArrowUp', true); for (let f = 0; f < 30; f++) snake.update(1 / 60);
+    assert.ok(sent.slice(before).some(m => m.mode === 'play'), `${i}: off`);
+    snake.leave(); assert.deepEqual(sent.at(-1), { type: 'snake', mode: 'off' });
+    const n = sent.length; snake.leave(); assert.equal(sent.length, n, `${i}: off once`);
+    assert.deepEqual(snake.stand(i), spot);
+  }
+});
+
+test('a new look rebuilds the snake', t => {
+  paper(t);
+  let colour = '#3a86ff';
+  const snake = createSnake({ canvas, grid: () => open, plants: () => [V(5, 5)], look: () => ({ fruit: 'pear', colour }), score() {} });
+  snake.use(0); snake.enter(); snake.update(1 / 60);
+  const old = snake.model, tint = m => [...m.body.geometry.attributes.color.array.slice(0, 3)];
+  colour = '#ff5d8f'; snake.update(1 / 60);
+  assert.notEqual(snake.model, old); assert.equal(old.root.parent, null); assert.equal(snake.model.root.parent, snake.root);
+  assert.notDeepEqual(tint(snake.model), tint(old));
+  assert.deepEqual([old.meal.children.length, snake.model.meal.children.length], [1, 2], 'the beam goes with the food');
+  assert.ok(snake.model.head.position.equals(old.head.position), 'drawn where it was');
 });
