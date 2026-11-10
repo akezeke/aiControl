@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTrack, gait, atMeeting, createFriends } from '../client/office/friends.js';
+import { createSnakes } from '../client/office/snakes.js';
 
 // Plays `moves` ([sent s, arrives s, x, extra]) through a track a frame at a time, from 0 to `until` s; the drawn place each frame.
 function play(moves, until, track = createTrack()) {
@@ -77,4 +78,85 @@ test('friends are not clickable', t => {
   friends.move('a', { x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' }); friends.update(0.016);
   const ray = new THREE.Raycaster(new THREE.Vector3(0, 0.8, 5), new THREE.Vector3(0, 0, -1));
   assert.deepEqual(ray.intersectObject(scene.children[0], true), []);
+});
+
+// Watching snakes: Pip (a) at the meeting, as fruit and, once heard, as a snake, on a clock the test moves (`frame` moves it
+// on and updates both); the fruit's hidden while the snake's there. Canvases take any drawing, put back after the test.
+const msg = { type: 'snake', mode: 'ready', head: [2.125, 3.125], path: '-'.repeat(15), dir: 1, rate: 8, food: [4.125, 3.125], plant: 2 };
+const off = { type: 'snake', mode: 'off' }, pip = at => ({ id: 'a', name: 'Pip', fruit: 'apple', colour: '#3a86ff', at });
+const shut = (kitchen = false) => ({ kitchen: { inside: () => kitchen, shown: false }, secret: { inside: () => false, shown: false } });
+function watch(t, room = shut()) {
+  const ctx = () => new Proxy({}, { get: (o, k) => k in o ? o[k] : k === 'measureText' ? () => ({ width: 50 }) : () => ({ addColorStop() {} }), set: (o, k, v) => { o[k] = v; return true; } }), was = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: ctx }) };
+  t.after(() => { if (was) globalThis.document = was; else delete globalThis.document; });
+  const w = { now: 0, scene: new THREE.Scene() }, clock = () => w.now;
+  w.snakes = createSnakes(w.scene, { room, clock });
+  w.friends = createFriends(w.scene, { room, clock, hidden: id => w.snakes.has(id) });
+  w.friends.sync([pip('meeting')], 'me'); w.snakes.sync([pip('meeting')], 'me'); w.fruit = w.scene.children[0];
+  w.friends.move('a', { x: 5, y: 0, z: 5, yaw: 0, pose: 'standing' });
+  w.frame = (dt = 1 / 60) => { w.now += dt; w.snakes.update(dt); w.friends.update(dt); };
+  w.snake = () => w.scene.children.find(c => c !== w.fruit) ?? null;
+  w.tag = () => w.snake().children.find(c => c.isSprite).getWorldPosition(new THREE.Vector3());
+  return w;
+}
+
+test('a player with a snake is hidden, and the snake carries their name', t => {
+  const w = watch(t);
+  w.frame(); assert.equal(w.fruit.visible, true);
+  w.snakes.heard('a', msg); w.frame();
+  assert.equal(w.fruit.visible, false); assert.equal(w.snakes.taken(2), 'Pip'); assert.equal(w.snakes.taken(0), null);
+  const tag = w.tag(); assert.ok(Math.abs(tag.x - 2.125) < 0.05 && Math.abs(tag.z - 3.125) < 0.05, `${tag.x} ${tag.z}`);
+  w.scene.updateMatrixWorld(); const ray = new THREE.Raycaster(new THREE.Vector3(2.125, 2, 3.125), new THREE.Vector3(0, -1, 0)); // down onto its head
+  assert.deepEqual(ray.intersectObject(w.snake(), true), [], 'not clickable');
+});
+
+test('the tag follows the head', t => {
+  const w = watch(t);
+  w.snakes.heard('a', msg); w.frame();
+  w.snakes.heard('a', { ...msg, mode: 'play', head: [2.375, 3.125], path: '3' + '-'.repeat(14) });
+  for (let k = 0; k < 8; k++) w.frame(1 / 64);
+  assert.ok(Math.abs(w.tag().x - 2.375) < 0.05, `${w.tag().x}`);
+});
+
+test('off, silence or going home takes the snake away', t => {
+  const w = watch(t), gone = why => { assert.equal(w.snakes.has('a'), false, why); assert.equal(w.snake(), null, why); };
+  w.snakes.heard('a', msg); w.frame(); const group = w.snake();
+  w.snakes.heard('a', off); w.frame();
+  gone('off'); assert.equal(group.parent, null); assert.equal(w.fruit.visible, true, 'the fruit is back');
+  w.snakes.heard('a', msg); w.frame(); assert.equal(w.snakes.has('a'), true);
+  w.now += 5.1; w.frame(); gone('silence'); assert.equal(w.fruit.visible, true, 'the fruit is back');
+  w.snakes.heard('a', msg); w.snakes.sync([pip('home')], 'me'); gone('home');
+  w.snakes.heard('a', msg); gone('not at the meeting: not heard');
+  w.snakes.sync([pip('meeting')], 'me'); w.snakes.heard('a', msg); w.snakes.sync([pip('meeting')], 'me', false); gone('you left');
+  w.snakes.heard('a', msg); gone('you are not there: not heard');
+});
+
+test('a snake in a shut kitchen is hidden', t => {
+  const w = watch(t, shut(true));
+  w.snakes.heard('a', msg); w.frame();
+  assert.equal(w.snake().visible, false);
+});
+
+test('a snake rebuilt or dropped frees what it made, not what it shares', t => {
+  const w = watch(t);
+  w.snakes.heard('a', msg); w.frame();
+  const group = w.snake(), sprite = group.children.find(c => c.isSprite), model = () => group.children.find(c => !c.isSprite);
+  const freed = new Set(), mark = (...things) => { for (const x of things) x.addEventListener('dispose', () => freed.add(x)); return things; };
+  // A model's own: its tube and the tube's material. Shared: the head piece and the fruit food.
+  const food = m => m.children[2].children[0].children[0], own = m => mark(m.children[0].geometry, m.children[0].material);
+  const shares = m => mark(m.children[1].children[0].geometry, food(m).geometry, food(m).material);
+  const first = model(), made = own(first), shared = shares(first), [oldTag] = mark(sprite.material.map);
+  assert.equal(food(first).material.userData.shared, true);
+  // A new colour: a new model, and the name redrawn in it.
+  w.snakes.sync([{ ...pip('meeting'), colour: '#ff5d8f' }], 'me'); w.frame();
+  const second = model();
+  assert.notEqual(second, first); assert.equal(first.parent, null, 'the old look leaves');
+  assert.ok(made.every(x => freed.has(x)), 'its tube is freed'); assert.ok(freed.has(oldTag) && sprite.material.map !== oldTag, 'the name redrawn');
+  assert.ok(shared.every(x => !freed.has(x)), 'what it shared is kept');
+  const tag = mark(sprite.material, sprite.material.map), again = own(second), kept = shares(second);
+  w.snakes.heard('a', off);
+  assert.equal(group.parent, null); assert.equal(second.parent, null);
+  assert.ok([...tag, ...again].every(x => freed.has(x)), 'model and tag freed'); assert.ok(kept.every(x => !freed.has(x)), 'what it shared is kept');
+  w.snakes.heard('a', msg); w.frame(); const [last] = mark(w.snake().children.find(c => c.isSprite).material);
+  w.snakes.dispose(); assert.equal(w.snake(), null); assert.equal(w.snakes.has('a'), false); assert.ok(freed.has(last), 'dispose frees them too');
 });

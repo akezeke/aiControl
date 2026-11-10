@@ -62,8 +62,8 @@ export const gait = speed => speed < 0.3 ? 'standing' : speed < 3 ? 'walking' : 
 // Who's drawn: everyone at the meeting but you.
 export const atMeeting = (roster, me) => roster.filter(p => p.at === 'meeting' && p.id !== me);
 
-// The name in their colour on a dark plate, drawn once per name.
-function tag(name, colour) {
+// The name in their colour on a dark plate, drawn once per name (snakes.js puts it over their snake's head too).
+export function tag(name, colour) {
   const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 64;
   const g = canvas.getContext('2d');
   g.font = 'bold 40px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -74,8 +74,8 @@ function tag(name, colour) {
   return texture;
 }
 
-// `clock`: seconds, the same for when a move's heard and when it's drawn.
-export function createFriends(scene, { room, reducedMotion = () => false, clock = () => performance.now() / 1000 }) {
+// `clock`: seconds, the same for when a move's heard and when it's drawn. `hidden(id)`: they're shown some other way (as their snake).
+export function createFriends(scene, { room, reducedMotion = () => false, clock = () => performance.now() / 1000, hidden = () => false }) {
   const friends = new Map(), tracks = new Map(); // tracks: everyone's moves, even before they're built (the roster and their move can arrive either way round)
   let time = 0;
 
@@ -102,7 +102,7 @@ export function createFriends(scene, { room, reducedMotion = () => false, clock 
         if (!p || f.look !== `${p.fruit}${p.colour}`) { drop(f); friends.delete(id); }
         else if (f.name !== p.name) { f.name = p.name; f.sprite.material.map.dispose(); f.sprite.material.map = tag(p.name, p.colour); }
       }
-      for (const [id, p] of here) if (!friends.has(id)) { const f = build(p); friends.set(id, f); f.root.visible = tracks.has(id); }
+      for (const [id, p] of here) if (!friends.has(id)) { const f = build(p); friends.set(id, f); f.root.visible = tracks.has(id) && !hidden(id); }
     },
     // A position message: where they are (feet on the floor), which way they face, what they're doing and when (`t`).
     move(id, m) {
@@ -115,8 +115,8 @@ export function createFriends(scene, { room, reducedMotion = () => false, clock 
       for (const f of friends.values()) {
         const at = tracks.get(f.id)?.at(when, f.at); if (!at) continue;
         f.root.position.set(at.x, at.y, at.z); f.root.rotation.y = at.yaw;
-        // In a shut room they're behind its wall.
-        const p = f.root.position; f.root.visible = !(room.kitchen.inside(p) && !room.kitchen.shown) && !(room.secret.inside(p) && !room.secret.shown);
+        // Out as their snake, or in a shut room behind its wall.
+        const p = f.root.position; f.root.visible = !hidden(f.id) && !(room.kitchen.inside(p) && !room.kitchen.shown) && !(room.secret.inside(p) && !room.secret.shown);
         if (!f.root.visible) continue;
         const h = f.fruit.height, pose = at.pose, run = pose === 'running', moving = run || pose === 'walking';
         const target = poseTargets('walking', moving && !still ? t * (run ? RUNNING : 1) : 0, moving ? f.seed : 0, f.fruit);

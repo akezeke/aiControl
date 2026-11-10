@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { walkGrid, index, CELL } from '../client/office/path.js';
 import { createSnake, newSnake, turn, go, step, tick, reach, settled, roomy, placeApple, pack, unpack, due, KEEP, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
 import { createSnakeModel, snakeColours, spine } from '../client/office/snake-model.js';
+import { movedOn, createPlayback } from '../client/office/snakes.js';
 import { fruitFood } from '../client/office/fruit.js';
 import { shared } from '../client/office/furniture.js';
 import { checkUp, COLOURS, FRUITS } from '../client/office/meeting.js';
@@ -293,6 +294,66 @@ test('a minute of play sends under the hub\'s limit', () => {
 test('in play with no step for 2 s it still says so', () => {
   assert.equal(due({ at: 0, mode: 'play' }, 2, 'play', false), true);
   assert.equal(due({ at: 0, mode: 'play' }, 1.9, 'play', false), false);
+});
+
+// Watching: a sender in the middle of the open floor, going, with no apple unless a test puts one down; heard as pack says it.
+const sender = () => { const s = newSnake(open, V(5, 5), 0, first); s.apple = null; go(s); return s; };
+const steps = (s, n) => { for (let i = 0; i < n; i++) assert.equal(step(s, open), 'step'); };
+const catchUp = p => { for (let f = 0; f < 600 && p.waiting; f++) p.advance(1 / 60); assert.equal(p.waiting, 0); };
+
+test('heard cells are queued and played at the sender\'s rate', () => {
+  const s = sender(), p = createPlayback();
+  p.heard(pack(s, 0)); steps(s, 2); p.heard(pack(s, 0));
+  assert.equal(p.waiting, 2);
+  p.advance(0.001); assert.equal(p.waiting, 1, 'a snap leaves acc at 1: the first goes at once');
+  p.advance(1 / s.rate); assert.equal(p.waiting, 0);
+  assert.deepEqual(p.s.body, s.body); assert.equal(p.s.dir, s.dir);
+});
+
+test('more than 3 waiting plays faster until caught up', () => {
+  const s = sender(), p = createPlayback();
+  p.heard(pack(s, 0)); steps(s, 6); p.heard(pack(s, 0));
+  p.advance(0.001 + 0.5 / s.rate); assert.equal(p.waiting, 4, 'two in half a step\'s time: at the sender\'s pace it would be 5');
+  for (let k = 0; k < 24 && p.waiting; k++) p.advance(3 / s.rate / 24);
+  assert.equal(p.waiting, 0, 'still quick with 3 or fewer left'); assert.deepEqual(p.s.body, s.body);
+});
+
+test('a body that doesn\'t follow on snaps', () => {
+  const s = sender(), p = createPlayback();
+  p.heard(pack(s, 0)); steps(s, 2); p.heard(pack(s, 0));
+  const elsewhere = newSnake(open, V(2, 8), 0, first);
+  assert.equal(movedOn(s.body, elsewhere.body), -1);
+  p.heard(pack(elsewhere, 0));
+  assert.deepEqual(p.s.body, elsewhere.body); assert.deepEqual(p.s.prev, elsewhere.body, 'nothing drawn between'); assert.equal(p.waiting, 0);
+});
+
+test('it gulps where the food was, then shows the new food', () => {
+  const s = sender(), food = at(...s.body[0], DIRS[s.dir], DIRS[s.dir]), p = createPlayback();
+  s.apple = food; p.heard(pack(s, 0));
+  assert.equal(step(s, open), 'step'); assert.equal(step(s, open), 'eat'); p.heard(pack(s, 0));
+  assert.equal(p.waiting, 2); assert.deepEqual(p.food, food);
+  assert.equal(p.advance(0.001), null); assert.deepEqual(p.food, food);
+  assert.equal(p.advance(1 / s.rate), 'gulp'); assert.deepEqual(p.s.body[0], food);
+  assert.deepEqual(p.food, s.apple); assert.notDeepEqual(s.apple, food);
+});
+
+test('growing while queued ends on the heard body', () => {
+  const s = sender(), p = createPlayback();
+  s.apple = at(...s.body[0], DIRS[s.dir]); p.heard(pack(s, 0));
+  assert.equal(step(s, open), 'eat'); p.heard(pack(s, 0));
+  for (let i = 0; i < 4; i++) { steps(s, 1); p.heard(pack(s, 0)); }
+  assert.equal(p.waiting, 5); assert.equal(s.body.length, LENGTH + GROW);
+  catchUp(p); assert.deepEqual(p.s.body, s.body);
+});
+
+test('out of order: the older message snaps back to it, and the next follows on', () => {
+  const s = sender(), said = [pack(s, 0)];
+  for (let i = 1; i <= 6; i++) { steps(s, 1); said.push(pack(s, 0)); }
+  const p = createPlayback();
+  p.heard(said[5]); p.heard(said[3]);
+  assert.deepEqual(p.s.body, unpack(said[3])); assert.equal(p.waiting, 0);
+  p.heard(said[6]); assert.equal(p.waiting, 3);
+  catchUp(p); assert.deepEqual(p.s.body, s.body);
 });
 
 const canvas = { addEventListener() {}, removeEventListener() {}, getBoundingClientRect: () => ({ left: 0, width: 100 }) };
