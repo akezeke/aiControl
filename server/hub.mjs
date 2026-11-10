@@ -78,10 +78,9 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     if (!state.players[id] && Object.keys(state.players).length >= PLAYERS) throw fail(429, 'The hub is full.');
     const host = hostId(), old = state.players[id], asked = COLOURS.includes(body.colour) ? body.colour : undefined;
     if (body.join === false && !signedIn(id, at, host)) throw fail(403, 'Signed out.', { why: old?.out ? 'removed' : 'away' });
-    if (asked) {
-      const others = held(id, at);
-      if (others.has(asked)) throw fail(409, COLOURS.every(c => others.has(c)) ? 'All colours are taken.' : 'That colour is taken.', { why: 'colour', taken: COLOURS.filter(c => others.has(c)) });
-    }
+    // A colour someone else holds is refused, and so is coming in with none when none is left: at most 8 signed in, one each.
+    const others = held(id, at), taken = COLOURS.filter(c => others.has(c)), full = taken.length === COLOURS.length;
+    if (asked ? others.has(asked) : full) throw fail(409, full ? 'All colours are taken.' : 'That colour is taken.', { why: 'colour', taken });
     const day = dayKey(new Date(at)), player = state.players[id] ??= { name, scores: {}, seen: 0 };
     if (body.join !== false) delete player.out;
     player.name = name; player.scores = merge(player.scores, clean(body.scores, day)); player.seen = at;
@@ -118,8 +117,8 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
       // Another protocol is told why (its AI Control says to update) and let go, rather than misread.
       if (m.v !== PROTOCOL) { put(ws, { type: 'refused', why: 'version' }); return ws.close(4002); }
       // The colour asked if no one else holds it, else yours, else (an entry with none) the first free one, else refused.
-      const player = state.players[p.token], others = held(p.token, now());
-      const colour = COLOURS.includes(m.colour) && !others.has(m.colour) ? m.colour : player.colour && !others.has(player.colour) ? player.colour : player.colour ? null : COLOURS.find(c => !others.has(c)) ?? m.colour;
+      const player = state.players[p.token], others = held(p.token, now()), free = c => COLOURS.includes(c) && !others.has(c);
+      const colour = [m.colour, player.colour].find(free) ?? (player.colour ? null : COLOURS.find(free));
       if (!colour) return put(ws, { type: 'refused', why: 'colour' });
       player.colour = colour; player.seen = now(); later();
       p.id = Array.from(randomBytes(8), b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');

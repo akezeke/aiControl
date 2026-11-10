@@ -138,6 +138,14 @@ test('all eight held: "All colours are taken."', async t => {
   for (let i = 0; i < 8; i++) assert.equal((await h.post({ ...join_(`P${i}`, 'abcdefgh'[i]), join: true, colour: COLOURS[i] })).status, 200);
   const r = await h.post({ ...join_('Late', 'z'), join: true, colour: COLOURS[3] });
   assert.equal(r.status, 409); assert.equal((await r.json()).error, 'All colours are taken.');
+  // At most 8 signed in: coming in with no colour, there's none left to have.
+  for (const body of [{ ...join_('Late', 'z'), join: true }, join_('Late', 'z')]) {
+    const none = await h.post(body);
+    assert.equal(none.status, 409); assert.deepEqual(await none.json(), { error: 'All colours are taken.', why: 'colour', taken: COLOURS });
+  }
+  for (let i = 0; i < 8; i++) assert.equal((await h.post({ ...join_(`P${i}`, 'abcdefgh'[i]), join: i % 2 === 0, colour: COLOURS[i] })).status, 200, 'owners still sync and rejoin');
+  const board = await (await h.post({ ...join_('P0', 'a'), join: false, colour: COLOURS[0] })).json();
+  assert.equal(board.players.length, 8, 'the refusals added no one');
 });
 test('the board says who is signed in and their colour; a POST with no colour holds none', async t => {
   let skew = 0; const h = await hub({ now: () => Date.now() + skew }); t.after(() => h.close());

@@ -133,17 +133,18 @@ test("a flooder cut off relays nothing more, even one that never reads the hub's
   assert.equal((await b.quiet('pos', 200)).length, 0);
 });
 
-test('a ninth visitor is refused', async t => {
-  const h = await setup(t), ps = [];
-  for (let i = 0; i < 9; i++) ps.push(await h.join(String.fromCharCode(97 + i), {}, { colour: COLOURS[i % 8] }));
-  for (const p of ps.slice(0, 8)) p.send({ type: 'where', at: 'meeting' });
-  await lastRoster(ps[0]);
-  ps[8].send({ type: 'where', at: 'meeting' });
-  assert.equal((await ps[8].next('refused')).why, 'full');
-  assert.equal((await lastRoster(ps[0])).find(p => p.id === ps[8].welcome.id).at, 'home');
-  ps[0].ws.close(); await new Promise(r => setTimeout(r, 100));
-  ps[8].send({ type: 'where', at: 'meeting' }); await new Promise(r => setTimeout(r, 100));
-  assert.equal((await lastRoster(ps[1])).find(p => p.id === ps[8].welcome.id).at, 'meeting');
+// One colour each, so a ninth never gets as far as a seat: their Join is refused, and so is the hello of an entry with no colour.
+test('a ninth player is refused: no colour left to sign in with or say hello in', async t => {
+  const h = await setup(t, { players: { z: { name: 'z', scores: {}, seen: Date.now() } } }), ps = [];
+  for (let i = 0; i < 8; i++) ps.push(await h.join(String.fromCharCode(97 + i), {}, { colour: COLOURS[i] }));
+  for (const p of ps) p.send({ type: 'where', at: 'meeting' });
+  const late = await h.post({ token: token('i'), name: 'i', scores: {} });
+  assert.equal(late.status, 409); assert.deepEqual(await late.json(), { error: 'All colours are taken.', why: 'colour', taken: COLOURS });
+  const z = await h.connect('z', { signed: false });
+  z.send({ type: 'hello', v: PROTOCOL, name: 'z', fruit: 'apple', colour: COLOURS[0] });
+  assert.deepEqual(await z.next('refused'), { type: 'refused', why: 'colour' });
+  const roster = await lastRoster(ps[0]);
+  assert.equal(roster.length, 8); assert.ok(roster.every(p => p.at === 'meeting')); assert.equal(new Set(roster.map(p => p.colour)).size, 8);
 });
 
 test('the same token twice keeps one player', async t => {
