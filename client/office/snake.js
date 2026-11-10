@@ -33,20 +33,21 @@ const shut = (s, grid, blocks) => {
   const d = DIRS[s.turns.length ? (s.dir + s.turns[0] + 4) % 4 : s.dir], next = [s.body[0][0] + d[0] * SPAN, s.body[0][1] + d[1] * SPAN];
   return !openAt(grid, ...next) || inside(blocks, next) || (s.grow > 0 ? s.body : s.body.slice(0, -1)).some(b => same(b, next));
 };
-const centre = (grid, k) => [grid.left + (k % grid.cols + 0.5) * CELL, grid.back + (Math.floor(k / grid.cols) + 0.5) * CELL];
+export const centre = (grid, k) => [grid.left + (k % grid.cols + 0.5) * CELL, grid.back + (Math.floor(k / grid.cols) + 0.5) * CELL];
 
 // A cell's four neighbours on the grid (-1 off its side; off its top or bottom is past the ends of the cells).
 const around = (k, cols) => [k - cols, k + cols, k % cols ? k - 1 : -1, k % cols < cols - 1 ? k + 1 : -1];
 
 // How many steps each cell is from `from` round the furniture (-1: no way there). ponytail: the body doesn't block it, so an
-// apple can land behind the snake's own coils; fine until the snake fills whole aisles.
-export function reach(grid, from) {
+// apple can land behind the snake's own coils; fine until the snake fills whole aisles. Cells whose centre is inside one of
+// `blocks` are shut too, but the start cell always counts.
+export function reach(grid, from, blocks = []) {
   const { cols, open } = grid, steps = new Int32Array(open.length).fill(-1), queue = new Int32Array(open.length), start = index(grid, { x: from[0], z: from[1] });
   if (start < 0) return steps;
   let tail = 0; steps[start] = 0; queue[tail++] = start;
   for (let q = 0; q < tail; q++) {
     const k = queue[q];
-    for (const n of around(k, cols)) if (n >= 0 && open[n] && steps[n] < 0) { steps[n] = steps[k] + 1; queue[tail++] = n; }
+    for (const n of around(k, cols)) if (n >= 0 && open[n] && steps[n] < 0 && !(blocks.length && inside(blocks, centre(grid, n)))) { steps[n] = steps[k] + 1; queue[tail++] = n; }
   }
   return steps;
 }

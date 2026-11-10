@@ -414,3 +414,10 @@ test('a new look rebuilds the snake', t => {
   assert.deepEqual([old.meal.children.length, snake.model.meal.children.length], [1, 2], 'the beam goes with the food');
   assert.ok(snake.model.head.position.equals(old.head.position), 'drawn where it was');
 });
+
+test('reach minds blocks: cells whose centre is inside a red circle are shut, the start always counts', () => {
+  const lane = { left: 0, back: 0, cols: 1, rows: 8, open: new Uint8Array(8).fill(1) };
+  const steps = reach(lane, [0.125, 0.125], [{ x: 0.125, z: 1.125, r: 0.2 }]);
+  assert.equal(steps[2], 2); assert.equal(steps[4], -1); assert.equal(steps[7], -1); // the cell at 1.125 m is shut, and so is all past it
+  assert.equal(reach(lane, [0.125, 0.125], [{ x: 0.125, z: 0.125, r: 0.05 }])[1], 1); // standing in one still starts
+});
