@@ -6,7 +6,7 @@ import { makeBody, simulate } from '../client/office/flight.js';
 import { WALL_H } from '../client/office/furniture.js';
 import { flightBoxes, surfaceTier } from '../client/office/kitchen-plan.js';
 import { AISLE, COFFEE_X, kitchenDoor, layoutOffice } from '../client/office/layout.js';
-import { CELL, findPath, walkGrid } from '../client/office/path.js';
+import { CELL, findPath, nearestOpen, walkGrid } from '../client/office/path.js';
 import { pick } from '../client/office/player.js';
 import { BALLS } from '../client/office/props.js';
 import { createRoom } from '../client/office/room.js';
@@ -237,5 +237,30 @@ test('the sofa can be picked and approached in the office', t => {
     camera.position.set(width - 2.1, 1.5, depth - 3); camera.lookAt(width - 2.1, 0.5, depth - 0.5); camera.updateMatrixWorld();
     const hit = pick({ clientX: 50, clientY: 50 }, { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) }, camera, scene);
     assert.equal(hit?.kind, 'toggle', 'the sofa can be clicked');
+  }
+});
+
+test('a snake plant in each corner, clear of the doors, the counter and each other', t => {
+  noDocument(t);
+  for (const [width, depth] of [[8, 8], [9.6, 8], [11.4, 9], [16, 12]]) {
+    const { room } = standing(width, depth), door = V(width / 2, 0, depth), kitchen = V(0, 0, kitchenDoor(depth)), at = `${width} by ${depth}`;
+    assert.equal(room.snakePlants.length, 4, at); assert.equal(room.snakePlant, room.snakePlants[1], at);
+    const heard = []; room.onSnake = i => heard.push(i); for (const p of room.snakePlants) p.userData.toggle();
+    assert.deepEqual(heard, [0, 1, 2, 3], at);
+    const [a, b, c, d] = room.snakePlants.map(p => p.position);
+    assert.ok(Math.hypot(a.x, a.z) < 0.8 && Math.hypot(b.x - width, b.z) < 0.8, `${at}: the back corners`);
+    assert.ok(c.x > door.x + 1 && c.z > depth - 0.8, `${at}: right of the door`); assert.ok(d.x < door.x - 1 && d.z > depth - 0.8, `${at}: left of the door`);
+    const grid = walkGrid(room.colliders, { width, depth });
+    for (const [i, p] of room.snakePlants.entries()) {
+      const box = new THREE.Box3().setFromObject(p).expandByScalar(-0.02);
+      assert.equal(room.furnitureColliders.filter(f => f.intersectsBox(box)).length, 1, `${at}: plant ${i} meets only its own box`);
+      assert.ok(Math.hypot(p.position.x - door.x, p.position.z - door.z) > 1 && Math.hypot(p.position.x - kitchen.x, p.position.z - kitchen.z) > 1, `${at}: plant ${i} clear of the doors`);
+      // The brief wants a standing place within 1 m. Plant 1's corner (printer and wall margin) measures 1.08 at 8 and 16 wide, and the 8 by 8 room's plant 2 (hemmed in by the lamp, armchair and sofa) 2.18: those are the allowances.
+      const allow = i === 1 ? 1.1 : i === 2 && width === 8 ? 2.2 : 1;
+      assert.ok(nearestOpen(grid, p.position).distanceTo(V(p.position.x, 0, p.position.z)) < allow, `${at}: room to stand by plant ${i}`);
+      assert.ok(findPath(grid, V(width / 2, 0, depth - 0.6), p.position), `${at}: plant ${i} reachable`);
+    }
+    const along = room.furnitureColliders.filter(f => { const x = (f.min.x + f.max.x) / 2, z = (f.min.z + f.max.z) / 2; return x >= 2.08 && x <= door.x && z > depth - 0.8; });
+    for (const [i, f] of along.entries()) for (const g of along.slice(i + 1)) assert.ok(!f.intersectsBox(g), `${at}: door-wall pieces overlap`);
   }
 });

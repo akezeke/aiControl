@@ -468,8 +468,11 @@ export function createRoom(scene, renderer) {
     for (const [i, x] of xs.entries()) {
       if (i) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
     }
-    // The snake plant in the corner starts the snake game (room.onSnake, from office.js; snake.js).
-    place(plant('tree'), 0.5, 0.5); room.snakePlant = place(plant('snake'), width - 0.5, 0.5); room.snakePlant.userData.toggle = () => room.onSnake?.();
+    // A snake plant in each corner starts the snake game, one per player (room.onSnake(index), from office.js; snake.js). Plants 0 and 1 are
+    // the back corners, 2 and 3 the front ones either side of the door (placed with the lounge and the coffee corner below). room.snakePlant is the old single one.
+    room.snakePlants = [];
+    const snakePlant = (x, z) => { const i = room.snakePlants.length, p = place(plant('snake'), x, z); p.userData.toggle = () => room.onSnake?.(i); room.snakePlants.push(p); return p; };
+    snakePlant(0.5, 0.5); room.snakePlant = snakePlant(width - 0.5, 0.5);
 
     // Door in the front wall, facing into the room, with a coat rack, an extinguisher and the light switch beside it. In a
     // meeting it goes to the host's office and back (room.onDoor, from office.js; visit.js).
@@ -522,7 +525,7 @@ export function createRoom(scene, renderer) {
     sign.add(sign.userData.face, led); room.coffeeSign = sign;
     hang(front, mugShelf(), spot - width / 2, 1.75, 0.11);
     hang(front, notes('coffee', [[0, 0.05, 0.08, NOTE.yellow], [0.07, -0.05, -0.12, NOTE.green]]), spot - 0.75 - width / 2, 1.25, 0.004);
-    bin('#3a3d46', spot + 1.3, depth - 0.3);
+    bin('#3a3d46', spot + 1.9, depth - 0.3);
     if (depth - 3.05 > depth / 2 + 1.65) place(waterCooler(), 0.24, depth - 3.05, Math.PI / 2);
     if (depth - 3.65 > depth / 2 + 1.65) place(plant('bush'), 0.42, depth - 3.65);
 
@@ -547,10 +550,12 @@ export function createRoom(scene, renderer) {
     place(armchair(), width - 0.6, depth - 1.75, -Math.PI / 2); shadowUnder(width - 0.6, depth - 1.75, 0.9, 0.95);
     place(lowTable(), lx, depth - 1.65); shadowUnder(lx, depth - 1.65, 1.2, 0.7);
     place(floorLamp(), width - 0.38, depth - 0.38);
-    if (lx - 1.3 > door.x + 1.4) place(plant('snake'), lx - 1.3, depth - 0.45);
+    // Plant 2: by the sofa when that's clear of the door, else by the floor lamp. Plant 3: beside the coffee counter.
+    if (lx - 1.3 > door.x + 1.4) snakePlant(lx - 1.3, depth - 0.45); else snakePlant(width - 0.88, depth - 0.45);
+    snakePlant(COFFEE_X + 1.35, depth - 0.45);
     hang(front, picture(0, 1.2, 0.8), lx - width / 2, 1.85);
     // Front wall between the coffee corner and the boards: a picture and a plant when there's room.
-    if (door.x - 2.2 > 3.4) { hang(front, picture(5, 0.8, 0.8), (2.6 + door.x - 2.2) / 2 - width / 2, 1.7); place(plant('bush'), door.x - 2.6, depth - 0.45); }
+    if (door.x - 2.2 > 3.4) { hang(front, picture(5, 0.8, 0.8), (2.6 + door.x - 2.2) / 2 - width / 2, 1.7); place(plant('bush'), Math.max(door.x - 2.6, COFFEE_X + 2.55), depth - 0.45); }
 
     // Low-Hanging Fruit's cutouts along the walls (cutouts.js): one mesh, walked round by their boxes and thrown at by their cards and struts.
     const cutouts = officeCutouts({ width, depth, cellW });
