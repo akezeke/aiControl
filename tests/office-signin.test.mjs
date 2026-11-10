@@ -161,3 +161,16 @@ test('what a refusal said goes with putting the slip away, Leave, and a Join tha
   on.refused({ type: 'refused', why: 'colour' }); refuse = false; await join();
   assert.equal(swatch(5).disabled, false, 'a Join that works'); assert.equal(said(), undefined);
 });
+
+test('signed out for being away: the code input is not required and says Saved code', async t => {
+  const was = globalThis.document; t.after(() => { if (was === undefined) delete globalThis.document; else globalThis.document = was; });
+  const { container, all } = fakeDom(); const { createSignIn } = await import('../client/office/signin.js');
+  let state = { joined: false, name: 'Anna', out: 'away', again: true }; const sent = [];
+  const slip = createSignIn(container, { state: () => state, setLook: async () => {}, signIn: async (c, n) => { sent.push([c, n]); }, signOut: async () => {} }); slip.open();
+  const inputs = () => all(container).filter(n => n.tagName === 'INPUT');
+  assert.deepEqual([inputs()[0].required, inputs()[0].placeholder, inputs()[1].value], [false, 'Saved code', 'Anna']);
+  await all(container).find(n => n.tagName === 'FORM').onsubmit({ preventDefault() {} });
+  assert.deepEqual(sent, [['', 'Anna']]);
+  state = { joined: false, name: 'Anna', out: 'removed' }; slip.refresh(); slip.close(); slip.open();
+  assert.deepEqual([inputs()[0].required, inputs()[0].placeholder], [true, 'Meeting code']);
+});

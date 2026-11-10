@@ -215,11 +215,35 @@ test('away 2 days: signed out, keeping the token, the look and the name; joining
   await s.online.join({ code: s.code(), name: 'Anna' }); s.online.look({ fruit: 'pear', colour: COLOURS[2] });
   const token = JSON.parse(readFileSync(s.file, 'utf8')).token;
   skew = AWAY + 60_000;
-  const out = { joined: false, name: 'Anna', out: 'away', look: { fruit: 'pear', colour: COLOURS[2] } };
+  const out = { joined: false, name: 'Anna', out: 'away', look: { fruit: 'pear', colour: COLOURS[2] }, again: true };
   assert.deepEqual(await s.online.sync({ darts: 1 }), out); assert.deepEqual(await s.online.sync({}), out);
   assert.equal(JSON.parse(readFileSync(s.file, 'utf8')).token, token);
   assert.equal((await s.online.join({ code: s.code(), name: 'Anna' })).joined, true);
   assert.equal((await s.online.sync({})).out, undefined);
+});
+test('away keeps the code to rejoin with, never shown; a removal keeps nothing', async t => {
+  let skew = 0; const s = await setup({ hubNow: () => Date.now() + skew }); t.after(() => { s.online.close(); return s.hub.close(); });
+  await s.online.join({ code: s.code(), name: 'Anna' }); skew = AWAY + 60_000;
+  const out = await s.online.sync({}); assert.equal(out.out, 'away'); assert.equal(out.again, true);
+  assert.equal(JSON.stringify(out).includes(s.code().split('/').pop()), false, 'the code stays on the server');
+  assert.equal(s.online.status().again, true);
+  const gone = createOfficeOnline({ file: join(dir(), 'g.json'), fetch: async (u, init) => JSON.parse(init.body).join ? new Response(JSON.stringify({ day: '2026-11-09', players: [] }), { status: 200 }) : new Response(JSON.stringify({ why: 'removed' }), { status: 403 }) });
+  await gone.join({ code: `x.ts.net/${K}`, name: 'Anna' });
+  const removed = await gone.sync({}); assert.equal(removed.out, 'removed'); assert.equal('again' in removed, false);
+  assert.equal(await status(gone.join({ code: '', name: 'Anna' })), 400, 'nothing kept to rejoin with');
+});
+test('a blank code rejoins with the kept one, a typed code wins, a replaced code clears it', async t => {
+  let skew = 0; const s = await setup({ hubNow: () => Date.now() + skew }); t.after(() => { s.online.close(); return s.hub.close(); });
+  await s.online.join({ code: s.code(), name: 'Anna' }); skew = AWAY + 60_000; await s.online.sync({});
+  assert.equal(await status(s.online.join({ code: `127.0.0.1:1/${K}`, name: 'Anna' })), 502, 'typed code wins: it is tried, not the kept one');
+  assert.equal(s.online.status().again, true, 'a failed typed join keeps it');
+  const back = await s.online.join({ code: '  ', name: 'Anna' }); assert.equal(back.joined, true);
+  assert.equal(JSON.parse(readFileSync(s.file, 'utf8')).again, undefined, 'a join leaves none behind');
+  skew = 2 * (AWAY + 60_000); await s.online.sync({}); assert.equal(s.online.status().again, true);
+  await s.hub.close(); newKey(s.hubFile); const hub2 = await startHub({ file: s.hubFile, port: s.port }); t.after(() => hub2.close());
+  const e = await s.online.join({ code: '', name: 'Anna' }).catch(e => e);
+  assert.equal(e.status, 403); assert.equal(e.message, 'That code is wrong or has been replaced.');
+  assert.equal(s.online.status().again, undefined); assert.equal(s.online.status().out, 'away');
 });
 test('a colour someone holds: Join throws with what is taken; a sync stays joined and says so until you pick another', async t => {
   const s = await setup(); t.after(() => { s.online.close(); return s.hub.close(); });

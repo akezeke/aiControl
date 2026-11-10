@@ -105,8 +105,9 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     const m = checkUp({ type: 'look', fruit: saved.fruit, colour: saved.colour });
     return m ? { fruit: m.fruit, colour: m.colour } : { fruit: identity(`player:${(saved.name || '').toLowerCase()}`).fruit, colour: COLOURS[0] };
   };
-  // Not joined: signed out by the hub (away 2 days, or removed) keeps the name and look, and says which.
-  const signedOut = () => ({ joined: false, ...saved.out && { name: saved.name, out: saved.out, look: look() } });
+  // Not joined: signed out by the hub (away 2 days, or removed) keeps the name and look, and says which. Away also keeps the
+  // code to rejoin with (`saved.again`); the page only hears that there is one, never the code.
+  const signedOut = () => ({ joined: false, ...saved.out && { name: saved.name, out: saved.out, look: look(), ...saved.out === 'away' && saved.again && { again: true } } });
   const kept = () => ({ token: saved.token, ...saved.fruit && { fruit: saved.fruit, colour: saved.colour } });
   // The hub's hostKey when this machine runs the hub you joined, else null.
   const hostKey = () => {
@@ -269,7 +270,8 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
 
     async join({ code, name } = {}) {
       load();
-      const { url, key } = parseCode(code), clean = cleanName(name);
+      // A blank code rejoins with the one kept when you were signed out for being away; a typed code always wins.
+      const rejoin = !String(code ?? '').trim() && saved.again, { url, key } = rejoin ? saved.again : parseCode(code), clean = cleanName(name);
       if (!clean) throw fail('Use 1–16 letters or numbers.', 400);
       if (!saved.token) save({ ...saved, token: randomBytes(18).toString('base64url') });
       let reply;
@@ -277,7 +279,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       if (reply.status === 409 && reply.why === 'colour') throw Object.assign(fail(reply.taken.length >= COLOURS.length ? 'All colours are taken.' : 'That colour is taken.', 409), { taken: reply.taken });
       if (reply.status === 409) throw fail('That name is taken in this meeting.', 409);
       // Not 401: from this server, the page reads a 401 as locked and shows the PIN screen.
-      if (reply.status === 401) throw fail('That code is wrong or has been replaced.', 403);
+      if (reply.status === 401) { if (rejoin) { const { again, ...rest } = saved; save(rest); } throw fail('That code is wrong or has been replaced.', 403); }
       if (reply.status === 429) throw fail('The meeting is full or busy.', 429);
       if (reply.status !== 200 || !reply.board) throw fail("The meeting can't be reached.", 502);
       save({ ...kept(), url, key, name: clean });
@@ -300,7 +302,9 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
           const reply = await ask(saved.url, saved.key, saved.name, scores, { join: false, ...colour() });
           if (reply.status === 401) return result({ error: 'code' });
           if (reply.status === 403) {
-            save({ ...kept(), name: saved.name, out: reply.why === 'removed' ? 'removed' : 'away' });
+            // Away keeps the code for a one-press rejoin; a removal by the host keeps nothing to come back with.
+            const out = reply.why === 'removed' ? 'removed' : 'away';
+            save({ ...kept(), name: saved.name, out, ...out === 'away' && { again: { url: saved.url, key: saved.key } } });
             last = null; sent = ''; at = -Infinity; refusal = null; resettle();
             return signedOut();
           }
