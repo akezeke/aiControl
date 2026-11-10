@@ -35,6 +35,7 @@ import { ComposerInput, followKeyboard } from './composer-input.js';
 import { attachment, imageFiles, maxImages, releaseImages } from './composer-images.js';
 import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown, renderDocument } from './message-markdown.js';
+import { copyText } from './copy-text.js';
 import { documentSegments, matchDocument } from './document-links.js';
 import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
@@ -146,6 +147,7 @@ const icons = {
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>',
   terminal: '<path d="m5 7 5 5-5 5m8 0h6"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
+  copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9m-4 4 3 3m-6 0 2 2"/>',
   theme: '<circle cx="12" cy="12" r="8"/><path d="M12 4v16"/><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/>',
@@ -1443,6 +1445,25 @@ function messageNode(message, session, previous) {
     more.append(toggle, rest); article.append(more);
   }
   if (message.truncated) article.append(el('span', 'muted', 'Long message shortened.'));
+  const actions = el('div', 'message-actions'), copy = el('button', 'message-copy');
+  const label = message.truncated ? 'Copy available text (message shortened)' : 'Copy message';
+  copy.type = 'button'; copy.title = label; copy.setAttribute('aria-label', label); copy.append(icon('copy'));
+  let reset, copying = false;
+  copy.onclick = async () => {
+    if (copying) return;
+    clearTimeout(reset); copying = true;
+    try {
+      // Copy the source, including blocks hidden behind Read more, without rendered HTML or metadata.
+      await copyText(message.text);
+      copy.replaceChildren(icon('check')); copy.title = 'Copied'; copy.setAttribute('aria-label', 'Copied');
+      toast(message.truncated ? 'Copied available text (message shortened)' : 'Copied');
+    } catch { toast('Copy failed. Select the message and copy it manually.'); }
+    finally {
+      copying = false;
+      reset = setTimeout(() => { copy.replaceChildren(icon('copy')); copy.title = label; copy.setAttribute('aria-label', label); }, 1500);
+    }
+  };
+  actions.append(copy); article.append(actions);
   return article;
 }
 

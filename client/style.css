@@ -307,6 +307,10 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .tool-call::before { content: '›'; margin-right: 7px; color: var(--accent); font-weight: 700; }
 .message-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; font-size: 11px; color: var(--text-3); }
 .message-meta strong { font-weight: 600; color: var(--text-2); }
+.message-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+.message-copy { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 5px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-3); }
+.message-copy:hover:not(:disabled), .message-copy:focus-visible { background: var(--panel-2); color: var(--text); }
+@media (pointer: coarse) { .message-copy { width: 36px; height: 36px; } }
 .message-text { overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text); }
 .message-text > * { margin: 0 0 .65em; }
 .message-text > :first-child { margin-top: 0; }
