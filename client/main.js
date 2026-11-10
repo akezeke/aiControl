@@ -277,7 +277,7 @@ async function api(path, body, options = {}) {
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 401 && path !== 'login') showLogin();
-    throw Object.assign(new Error(data.error || 'Could not connect to AI Control.'), { code: data.code });
+    throw Object.assign(new Error(data.error || 'Could not connect to AI Control.'), { code: data.code, taken: data.taken });
   }
   return data;
 }

@@ -219,7 +219,7 @@ export function drawScores({ g, width: w, height: h }, progress, key, tops = {})
 // its hub won't take this version.
 export function meetingLines(state) {
   if (!state?.joined) return { title: 'Meetings', lines: ['Join one here'], closed: null };
-  const host = hostName(state.host), me = state.name.toLowerCase(), players = state.board?.players ?? [];
+  const host = hostName(state.host), me = state.name.toLowerCase(), all = state.board?.players ?? [], players = all.some(p => p.in) ? all.filter(p => p.in) : all;
   const mine = players.find(p => p.name.toLowerCase() === me)?.name ?? state.name;
   const others = players.filter(p => p.name.toLowerCase() !== me).sort((a, b) => b.seen - a.seen).map(p => p.host ? `${p.name} (host)` : p.name);
   return { title: `Meeting at ${host}`, lines: [`${mine} (me)`, ...others].slice(0, 6), closed: state.error === 'code' ? 'New code' : state.outdated ? 'Update AI Control' : state.offline ? 'Off for now' : null };

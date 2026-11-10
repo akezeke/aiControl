@@ -51,7 +51,7 @@ export function createOnline({ api, scores = () => localBests() }) {
       if (!force && text === sent) return;
       try {
         const next = await api('office/scores', { scores: now });
-        if (!next?.offline && !next?.error) sent = text; // a best the hub didn't get goes again next time
+        if (!next?.offline && !next?.error && !next?.refused) sent = text; // a best the hub didn't get goes again next time
         take(next);
       } catch { /* unreachable: keep what's shown */ }
     },
@@ -64,7 +64,7 @@ export function createOnline({ api, scores = () => localBests() }) {
     // was lost): ask again too, and the answer says to update, or `Off for now`.
     follow(live) {
       live.on('welcome', () => { online.sync(true); });
-      live.on('refused', m => { if (m.why === 'version') online.sync(true); });
+      live.on('refused', m => { if (m.why === 'version' || m.why === 'colour' || m.why === 'removed') online.sync(true); });
       live.on('roster', m => { if (!m.players.length && state?.joined) online.sync(true); });
     },
     dispose() { listeners.clear(); },

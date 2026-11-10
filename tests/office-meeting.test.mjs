@@ -30,3 +30,9 @@ test("the host is marked, unless it's you", () => {
 test('at most six names, big enough to read', () => {
   assert.equal(meetingLines({ joined: true, name: 'P0', host: 'pc', board: board(Array.from({ length: 12 }, (_, i) => `P${i}`)) }).lines.length, 6);
 });
+
+test('the clipboard lists who is signed in, or everyone when the hub says nothing of it', () => {
+  const b = board(['Anna', 'Bo', 'Cy']); b.players[0].in = b.players[1].in = true;
+  assert.deepEqual(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: b }).lines, ['Bo (me)', 'Anna']);
+  assert.deepEqual(meetingLines({ joined: true, name: 'Bo', host: 'pc', board: board(['Anna', 'Bo', 'Cy']) }).lines, ['Bo (me)', 'Cy', 'Anna']);
+});

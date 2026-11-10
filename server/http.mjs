@@ -168,6 +168,6 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
       const match = /^\/api\/requests\/([a-f0-9-]{36})\/respond$/.exec(path);
       if (match && req.method === 'POST') { await store.respond(match[1], await body(req)); auth.touch(session); json(res, 200, { ok: true }); return; }
       throw fail('Not found.', 404);
-    } catch (error) { if (!res.headersSent) json(res, error.status || 500, { error: error.status ? error.message : 'The server could not complete this request.', ...(error.code === 'force_available' ? { code: error.code } : {}) }); else res.end(); }
+    } catch (error) { if (!res.headersSent) json(res, error.status || 500, { error: error.status ? error.message : 'The server could not complete this request.', ...(error.code === 'force_available' ? { code: error.code } : {}), ...(Array.isArray(error.taken) ? { taken: error.taken } : {}) }); else res.end(); }
   };
 }
