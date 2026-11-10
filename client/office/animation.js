@@ -190,6 +190,18 @@ export class Cast {
   // Where to hang a bubble over someone; none once they've gone out of the door.
   positionOf(id) { const c = this.characters.get(id); if (!c?.fruit || !c.root.visible) return null; const p = c.fruit.body.getWorldPosition(new THREE.Vector3()); p.y += c.fruit.height * c.scale + 0.08; return p; }
 
+  // Where everyone at a desk is in the chair and stood up behind it, whichever they're doing now: round columns { x, z, r, top }
+  // (as wide as props.js's, up to the top of a standing head and a little more), for what keeps clear of people (paper planes).
+  spots() {
+    const spots = [];
+    for (const c of this.characters.values()) {
+      if (c.plus || !c.anchor) continue;
+      const { seat, facing } = c.anchor, s = c.scale, r = 0.24 * s, top = (LEG + c.fruit.height + 0.1) * s;
+      for (const z of [SEAT_FORWARD, STAND_BACK]) spots.push({ x: seat.x + Math.sin(facing) * z * s, z: seat.z + Math.cos(facing) * z * s, r, top });
+    }
+    return spots;
+  }
+
   sync(layout, sessions, room, statuses, { animate = true } = {}) {
     const seen = new Set(), still = this.reducedMotion();
     this.door = new THREE.Vector3(layout.door.x, 0, layout.door.z - 0.6);

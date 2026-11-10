@@ -236,6 +236,20 @@ export const printer = () => piece('printer', () => [
 export const filingCabinet = () => piece('filing', () => [
   [box(0.46, 1.02, 0.56, 0, 0.51, 0, 0.02), '#8a96a8'], ...[0.2, 0.52, 0.84].flatMap(y => [[box(0.4, 0.28, 0.012, 0, y, 0.282, 0.004), '#9ba7b8'], [box(0.12, 0.025, 0.025, 0, y + 0.06, 0.295, 0.008), '#3a3d46']]),
 ]);
+// A folded paper plane lying flat, nose to +z: two wings off a keel, either side.
+const dart = () => {
+  const at = [[0, 0.006, 0.15], [0.1, 0.03, -0.1], [0, 0.006, -0.1], [-0.1, 0.03, -0.1], [0, -0.022, -0.09]];
+  const wings = new THREE.BufferGeometry(); wings.setAttribute('position', new THREE.Float32BufferAttribute([[0, 1, 2], [0, 2, 1], [0, 2, 3], [0, 3, 2], [0, 4, 2], [0, 2, 4]].flat().flatMap(i => at[i]), 3));
+  wings.computeVertexNormals(); wings.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(36), 2));
+  return wings;
+};
+// A stack of paper with a folded plane on top (planes.js: the day's course), sitting on its base, long side along z.
+export const paperStack = () => piece('paperStack', () => [
+  ...[0, 1, 2, 3, 4].map(i => [box(0.21, 0.011, 0.297, (jitter(i, 7) - 0.5) * 0.012, 0.0055 + i * 0.011, (jitter(i, 3) - 0.5) * 0.012, 0), i % 2 ? '#f4f2ec' : '#fbfaf6']),
+  [dart().rotateY(0.4).translate(0.01, 0.078, 0), '#ffffff'],
+]);
+// A yellow paper plane on its own (planes.js: endless rings), lying on its keel.
+export const paperPlane = () => piece('paperPlane', () => [[dart().rotateY(-0.5).translate(0, 0.022, 0), '#ffd84a']]);
 export const coatRack = () => piece('coatRack', () => [
   [cyl(0.2, 0.24, 0.04, 0, 0.02, 0, 16), '#5a3d2b'], [cyl(0.025, 0.03, 1.75, 0, 0.9, 0, 8), '#7a5236'], [ball(0.04, 0, 1.79, 0), '#7a5236'],
   ...[0, 1, 2, 3].map(i => [new THREE.CapsuleGeometry(0.012, 0.12, 4, 6).rotateZ(Math.PI / 2 - 0.5).translate(0.06, 1.68, 0).rotateY(i * Math.PI / 2), '#7a5236']),

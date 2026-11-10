@@ -59,7 +59,7 @@ export class OfficeCamera {
   setLayout(layout) { this.overhead.setLayout(layout); }
   // Frames a point (a character) from where you stand; null hands the camera back.
   focus(point) { this.focusPoint = point?.clone() || null; }
-  // A game in the secret room takes the view: `pose()` gives { from, look, fov, hands } in world space; null hands it back.
+  // A game takes the view: `pose()` gives { from, look, fov, hands, wide?, roll? } in world space; null hands it back.
   play(pose) { this.game = !!pose; if (pose) this.pose = pose; }
 
   // Where the view is now. What a game moves after `update` has it again from here, or what it follows is drawn a frame ahead of the view.
@@ -72,6 +72,7 @@ export class OfficeCamera {
     if (game) { this.from.lerp(game.from, this.gameAmount); this.look.lerp(game.look, this.gameAmount); }
     if (this.amount) { const over = this.overhead.pose(); this.from.lerp(over.from, this.amount); this.look.lerp(over.look, this.amount); }
     this.camera.position.copy(this.from); this.camera.lookAt(this.look);
+    if (game?.roll) this.camera.rotateZ(game.roll * this.gameAmount); // a game's view can bank
     return game;
   }
 

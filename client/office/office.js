@@ -28,6 +28,7 @@ import { closeAudio, createTrickshot } from './trickshot.js';
 import { createGolf } from './golf.js';
 import { createPinball } from './pinball.js';
 import { createSnake } from './snake.js';
+import { createPlanes } from './planes.js';
 import { setSkyPlace } from './windows.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
@@ -180,6 +181,14 @@ export function mountOffice(container, hooks) {
   const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), home: () => room.snakePlant?.position, score: (goal, verdict) => overlays.setScore(goal && leaderLine(goal, online.top('snake')[0]), verdict, false),
     blocks: () => goose.root.visible ? [goose.column] : [], bump: () => goose.honk('💢') });
   scene.add(snake.root); room.onSnake = () => onPlay(snake);
+  // Paper planes: from the stack of paper on the filing cabinet by the printer, round the office through the day's rings; from
+  // the yellow plane on the printer, through endless ones.
+  let flown = { of: null, by: null, boxes: [] };
+  const flyable = () => { if (flown.of !== room.flightColliders || flown.by !== room.hanging) flown = { of: room.flightColliders, by: room.hanging, boxes: [...room.flightColliders, ...room.hanging] }; return flown.boxes; };
+  const plane = (home, endless) => createPlanes({ canvas: renderer.domElement, home, endless, grid: () => layout && walkable(), hit: onHit, score: (goal, verdict) => overlays.setScore(goal, verdict, false),
+    world: () => ({ boxes: flyable(), columns: props.aimWorld().columns, get people() { return cast.spots(); }, width: layout?.room.width || 0, depth: layout?.room.depth || 0 }) });
+  const planes = plane(() => room.paperStack, false), endlessPlanes = plane(() => room.paperPlane, true);
+  scene.add(planes.root, endlessPlanes.root); room.onPlanes = () => onPlay(planes); room.onEndless = () => onPlay(endlessPlanes);
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip), online }));
   const boards = createBoards(room);
@@ -372,7 +381,7 @@ export function mountOffice(container, hooks) {
     if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
     // In the secret room or the kitchen the office's bubbles don't show through its walls. The overview looks down on all of it.
     const away = view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
-    snake.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });

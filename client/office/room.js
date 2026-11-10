@@ -15,7 +15,7 @@ import { bays, cardsMesh, officeCutouts } from './cutouts.js';
 import { DESK_W, DESK_D, COFFEE_X, KITCHEN_DOOR_W, kitchenDoor } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
-  counter, coffeeMachine, mugShelf, waterCooler, bookshelf, printer, filingCabinet, coatRack, extinguisher, glowTexture, floorShadow,
+  counter, coffeeMachine, mugShelf, waterCooler, bookshelf, printer, filingCabinet, paperStack, paperPlane, coatRack, extinguisher, glowTexture, floorShadow,
 } from './furniture.js';
 
 export { WALL_H };
@@ -251,7 +251,7 @@ export function createRoom(scene, renderer) {
     secret: createSecret({ onPress: () => room.onSecret?.(), onMove: () => room.refreshFlight() }),
     // The kitchen through the left wall's doors; when it's first built or its doors move, things fly differently (and new things need dimming).
     kitchen: createKitchen({ onMove: () => { room.refreshFlight(); lights.refresh(); } }),
-    colliders: [], flightColliders: [], lintels: [], cutouts: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
+    colliders: [], flightColliders: [], hanging: [], lintels: [], cutouts: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
     // What thrown things meet: what blocks walking, less what's only for walking, plus what you can't walk into (the wall over a
     // doorway). A new list whenever room.colliders changes or a door moves: it's how props.js knows to wake things.
     // ponytail: so things can be thrown into the games room and lie there. Picked up in there they land back in the office, the
@@ -317,6 +317,8 @@ export function createRoom(scene, renderer) {
         if (sign.waiting !== waiting) { sign.waiting = waiting; sign.texture.redraw(waiting); }
       }
       for (const [key, sign] of signs) if (!podKeys.has(key)) { disposeTree(sign.group); signs.delete(key); }
+      // The signs as boxes, board and cords, for paper planes (nothing else goes up there).
+      room.hanging = layout.pods.map(pod => new THREE.Box3(new THREE.Vector3(pod.x - 0.82, 2.13, pod.z - 0.06), new THREE.Vector3(pod.x + 0.82, WALL_H, pod.z + 0.06)));
       room.colliders = [...room.wallColliders, ...room.furnitureColliders, ...solid]; room.refreshFlight();
       lights.refresh();
     },
@@ -526,6 +528,10 @@ export function createRoom(scene, renderer) {
 
     // Right wall: printer and filing cabinet at the back, pictures along it, the lounge in the front corner.
     place(printer(), width - 0.36, 1.25, -Math.PI / 2); place(filingCabinet(), width - 0.32, 2.05, -Math.PI / 2); shadowUnder(width - 0.35, 1.65, 0.65, 1.4);
+    // On the cabinet, paper: its stack starts paper planes (room.onPlanes, from office.js; planes.js), facing into the room.
+    room.paperStack = place(paperStack(), width - 0.32, 2.05, -Math.PI / 2, false); room.paperStack.position.y = 1.02; room.paperStack.userData.toggle = () => room.onPlanes?.();
+    // And a yellow plane on the printer: endless rings (room.onEndless).
+    room.paperPlane = place(paperPlane(), width - 0.36, 1.25, -Math.PI / 2, false); room.paperPlane.position.y = 0.9; room.paperPlane.userData.toggle = () => room.onEndless?.();
     place(notes('printer', [[0.16, 0.76, 0.1, NOTE.pink, 0.2235]]), width - 0.36, 1.25, -Math.PI / 2, false); // on its front
     bin('#2e86ab', width - 0.3, 2.62);
     // From 2, so the lounge's picture 0 comes round late; clear of where the secret shelf slides to.
