@@ -18,11 +18,13 @@ export const spin = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - 
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // Its skin, the bands across its back and its belly: the classic green, or the look's colour with the bands darker and the
-// belly most of the way to cream.
+// belly most of the way to cream. Both worked out on the colour as written (sRGB), as the classic's are: on three's linear
+// working colour, 0.7 darkens only half as much.
 export function snakeColours(look) {
   if (!look) return { skin: '#5cae4f', band: '#3d7d3c', belly: '#f0e2a6' };
-  const c = new THREE.Color(look.colour);
-  return { skin: look.colour, band: `#${c.clone().multiplyScalar(0.7).getHexString()}`, belly: `#${c.lerp(CREAM, 0.7).getHexString()}` };
+  const srgb = THREE.SRGBColorSpace, c = new THREE.Color(look.colour).getRGB({}, srgb), cream = CREAM.getRGB({}, srgb);
+  const hex = f => `#${new THREE.Color().setRGB(f('r'), f('g'), f('b'), srgb).getHexString()}`;
+  return { skin: look.colour, band: hex(k => c[k] * 0.7), belly: hex(k => c[k] + (cream[k] - c[k]) * 0.7) };
 }
 
 // Where a ring goes: the middle of the body `m` segments from the head (segment i's drawn at `points[i]`), corners rounded off

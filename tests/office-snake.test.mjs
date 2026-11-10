@@ -157,6 +157,9 @@ test('a snake in a colour: darker bands and a paler belly; classic with no look'
     const { skin, band, belly } = snakeColours({ fruit: 'apple', colour });
     assert.equal(skin, colour); assert.ok(luminance(band) < luminance(skin) && luminance(belly) > luminance(skin), colour);
   }
+  // Darkened on the colour as written, as the classic's bands are: each channel 0.7 of the skin's.
+  const channels = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)), skin = channels('#3a86ff');
+  channels(snakeColours({ fruit: 'apple', colour: '#3a86ff' }).band).forEach((c, i) => assert.ok(Math.abs(c - Math.round(0.7 * skin[i])) <= 1, `${i} ${c}`));
 });
 
 test('each colour\'s head is built once', t => {
