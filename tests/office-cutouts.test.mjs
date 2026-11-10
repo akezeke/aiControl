@@ -242,21 +242,21 @@ test('the sofa can be picked and approached in the office', t => {
 
 test('a snake plant in each corner, clear of the doors, the counter and each other', t => {
   noDocument(t);
-  for (const [width, depth] of [[8, 8], [9.6, 8], [11.4, 9], [16, 12]]) {
+  for (const [width, depth] of [[8, 8], [8.5, 8], [9, 8], [9.6, 8], [11.4, 9], [16, 12]]) {
     const { room } = standing(width, depth), door = V(width / 2, 0, depth), kitchen = V(0, 0, kitchenDoor(depth)), at = `${width} by ${depth}`;
     assert.equal(room.snakePlants.length, 4, at); assert.equal(room.snakePlant, room.snakePlants[1], at);
     const heard = []; room.onSnake = i => heard.push(i); for (const p of room.snakePlants) p.userData.toggle();
     assert.deepEqual(heard, [0, 1, 2, 3], at);
     const [a, b, c, d] = room.snakePlants.map(p => p.position);
     assert.ok(Math.hypot(a.x, a.z) < 0.8 && Math.hypot(b.x - width, b.z) < 0.8, `${at}: the back corners`);
-    assert.ok(c.x > door.x + 1 && c.z > depth - 0.8, `${at}: right of the door`); assert.ok(d.x < door.x - 1 && d.z > depth - 0.8, `${at}: left of the door`);
+    if (width - 2.1 - 1.3 > door.x + 1.4) assert.ok(c.x > door.x + 1 && c.z > depth - 0.8, `${at}: right of the door`); else assert.ok(c.x > width - 0.8 && c.z > depth - 4, `${at}: on the right wall by the lounge`); assert.ok(d.x < door.x - 1 && d.z > depth - 0.8, `${at}: left of the door`);
     const grid = walkGrid(room.colliders, { width, depth });
     for (const [i, p] of room.snakePlants.entries()) {
       const box = new THREE.Box3().setFromObject(p).expandByScalar(-0.02);
       assert.equal(room.furnitureColliders.filter(f => f.intersectsBox(box)).length, 1, `${at}: plant ${i} meets only its own box`);
       assert.ok(Math.hypot(p.position.x - door.x, p.position.z - door.z) > 1 && Math.hypot(p.position.x - kitchen.x, p.position.z - kitchen.z) > 1, `${at}: plant ${i} clear of the doors`);
-      // The brief wants a standing place within 1 m. Plant 1's corner (printer and wall margin) measures 1.08 at 8 and 16 wide, and the 8 by 8 room's plant 2 (hemmed in by the lamp, armchair and sofa) 2.18: those are the allowances.
-      const allow = i === 1 ? 1.1 : i === 2 && width === 8 ? 2.2 : 1;
+      // The brief wants a standing place within 1 m. Plant 1's corner (printer and wall margin) measures 1.08 at 8 and 16 wide: that's its allowance.
+      const allow = i === 1 ? 1.1 : 1;
       assert.ok(nearestOpen(grid, p.position).distanceTo(V(p.position.x, 0, p.position.z)) < allow, `${at}: room to stand by plant ${i}`);
       assert.ok(findPath(grid, V(width / 2, 0, depth - 0.6), p.position), `${at}: plant ${i} reachable`);
     }

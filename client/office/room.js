@@ -550,8 +550,8 @@ export function createRoom(scene, renderer) {
     place(armchair(), width - 0.6, depth - 1.75, -Math.PI / 2); shadowUnder(width - 0.6, depth - 1.75, 0.9, 0.95);
     place(lowTable(), lx, depth - 1.65); shadowUnder(lx, depth - 1.65, 1.2, 0.7);
     place(floorLamp(), width - 0.38, depth - 0.38);
-    // Plant 2: by the sofa when that's clear of the door, else by the floor lamp. Plant 3: beside the coffee counter.
-    if (lx - 1.3 > door.x + 1.4) snakePlant(lx - 1.3, depth - 0.45); else snakePlant(width - 0.88, depth - 0.45);
+    // Plant 2: by the sofa when that's clear of the door, else on the right wall just behind the armchair (the lounge corner is too hemmed in to stand by it). Plant 3: beside the coffee counter.
+    if (lx - 1.3 > door.x + 1.4) snakePlant(lx - 1.3, depth - 0.45); else snakePlant(width - 0.5, depth - 2.8);
     snakePlant(COFFEE_X + 1.35, depth - 0.45);
     hang(front, picture(0, 1.2, 0.8), lx - width / 2, 1.85);
     // Front wall between the coffee corner and the boards: a picture and a plant when there's room.
