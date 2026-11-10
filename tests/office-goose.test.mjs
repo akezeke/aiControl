@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { walkGrid } from '../client/office/path.js';
-import { COLOURS } from '../client/office/meeting.js';
+import { COLOURS, checkUp } from '../client/office/meeting.js';
 import { createGoose } from '../client/office/goose.js';
 import { standSpots } from '../client/office/goose-plan.js';
 
@@ -197,4 +197,82 @@ test("a hidden watcher's goose ignores events; its first plan's carry puts the b
   a.run(0.1);
   assert.deepEqual(a.said, []); assert.deepEqual(a.woken, []); assert.deepEqual(a.ghosts, []); assert.ok(!mug.carried); assert.ok(a.player.position.equals(from));
   a.g.heard(plan({ carry: 'mug' })); a.run(0.1); assert.equal(a.ghosts.at(-1).kind, 'mug');
+});
+
+const keeping = (o = {}) => { const a = goose(o); a.g.roster([P('a', { goose: true })], 'a'); return a; };
+const plans = a => a.sent.filter(m => m.type === 'goose'), events = a => a.sent.filter(m => m.type === 'goosed');
+
+test('a keeper sends plans, on a change at most twice a second and every 2 s, and no random honks', () => {
+  const a = keeping(); a.run(120);
+  const sent = plans(a); assert.ok(sent.length >= 60 && sent.length <= 240, `${sent.length} plans`);
+  for (const m of sent) assert.deepEqual(checkUp(m), m);
+  assert.deepEqual(a.said, []); assert.deepEqual(events(a), []);
+  const home = goose(); home.run(120); assert.ok(home.said.length >= 2, 'honks at home, as before');
+  const still = keeping({ still: true }); still.run(120);
+  assert.ok(plans(still).some(m => m.route.length > 0), "a keeper with reduced motion runs it for everyone");
+});
+
+test("a friend's poke sets off a chase aimed at them, which ends in a nip; a busy friend just gets a honk", () => {
+  let friends = [{ id: 'b', x: 6, z: 3, busy: false }];
+  const a = keeping({ others: () => friends }); a.run(0.1);
+  a.g.heard({ type: 'poke', id: 'b', why: 'click' }); a.run(0.6);
+  assert.deepEqual(events(a)[0], { type: 'goosed', what: 'honk', icon: '🪿' });
+  const chase = plans(a).at(-1); assert.equal(chase.mode, 'chase'); assert.ok(Math.hypot(chase.route.at(-1)[0] - 6, chase.route.at(-1)[1] - 3) < 0.3);
+  assert.ok(a.run(10, () => events(a).some(m => m.what === 'nip')));
+  assert.deepEqual(events(a).find(m => m.what === 'nip'), { type: 'goosed', what: 'nip', who: 'b' });
+  const b = keeping({ others: () => [{ id: 'b', x: 6, z: 3, busy: true }] }); b.run(0.1);
+  b.g.heard({ type: 'poke', id: 'b', why: 'hit' }); b.run(0.6);
+  assert.deepEqual(events(b), [{ type: 'goosed', what: 'honk', icon: '💢' }]); assert.notEqual(b.g.mode, 'chase');
+});
+
+test('a poke while it carries something: the drop goes out before the honk', () => {
+  let friends = [];
+  const mug = { kind: { key: 'mug' }, pos: V(5, 0.05, 5), rest: true };
+  const a = keeping({ things: [mug], others: () => friends });
+  assert.ok(a.run(150, () => events(a).some(m => m.what === 'take')), 'stole the mug');
+  assert.deepEqual(events(a).at(-1), { type: 'goosed', what: 'take', kind: 'mug', spot: [5, 0.05, 5] });
+  friends = [{ id: 'b', x: 2, z: 8, busy: false }]; a.g.heard({ type: 'poke', id: 'b', why: 'took' });
+  assert.deepEqual(events(a).slice(-2), [{ type: 'goosed', what: 'drop' }, { type: 'goosed', what: 'honk', icon: '💢' }]);
+  assert.equal(mug.carried, null);
+});
+
+test('a new arrival gets a plan within half a second', () => {
+  const a = keeping(); a.run(3); const before = plans(a).length;
+  a.g.roster([P('a', { goose: true }), P('b')], 'a'); a.run(0.5); assert.ok(plans(a).length > before);
+});
+
+test('taking over carries on from where the goose is: a walk finishes its route, and the plan goes at once', () => {
+  const a = goose(); a.g.roster([P('a'), P('b', { goose: true })], 'a');
+  a.g.heard({ type: 'goose', id: 'b', at: [2, 2], yaw: 0, mode: 'visit', idle: 'look', speed: 0.75, route: [[4, 2], [4, 4]], carry: null, target: null }); a.run(1);
+  const drawn = a.at(); a.g.roster([P('a', { goose: true }), P('b')], 'a'); a.run(1 / 60);
+  const m = plans(a).at(-1); assert.equal(m.mode, 'walk'); assert.deepEqual(m.route.at(-1), [4, 4]);
+  assert.ok(Math.hypot(m.at[0] - drawn[0], m.at[1] - drawn[1]) < 0.05);
+  const b = goose(); b.g.roster([P('a'), P('b', { goose: true })], 'a');
+  b.g.heard({ type: 'goose', id: 'b', at: [2, 2], yaw: 0, mode: 'chase', idle: 'look', speed: 2.6, route: [[6, 2]], carry: null, target: null }); b.run(0.5);
+  b.g.roster([P('a', { goose: true }), P('b')], 'a'); b.run(1 / 60); assert.equal(plans(b).at(-1).mode, 'loiter');
+  const c = goose(); c.g.roster([P('a'), P('b', { goose: true })], 'a'); // the link drops: an empty roster
+  c.g.heard({ type: 'goose', id: 'b', at: [2, 2], yaw: 0, mode: 'visit', idle: 'look', speed: 0.75, route: [[4, 2], [4, 4]], carry: null, target: null }); c.run(1);
+  const there = c.at(); c.g.roster([], 'a'); c.run(1 / 60);
+  assert.equal(c.g.root.visible, true); assert.equal(c.g.mode, 'walk'); assert.ok(Math.hypot(c.at()[0] - there[0], c.at()[1] - there[1]) < 0.05);
+});
+
+// Rulings beyond the brief: a plan heard at home is carried on from only under 10 s old (the server's limit), and your own
+// charge, nip and shove as keeper; with reduced motion your click or hit just honks there, and a nip doesn't shove you.
+test('keeping it from home: on from a plan heard under 10 s ago, else from where it was', () => {
+  const heard = { type: 'goose', id: 'b', at: [2, 2], yaw: 0, mode: 'walk', idle: 'look', speed: 1, route: [[4, 2]], carry: null, target: null, age: 500 };
+  const a = goose(); a.run(0.5); a.g.heard(heard); a.run(1); a.g.roster([P('a', { goose: true })], 'a'); a.run(1 / 60);
+  assert.ok(Math.hypot(a.at()[0] - 3.5, a.at()[1] - 2) < 0.05, `at ${a.at()}`); assert.equal(a.g.mode, 'walk'); assert.equal(plans(a).length, 1);
+  const b = goose(); b.run(0.5); b.g.heard({ ...heard, age: 0 }); b.run(10.5); const was = b.at();
+  b.g.roster([P('a', { goose: true })], 'a'); b.run(1 / 60); assert.ok(Math.hypot(b.at()[0] - was[0], b.at()[1] - was[1]) < 0.05, 'a stale plan is let be');
+});
+
+test('a keeper charges you and shoves you on a nip; with reduced motion your click or hit only honks, and a nip leaves you be', () => {
+  const near = a => { const [x, z] = a.at(); a.player.position.set(x + 1, 1.6, z); return a.player.position.clone(); };
+  const a = keeping({ busy: false }); a.run(0.1); const from = near(a);
+  assert.ok(a.run(2, () => events(a).some(m => m.what === 'nip')));
+  assert.deepEqual(events(a), [{ type: 'goosed', what: 'honk', icon: '🪿' }, { type: 'goosed', what: 'nip', who: 'a' }]);
+  assert.ok(Math.abs(a.player.position.distanceTo(from) - 0.35) < 1e-6);
+  const b = keeping({ busy: false, still: true }); b.run(0.1); b.g.poke(); b.g.hit();
+  assert.deepEqual(b.said, ['🪿', '💢']); assert.deepEqual(events(b), []); assert.notEqual(b.g.mode, 'chase');
+  const still = near(b); assert.ok(b.run(2, () => events(b).some(m => m.what === 'nip'))); assert.ok(b.player.position.equals(still), 'no shove');
 });
