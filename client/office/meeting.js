@@ -44,6 +44,7 @@ const checks = {
     ? { type: 'pos', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pose: m.pose, ...m.t !== undefined && { t: m.t } } : null,
   throw: m => KINDS.includes(m.kind) && vec(m.pos, 1000) && vec(m.vel, 40) && vec(m.spin, 100) ? { type: 'throw', kind: m.kind, pos: [...m.pos], vel: [...m.vel], spin: [...m.spin] } : null,
   floor: m => { const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
+  remove: m => { const name = cleanName(m.name); return name ? { type: 'remove', name } : null; },
 };
 const run = (table, msg) => own(msg, ['type']) && Object.hasOwn(table, msg.type) ? table[msg.type](msg) : null;
 export const checkUp = msg => run(checks, msg);

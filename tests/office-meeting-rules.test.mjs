@@ -25,6 +25,7 @@ test('checks drop every malformed message', () => {
     { type: 'throw', kind: 'football', pos: [1, 1, 1], vel: [1, 2, 3], spin: [4, 5, 6] },
     { type: 'floor', floor: floor() },
     { type: 'pos', x: 3, y: 0, z: 4.5, yaw: -1.2, pose: 'walking', t: 12345 },
+    { type: 'remove', name: 'Bo' },
   ];
   for (const msg of good) assert.deepEqual(checkUp(msg), msg);
   const bad = [
@@ -50,6 +51,9 @@ test('checks drop every malformed message', () => {
     { type: 'throw', kind: 'mug', pos: [0, 0, NaN], vel: [0, 0, 0], spin: [0, 0, 0] },
     { type: 'floor', floor: { ...floor(), desks: Array.from({ length: 300 }, () => floor().desks[0]) } },
     { type: 'floor', floor: null },
+    { type: 'remove' },
+    { type: 'remove', name: 'x'.repeat(40) },
+    { type: 'remove', name: 5 },
   ];
   for (const msg of bad) assert.equal(checkUp(msg), null, JSON.stringify(msg)?.slice(0, 80));
   assert.deepEqual(checkUp({ ...good[3], extra: 'x' }), good[3]);
