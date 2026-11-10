@@ -78,3 +78,48 @@ test('the slip follows the room while it is up: the colour the hub gave you, the
   assert.equal(all(container).filter(n => n.tagName === 'INPUT')[0], code);
   assert.equal(button('blue').disabled, true);
 });
+
+test('signed out by the hub, or refused a colour: the slip says why', () => {
+  assert.deepEqual(slipMode({ joined: false, name: 'Anna', out: 'away' }), { form: true, signOut: false, said: 'Away 2 days', code: '' });
+  assert.equal(slipMode({ joined: false, name: 'Anna', out: 'removed' }).said, 'Removed by the host');
+  assert.equal(slipMode({ joined: true, name: 'A', host: 'h', refused: 'colour', taken: [COLOURS[1]] }).said, 'That colour is taken.');
+  assert.equal(slipMode({ joined: true, name: 'A', host: 'h', refused: 'colour', taken: COLOURS }).said, 'All colours are taken.');
+});
+test('swatches grey what others hold: roster, signed-in board players, the last refusal; the host gets a chip per player', async t => {
+  const was = globalThis.document; t.after(() => { if (was === undefined) delete globalThis.document; else globalThis.document = was; });
+  const { container, all } = fakeDom(); const { createSignIn, COLOUR_NAMES } = await import('../client/office/signin.js');
+  const players = [{ name: 'Bo', scores: {}, seen: 2, in: true, colour: COLOURS[2] }, { name: 'Cy', scores: {}, seen: 1, colour: COLOURS[3] }, { name: 'Anna', scores: {}, seen: 3, in: true, colour: COLOURS[0] }];
+  let state = { joined: true, name: 'Anna', host: 'h', hosting: true, code: 'h/abc', board: { day: '2026-11-10', players }, refused: 'colour', taken: [COLOURS[4]], look: { fruit: 'apple', colour: COLOURS[0] } };
+  const on = {}, sent = [], live = { roster: () => [{ id: 'me', name: 'Anna', fruit: 'apple', colour: COLOURS[0], at: 'home' }, { id: 'x', name: 'Di', fruit: 'kiwi', colour: COLOURS[1], at: 'home' }], id: () => 'me', on: (type, fn) => { on[type] = fn; }, send: m => sent.push(m) };
+  const slip = createSignIn(container, { state: () => state, setLook: async () => {}, signIn: async () => {}, signOut: async () => {} }, live); slip.open();
+  const swatch = i => all(container).find(n => n.title === COLOUR_NAMES[i]);
+  assert.deepEqual([0, 1, 2, 3, 4].map(i => swatch(i).disabled), [false, true, true, false, true]);
+  const chips = () => all(container).filter(n => n.title?.startsWith('Remove '));
+  assert.deepEqual(chips().map(n => [n.textContent, n.title]), [['Bo ✕', 'Remove Bo']]);
+  chips()[0].onclick(); assert.deepEqual(sent, [{ type: 'remove', name: 'Bo' }]); assert.ok(chips().every(n => n.hidden));
+  state = { ...state, hosting: false, code: undefined }; slip.refresh(); assert.equal(chips().length, 0, 'only the host');
+  state = { ...state, hosting: true, code: 'h/abc', board: { day: '2026-11-10', players: players.map(({ in: _, ...p }) => p) } }; slip.refresh(); assert.equal(chips().length, 0, 'an older hub: no chips');
+});
+test('the live link refusing a colour: said, drawn on the colour you hold, until the next pick; signed out, the name is kept', async t => {
+  const was = globalThis.document; t.after(() => { if (was === undefined) delete globalThis.document; else globalThis.document = was; });
+  const { container, all } = fakeDom(); const { createSignIn, COLOUR_NAMES } = await import('../client/office/signin.js');
+  let state = { joined: true, name: 'Anna', host: 'h', look: { fruit: 'apple', colour: COLOURS[5] } };
+  const on = {}, live = { roster: () => [{ id: 'me', name: 'Anna', fruit: 'apple', colour: COLOURS[1], at: 'home' }], id: () => 'me', on: (type, fn) => { on[type] = fn; }, send() {} };
+  const slip = createSignIn(container, { state: () => state, setLook: async () => {}, signIn: async () => {}, signOut: async () => {} }, live); slip.open();
+  on.refused({ type: 'refused', why: 'colour' });
+  const said = () => all(container).find(n => n.className === 'office-signin-error')?.textContent;
+  const pressed = () => all(container).find(n => n.className === 'office-signin-swatch on')?.title;
+  assert.equal(said(), 'That colour is taken.'); assert.equal(pressed(), COLOUR_NAMES[1]);
+  await all(container).find(n => n.title === COLOUR_NAMES[6]).onclick(); await new Promise(r => setTimeout(r));
+  assert.equal(said(), undefined);
+  state = { joined: false, name: 'Anna', out: 'removed' }; slip.refresh();
+  assert.equal(all(container).filter(n => n.tagName === 'INPUT')[1].value, 'Anna'); assert.equal(said(), 'Removed by the host');
+});
+test('a Join refused a colour greys what it says is taken', async t => {
+  const was = globalThis.document; t.after(() => { if (was === undefined) delete globalThis.document; else globalThis.document = was; });
+  const { container, all } = fakeDom(); const { createSignIn, COLOUR_NAMES } = await import('../client/office/signin.js');
+  const refuse = async () => { throw Object.assign(new Error('That colour is taken.'), { taken: [COLOURS[5]] }); };
+  const slip = createSignIn(container, { state: () => null, setLook: async () => {}, signIn: refuse, signOut: async () => {} }, { roster: () => [], id: () => null }); slip.open();
+  await all(container).find(n => n.tagName === 'FORM').onsubmit({ preventDefault() {} });
+  assert.equal(all(container).find(n => n.title === COLOUR_NAMES[5] && /swatch/.test(n.className)).disabled, true);
+});

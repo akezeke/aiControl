@@ -7,7 +7,7 @@ import { copyText } from './boards.js';
 const el = (tag, props = {}) => Object.assign(document.createElement(tag), props);
 // What the slip offers: the form while not in a meeting or once its code was replaced, Leave whenever you're in one (a
 // replaced code you'll never get again has to be left somehow), and what to say about the hub.
-export const slipMode = state => ({ form: !state?.joined || state.error === 'code', signOut: !!state?.joined, said: state?.error === 'code' ? 'The code was changed' : state?.outdated ? 'Update AI Control' : state?.offline ? 'Off for now' : '', code: state?.hosting && state.code ? state.code : '' });
+export const slipMode = state => ({ form: !state?.joined || state.error === 'code', signOut: !!state?.joined, said: state?.error === 'code' ? 'The code was changed' : state?.outdated ? 'Update AI Control' : state?.out ? (state.out === 'away' ? 'Away 2 days' : 'Removed by the host') : state?.refused === 'colour' ? ((state.taken?.length ?? 0) >= COLOURS.length ? 'All colours are taken.' : 'That colour is taken.') : state?.offline ? 'Off for now' : '', code: state?.hosting && state.code ? state.code : '' });
 
 // What the pickers show: what you just picked, else what you wear in the room (`mine`, pickerState's: the hub hands out
 // another colour when yours is taken), else what's saved.
@@ -24,16 +24,21 @@ export function createSignIn(container, online, live = null) {
   const away = event => { if (!slip.hidden && !slip.contains(event.target)) close(); };
   document.addEventListener('pointerdown', away, true);
   let typed = { code: '', name: '' }, picked = null; // a fruit and colour chosen before joining, kept for Join
+  let note = '', joinTaken = null, gone = new Set(); // the live link's colour refusal; what a refused Join says is taken; names just removed
+  live?.on?.('refused', m => { if (m?.why === 'colour') { note = 'That colour is taken.'; picked = null; render(); } });
 
   // What the slip says now; `error`, what went wrong last. Typed text survives a redraw.
-  function render(error = '') {
-    const state = online.state(), mode = slipMode(state), said = error || mode.said;
+  function render(error = '', taken) {
+    if (taken) joinTaken = taken;
+    const state = online.state(), mode = slipMode(state), said = error || mode.said || note;
     slip.replaceChildren();
     const roster = live?.roster() ?? [], mine = pickerState(roster, live?.id?.()), { fruit, colour } = slipLook(picked, mine, state?.look);
-    const pick = next => { picked = { fruit, colour, ...next }; if (state?.joined) online.setLook(picked.fruit, picked.colour).then(() => { picked = null; render(); }, e => render(e.message)); else render(); };
+    const pick = next => { note = ''; joinTaken = null; picked = { fruit, colour, ...next }; if (state?.joined) online.setLook(picked.fruit, picked.colour).then(() => { picked = null; render(); }, e => render(e.message)); else render(); };
+    const me = state?.name?.toLowerCase(), players = (state?.board?.players ?? []).filter(p => p.in && p.name.toLowerCase() !== me);
+    const held = new Set([...mine.taken, ...players.map(p => p.colour), ...(joinTaken ?? state?.taken ?? [])]);
     const fruits = el('div', { className: 'office-signin-row office-signin-fruit' }), swatches = el('div', { className: 'office-signin-row office-signin-colours' });
     for (const [id, emoji] of FRUITS) { const b = el('button', { type: 'button', textContent: emoji, className: id === fruit ? 'on' : '', title: id }); b.setAttribute('aria-label', id); b.setAttribute('aria-pressed', String(id === fruit)); b.onclick = () => pick({ fruit: id }); fruits.append(b); }
-    COLOURS.forEach((c, i) => { const b = el('button', { type: 'button', className: 'office-signin-swatch' + (c === colour ? ' on' : ''), disabled: mine.taken.has(c) && c !== colour, title: COLOUR_NAMES[i] }); b.style.background = c; b.setAttribute('aria-label', COLOUR_NAMES[i]); b.setAttribute('aria-pressed', String(c === colour)); b.onclick = () => pick({ colour: c }); swatches.append(b); });
+    COLOURS.forEach((c, i) => { const b = el('button', { type: 'button', className: 'office-signin-swatch' + (c === colour ? ' on' : ''), disabled: held.has(c) && c !== colour, title: COLOUR_NAMES[i] }); b.style.background = c; b.setAttribute('aria-label', COLOUR_NAMES[i]); b.setAttribute('aria-pressed', String(c === colour)); b.onclick = () => pick({ colour: c }); swatches.append(b); });
     slip.append(fruits, swatches);
     if (!mode.form) slip.append(el('span', { className: 'office-signin-who', textContent: `${state.name} · at ${state.host}` }));
     else {
@@ -46,7 +51,7 @@ export function createSignIn(container, online, live = null) {
       const go = el('button', { type: 'submit', textContent: 'Join' });
       form.onsubmit = async event => {
         event.preventDefault(); typed = { code: code.value, name: name.value }; go.disabled = true;
-        try { if (picked) { await online.setLook(picked.fruit, picked.colour); picked = null; } await online.signIn(code.value, name.value); typed = { code: '', name: '' }; render(); } catch (e) { render(e.message); }
+        try { if (picked) { await online.setLook(picked.fruit, picked.colour); picked = null; } await online.signIn(code.value, name.value); typed = { code: '', name: '' }; render(); } catch (e) { render(e.message, e.taken); }
       };
       form.append(code, name, go); slip.append(form);
     }
@@ -56,6 +61,13 @@ export function createSignIn(container, online, live = null) {
       const copied = () => { copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 1200); };
       copy.onclick = () => copyText(mode.code, copied, () => { field.focus(); field.select(); });
       slip.append(field, copy);
+      for (const n of [...gone]) if (!players.some(p => p.name.toLowerCase() === n)) gone.delete(n);
+      for (const { name } of players) {
+        if (gone.has(name.toLowerCase())) continue;
+        const chip = el('button', { type: 'button', className: 'office-signin-chip', textContent: `${name} ✕`, title: `Remove ${name}` });
+        chip.onclick = () => { live?.send?.({ type: 'remove', name }); gone.add(name.toLowerCase()); chip.hidden = true; };
+        slip.append(chip);
+      }
     }
     if (mode.signOut) {
       const out = el('button', { type: 'button', textContent: 'Leave', title: `Leave the meeting at ${state.host}` });
