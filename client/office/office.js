@@ -28,6 +28,7 @@ import { closeAudio, createTrickshot } from './trickshot.js';
 import { createGolf } from './golf.js';
 import { createPinball } from './pinball.js';
 import { createSnake } from './snake.js';
+import { createSnakes } from './snakes.js';
 import { createPlanes } from './planes.js';
 import { setSkyPlace } from './windows.js';
 import { createGoose, GOOSE } from './goose.js';
@@ -179,8 +180,10 @@ export function mountOffice(container, hooks) {
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
   // Snake, out on the office floor from whichever corner's snake plant was clicked: you walk to that one (stand) and it starts there.
   const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), plants: () => room.snakePlants?.map(p => p.position) ?? [], score: (goal, verdict) => overlays.setScore(goal && leaderLine(goal, online.top('snake')[0]), verdict, false),
-    blocks: () => goose.root.visible ? [goose.column] : [], bump: () => goose.honk('💢') });
-  scene.add(snake.root); room.onSnake = i => { snake.use(i); onPlay(snake); };
+    blocks: () => goose.root.visible ? [goose.column] : [], bump: () => goose.honk('💢'),
+    look: () => { const me = live.roster().find(p => p.id === live.id()), l = me ?? online.state()?.look; return l ? { fruit: l.fruit, colour: l.colour } : null; }, send: m => { if (atMeeting()) live.send(m); } });
+  // At a meeting, a plant someone's snake is out from says whose it is instead of starting yours.
+  scene.add(snake.root); room.onSnake = i => { const who = atMeeting() && snakes.taken(i); if (who) bubbles.say(`snake-plant-${i}`, '🐍', who); else { snake.use(i); onPlay(snake); } };
   // Paper planes: from the stack of paper on the filing cabinet by the printer, round the office through the day's rings; from
   // the yellow plane on the printer, through endless ones.
   let flown = { of: null, by: null, boxes: [] };
@@ -199,7 +202,7 @@ export function mountOffice(container, hooks) {
   const signIn = createSignIn(container, online, live);
   room.onMeeting = () => { player.unlock(); online.sync(true); signIn.open(); };
   online.watch(() => { boards.meeting(online.state()); signIn.refresh(); live.refresh(); if (!online.state()?.joined) step('left'); });
-  const bubbles = new Bubbles(container, id => office.talkTo(id));
+  const bubbles = new Bubbles(container, id => { if (!id.startsWith('snake-plant-')) office.talkTo(id); });
   // It lets you be in the overview and on your way to someone.
   const goose = createGoose(scene, { props, player, walkable, bounds: () => layout?.room, busy: () => view.overview || !!player.flight || !!office.talking || room.kitchen.inside(player.position),
     reducedMotion: () => reducedAtmosphere(), say: (icon, text) => bubbles.say(GOOSE, icon, text),
@@ -224,14 +227,16 @@ export function mountOffice(container, hooks) {
     fadeIn() { fadeTo(false); },
     build() { const floor = live.floor(); if (!floor) return; hostView = floorSnapshot(floor); if (visiting === null) { visiting = hostName(online.state()?.host ?? ''); switchRooms(); } draw(); },
     place() { play(null); player.jumpTo(...doorSpot()); },
-    goHome() { clearTimeout(asking); live.where('home'); door.close(); if (visiting === null) return; visiting = hostView = null; switchRooms(); draw(); },
+    goHome() { clearTimeout(asking); if (playing === snake) play(null); live.where('home'); door.close(); if (visiting === null) return; visiting = hostView = null; switchRooms(); draw(); },
     nobody() { nobody = true; showDoor(); },
     wait() { clearTimeout(rejoin); rejoin = setTimeout(() => step('timeout'), WAIT_MS); },
   };
   function step(type) { visit = visitStep(visit, { type, reduced: reducedAtmosphere() }); for (const action of visit.then) does[action](); }
   live.on('floor', m => step(m.floor ? 'floor' : 'floorGone'));
   // The others at the meeting walk about the host's office, and your own place goes out while you're at it (visiting, or hosting with your page open).
-  const friends = createFriends(scene, { room, reducedMotion: () => reducedAtmosphere() });
+  const snakes = createSnakes(scene, { room, reducedMotion: () => reducedAtmosphere() });
+  const friends = createFriends(scene, { room, reducedMotion: () => reducedAtmosphere(), hidden: id => snakes.has(id) });
+  const plantTop = i => { const p = room.snakePlants?.[i]?.position; return p ? plantAt.set(p.x, 1.3, p.z) : null; }, plantAt = new THREE.Vector3();
   const atMeeting = () => (visiting !== null || hosting()) && !document.hidden;
   let lastX = 0, lastZ = 0, speed = 0, shownTo = false;
   const mine = { x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' };
@@ -244,10 +249,11 @@ export function mountOffice(container, hooks) {
   };
   const say = () => live.presence(sample(), true);
   // The hub only relays moves, so whoever arrives gets everyone's place sent again; someone standing still would otherwise stay unseen.
-  const meet = () => { shownTo = atMeeting(); friends.sync(live.roster(), live.id(), shownTo); if (shownTo) say(); };
+  const meet = () => { shownTo = atMeeting(); friends.sync(live.roster(), live.id(), shownTo); snakes.sync(live.roster(), live.id(), shownTo); if (shownTo) say(); };
   live.on('roster', meet); live.on('welcome', meet); live.on('roster', () => signIn.refresh()); // the slip's colours: yours, and those taken
   online.follow(live); online.watch(meet); // learning you're hosting (a sync after welcome) starts your presence
   live.on('pos', m => friends.move(m.id, m));
+  live.on('snake', m => { if (shownTo) snakes.heard(m.id, m); });
   // Throws at the meeting: yours go to everyone there, and theirs fly here as copies that move nothing of yours (a shot in the kitchen, else the office's things).
   props.onThrow = trickshot.onThrow = thrown => { if (atMeeting()) live.send({ type: 'throw', ...thrown }); };
   live.on('throw', m => { if (atMeeting()) (m.spin.some(Boolean) ? props : trickshot).ghost(m); }); // a shot has no spin; the office's throws always tumble
@@ -255,7 +261,7 @@ export function mountOffice(container, hooks) {
     const { x, z } = player.position, fast = dt > 0 ? Math.hypot(x - lastX, z - lastZ) / dt : 0, moved = fast > 12 ? 0 : fast; lastX = x; lastZ = z; // a jump (the door) isn't a run
     speed += (moved - speed) * Math.min(1, dt * 12);
     if (atMeeting() !== shownTo) meet();
-    friends.update(dt);
+    friends.update(dt); snakes.update(dt);
     if (!shownTo) return;
     live.presence(sample());
   });
@@ -381,7 +387,7 @@ export function mountOffice(container, hooks) {
     if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
     // In the secret room or the kitchen the office's bubbles don't show through its walls. The overview looks down on all of it.
     const away = view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
-    snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : id.startsWith('snake-plant-') ? plantTop(+id.slice(12)) : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });
@@ -560,7 +566,7 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); clearTimeout(rejoin); live.dispose(); friends.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
+    disposers: [() => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); clearTimeout(rejoin); live.dispose(); friends.dispose(); snakes.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }
