@@ -93,6 +93,19 @@ test('presence goes to the others at the meeting, not the sender or those at hom
   assert.equal((await b.quiet('pos')).length, 0);
 });
 
+test("snakes go to the others at the meeting, with the sender's id", async t => {
+  const h = await setup(t);
+  const [a, b, c, d] = [await h.join('a'), await h.join('b'), await h.join('c'), await h.join('d', { host: true })];
+  for (const p of [a, b]) p.send({ type: 'where', at: 'meeting' });
+  await lastRoster(a);
+  const snake = { type: 'snake', mode: 'play', head: [2.125, 3.375], path: '0011-', dir: 2, rate: 8.4, food: [4.125, 1.875], plant: 3 };
+  a.send(snake);
+  assert.deepEqual(await b.next('snake'), { ...snake, id: a.welcome.id });
+  assert.deepEqual(await d.next('snake'), { ...snake, id: a.welcome.id });
+  assert.equal((await c.quiet('snake')).length, 0); assert.equal((await a.quiet('snake')).length, 0);
+  c.send(snake); assert.equal((await b.quiet('snake')).length, 0);
+});
+
 test('only the host sets the floor; visitors get it when they arrive; it goes null when the host leaves', async t => {
   const h = await setup(t);
   const host = await h.join('h', { host: true }), a = await h.join('a'), b = await h.join('b');

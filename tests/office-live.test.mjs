@@ -88,6 +88,9 @@ test("the host's floor reaches visitors only through meetingFloor", async t => {
   ap.say({ type: 'throw', kind: 'duck', pos: [1, 1, 1], vel: [1, 0, 0], spin: [0, 0, 0] });
   bp.say({ type: 'where', at: 'meeting' });
   await until(() => ap.last('pos') && hp.last('throw') && bp.last('floor'), 'presence, a throw and the floor');
+  const snake = { type: 'snake', mode: 'play', head: [2.125, 3.375], path: '0011-', dir: 2, rate: 8.4, food: [4.125, 1.875], plant: 3 };
+  ap.say(snake); await until(() => hp.last('snake'), "Anna's snake");
+  assert.deepEqual(hp.last('snake'), { ...snake, id: ap.last('welcome').id });
   for (const page of [ap, bp]) assert.ok(!JSON.stringify(page.got).includes('SENTINEL'), JSON.stringify(page.got).slice(0, 200));
   // Only a host sends a floor: a visitor's tick has nothing to send.
   anna.floor(() => { throw new Error('a visitor never reads its snapshot for a floor'); });

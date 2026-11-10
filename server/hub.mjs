@@ -142,7 +142,7 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
       if (m.at === 'meeting' && at('meeting').length >= SEATS) return put(ws, { type: 'refused', why: 'full' });
       p.at = m.at; roster(); if (m.at === 'meeting' && floor) put(ws, { type: 'floor', floor });
     }
-    else if (m.type === 'pos' || m.type === 'throw') relay(ws, m);
+    else if (m.type === 'pos' || m.type === 'throw' || m.type === 'snake') relay(ws, m);
     else if (m.type === 'floor' && ws === hostSocket) { floor = m.floor; const text = JSON.stringify(m); for (const v of at('meeting')) put(v, text); }
   }
   wss.on('connection', (ws, _req, mine) => {
