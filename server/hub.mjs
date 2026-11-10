@@ -11,9 +11,10 @@ import { clean, cleanName, merge } from '../client/office/leaderboard.js';
 import { dayKey } from '../client/office/daily.js';
 import { checkUp, COLOURS, PROTOCOL } from '../client/office/meeting.js';
 
+export const AWAY = 2 * 24 * 60 * 60 * 1000;
 const BODY = 4096, PLAYERS = 32, PER_SECOND = 20, SAVE_MS = 1000, SEATS = 8, LIVE_BYTES = 64 * 1024;
 const sha = value => createHash('sha256').update(value).digest();
-const fail = (status, error) => Object.assign(new Error(error), { status });
+const fail = (status, error, extra = {}) => Object.assign(new Error(error), { status, ...extra });
 
 function save(file, state) {
   const temporary = `${file}.${randomBytes(6).toString('hex')}.tmp`;
@@ -55,26 +56,44 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
   const later = () => { if (!timer) { timer = setTimeout(() => { timer = null; write(); }, SAVE_MS); timer.unref(); } };
   const flush = () => { if (!timer) return writing; clearTimeout(timer); timer = null; return write(); };
 
+  const byToken = new Map(), joined = new Set();
+  const hostId = () => { const token = hostToken(); return typeof token === 'string' ? sha(token).toString('hex') : null; };
+  // Signed in: the host always; anyone connected; anyone not removed who was on within AWAY.
+  const signedIn = (id, at, host) => { const p = state.players[id]; return id === host || (!!p && !p.out && (byToken.has(id) || at - p.seen < AWAY)); };
+  // The colours held by anyone but `id`: other signed-in entries' and other live sockets'.
+  const held = (id, at) => {
+    const host = hostId(), colours = new Set();
+    for (const [other, p] of Object.entries(state.players)) if (other !== id && p.colour && signedIn(other, at, host)) colours.add(p.colour);
+    for (const ws of joined) if (ws.p.token !== id && ws.p.colour) colours.add(ws.p.colour);
+    return colours;
+  };
+
   async function scores(req, at) {
     const given = /^Bearer (.+)$/.exec(req.headers.authorization || '')?.[1];
     if (!given || !timingSafeEqual(sha(given), key)) throw fail(401, 'Wrong code.');
     const body = await readBody(req), name = cleanName(body?.name);
     if (typeof body?.token !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(body.token) || !name) throw fail(400, 'Bad player.');
     const id = sha(body.token).toString('hex'), lower = name.toLowerCase();
-    if (Object.entries(state.players).some(([other, p]) => other !== id && p.name.toLowerCase() === lower)) throw fail(409, 'That name is taken.');
+    if (Object.entries(state.players).some(([other, p]) => other !== id && p.name.toLowerCase() === lower)) throw fail(409, 'That name is taken.', { why: 'name' });
     if (!state.players[id] && Object.keys(state.players).length >= PLAYERS) throw fail(429, 'The hub is full.');
+    const host = hostId(), old = state.players[id], asked = COLOURS.includes(body.colour) ? body.colour : undefined;
+    if (body.join === false && !signedIn(id, at, host)) throw fail(403, 'Signed out.', { why: old?.out ? 'removed' : 'away' });
+    if (asked) {
+      const others = held(id, at);
+      if (others.has(asked)) throw fail(409, COLOURS.every(c => others.has(c)) ? 'All colours are taken.' : 'That colour is taken.', { why: 'colour', taken: COLOURS.filter(c => others.has(c)) });
+    }
     const day = dayKey(new Date(at)), player = state.players[id] ??= { name, scores: {}, seen: 0 };
+    if (body.join !== false) delete player.out;
     player.name = name; player.scores = merge(player.scores, clean(body.scores, day)); player.seen = at;
+    if (asked) player.colour = asked; else delete player.colour;
     later();
-    const hostId = (token => typeof token === 'string' ? sha(token).toString('hex') : null)(hostToken());
-    return { day, players: Object.entries(state.players).map(([id, { name, scores, seen }]) => ({ name, scores, seen, ...id === hostId && { host: true } })) };
+    return { day, players: Object.entries(state.players).map(([id, { name, scores, seen, colour }]) => ({ name, scores, seen, ...id === host && { host: true }, ...signedIn(id, at, host) && { in: true, colour } })) };
   }
 
 
   // The live room, in memory only: one connection per token. Each joined connection carries `p`: its look, where it is
   // ('home' or 'meeting') and its message window. What a peer says is cleaned by checkUp before anything is relayed.
   const wss = new WebSocketServer({ noServer: true, maxPayload: LIVE_BYTES });
-  const byToken = new Map(), joined = new Set();
   let floor = null, hostSocket = null;
   // A reader that lets a megabyte pile up is cut off rather than buffered for. `put` takes a message or, sent to many, its text.
   const put = (ws, m) => { if (ws.readyState !== 1) return; if (ws.bufferedAmount > 1 << 20) return ws.terminate(); ws.send(typeof m === 'string' ? m : JSON.stringify(m)); };
@@ -153,7 +172,7 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
       const board = await scores(req, at);
       res.end(JSON.stringify(board));
     } catch (error) {
-      res.statusCode = error.status || 500; res.end(JSON.stringify({ error: error.status ? error.message : 'Hub error.' }));
+      res.statusCode = error.status || 500; res.end(JSON.stringify({ error: error.status ? error.message : 'Hub error.', ...error.why && { why: error.why }, ...error.taken && { taken: error.taken } }));
       if (!error.status) console.error(error);
     }
   });

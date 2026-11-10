@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hubState, newKey, startHub } from '../server/hub.mjs';
+import { AWAY, hubState, newKey, startHub } from '../server/hub.mjs';
 import { dayKey } from '../client/office/daily.js';
+import { COLOURS } from '../client/office/meeting.js';
+const DAY = 86_400_000;
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), 'hub-')), 'hub.json');
 const token = c => c.repeat(22);
@@ -32,7 +34,7 @@ test('registers and answers the board', async t => {
   assert.equal(res.status, 200);
   assert.equal(board.day, dayKey(new Date()));
   assert.equal(board.players.length, 1);
-  assert.deepEqual({ ...board.players[0], seen: 0 }, { name: 'Anna', scores: {}, seen: 0 });
+  assert.deepEqual({ ...board.players[0], seen: 0 }, { name: 'Anna', scores: {}, seen: 0, in: true });
   assert.equal(typeof board.players[0].seen, 'number');
 });
 
@@ -48,7 +50,7 @@ test("a name is one token's", async t => {
   await h.post(join_('Anna', 'a'));
   const taken = await h.post(join_('anna', 'b'));
   assert.equal(taken.status, 409);
-  assert.match((await taken.json()).error, /taken/);
+  const why = await taken.json(); assert.match(why.error, /taken/); assert.equal(why.why, 'name');
   assert.equal((await h.post(join_('Annie', 'a'))).status, 200);
   const board = await (await h.post(join_('anna', 'b'))).json();
   assert.deepEqual(board.players.map(p => p.name).sort(), ['Annie', 'anna']);
@@ -102,4 +104,47 @@ test('newKey replaces the key and keeps the players', async () => {
     const board = await (await again.post(join_('Anna'), key)).json();
     assert.deepEqual(board.players.map(p => p.name), ['Anna']);
   } finally { await again.close(); }
+});
+
+test('a sign-in lasts 2 days from when you were last on; a Join signs you back in', async t => {
+  let skew = 0; const h = await hub({ now: () => Date.now() + skew }); t.after(() => h.close());
+  assert.equal(AWAY, 2 * DAY);
+  assert.equal((await h.post({ ...join_('Anna'), join: true })).status, 200);
+  skew = AWAY - 60_000; assert.equal((await h.post({ ...join_('Anna'), join: false })).status, 200);
+  skew += AWAY + 60_000; const away = await h.post({ ...join_('Anna'), join: false });
+  assert.equal(away.status, 403); assert.equal((await away.json()).why, 'away');
+  assert.equal((await h.post(join_('Anna'))).status, 200, 'no join flag: an older page, always a Join');
+  skew += AWAY + 60_000; assert.equal((await h.post({ ...join_('Anna'), join: true })).status, 200);
+});
+test('the host never lapses', async t => {
+  let skew = 0; const h = await hub({ now: () => Date.now() + skew, hostToken: () => token('h') }); t.after(() => h.close());
+  await h.post({ ...join_('Host', 'h'), join: true }); skew = 10 * AWAY;
+  assert.equal((await h.post({ ...join_('Host', 'h'), join: false })).status, 200);
+});
+test('a colour is held while its owner is signed in, and comes free when they change it or lapse', async t => {
+  let skew = 0; const h = await hub({ now: () => Date.now() + skew }); t.after(() => h.close());
+  assert.equal((await h.post({ ...join_('Anna', 'a'), join: true, colour: COLOURS[0] })).status, 200);
+  const taken = await h.post({ ...join_('Bo', 'b'), join: true, colour: COLOURS[0] });
+  assert.equal(taken.status, 409); assert.deepEqual(await taken.json(), { error: 'That colour is taken.', why: 'colour', taken: [COLOURS[0]] });
+  const board = await (await h.post({ ...join_('Bo', 'b'), join: true, colour: COLOURS[1] })).json();
+  assert.deepEqual(board.players.map(p => p.name), ['Anna', 'Bo'], 'the refusal changed nothing');
+  await h.post({ ...join_('Anna', 'a'), join: false, colour: COLOURS[2] });
+  assert.equal((await h.post({ ...join_('Cy', 'c'), join: true, colour: COLOURS[0] })).status, 200, 'changing frees the old one');
+  skew = AWAY + 60_000;
+  assert.equal((await h.post({ ...join_('Di', 'd'), join: true, colour: COLOURS[1] })).status, 200, 'Bo lapsed');
+});
+test('all eight held: "All colours are taken."', async t => {
+  const h = await hub(); t.after(() => h.close());
+  for (let i = 0; i < 8; i++) assert.equal((await h.post({ ...join_(`P${i}`, 'abcdefgh'[i]), join: true, colour: COLOURS[i] })).status, 200);
+  const r = await h.post({ ...join_('Late', 'z'), join: true, colour: COLOURS[3] });
+  assert.equal(r.status, 409); assert.equal((await r.json()).error, 'All colours are taken.');
+});
+test('the board says who is signed in and their colour; a POST with no colour holds none', async t => {
+  let skew = 0; const h = await hub({ now: () => Date.now() + skew }); t.after(() => h.close());
+  await h.post({ ...join_('Anna', 'a'), join: true, colour: COLOURS[1] });
+  await h.post({ ...join_('Cy', 'c'), join: true, colour: COLOURS[2] }); await h.post(join_('Cy', 'c'));
+  assert.equal((await h.post({ ...join_('Dee', 'd'), join: true, colour: COLOURS[2] })).status, 200); // Cy is still in, holding none
+  skew = AWAY + 60_000;
+  const board = await (await h.post({ ...join_('Bo', 'b'), join: true, colour: COLOURS[2] })).json();
+  assert.deepEqual(board.players.map(p => [p.name, p.in, p.colour]), [['Anna', undefined, undefined], ['Cy', undefined, undefined], ['Dee', undefined, undefined], ['Bo', true, COLOURS[2]]]);
 });
