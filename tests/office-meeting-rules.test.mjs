@@ -17,7 +17,10 @@ const snapshotOf = () => {
 const floor = () => meetingFloor(snapshotOf());
 
 test('checks drop every malformed message', () => {
+  const snake = { type: 'snake', mode: 'play', head: [2.125, 3.375], path: '0011-', dir: 2, rate: 8.4, food: [4.125, 1.875], plant: 3 };
+  const ready = { ...snake, mode: 'ready', path: '-'.repeat(15), food: null };
   const good = [
+    snake, ready, { type: 'snake', mode: 'off' },
     { type: 'hello', v: PROTOCOL, name: 'Ann', fruit: 'apple', colour: COLOURS[0] },
     { type: 'look', fruit: 'banana', colour: COLOURS[1] },
     { type: 'where', at: 'meeting' },
@@ -54,9 +57,16 @@ test('checks drop every malformed message', () => {
     { type: 'remove' },
     { type: 'remove', name: 'x'.repeat(40) },
     { type: 'remove', name: 5 },
+    { ...snake, path: '0014' }, { ...snake, path: '0'.repeat(1201) }, { ...snake, head: [201, 0] }, { ...snake, head: [0] },
+    { ...snake, food: [0, -13] }, { ...snake, food: undefined }, { ...snake, plant: 4 }, { ...snake, plant: 1.5 },
+    { ...snake, mode: 'won' }, { ...snake, dir: 4 }, { ...snake, rate: 0.5 }, { ...snake, rate: 33 },
   ];
   for (const msg of bad) assert.equal(checkUp(msg), null, JSON.stringify(msg)?.slice(0, 80));
   assert.deepEqual(checkUp({ ...good[3], extra: 'x' }), good[3]);
+  assert.deepEqual(checkUp({ type: 'snake', mode: 'off', head: [1, 1] }), { type: 'snake', mode: 'off' });
+  assert.deepEqual(checkDown({ ...snake, id: 'a1' }), { ...snake, id: 'a1' });
+  assert.deepEqual(checkDown({ type: 'snake', mode: 'off', id: 'a1' }), { type: 'snake', mode: 'off', id: 'a1' });
+  assert.equal(checkDown(snake), null);
   assert.equal(PROTOCOL, 1);
   assert.equal(checkUp({ type: 'hello', name: 'Ann', fruit: 'apple', colour: COLOURS[0] }).v, 1, "an AI Control from before the number speaks the first one");
   assert.equal(checkUp({ type: 'hello', v: 7, name: 'Ann', fruit: 'apple', colour: COLOURS[0] }).v, 7, 'the hub decides what a number it does not speak means');

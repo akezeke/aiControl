@@ -45,6 +45,14 @@ const checks = {
   throw: m => KINDS.includes(m.kind) && vec(m.pos, 1000) && vec(m.vel, 40) && vec(m.spin, 100) ? { type: 'throw', kind: m.kind, pos: [...m.pos], vel: [...m.vel], spin: [...m.spin] } : null,
   floor: m => { const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   remove: m => { const name = cleanName(m.name); return name ? { type: 'remove', name } : null; },
+  // A snake game for the watchers: `path` is the body cell by cell from the head ('-' unknown, 0-3 the way to the next), `plant` a plant spot.
+  snake: m => {
+    if (m.mode === 'off') return { type: 'snake', mode: 'off' };
+    const cell = v => Array.isArray(v) && v.length === 2 && v.every(n => num(n, -12, 200));
+    return own(m, ['head', 'path', 'dir', 'rate', 'food', 'plant']) && ['ready', 'play', 'over'].includes(m.mode) && cell(m.head) && (m.food === null || cell(m.food))
+      && typeof m.path === 'string' && /^[0-3-]{0,1200}$/.test(m.path) && Number.isInteger(m.dir) && m.dir >= 0 && m.dir <= 3 && num(m.rate, 1, 32) && Number.isInteger(m.plant) && m.plant >= 0 && m.plant <= 3
+      ? { type: 'snake', mode: m.mode, head: [...m.head], path: m.path, dir: m.dir, rate: m.rate, food: m.food && [...m.food], plant: m.plant } : null;
+  },
 };
 const run = (table, msg) => own(msg, ['type']) && Object.hasOwn(table, msg.type) ? table[msg.type](msg) : null;
 export const checkUp = msg => run(checks, msg);
@@ -60,6 +68,7 @@ const down = {
   },
   pos: withId('pos', ['x', 'y', 'z', 'yaw', 'pose', 't']),
   throw: withId('throw', ['kind', 'pos', 'vel', 'spin']),
+  snake: withId('snake', ['mode', 'head', 'path', 'dir', 'rate', 'food', 'plant']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,
   // The hub's answer to hello: your id in the roster, the colour you got and where you are.
