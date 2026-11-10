@@ -214,6 +214,14 @@ function phone(stored) {
   return { snake, fire, bars, saved, restore, bar: () => bars.at(-1) };
 }
 
+test('food(): where the apple and head are while entered, copies, null once left', t => {
+  const p = phone(); t.after(p.restore);
+  const g = p.snake.game, f = p.snake.food();
+  assert.deepEqual(f, { food: g.apple, head: g.body[0] });
+  f.food[0] += 9; f.head[1] += 9; assert.notDeepEqual(p.snake.food(), f); assert.deepEqual(p.snake.food(), { food: g.apple, head: g.body[0] }, 'copies');
+  p.snake.leave(); assert.equal(p.snake.food(), null);
+});
+
 test('swipe by default: 12 px sideways turns at once, a tap does nothing', t => {
   const p = phone(); t.after(p.restore);
   p.fire('pointerdown', 200); assert.equal(p.snake.game.mode, 'play'); // sets it going

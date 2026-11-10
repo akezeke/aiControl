@@ -114,6 +114,7 @@ export function createFriends(scene, { room, reducedMotion = () => false, clock 
       const still = reducedMotion(), t = still ? 0 : time, when = clock();
       for (const f of friends.values()) {
         const at = tracks.get(f.id)?.at(when, f.at); if (!at) continue;
+        f.placed = true;
         f.root.position.set(at.x, at.y, at.z); f.root.rotation.y = at.yaw;
         // Out as their snake, or in a shut room behind its wall.
         const p = f.root.position; f.root.visible = !hidden(f.id) && !(room.kitchen.inside(p) && !room.kitchen.shown) && !(room.secret.inside(p) && !room.secret.shown);
@@ -127,6 +128,8 @@ export function createFriends(scene, { room, reducedMotion = () => false, clock 
         f.fruit.setBody(target.body); f.fruit.setLimbs(target.limbs, target.elbows);
       }
     },
+    // Where each friend with a position stands, shown or not, for the goose. `busy`: playing a game, or in the kitchen (it keeps off them).
+    positions() { return [...friends.values()].filter(f => f.placed).map(f => ({ id: f.id, x: f.at.x, z: f.at.z, busy: f.at.pose === 'playing' || room.kitchen.inside(f.root.position) })); },
     dispose() { for (const f of friends.values()) drop(f); friends.clear(); tracks.clear(); },
   };
 }

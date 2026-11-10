@@ -233,6 +233,8 @@ export function createSnake({ canvas, grid, plants, look = () => null, send = ()
     // Drawn on while the view comes back. The meeting hears it's gone, once.
     leave() { active = false; held.clear(); linger = 0.6; score(null); shown = ''; if (sent) { send({ type: 'snake', mode: 'off' }); sent = null; } },
     blur() { held.clear(); },
+    // Where the apple and head are, for the goose: copies, and null unless entered, ready or playing, with the apple out.
+    food() { return active && s && (s.mode === 'ready' || s.mode === 'play') && s.apple ? { food: [...s.apple], head: [...s.body[0]] } : null; },
     // In front of plant i, facing it.
     stand(i = plant) { const spot = home(i), g = grid(), p = spot && g && nearestOpen(g, spot) || spot || new THREE.Vector3(); return { x: p.x, z: p.z, yaw: spot ? Math.atan2(spot.x - p.x, spot.z - p.z) : 0 }; },
     pose() { return { from: from.clone().add(wobble), look: gaze.clone().add(wobble), fov: FOV, hands: false, wide: true }; }, // wide: more across on a phone held upright (camera.js)

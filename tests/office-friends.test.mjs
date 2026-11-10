@@ -160,3 +160,23 @@ test('a snake rebuilt or dropped frees what it made, not what it shares', t => {
   w.snakes.heard('a', msg); w.frame(); const [last] = mark(w.snake().children.find(c => c.isSprite).material);
   w.snakes.dispose(); assert.equal(w.snake(), null); assert.equal(w.snakes.has('a'), false); assert.ok(freed.has(last), 'dispose frees them too');
 });
+
+test('foods() lists the food and head of snakes in play, copied; positions() who stands where and whether busy', t => {
+  const w = watch(t);
+  w.snakes.heard('a', { ...msg, mode: 'play', food: [4.125, 1.875] }); w.frame();
+  const [f] = w.snakes.foods();
+  assert.deepEqual(w.snakes.foods(), [{ food: [4.125, 1.875], head: [2.125, 3.125] }]);
+  f.food[0] = 0; f.head[0] = 0; assert.deepEqual(w.snakes.foods(), [{ food: [4.125, 1.875], head: [2.125, 3.125] }], 'copies');
+  w.snakes.heard('a', { ...msg, mode: 'over' }); assert.deepEqual(w.snakes.foods(), []);
+  assert.deepEqual(w.friends.positions(), [{ id: 'a', x: 5, z: 5, busy: false }]);
+  w.friends.positions()[0].x = 0; assert.equal(w.friends.positions()[0].x, 5);
+});
+
+test('positions(): busy while playing, or in the kitchen; none before a position is heard', t => {
+  const w = watch(t);
+  w.friends.move('a', { x: 5, y: 0, z: 5, yaw: 0, pose: 'playing', t: 1000 }); w.frame(1);
+  assert.equal(w.friends.positions()[0].busy, true);
+  const k = watch(t, shut(true)); k.frame();
+  assert.equal(k.friends.positions()[0].busy, true);
+  assert.deepEqual(createFriends(new THREE.Scene(), { room: shut() }).positions(), []);
+});
