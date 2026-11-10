@@ -4,13 +4,14 @@
 import * as THREE from 'three';
 import { piece } from './furniture.js';
 import { toonMaterial, withOutline } from './toon.js';
-import { findPath, nearestOpen } from './path.js';
+import { findPath, nearestOpen, index } from './path.js';
+import { reach as flood } from './snake.js';
 import { standSpots, nearestSpot, nextSpot } from './goose-plan.js';
 
 export const GOOSE = 'goose'; // its id for the bubbles and props.js's hits
 // m/s by mode (you walk at 4), standing in the rest; metres per radian of a leg's swing.
 const SPEED = { walk: 0.75, fetch: 0.75, visit: 0.75, haul: 0.95, sneak: 0.45, chase: 2.6 }, STRIDE = 0.07;
-const NEAR = 1.3, NIP = 0.55, NECK = 0.95, SHOVE = 0.35; // metres
+const NEAR = 1.3, NIP = 0.55, NECK = 0.95, SHOVE = 0.35, BERTH = 0.5; // metres; BERTH: what it keeps off the snake's food on its way by it
 const SHORT = 2.5, LONG = 6, CALM = 8, REPLAN = 0.5; // seconds: a chase for coming close, and for anything worse; then it leaves you be; how often a chase looks for you again
 // Seconds: between honks, thefts, pranks and visits to the food; a loiter; a while at one spot by the food, and at the food in all.
 const HONKS = [20, 40], THEFTS = [40, 90], PRANKS = [45, 120], VISITS = [30, 60], LOITER = [2, 6], MILL = [2, 4], STAY = [6, 12];
@@ -25,6 +26,8 @@ const ROWS = 14, AROUND = 10, THICK = 0.05, THIN = 0.03; // the neck's rings, th
 const REST = { lean: 0.25, turn: 0, len: 0.3, bend: 0.2, bow: 0, pitch: 0.1, look: 0, jaw: 0, wings: 0 };
 const rand = ([a, b]) => a + Math.random() * (b - a), pick = list => list[Math.floor(Math.random() * list.length)];
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+// How near the line from a to b comes to p, all [x, z].
+const gap = ([ax, az], [bx, bz], [px, pz]) => { const dx = bx - ax, dz = bz - az, k = THREE.MathUtils.clamp(((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz || 1), 0, 1); return Math.hypot(ax + dx * k - px, az + dz * k - pz); };
 const ball = (r, x, y, z, sx = 1, sy = 1, sz = 1) => new THREE.SphereGeometry(r, 14, 10).scale(sx, sy, sz).translate(x, y, z);
 const beak = (r, h, x, y, z) => new THREE.ConeGeometry(r, h, 10).rotateX(Math.PI / 2).translate(x, y, z); // pointing ahead (+z)
 
@@ -110,11 +113,18 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       if (stand && flat(stand, s.at) < 1.2 && go(stand, 'sneak')) { victim = s; return; }
     }
   };
-  // Off to the snake's food nearest it, to the nearest spot 0.75–1 m from it that still leaves the snake a way in (goose-plan.js).
+  // A way to the stand spot `s` that keeps BERTH off the food all along, so it never walks over it; or null.
+  const wayTo = (s, food) => {
+    const way = findPath(walkable(), at, new THREE.Vector3(s[0], 0, s[1]));
+    return way?.every((p, i) => gap(i ? [way[i - 1].x, way[i - 1].z] : [at.x, at.z], [p.x, p.z], food) >= BERTH) ? way : null;
+  };
+  // Off to the snake's food nearest it: to the nearest spot 0.75–1 m from it that still leaves the snake a way in (goose-plan.js)
+  // and has a way there. Only the spots it can get to are kept (one flood from where it stands), so no search for a way is wasted.
   const visit = () => {
     const list = foods(), food = nearestSpot(list.map(f => f.food), [at.x, at.z]); if (!food) return;
-    const spots = standSpots(walkable(), food, list.find(f => f.food === food).head), stand = nearestSpot(spots, [at.x, at.z]);
-    if (stand && go(new THREE.Vector3(stand[0], 0, stand[1]), 'visit')) visiting = { food, spots, spot: stand, leaveAt: Infinity };
+    const grid = walkable(), steps = flood(grid, [at.x, at.z]), far = s => Math.hypot(s[0] - at.x, s[1] - at.z);
+    const spots = standSpots(grid, food, list.find(f => f.food === food).head).filter(s => steps[index(grid, { x: s[0], z: s[1] })] >= 0).sort((a, b) => far(a) - far(b));
+    for (const s of spots) { const way = wayTo(s, food); if (way) { path = way; mode = 'visit'; visiting = { food, spots, spot: s, leaveAt: Infinity }; return; } }
   };
   // A while at a spot by the food, looking about or pecking; its stay counts from first getting there.
   const mill = () => {
@@ -155,11 +165,15 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       // Caught you: a nip, a shove and a honk, and that'll do for a while.
       if (flat(you, at) < NIP) { player.step(dir.set(you.x - at.x, 0, you.z - at.z).normalize().multiplyScalar(SHOVE)); honk('💢'); calmUntil = t + CALM; loiter(); }
     } else if (mode === 'walk') { if (follow(dt)) loiter(); }
-    else if (mode === 'visit') { if (follow(dt)) mill(); }
-    // Facing the food; then on to another spot by it, or a while longer here.
+    // Right onto the spot: a few cm short of it could shut the snake out.
+    else if (mode === 'visit') { if (follow(dt)) { at.x = visiting.spot[0]; at.z = visiting.spot[1]; mill(); } }
+    // Facing the food; then on to another spot by it, by a way that keeps off the food, or a while longer here.
     else if (mode === 'mill') {
       face(dir.set(visiting.food[0], 0, visiting.food[1]), dt);
-      if (t > until) { const next = nextSpot(visiting.spots, visiting.spot); if (next && go(new THREE.Vector3(next[0], 0, next[1]), 'visit')) visiting.spot = next; else mill(); }
+      if (t > until) {
+        const next = nextSpot(visiting.spots.filter(s => gap(visiting.spot, s, visiting.food) >= BERTH), visiting.spot), way = next && wayTo(next, visiting.food);
+        if (way) { path = way; mode = 'visit'; visiting.spot = next; } else mill();
+      }
     } else if (mode === 'fetch') {
       if (follow(dt)) { mode = 'reach'; until = t + 0.9; }
     } else if (mode === 'reach') {

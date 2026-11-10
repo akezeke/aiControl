@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { walkGrid } from '../client/office/path.js';
 import { COLOURS } from '../client/office/meeting.js';
 import { createGoose } from '../client/office/goose.js';
+import { standSpots } from '../client/office/goose-plan.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z), grid = walkGrid([], { width: 10, depth: 10 });
 const blank = () => new Proxy({}, { get: (t, k) => k in t ? t[k] : () => ({ addColorStop() {} }), set: (t, k, v) => { t[k] = v; return true; } });
@@ -36,4 +37,39 @@ test('no fruit visits with reduced motion at home: it stands still', () => {
   const a = goose({ foods: () => [{ food: [5.125, 2.125], head: [2.125, 2.125] }], still: true });
   a.run(1 / 60); const from = a.at(); a.run(110);
   assert.deepEqual(a.at(), from); assert.equal(a.g.mode, 'loiter');
+});
+
+// The room's grid with some cells shut for one test: [i, j] cell offsets from the one at (5.125, 5.125).
+function shutting(cells, fn) {
+  const shut = cells.map(([i, j]) => (20 + j) * grid.cols + 20 + i); for (const k of shut) grid.open[k] = 0;
+  try { fn(); } finally { for (const k of shut) grid.open[k] = 1; }
+}
+
+test('it stands right on a stand spot, not a few cm short of it, where it could shut the snake out', () => {
+  const food = [5.125, 2.125], head = [2.125, 2.125], a = goose({ foods: () => [{ food, head }] });
+  assert.ok(a.run(110, () => a.g.mode === 'mill'));
+  assert.ok(standSpots(grid, food, head).some(([x, z]) => Math.abs(x - a.at()[0]) < 1e-9 && Math.abs(z - a.at()[1]) < 1e-9), `at ${a.at()}`);
+});
+
+test('from spot to spot it keeps 0.5 m off the food, never across it', () => {
+  // Six spots, three each side of the food and 1.5 m apart across it: the ring's other cells shut.
+  const ring = []; for (let j = -4; j <= 4; j++) for (let i = -4; i <= 4; i++) { const r = Math.hypot(i, j) / 4; if (r >= 0.75 && r <= 1 && !(Math.abs(i) === 3 && Math.abs(j) <= 1)) ring.push([i, j]); }
+  shutting(ring, () => {
+    const food = [5.125, 5.125], a = goose({ foods: () => [{ food, head: [2.125, 5.125] }] });
+    let closest = Infinity, moves = 0, was = null;
+    a.run(400, () => {
+      if (['visit', 'mill'].includes(a.g.mode)) closest = Math.min(closest, Math.hypot(a.at()[0] - food[0], a.at()[1] - food[1]));
+      if (was === 'mill' && a.g.mode === 'visit') moves++; was = a.g.mode;
+    });
+    assert.ok(moves > 0, 'went on to other spots'); assert.ok(closest >= 0.5, `came ${closest} m from the food`);
+  });
+});
+
+test('the nearest spot walled off on its own: it goes to the next nearest it can get to', () => {
+  // The spot 1 m south of the food is a pocket of one cell; whenever the goose loiters, it's put 2 m south of the food, so that
+  // spot is the nearest when a visit starts.
+  shutting([[-1, 3], [0, 3], [1, 3], [-1, 4], [1, 4], [-1, 5], [0, 5], [1, 5]], () => {
+    const a = goose({ foods: () => [{ food: [5.125, 5.125], head: [2.125, 5.125] }] });
+    assert.ok(a.run(110, () => { if (a.g.mode === 'loiter') a.g.root.position.set(5.125, 0, 7.125); return a.g.mode === 'mill'; }), 'went to the food');
+  });
 });
