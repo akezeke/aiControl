@@ -256,6 +256,19 @@ test('taking over carries on from where the goose is: a walk finishes its route,
   assert.equal(c.g.root.visible, true); assert.equal(c.g.mode, 'walk'); assert.ok(Math.hypot(c.at()[0] - there[0], c.at()[1] - there[1]) < 0.05);
 });
 
+// By the food a few cm off its spot could shut the snake out: a visit walked on ends right on the route's end, and a mill stands
+// on the plan's spot, not where the easing still has it.
+test('taking over by the food: a visit walked on ends right on its spot, and a mill stands on the plan\'s spot', () => {
+  const visit = { type: 'goose', id: 'b', at: [2, 2], yaw: 0, mode: 'visit', idle: 'look', speed: 0.75, route: [[4, 2], [4, 4]], carry: null, target: null };
+  for (const after of [[P('a', { goose: true }), P('b')], []]) {
+    const a = watching(); a.g.heard(visit); a.run(1); a.g.roster(after, 'a');
+    assert.ok(a.run(10, () => a.g.mode !== 'walk')); assert.ok(Math.hypot(a.at()[0] - 4, a.at()[1] - 4) < 1e-9, `at ${a.at()}`);
+    const b = watching(); b.g.heard(plan({ at: [4, 2], route: [], speed: 0, mode: 'loiter' })); b.run(0.1);
+    b.g.heard(plan({ at: [4.5, 2], route: [], speed: 0, mode: 'mill' })); b.run(1 / 60); b.g.roster(after, 'a'); b.run(1);
+    assert.ok(Math.hypot(b.at()[0] - 4.5, b.at()[1] - 2) < 1e-9, `at ${b.at()}`);
+  }
+});
+
 // Rulings beyond the brief: a plan heard at home is carried on from only under 10 s old (the server's limit), and your own
 // charge, nip and shove as keeper; with reduced motion your click or hit just honks there, and a nip doesn't shove you.
 test('keeping it from home: on from a plan heard under 10 s ago, else from where it was', () => {

@@ -195,7 +195,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
       if (t > replanAt) { replanAt = t + REPLAN; goal.set(p.x, 0, p.z); path = findPath(walkable(), at, goal) || [goal.clone()]; }
       follow(dt);
       if (Math.hypot(p.x - at.x, p.z - at.z) < NIP) nip(p);
-    } else if (mode === 'walk') { if (follow(dt)) loiter(); }
+    } else if (mode === 'walk') { if (follow(dt)) { at.x = path[0].x; at.z = path[0].z; loiter(); } } // right onto its end: a visit walked on (carryOn) stops on its spot
     // Right onto the spot: a few cm short of it could shut the snake out.
     else if (mode === 'visit') { if (follow(dt)) { at.x = visiting.spot[0]; at.z = visiting.spot[1]; mill(); } }
     // Facing the food; then on to another spot by it, by a way that keeps off the food, or a while longer here.
@@ -246,12 +246,14 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     net(planOf({ at, yaw, mode, idle, speed: SPEED[mode] ?? 0, path, carry: probe.carry, target })); sentAt = t; sentKey = key; arrived.clear();
   }
   // Running the goose from a plan `p` (a watcher's being played, or one heard at home): from where it's drawn, or with `jump` where
-  // the plan puts it by now; a walk or visit with route left walks the rest of it, anything else loiters.
+  // the plan puts it by now; a walk or visit with route left walks the rest of it, anything else loiters. One standing by the
+  // food stands on the plan's spot, not where the easing still has it: a few cm off could shut the snake out.
   function carryOn({ m, r, age }, jump) {
-    const now = routeAt(m.at, m.route, m.speed, t - r + age / 1000);
-    if (jump) { root.visible = true; at.x = now.at[0]; at.z = now.at[1]; yaw = m.yaw; }
+    const now = routeAt(m.at, m.route, m.speed, t - r + age / 1000), on = (m.mode === 'walk' || m.mode === 'visit') && m.speed > 0 && now.route.length;
+    if (jump || (!on && (m.mode === 'mill' || m.mode === 'visit'))) { at.x = now.at[0]; at.z = now.at[1]; }
+    if (jump) { root.visible = true; yaw = m.yaw; }
     loiter();
-    if ((m.mode === 'walk' || m.mode === 'visit') && m.speed > 0 && now.route.length) { mode = 'walk'; path = now.route.map(([x, z]) => new THREE.Vector3(x, 0, z)); }
+    if (on) { mode = 'walk'; path = now.route.map(([x, z]) => new THREE.Vector3(x, 0, z)); }
   }
   // A plan from the keeper: a hidden goose shows where it puts it by now; a shown one stays where it's drawn and eases onto it
   // (jumping a gap over a metre). The beak is put right, should a take or drop have been lost on the way.
