@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { walkGrid } from '../client/office/path.js';
+import { walkGrid, index } from '../client/office/path.js';
+import { reach } from '../client/office/snake.js';
 import { COLOURS, checkUp } from '../client/office/meeting.js';
 import { createGoose } from '../client/office/goose.js';
 import { standSpots } from '../client/office/goose-plan.js';
@@ -9,13 +10,13 @@ import { standSpots } from '../client/office/goose-plan.js';
 const V = (x, y, z) => new THREE.Vector3(x, y, z), grid = walkGrid([], { width: 10, depth: 10 });
 const blank = () => new Proxy({}, { get: (t, k) => k in t ? t[k] : () => ({ addColorStop() {} }), set: (t, k, v) => { t[k] = v; return true; } });
 const P = (id, extra = {}) => ({ id, name: id, fruit: 'apple', colour: COLOURS[0], at: 'meeting', ...extra });
-// A goose in an empty 10 × 10 m office. You stand at (1, 1), busy unless said. A thing: { kind: { key }, pos, rest: true }.
-function goose({ foods = () => [], others = () => [], things = [], sleepers = [], still = false, busy = true } = {}) {
+// A goose in an empty 10 × 10 m office (or one with the walk grid `floor`). You stand at (1, 1), busy unless said. A thing: { kind: { key }, pos, rest: true }.
+function goose({ foods = () => [], others = () => [], things = [], sleepers = [], still = false, busy = true, floor = grid } = {}) {
   const sent = [], said = [], woken = [], ghosts = [], player = { position: V(1, 1.6, 1), step: v => player.position.add(v) };
   const props = { loose: () => things.filter(b => !b.held && !b.carried), carry: (b, at) => { if (b.held) return false; b.carried = at; return true; }, drop: b => { b.carried = null; },
     holdGhost: (kind, at) => { const h = { kind, at, gone: false, release() { h.gone = true; } }; ghosts.push(h); return h; } };
   const was = globalThis.document; globalThis.document = { createElement: () => ({ getContext: blank }) };
-  let g; try { g = createGoose(new THREE.Scene(), { props, player, walkable: () => grid, bounds: () => ({ width: 10, depth: 10 }), busy: () => busy, reducedMotion: () => still,
+  let g; try { g = createGoose(new THREE.Scene(), { props, player, walkable: () => floor, bounds: () => ({ width: 10, depth: 10 }), busy: () => busy, reducedMotion: () => still,
     say: icon => said.push(icon), sleepers: () => sleepers, wake: id => woken.push(id), foods, others, me: () => 'a', net: m => sent.push(m) }); }
   finally { if (was) globalThis.document = was; else delete globalThis.document; }
   const run = (seconds, each) => { for (let i = 0; i < Math.round(seconds * 60); i++) { g.update(1 / 60); if (each?.()) return true; } return false; };
@@ -72,6 +73,28 @@ test('the nearest spot walled off on its own: it goes to the next nearest it can
     const a = goose({ foods: () => [{ food: [5.125, 5.125], head: [2.125, 5.125] }] });
     assert.ok(a.run(110, () => { if (a.g.mode === 'loiter') a.g.root.position.set(5.125, 0, 7.125); return a.g.mode === 'mill'; }), 'went to the food');
   });
+});
+
+// A wall across the room at z 4.1 with a gap three cells wide (x 4.6–5.65, grown by the goose's width) and the food just north
+// of it: a goose in the gap shuts out a snake coming from the south, not one from the north.
+const pocket = walkGrid([[0, 4.3], [5.95, 10]].map(([x1, x2]) => new THREE.Box3(V(x1, 0, 4.1), V(x2, 1, 4.15))), { width: 10, depth: 10 });
+const north = [2.125, 2.125], south = [2.125, 7.125], fruit = [5.125, 3.125], inGap = [5.125, 4.125];
+const getsIn = (head, g) => reach(pocket, head, [g.column])[index(pocket, { x: fruit[0], z: fruit[1] })] >= 0;
+const gapped = a => a.at()[0] === inGap[0] && a.at()[1] === inGap[1];
+
+test("the snake comes round so the goose's spot shuts it out: within half a second it's off, to where it doesn't", () => {
+  // Put 1.4 m south of the gap whenever it loiters, so the spot in it is the nearest when the visit starts.
+  let head = north; const a = goose({ floor: pocket, foods: () => [{ food: fruit, head }] });
+  assert.ok(a.run(110, () => { if (a.g.mode === 'loiter') a.g.root.position.set(5.125, 0, 5.5); return a.g.mode === 'mill'; }), 'went to the food');
+  assert.deepEqual(a.at(), inGap); assert.ok(getsIn(head, a.g));
+  head = south; assert.ok(!getsIn(head, a.g), 'now in the way');
+  assert.ok(a.run(0.6, () => a.g.mode !== 'mill'), 'off');
+  assert.ok(a.run(10, () => a.g.mode === 'mill' || a.g.mode === 'loiter')); assert.ok(getsIn(head, a.g), `at ${a.at()}`);
+  // The snake coming round while it's on its way there: it gets to the spot and is off again, never a moment standing in the gap.
+  let to = north, milled = false, got = false; const b = goose({ floor: pocket, foods: () => [{ food: fruit, head: to }] });
+  assert.ok(b.run(110, () => { if (b.g.mode === 'loiter') b.g.root.position.set(5.125, 0, 5.5); return b.g.mode === 'visit'; }));
+  to = south; assert.ok(b.run(10, () => { got ||= gapped(b); milled ||= b.g.mode === 'mill' && gapped(b); return b.g.mode === 'mill' && !gapped(b); }));
+  assert.ok(got && !milled); assert.ok(getsIn(to, b.g), `at ${b.at()}`);
 });
 
 const plan = (extra = {}) => ({ type: 'goose', id: 'b', at: [2, 2], yaw: 0, mode: 'walk', idle: 'look', speed: 1, route: [[4, 2]], carry: null, target: null, ...extra });
@@ -300,6 +323,31 @@ test('taking over by the food: a visit walked on ends right on its spot, and a m
     b.g.heard(plan({ at: [4.5, 2], route: [], speed: 0, mode: 'mill' })); b.run(1 / 60); b.g.roster(after, 'a'); b.run(1);
     assert.ok(Math.hypot(b.at()[0] - 4.5, b.at()[1] - 2) < 1e-9, `at ${b.at()}`);
   }
+});
+
+test("taking over where its spot shuts the snake out, milling there or walking a visit onto it: it doesn't stay; a snake boxed in anyway isn't its doing", () => {
+  const a = watching({ floor: pocket, foods: () => [{ food: fruit, head: south }] });
+  a.g.heard(plan({ at: inGap, route: [], speed: 0, mode: 'mill' })); a.run(0.1); assert.deepEqual(a.at(), inGap);
+  a.g.roster([P('a', { goose: true }), P('b')], 'a');
+  assert.ok(a.run(0.6, () => a.g.mode === 'walk'), 'off');
+  assert.ok(a.run(30, () => a.g.mode === 'loiter')); assert.ok(getsIn(south, a.g), `at ${a.at()}`);
+  // Taking over a visit on its way there: the walk ends on the spot, and it's off again at once.
+  const c = watching({ floor: pocket, foods: () => [{ food: fruit, head: south }] }); let stood = false, got = false;
+  c.g.heard(plan({ at: [5.125, 5.5], route: [inGap], speed: 0.75, mode: 'visit' })); c.run(0.1); c.g.roster([P('a', { goose: true }), P('b')], 'a');
+  c.run(5, () => { got ||= gapped(c); stood ||= c.g.mode !== 'walk' && gapped(c); });
+  assert.ok(got && !stood);
+  // A snake boxed in (its head in the wall) can't get to its food anyway: that's not the goose's doing, so it stays.
+  const b = watching({ floor: pocket, foods: () => [{ food: fruit, head: [0.125, 4.125] }] });
+  b.g.heard(plan({ at: inGap, route: [], speed: 0, mode: 'mill' })); b.run(0.1); b.g.roster([P('a', { goose: true }), P('b')], 'a');
+  b.run(1.5); assert.deepEqual(b.at(), inGap);
+});
+test('nowhere 1.5 m on to walk off to: it goes out of 1.05 m of the food the nearest way', () => {
+  // A corridor a cell wide and 1.5 m long, the snake's head at its west end and the food at its east end, the goose between them.
+  const corridor = { ...grid, open: new Uint8Array(grid.open.length) }; for (let i = 18; i <= 23; i++) corridor.open[20 * grid.cols + i] = 1;
+  const food = [5.875, 5.125], a = watching({ floor: corridor, foods: () => [{ food, head: [4.625, 5.125] }] });
+  a.g.heard(plan({ at: [5.125, 5.125], route: [], speed: 0, mode: 'loiter' })); a.run(0.1); a.g.roster([P('a', { goose: true }), P('b')], 'a');
+  assert.ok(a.run(0.6, () => a.g.mode === 'walk'), 'off'); assert.ok(a.run(10, () => a.g.mode === 'loiter'));
+  assert.deepEqual(a.at(), [4.625, 5.125]);
 });
 
 // Rulings beyond the brief: a plan heard at home is carried on from only under 10 s old (the server's limit), and your own

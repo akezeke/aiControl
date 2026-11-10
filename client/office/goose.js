@@ -7,17 +7,20 @@ import * as THREE from 'three';
 import { piece } from './furniture.js';
 import { toonMaterial, withOutline } from './toon.js';
 import { findPath, nearestOpen, index } from './path.js';
-import { reach as flood } from './snake.js';
+import { reach as flood, centre as cellCentre } from './snake.js';
 import { standSpots, nearestSpot, nextSpot, gooseRole, routeAt, alongRoute, gapOf, eased, planOf, planKey, planDue, round2, PLAN_EVERY } from './goose-plan.js';
 
 export const GOOSE = 'goose'; // its id for the bubbles and props.js's hits
 // m/s by mode (you walk at 4), standing in the rest; metres per radian of a leg's swing.
 const SPEED = { walk: 0.75, fetch: 0.75, visit: 0.75, haul: 0.95, sneak: 0.45, chase: 2.6 }, STRIDE = 0.07;
-const NEAR = 1.3, NIP = 0.55, NECK = 0.95, SHOVE = 0.35, BERTH = 0.5; // metres; BERTH: what it keeps off the snake's food on its way by it
+// Metres; BERTH: what it keeps off the snake's food on its way by it; RING: how near the food it minds the snake's way in (its
+// stand spots are 0.75–1 m out).
+const NEAR = 1.3, NIP = 0.55, NECK = 0.95, SHOVE = 0.35, BERTH = 0.5, RING = 1.05;
 // Seconds: a chase for coming close, and for anything worse; then it leaves you be; how often a chase looks for you again; how old
 // a plan heard at home may be for a new keeper to carry on from (the server's own limit); how soon after one it acts on another
-// poke from the same friend (each sends a honk, maybe a drop: a burst would go over the keeper's message budget).
-const SHORT = 2.5, LONG = 6, CALM = 8, REPLAN = 0.5, STALE = 10, POKES = 0.5;
+// poke from the same friend (each sends a honk, maybe a drop: a burst would go over the keeper's message budget); how often,
+// standing about by the food, it looks again that it leaves the snake a way in (the snake moves on).
+const SHORT = 2.5, LONG = 6, CALM = 8, REPLAN = 0.5, STALE = 10, POKES = 0.5, MIND = 0.5;
 // Seconds: between honks, thefts, pranks and visits to the food; a loiter; a while at one spot by the food, and at the food in all.
 const HONKS = [20, 40], THEFTS = [40, 90], PRANKS = [45, 120], VISITS = [30, 60], LOITER = [2, 6], MILL = [2, 4], STAY = [6, 12];
 const LINES = ['HONK!', 'Honk!', 'HONK HONK!'], WOKEN = ['Wha—?!', "I'm up! I'm up!", 'Huh?!', 'Not again…'], IDLE = ['look', 'peck', 'preen'];
@@ -88,8 +91,8 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   const { root, body, neck, head, jaw, wings, legs } = model(); root.visible = false; scene.add(root);
   const at = root.position, pose = { ...REST }, aim = { ...REST }, dir = new THREE.Vector3(), local = new THREE.Vector3(), tip = new THREE.Vector3(), above = new THREE.Vector3();
   let t = 0, yaw = 0, phase = 0, stepping = 0, mode = 'loiter', idle = 'look', side = 1, until = 0, path = null, loot = null, mine = false, last = null, victim = null, prey = null; // mine: it's had it in its beak; last: what it took last time; prey: whose id it's chasing
-  let chaseUntil = 0, replanAt = 0, calmUntil = 0, honkUntil = 0, honkIn = rand(HONKS), stealIn = rand(THEFTS), prankIn = rand(PRANKS), visitIn = rand(VISITS);
-  let target = null, visiting = null, fed = []; // what it has its eye on (strike); the food it's by: { food, spots, spot, leaveAt }; foods() this frame
+  let chaseUntil = 0, replanAt = 0, mindAt = 0, calmUntil = 0, honkUntil = 0, honkIn = rand(HONKS), stealIn = rand(THEFTS), prankIn = rand(PRANKS), visitIn = rand(VISITS);
+  let target = null, visiting = null, fed = []; // what it has its eye on (strike); the food it's by: { food, spot, leaveAt }; foods() this frame
   // At a meeting: this page's role and the keeper's id; the last plan heard from anyone ({ m, r: when, age }) and the keeper's one
   // being played; how far the drawn goose is off it; a copy held in the beak; took: you took back what it had, so plans still
   // saying it has it are let be till one says it hasn't; when it may show at home; who's at the meeting, and who's newly come.
@@ -136,13 +139,48 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     const way = findPath(walkable(), at, new THREE.Vector3(s[0], 0, s[1]));
     return way?.every((p, i) => gap(i ? [way[i - 1].x, way[i - 1].z] : [at.x, at.z], [p.x, p.z], food) >= BERTH) ? way : null;
   };
-  // Off to the snake's food nearest it: to the nearest spot 0.75–1 m from it that still leaves the snake a way in (goose-plan.js)
-  // and has a way there. Only the spots it can get to are kept (one flood from where it stands), so no search for a way is wasted.
-  const visit = () => {
-    const food = nearestSpot(fed.map(f => f.food), [at.x, at.z]); if (!food) return;
+  const fedAt = food => fed.find(f => Math.hypot(f.food[0] - food[0], f.food[1] - food[1]) < 0.01); // that food this frame, if it's still there
+  // The spots 0.75–1 m from food `f` that leave its snake a way in from where its head is now (goose-plan.js), nearest first; only
+  // those it can get to (one flood from where it stands), so no search for a way is wasted.
+  const spotsBy = f => {
     const grid = walkable(), steps = flood(grid, [at.x, at.z]), far = s => Math.hypot(s[0] - at.x, s[1] - at.z);
-    const spots = standSpots(grid, food, fed.find(f => f.food === food).head).filter(s => steps[index(grid, { x: s[0], z: s[1] })] >= 0).sort((a, b) => far(a) - far(b));
-    for (const s of spots) { const way = wayTo(s, food); if (way) { path = way; mode = 'visit'; visiting = { food, spots, spot: s, leaveAt: Infinity }; return; } }
+    return standSpots(grid, f.food, f.head).filter(s => steps[index(grid, { x: s[0], z: s[1] })] >= 0).sort((a, b) => far(a) - far(b));
+  };
+  // Off to the nearest of them with a way there, as a visit that's over at `leaveAt`; false if there's none.
+  const goVisit = (f, leaveAt) => {
+    for (const s of spotsBy(f)) { const way = wayTo(s, f.food); if (way) { path = way; mode = 'visit'; visiting = { food: f.food, spot: s, leaveAt }; return true; } }
+    return false;
+  };
+  // Off to the snake's food nearest it.
+  const visit = () => { const food = nearestSpot(fed.map(f => f.food), [at.x, at.z]); if (food) goVisit(fed.find(f => f.food === food), Infinity); };
+  // A food within RING of (x, z) whose snake could get to it but not with the goose standing there (snake.js keeps CLEAR off its
+  // column), or null.
+  const shuts = (x, z) => {
+    const grid = walkable();
+    for (const f of fed) {
+      const goal = index(grid, { x: f.food[0], z: f.food[1] });
+      if (goal >= 0 && Math.hypot(f.food[0] - x, f.food[1] - z) <= RING && flood(grid, f.head, [{ x, z, r: 0.2 }])[goal] < 0 && flood(grid, f.head)[goal] >= 0) return f;
+    }
+    return null;
+  };
+  // The open cell nearest it to walk to (fewest steps) out of RING of the food, or null.
+  const outOf = food => {
+    const grid = walkable(), steps = flood(grid, [at.x, at.z]); let best = -1;
+    for (let k = 0; k < steps.length; k++) {
+      if (steps[k] < 0 || (best >= 0 && steps[k] >= steps[best])) continue;
+      const [x, z] = cellCentre(grid, k); if (Math.hypot(x - food[0], z - food[1]) > RING) best = k;
+    }
+    if (best < 0) return null;
+    const [x, z] = cellCentre(grid, best); return new THREE.Vector3(x, 0, z);
+  };
+  // Where it stands shuts a snake out (the snake's moved on since it got there, or it's carried on from a plan): by the food it's
+  // visiting it picks a spot again, from where the head is now, else it walks off 1.5 m or more, else out of RING the nearest
+  // way (with nowhere at all, a second's loiter and it looks again). The next look is MIND s on; true if it's off.
+  const budge = () => {
+    mindAt = t + MIND; const f = shuts(at.x, at.z); if (!f) return false;
+    if ((mode === 'visit' || mode === 'mill') && visiting && fedAt(visiting.food) === f && goVisit(f, visiting.leaveAt)) return true;
+    visiting = null; if (!go(spot(1.5), 'walk') && !go(outOf(f.food), 'walk')) loiter(1);
+    return true;
   };
   // A while at a spot by the food, looking about or pecking; its stay counts from first getting there.
   const mill = () => {
@@ -192,21 +230,23 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     if (mode === 'loiter' || mode === 'walk') { honkIn -= dt; stealIn -= dt; prankIn -= dt; if (fed.length) visitIn -= dt; }
     if (honkIn < 0) { honkIn = rand(HONKS); if (role !== 'keeper' || alone()) honk(); } // kept for others, it honks only at something, which they hear of
     // Off again when its stay is up, or once the food's gone (eaten, or its snake with it).
-    if ((mode === 'visit' || mode === 'mill') && (t > visiting.leaveAt || !fed.some(f => Math.hypot(f.food[0] - visiting.food[0], f.food[1] - visiting.food[1]) < 0.01))) { visiting = null; loiter(); }
+    if ((mode === 'visit' || mode === 'mill') && (t > visiting.leaveAt || !fedAt(visiting.food))) { visiting = null; loiter(); }
+    if ((mode === 'mill' || mode === 'loiter') && t > mindAt) budge(); // standing about: still not in the snake's way?
     if (mode === 'chase') {
       const p = quarry(prey); // after them where they are now, till they're busy or gone, or it's had enough
       if (!p || p.busy || t > chaseUntil) { calmUntil = t + 2; loiter(1); return; }
       if (t > replanAt) { replanAt = t + REPLAN; goal.set(p.x, 0, p.z); path = findPath(walkable(), at, goal) || [goal.clone()]; }
       follow(dt);
       if (Math.hypot(p.x - at.x, p.z - at.z) < NIP) nip(p);
-    } else if (mode === 'walk') { if (follow(dt)) { at.x = path[0].x; at.z = path[0].z; loiter(); } } // right onto its end: a visit walked on (carryOn) stops on its spot
-    // Right onto the spot: a few cm short of it could shut the snake out.
-    else if (mode === 'visit') { if (follow(dt)) { at.x = visiting.spot[0]; at.z = visiting.spot[1]; mill(); } }
-    // Facing the food; then on to another spot by it, by a way that keeps off the food, or a while longer here.
+    } else if (mode === 'walk') { if (follow(dt)) { at.x = path[0].x; at.z = path[0].z; loiter(); budge(); } } // right onto its end (a visit walked on, carryOn, stops on its spot), not in the snake's way
+    // Right onto the spot: a few cm short of it could shut the snake out, as can the spot itself once the snake's moved on.
+    else if (mode === 'visit') { if (follow(dt)) { at.x = visiting.spot[0]; at.z = visiting.spot[1]; if (!budge()) mill(); } }
+    // Facing the food; then on to another spot by it (one that leaves the snake a way in from where it is now), by a way that keeps
+    // off the food, or a while longer here.
     else if (mode === 'mill') {
       face(dir.set(visiting.food[0], 0, visiting.food[1]), dt);
       if (t > until) {
-        const next = nextSpot(visiting.spots.filter(s => gap(visiting.spot, s, visiting.food) >= BERTH), visiting.spot), way = next && wayTo(next, visiting.food);
+        const next = nextSpot(spotsBy(fedAt(visiting.food)).filter(s => gap(visiting.spot, s, visiting.food) >= BERTH), visiting.spot), way = next && wayTo(next, visiting.food);
         if (way) { path = way; mode = 'visit'; visiting.spot = next; } else mill();
       }
     } else if (!loot && (mode === 'fetch' || mode === 'reach' || mode === 'haul' || mode === 'drop')) loiter(); // let go of it (a keeper change, a poke): that theft's off
