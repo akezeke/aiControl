@@ -222,7 +222,21 @@ test('swipe by default: 12 px sideways turns at once, a tap does nothing', t => 
   assert.deepEqual(p.snake.game.turns, [], 'a tap while playing');
   p.fire('pointerdown', 100, 50, 2); p.fire('pointermove', 111, 50, 2); assert.deepEqual(p.snake.game.turns, []);
   p.fire('pointermove', 112, 50, 2); assert.deepEqual(p.snake.game.turns, [1], 'before it is lifted');
-  p.fire('pointermove', 200, 50, 2); assert.deepEqual(p.snake.game.turns, [1], 'one turn a finger');
+  p.fire('pointermove', 200, 50, 2); assert.deepEqual(p.snake.game.turns, [1], 'on past the turn, no more that way');
+});
+
+test('swipe zig-zags without lifting: back 12 px from the furthest turns the other way, never twice the same way', t => {
+  const p = phone(), turns = () => p.snake.game.turns; t.after(p.restore);
+  p.fire('pointerdown', 200); p.fire('pointerup', 200);
+  p.fire('pointerdown', 100, 50, 2); p.fire('pointermove', 112, 50, 2); assert.deepEqual(turns(), [1]);
+  p.fire('pointermove', 160, 50, 2); p.fire('pointermove', 149, 50, 2); assert.deepEqual(turns(), [1], 'back 11 px from the furthest');
+  p.fire('pointermove', 148, 50, 2); assert.deepEqual(turns(), [1, -1], 'back 12 px');
+  turns().length = 0; // both taken
+  p.fire('pointermove', 120, 50, 2); assert.deepEqual(turns(), [], 'on past the left turn');
+  p.fire('pointermove', 131, 50, 2); assert.deepEqual(turns(), [], '11 px back');
+  p.fire('pointermove', 132, 50, 2); assert.deepEqual(turns(), [1], 'and right again');
+  p.fire('pointermove', 120, 80, 2); assert.deepEqual(turns(), [1], 'more down than back');
+  p.fire('pointerup', 120, 80, 2); p.fire('pointermove', 100, 80, 2); assert.deepEqual(turns(), [1], 'lifted');
 });
 
 test('tap chosen: a finger turns to its half as it lands', t => {

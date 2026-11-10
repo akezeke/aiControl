@@ -293,22 +293,25 @@ export function createSnake({ canvas, grid, plants, look = () => null, send = ()
     floor.scale.set(cols * CELL, 1, rows * CELL); floor.position.set(g.left + cols * CELL / 2, 0.02, g.back + rows * CELL / 2);
   }
 
-  // Presses. Swipe: a finger that goes SWIPE px sideways (more than up or down) turns that way at once, before it's lifted, once
-  // a finger. Tap: a finger turns to its side of the screen as it lands. A click turns as it's pressed. Before it's off, or after
+  // Presses. Swipe: a finger that goes SWIPE px sideways (more than up or down) turns that way at once, before it's lifted; still
+  // down, it turns again each time it comes back SWIPE px from the furthest it went, but never twice the same way (a long swipe
+  // is one turn). Tap: a finger turns to its side of the screen as it lands. A click turns as it's pressed. Before it's off, or after
   // a crash, any press sets it going.
-  const SWIPE = 12, downs = new Map(); // css px; pointer → where it went down, null once it's swiped
+  const SWIPE = 12, downs = new Map(); // css px; pointer → { x, y, way }: where it's measured from, the way it last turned (0 none yet)
   const half = x => { const r = canvas.getBoundingClientRect(); return x < r.left + r.width / 2 ? -1 : 1; };
   const playing = () => active && s?.mode === 'play';
   canvas.addEventListener('pointerdown', event => {
     if (!active || !s || event.pointerType === 'mouse' && event.button !== 0) return;
     if (s.mode !== 'play') press();
     else if (event.pointerType === 'mouse' || touchMode === 'tap') turn(s, half(event.clientX));
-    else downs.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    else downs.set(event.pointerId, { x: event.clientX, y: event.clientY, way: 0 });
   });
   canvas.addEventListener('pointermove', event => {
-    const down = downs.get(event.pointerId), dx = down && event.clientX - down.x;
-    if (!down || !playing() || Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(event.clientY - down.y)) return;
-    downs.set(event.pointerId, null); turn(s, Math.sign(dx));
+    const down = downs.get(event.pointerId), dx = down && event.clientX - down.x, way = Math.sign(dx);
+    if (!down || !playing()) return;
+    if (down.way && way === down.way) { down.x = event.clientX; down.y = event.clientY; return; } // on past the turn
+    if (Math.abs(dx) < SWIPE || Math.abs(dx) < Math.abs(event.clientY - down.y)) return;
+    Object.assign(down, { x: event.clientX, y: event.clientY, way }); turn(s, way);
   });
   const lift = event => { downs.delete(event.pointerId); };
   canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);
