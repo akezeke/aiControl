@@ -126,6 +126,25 @@ export function tick(s, grid, dt, blocks = [], rand = Math.random) {
   return happened;
 }
 
+// The snake as a meeting message: the head, then each segment as a step (a DIRS index, or '-' for the same cell) from the one
+// before it, cut to what the checks allow. Cell centres are multiples of 0.125, so the sums are exact.
+export const pack = (s, plant) => {
+  let path = '';
+  for (let i = 1; i < s.body.length && path.length < 1200; i++) {
+    const d = DIRS.findIndex(([x, z]) => s.body[i][0] === s.body[i - 1][0] + x * SPAN && s.body[i][1] === s.body[i - 1][1] + z * SPAN);
+    path += d < 0 ? '-' : d;
+  }
+  return { type: 'snake', mode: s.mode, head: [...s.body[0]], path, dir: s.dir, rate: s.rate, food: s.apple ? [...s.apple] : null, plant };
+};
+export const unpack = m => {
+  const body = [[...m.head]];
+  for (const c of m.path) { const [x, z] = body[body.length - 1], d = DIRS[+c] || [0, 0]; body.push([x + d[0] * SPAN, z + d[1] * SPAN]); }
+  return body;
+};
+// When to send: at least SEND s after the last in play (after a step), every KEEP s whatever the mode, and when the mode changes.
+export const SEND = 1 / 8, KEEP = 2;
+export const due = (last, now, mode, moved) => !last || mode !== last.mode || now - last.at >= KEEP || (mode === 'play' && moved && now - last.at >= SEND);
+
 // The 3D. Behind and above the head, looking on ahead of it; how fast the view and the head swing round to a new heading, the
 // view follows the head, and the view comes in (when something's behind) and goes back out again.
 const BACK = 1.7, NEAREST = 0.4, UP = 1.75, AHEAD = 2.2, FOV = 70, VIEW_TURN = 10, HEAD_TURN = 22, FOLLOW = 10, IN = 12, OUT = 3;

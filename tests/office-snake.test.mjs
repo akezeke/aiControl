@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { walkGrid, index, CELL } from '../client/office/path.js';
-import { createSnake, newSnake, turn, go, step, tick, reach, settled, spine, roomy, placeApple, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
+import { createSnake, newSnake, turn, go, step, tick, reach, settled, spine, roomy, placeApple, pack, unpack, due, KEEP, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
+import { checkUp } from '../client/office/meeting.js';
 
 const box = (x1, z1, x2, z2) => new THREE.Box3(new THREE.Vector3(x1, 0, z1), new THREE.Vector3(x2, 1, z2));
 const V = (x, z) => new THREE.Vector3(x, 0, z), first = () => 0;
@@ -192,4 +193,51 @@ test('the chips pick, save and are read back; anything unknown is swipe', t => {
   const odd = phone('sideways'); odd.fire('pointerdown', 300); odd.fire('pointerdown', 100, 0, 2);
   assert.deepEqual(odd.snake.game.turns, [], 'swipe');
   odd.restore();
+});
+
+test('pack says each segment as a step from the one before it, and unpack walks it back', () => {
+  const body = [[1.125, 1.125], [1.125, 1.375], [1.375, 1.375], [1.375, 1.375]];
+  const m = pack({ body, dir: 0, mode: 'play', rate: 8, apple: [2.125, 1.125] }, 1);
+  assert.equal(m.path, '21-'); assert.deepEqual(m.head, [1.125, 1.125]); assert.deepEqual(m.food, [2.125, 1.125]);
+  assert.deepEqual(unpack(m), body);
+});
+
+test('a new snake, all in one cell, packs as dashes and passes the checks', () => {
+  const s = newSnake(open, V(5, 5), 0, first), m = pack(s, 0);
+  assert.equal(m.path, '-'.repeat(LENGTH - 1));
+  assert.deepEqual(checkUp(m), m); assert.deepEqual(unpack(m), s.body);
+});
+
+test('a run of steps round a U packs and unpacks exactly', () => {
+  const s = newSnake(open, V(5, 5), 0, first); s.apple = null; go(s);
+  for (let i = 0; i < 20; i++) {
+    if (i === 5 || i === 12) turn(s, 1);
+    assert.notEqual(step(s, open), 'crash'); assert.deepEqual(unpack(pack(s, 0)), s.body);
+  }
+});
+
+test('a path is cut at 1200', () => {
+  const body = Array.from({ length: 1300 }, (_, i) => [1.125 + (i % 40) * SPAN, 1.125 + Math.floor(i / 40) * SPAN]);
+  assert.equal(pack({ body, dir: 0, mode: 'play', rate: 8, apple: null }, 0).path.length, 1200);
+});
+
+test('a minute of play sends under the hub\'s limit', () => {
+  const sends = []; let last = null, prev = 0;
+  for (let f = 0; f <= 3600; f++) {
+    const t = f / 60, mode = t < 1 ? 'ready' : 'play', moved = Math.floor(t * 16) !== Math.floor((t - 1 / 60) * 16);
+    if (due(last, t, mode, moved)) { sends.push([t, 'snake']); last = { at: t, mode }; }
+    if (f % 120 === 0) sends.push([t, 'pos']);
+    prev = t;
+  }
+  const snakes = sends.filter(s => s[1] === 'snake');
+  for (const [start] of sends) {
+    const win = sends.filter(s => s[0] >= start && s[0] < start + 1);
+    assert.ok(win.filter(s => s[1] === 'snake').length <= 9); assert.ok(win.length <= 10);
+  }
+  for (let i = 1; i < snakes.length; i++) assert.ok(snakes[i][0] - snakes[i - 1][0] <= KEEP + 0.05);
+});
+
+test('in play with no step for 2 s it still says so', () => {
+  assert.equal(due({ at: 0, mode: 'play' }, 2, 'play', false), true);
+  assert.equal(due({ at: 0, mode: 'play' }, 1.9, 'play', false), false);
 });
