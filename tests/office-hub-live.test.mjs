@@ -106,6 +106,39 @@ test("snakes go to the others at the meeting, with the sender's id", async t => 
   c.send(snake); assert.equal((await b.quiet('snake')).length, 0);
 });
 
+const meeting = { type: 'where', at: 'meeting' }, home = { type: 'where', at: 'home' };
+test('the goose keeper: the host at the meeting, else whoever has been there longest', async t => {
+  const h = await setup(t);
+  const [a, b, c, host] = [await h.join('a'), await h.join('b'), await h.join('c'), await h.join('h', { host: true })];
+  const keeper = async () => { const r = await lastRoster(c); assert.ok(r.filter(p => p.goose).length <= 1); assert.ok(r.every(p => p.goose === undefined || p.goose === true)); return r.find(p => p.goose)?.name ?? null; };
+  assert.equal(await keeper(), null);
+  a.send(meeting); await keeper(); b.send(meeting); assert.equal(await keeper(), 'a');
+  a.send(meeting); assert.equal(await keeper(), 'a', 'saying it again keeps your place');
+  host.send(meeting); assert.equal(await keeper(), 'h');
+  host.send(home); assert.equal(await keeper(), 'a');
+  a.send(home); assert.equal(await keeper(), 'b');
+  a.send(meeting); assert.equal(await keeper(), 'b');
+  b.ws.close(); assert.equal(await keeper(), 'a');
+  a.send(home); assert.equal(await keeper(), null);
+});
+
+test('goose plans and events go out from the keeper only; pokes go to the keeper only', async t => {
+  const h = await setup(t);
+  const [a, b, c, host] = [await h.join('a'), await h.join('b'), await h.join('c'), await h.join('h', { host: true })];
+  a.send(meeting); await lastRoster(a); b.send(meeting); await lastRoster(a); // a is keeper; c and the host are at home
+  const plan = { type: 'goose', at: [2.5, 3.25], yaw: 0, mode: 'walk', idle: 'look', speed: 0.75, route: [[3, 3]], carry: null, target: null };
+  a.send(plan);
+  assert.deepEqual(await b.next('goose'), { ...plan, id: a.welcome.id });
+  assert.deepEqual(await host.next('goose'), { ...plan, id: a.welcome.id });
+  assert.equal((await c.quiet('goose')).length, 0); assert.equal((await a.quiet('goose')).length, 0);
+  b.send(plan); assert.equal((await host.quiet('goose')).length, 0);
+  a.send({ type: 'goosed', what: 'drop' }); assert.deepEqual(await b.next('goosed'), { type: 'goosed', what: 'drop', id: a.welcome.id });
+  b.send({ type: 'poke', why: 'click' }); assert.deepEqual(await a.next('poke'), { type: 'poke', why: 'click', id: b.welcome.id });
+  assert.equal((await host.quiet('poke')).length, 0);
+  a.send({ type: 'poke', why: 'hit' }); c.send({ type: 'poke', why: 'hit' });
+  assert.equal((await a.quiet('poke')).length, 0); assert.equal((await b.quiet('poke')).length, 0);
+});
+
 test('only the host sets the floor; visitors get it when they arrive; it goes null when the host leaves', async t => {
   const h = await setup(t);
   const host = await h.join('h', { host: true }), a = await h.join('a'), b = await h.join('b');

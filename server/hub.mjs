@@ -93,10 +93,12 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
   // The live room, in memory only: one connection per token. Each joined connection carries `p`: its look, where it is
   // ('home' or 'meeting') and its message window. What a peer says is cleaned by checkUp before anything is relayed.
   const wss = new WebSocketServer({ noServer: true, maxPayload: LIVE_BYTES });
-  let floor = null, hostSocket = null;
+  let floor = null, hostSocket = null, arrivals = 0;
   // A reader that lets a megabyte pile up is cut off rather than buffered for. `put` takes a message or, sent to many, its text.
   const put = (ws, m) => { if (ws.readyState !== 1) return; if (ws.bufferedAmount > 1 << 20) return ws.terminate(); ws.send(typeof m === 'string' ? m : JSON.stringify(m)); };
-  const roster = () => { const text = JSON.stringify({ type: 'roster', players: [...joined].map(({ p }) => ({ id: p.id, name: p.name, fruit: p.fruit, colour: p.colour, at: p.at })) }); for (const ws of joined) put(ws, text); };
+  // The goose has one keeper, the page that runs it: the host while at the meeting, else whoever has been there longest (`since`).
+  const keeper = () => hostSocket && joined.has(hostSocket) && hostSocket.p.at === 'meeting' ? hostSocket : [...joined].filter(ws => ws.p.at === 'meeting').sort((x, y) => x.p.since - y.p.since)[0] ?? null;
+  const roster = () => { const k = keeper(), text = JSON.stringify({ type: 'roster', players: [...joined].map(ws => ({ id: ws.p.id, name: ws.p.name, fruit: ws.p.fruit, colour: ws.p.colour, at: ws.p.at, ...ws === k && { goose: true } })) }); for (const ws of joined) put(ws, text); };
   const at = place => [...joined].filter(ws => ws.p.at === place);
   const drop = ws => {
     if (byToken.get(ws.p.token) === ws) byToken.delete(ws.p.token);
@@ -140,9 +142,11 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     else if (m.type === 'where') {
       if (m.at === p.at) return;
       if (m.at === 'meeting' && at('meeting').length >= SEATS) return put(ws, { type: 'refused', why: 'full' });
-      p.at = m.at; roster(); if (m.at === 'meeting' && floor) put(ws, { type: 'floor', floor });
+      p.at = m.at; if (m.at === 'meeting') p.since = ++arrivals; else delete p.since; roster(); if (m.at === 'meeting' && floor) put(ws, { type: 'floor', floor });
     }
     else if (m.type === 'pos' || m.type === 'throw' || m.type === 'snake') relay(ws, m);
+    else if (m.type === 'goose' || m.type === 'goosed') { if (ws === keeper()) relay(ws, m); }
+    else if (m.type === 'poke') { const k = keeper(); if (k && k !== ws && p.at === 'meeting') put(k, { ...m, id: p.id }); }
     else if (m.type === 'floor' && ws === hostSocket) { floor = m.floor; const text = JSON.stringify(m); for (const v of at('meeting')) put(v, text); }
   }
   wss.on('connection', (ws, _req, mine) => {
