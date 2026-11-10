@@ -87,6 +87,13 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
   // `free`: ours to move (a desk thing isn't until it's first picked up); `grip`: how it's turned in hand, from where you face.
   const body = (kind, extra) => ({ ...makeBody(kind), turn: new THREE.Quaternion(), grip: new THREE.Quaternion(), home: new THREE.Vector3(), held: false, off: false, grace: 0, hits: new Set(), ...extra });
   const balls = new Map(); // kind → its mesh, for a friend's copy
+  // A copy's kind and mesh by a KINDS key, or null if it's none of the balls and desk things (the kitchen's are not ours to copy).
+  const copyOf = key => {
+    const kind = BALLS.find(k => k.key === key) ?? (Object.hasOwn(LOOSE, key) ? LOOSE[key] : null); if (!kind) return null;
+    const ball = balls.get(kind), mesh = ball ? withOutline(new THREE.Mesh(ball.geometry, ball.material), inkOf(kind)) : key === 'cup' ? coffeeCup() : deskItem(key);
+    delete mesh.userData.loose; // not one of yours: nothing to pick up, nor for the goose
+    return { kind, mesh };
+  };
   for (const kind of BALLS) {
     const [geometry, material] = kind.make(), count = kind.spots(10, 10).length;
     const mesh = new THREE.InstancedMesh(geometry, material, count), hull = instancedOutline(mesh, inkOf(kind));
@@ -261,12 +268,12 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     drop(b) { b.carried = null; b.grace = 0.3; b.hits.clear(); },
     // A friend's throw at the meeting ({ kind, pos, vel, spin }): a copy of one of these that flies, lands and fades. False if it's none of them.
     ghost(thrown) {
-      const kind = BALLS.find(k => k.key === thrown.kind) ?? (Object.hasOwn(LOOSE, thrown.kind) ? LOOSE[thrown.kind] : null); if (!kind) return false;
-      const ball = balls.get(kind), mesh = ball ? withOutline(new THREE.Mesh(ball.geometry, ball.material), inkOf(kind)) : thrown.kind === 'cup' ? coffeeCup() : deskItem(thrown.kind);
-      delete mesh.userData.loose; // not one of yours: nothing to pick up, nor for the goose
-      ghosts.add(root, mesh, kind, thrown);
+      const made = copyOf(thrown.kind); if (!made) return false;
+      ghosts.add(root, made.mesh, made.kind, thrown);
       return true;
     },
+    // A copy of a stolen thing for the goose to hold at `at()` (as carry takes it): its handle (release() lets it fall and fade), or null for a kind that has none. Never one of loose().
+    holdGhost(kind, at) { const made = copyOf(kind); return made && ghosts.hold(root, made.mesh, made.kind, at); },
     clearGhosts() { ghosts.clear(); }, // through the door: they were the other office's
 
     update(dt) {

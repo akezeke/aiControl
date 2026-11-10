@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { createGhosts, ghostLife, MOST } from '../client/office/ghosts.js';
+import { createGhosts, ghostLife, MOST, FADE } from '../client/office/ghosts.js';
 import { KINDS } from '../client/office/meeting.js';
 import { BALLS, LOOSE, createProps } from '../client/office/props.js';
 import { ITEMS, STARTS } from '../client/office/levels.js';
@@ -207,4 +207,25 @@ test("Trickshot plays only its own throws: one of its items, with no spin", () =
   assert.equal(game.ghost({ kind: 'paper', pos: [-3, 1.6, 3], vel: [1, 1, 0], spin: [2, 0, 1] }), false, 'the office\'s paper ball tumbles');
   assert.equal(game.ghost({ kind: 'football', pos: [-3, 1.6, 3], vel: [1, 1, 0], spin: [0, 0, 0] }), false);
   assert.equal(game.ghost({ kind: 'rubber', pos: [-3, 1.6, 3], vel: [1, 1, 0], spin: [0, 0, 0] }), true);
+});
+
+test("a copy held in the goose's beak follows it, and falls and fades once let go", () => {
+  for (const still of [false, true]) {
+    const a = withDocument(() => office({ still })), { props, root } = a, count = root.children.length, loose = props.loose().length;
+    const beak = V(3, 0.5, 3), held = withDocument(() => props.holdGhost('mug', () => beak)), copy = root.children.at(-1);
+    assert.equal(root.children.length, count + 1); assert.equal(props.loose().length, loose);
+    beak.set(4, 0.5, 3); a.run(2); assert.ok(copy.position.distanceTo(beak) < 0.2, 'follows the beak, and lasts');
+    held.release(); a.run(FADE - 0.3); assert.equal(copy.parent, root);
+    a.run(1.5); assert.equal(copy.parent, null);
+    held.release(); // again: nothing
+  }
+  // a kind the props can't copy (the kitchen's plate)
+  assert.equal(withDocument(() => office()).props.holdGhost('plate', () => V(0, 0, 0)), null);
+});
+
+test('a held copy is never the one the MOST eviction takes, and release after clear does nothing', () => {
+  const a = withDocument(() => office()), { props, root } = a, held = props.holdGhost('mug', () => V(3, 0.5, 3)), copy = root.children.at(-1);
+  for (let i = 0; i < MOST + 3; i++) props.ghost({ kind: 'mug', pos: [5, 1, 5], vel: [0, 0, 0], spin: [0, 0, 0] });
+  assert.equal(copy.parent, root, 'still held');
+  props.clearGhosts(); assert.equal(copy.parent, null); held.release(); // nothing, no throw
 });
