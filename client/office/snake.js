@@ -7,11 +7,11 @@
 // while it plays, faint red where it would crash. One apple at a time, somewhere it can get to a few metres off, under a beam
 // of light to find it by; each makes it longer over the next few steps and a bit quicker. The best is kept per browser. With
 // reduced motion the apple and its beam hold still, the body doesn't sway and nothing pops, shivers or shakes; the game still
-// moves. The rules (newSnake to tick) are pure, so they run under node --test; the 3D follows them.
+// moves. The rules (newSnake to tick) are pure, so they run under node --test; the 3D follows them, the snake itself drawn by
+// snake-model.js.
 import * as THREE from 'three';
-import { piece } from './furniture.js';
-import { toonMaterial, withOutline } from './toon.js';
 import { CELL, index, nearestOpen } from './path.js';
+import { createSnakeModel, spin } from './snake-model.js';
 
 export const SPAN = CELL; // metres a step: one cell of the walk grid
 // Headings, clockwise seen from above (x right, z towards the front): a right turn is +1.
@@ -145,28 +145,10 @@ export const unpack = m => {
 export const SEND = 1 / 8, KEEP = 2;
 export const due = (last, now, mode, moved) => !last || mode !== last.mode || now - last.at >= KEEP || (mode === 'play' && moved && now - last.at >= SEND);
 
-// The 3D. Behind and above the head, looking on ahead of it; how fast the view and the head swing round to a new heading, the
-// view follows the head, and the view comes in (when something's behind) and goes back out again.
-const BACK = 1.7, NEAREST = 0.4, UP = 1.75, AHEAD = 2.2, FOV = 70, VIEW_TURN = 10, HEAD_TURN = 22, FOLLOW = 10, IN = 12, OUT = 3;
-// The body: its radius (m); rings along it at most, points round each, rings a segment (4 cm apart); how many segments either
-// side of a corner it's rounded off; how long the tail tapers, at most (m).
-const R = 0.1, RINGS = 1200, AROUND = 12, PER = 6, ROUND = 0.36, TAIL = 1.2;
+// The 3D. Behind and above the head, looking on ahead of it; how fast the view swings round after the head, the view follows
+// the head, and the view comes in (when something's behind) and goes back out again.
+const BACK = 1.7, NEAREST = 0.4, UP = 1.75, AHEAD = 2.2, FOV = 70, VIEW_TURN = 10, FOLLOW = 10, IN = 12, OUT = 3;
 const GRID = 5, BEST = 'ai-control-snake-best', TOUCH = 'ai-control-snake-touch'; // metres round the head the grid shows
-const GREEN = '#5cae4f', DARK = '#3d7d3c', BELLY = '#f0e2a6', INK = '#1b1a1f';
-const ball = (r, x, y, z, sx = 1, sy = 1, sz = 1) => new THREE.SphereGeometry(r, 16, 12).scale(sx, sy, sz).translate(x, y, z);
-const spin = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
-const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-
-// Where a ring goes: the middle of the body `m` segments from the head (segment i's drawn at `points[i]`), corners rounded off
-// ROUND segments either side; `tangent`, if given, runs towards the tail. By segment rather than by length, so a ring keeps to
-// its bit of the snake while a corner's cut short mid-step (spaced by length, the rings slid as it came and went, the more so
-// the further down the body: the tail shook).
-const p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
-export function spine(points, m, out, tangent) {
-  const at = (x, o) => { const i = Math.min(Math.max(Math.floor(x), 0), points.length - 2); return o.lerpVectors(points[i], points[i + 1], Math.min(Math.max(x - i, 0), 1)); };
-  at(m - ROUND, p1); at(m + ROUND, p2); tangent?.subVectors(p2, p1);
-  return out.addVectors(p1, p2).multiplyScalar(0.5);
-}
 
 // The grid on the floor, worked out in the shader so its lines stay one pixel thin and sharp however near: white round the
 // cells it can go on, a red wash on the shut ones beside them, fading out GRID metres from the head and wherever the cells
@@ -193,38 +175,21 @@ function gridMaterial() {
 export function createSnake({ canvas, grid, home, score, blocks = () => [], bump = () => {} }) {
   let best = 0; try { best = Number(localStorage.getItem(BEST)) || 0; } catch { /* no storage here */ }
   let touchMode = 'swipe'; try { if (localStorage.getItem(TOUCH) === 'tap') touchMode = 'tap'; } catch { /* no storage here */ }
-  let s = null, active = false, linger = 0, shake = 0, gulp = 0, bulge = Infinity, headYaw = 0, viewYaw = 0, distance = 0, fresh = true, bumped = false, shown = '', gridKey = '';
-  const held = new Set(), from = new THREE.Vector3(), look = new THREE.Vector3(), wobble = new THREE.Vector3(), at = new THREE.Vector3(), follow = new THREE.Vector3();
+  let s = null, active = false, linger = 0, shake = 0, viewYaw = 0, distance = 0, fresh = true, bumped = false, shown = '', gridKey = '';
+  const held = new Set(), from = new THREE.Vector3(), look = new THREE.Vector3(), wobble = new THREE.Vector3(), follow = new THREE.Vector3();
   const root = new THREE.Group(); root.visible = false;
 
-  // The body: a tube bent along it every frame (ring 0 at the head), green with darker bands across the back and a pale belly.
-  // Only its layout's kept from the cylinder; its normals do for the outline's too.
-  const tube = new THREE.CylinderGeometry(1, 1, 1, AROUND, RINGS - 1, true), colors = new Float32Array(tube.attributes.position.count * 3), tint = new THREE.Color();
-  for (let r = 0; r < RINGS; r++) for (let a = 0; a <= AROUND; a++) {
-    const up = Math.cos(a / AROUND * Math.PI * 2);
-    tint.set(up < -0.3 ? BELLY : (r / PER * SPAN) % 0.32 < 0.08 && up > 0 ? DARK : GREEN).toArray(colors, (r * (AROUND + 1) + a) * 3);
-  }
-  tube.setAttribute('color', new THREE.BufferAttribute(colors, 3)); tube.setAttribute('outlineNormal', tube.attributes.normal);
-  const body = withOutline(new THREE.Mesh(tube, toonMaterial('#ffffff', { vertexColors: true })), 0.008);
-  body.frustumCulled = body.children[0].frustumCulled = false; body.raycast = () => {}; root.add(body);
-  // The head, facing +z, a little wider than the neck: a flat skull over a pale jaw, eyes up top, nostrils, a forked tongue that flicks.
-  const head = new THREE.Group(); root.add(head);
-  head.add(piece('snake-head', () => [[ball(0.12, 0, 0.1, 0.035, 1, 0.62, 1.3), GREEN], [ball(0.105, 0, 0.07, 0.04, 0.95, 0.42, 1.25), BELLY], [ball(0.05, 0, 0.142, -0.02, 1, 0.3, 1.3), DARK],
-    ...[1, -1].flatMap(side => [[ball(0.04, side * 0.068, 0.14, 0.085), '#ffffff'], [ball(0.022, side * 0.08, 0.15, 0.115), INK], [ball(0.008, side * 0.03, 0.115, 0.188), INK]])]));
-  const tongue = piece('snake-tongue', () => [[new THREE.BoxGeometry(0.012, 0.005, 0.09).translate(0, 0, 0.045), '#e63946'], ...[1, -1].map(side => [new THREE.BoxGeometry(0.009, 0.005, 0.045).translate(0, 0, 0.022).rotateY(side * 0.5).translate(0, 0, 0.09), '#e63946'])], 0);
-  tongue.position.set(0, 0.07, 0.19); head.add(tongue);
-  // The apple, and a beam over it to find it by from across the office.
-  const apple = new THREE.Group(); root.add(apple);
-  apple.add(piece('snake-apple', () => [[ball(0.1, 0, 0.11, 0, 1, 0.9, 1), '#e63946'], [new THREE.CylinderGeometry(0.008, 0.01, 0.07, 6).translate(0, 0.23, 0), '#6b4423'], [ball(0.04, 0.035, 0.23, 0, 1, 0.25, 0.55), '#4f9a4a']]));
+  // The snake, classic green, and a beam over its apple to find it by from across the office.
+  const model = createSnakeModel(null); root.add(model.root);
   const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.2, 3, 16, 1, true).translate(0, 1.5, 0), new THREE.MeshBasicMaterial({ color: '#ffe14d', transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-  beam.raycast = () => {}; apple.add(beam);
+  beam.raycast = () => {}; model.meal.add(beam);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), gridMaterial()); floor.raycast = () => {}; root.add(floor);
   // A red circle under each thing moving about, as far out as it's kept off: a disc and a rim, made as they're needed.
   const circles = [], red = new THREE.MeshBasicMaterial({ color: '#ff2e38', transparent: true, opacity: 0.3, depthWrite: false });
   const rim = new THREE.MeshBasicMaterial({ color: '#ff2e38', transparent: true, opacity: 0.8, depthWrite: false });
   const circle = () => { const c = new THREE.Group(); c.add(new THREE.Mesh(new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2), red), new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48).rotateX(-Math.PI / 2), rim)); c.traverse(m => { m.raycast = () => {}; }); root.add(c); return c; };
 
-  const restart = () => { const g = grid(), spot = home(); s = g && spot ? newSnake(g, spot, best) : null; if (s) headYaw = viewYaw = Math.atan2(...DIRS[s.dir]); bulge = Infinity; fresh = true; bumped = false; };
+  const restart = () => { const g = grid(), spot = home(); s = g && spot ? newSnake(g, spot, best) : null; if (s) { model.set(s); model.face(); viewYaw = model.yaw; } fresh = true; bumped = false; };
   const press = () => { if (!s) return; if (settled(s)) restart(); else go(s); };
   const showScore = () => {
     const over = s?.mode === 'over', touch = globalThis.matchMedia?.('(pointer: coarse)')?.matches, line = s ? [s.eaten, best, s.mode, bumped, touch && touchMode].join() : '';
@@ -262,7 +227,7 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
       const g = grid(); root.visible = !!s && !!g; if (!root.visible) return;
       const near = blocks();
       if (active) for (const happened of tick(s, g, dt, near)) {
-        if (happened === 'eat' && !reduced) { gulp = 1; bulge = 0; }
+        if (happened === 'eat' && !reduced) model.gulp();
         if (happened === 'bump') { bumped = true; bump(); }
         if (happened === 'crash' || happened === 'bump') { if (!reduced) shake = 1; if (s.best > best) { best = s.best; try { localStorage.setItem(BEST, String(best)); } catch { /* no storage here */ } } }
       }
@@ -270,44 +235,12 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
     },
   };
 
-  // Where segment i is drawn: on its way from where it was to where it is.
-  const segment = (i, out) => { const b = s.body[i], a = s.prev[i] || b; return out.set(a[0] + (b[0] - a[0]) * s.acc, 0, a[1] + (b[1] - a[1]) * s.acc); };
-  const points = [], mid = new THREE.Vector3(), t = new THREE.Vector3(), side = new THREE.Vector3(), vertical = new THREE.Vector3(0, 1, 0);
-  // The tube along the segments, corners rounded off, thinning to the tail, swaying a little as it goes, with a lump where it swallowed.
-  function bend(reduced, dt) {
-    const n = s.body.length; while (points.length < n) points.push(new THREE.Vector3());
-    points.length = n; for (let i = 0; i < n; i++) segment(i, points[i]);
-    body.visible = points.some(p => p.distanceToSquared(points[0]) > 0.0025); if (!body.visible) return; // still curled up
-    const per = Math.min(PER, Math.floor((RINGS - 1) / (n - 1))), rings = (n - 1) * per + 1, long = (n - 1) * SPAN, tail = Math.min(TAIL, long * 0.6);
-    const sway = reduced || s.mode !== 'play' ? 0 : 0.018, back = DIRS[s.dir], pos = tube.attributes.position.array, nor = tube.attributes.normal.array;
-    bulge += dt * (s.rate * SPAN + 1);
-    for (let r = 0; r < RINGS; r++) {
-      // Rings past the tail fold away under the floor, at its tip.
-      if (r >= rings) { for (let a = 0, k = r * (AROUND + 1) * 3; a <= AROUND; a++, k += 3) { pos[k] = mid.x; pos[k + 1] = -0.05; pos[k + 2] = mid.z; } continue; }
-      const d = r / per * SPAN; // metres down the body, as it'd be laid out straight
-      spine(points, r / per, mid, t); if (t.lengthSq() < 1e-8) t.set(-back[0], 0, -back[1]); t.normalize();
-      side.crossVectors(vertical, t);
-      mid.addScaledVector(side, sway * Math.sin(d * 14 - s.time * 9) * Math.min(1, d * 3));
-      const radius = R * (0.15 + 0.85 * smooth(0, tail, long - d)) * (1 + 0.45 * Math.exp(-(((d - bulge) / 0.1) ** 2)));
-      for (let a = 0; a <= AROUND; a++) {
-        const th = a / AROUND * Math.PI * 2, sx = Math.sin(th), cy = Math.cos(th), k = (r * (AROUND + 1) + a) * 3;
-        const nx = side.x * sx, ny = cy, nz = side.z * sx; // round it: side × sin, up × cos (side × up runs along the body, as the cylinder's rows do)
-        pos[k] = mid.x + nx * radius; pos[k + 1] = radius * 0.85 * (1 + cy); pos[k + 2] = mid.z + nz * radius;
-        nor[k] = nx; nor[k + 1] = ny; nor[k + 2] = nz;
-      }
-    }
-    tube.attributes.position.needsUpdate = tube.attributes.normal.needsUpdate = true;
-  }
   function draw(dt, reduced, g, near) {
     while (circles.length < near.length) circles.push(circle());
     circles.forEach((c, i) => { const b = near[i]; c.visible = !!b; if (b) { c.position.set(b.x, 0.022, b.z); c.scale.setScalar(b.r + CLEAR); } });
-    shade(g); bend(reduced, dt);
-    // The head turns to where it's going (the heading's set as each step starts); the view swings round after it.
-    segment(0, at); const yaw = Math.atan2(...DIRS[s.dir]);
-    headYaw += spin(headYaw, yaw) * (1 - Math.exp(-dt * HEAD_TURN)); viewYaw += spin(viewYaw, headYaw) * (1 - Math.exp(-dt * VIEW_TURN));
-    head.position.copy(at); head.rotation.y = headYaw; head.scale.setScalar(1 + 0.3 * gulp); gulp = Math.max(0, gulp - dt * 4);
-    head.rotation.z = s.stall > 0 && s.mode === 'play' && !reduced ? Math.sin(s.time * 70) * 0.08 : 0; // a shiver while it holds
-    tongue.visible = !reduced && s.mode !== 'over' && s.time % 1.6 < 0.3; tongue.scale.z = Math.sin((s.time % 1.6) / 0.3 * Math.PI);
+    shade(g); model.food(s.apple); model.update(dt, reduced);
+    // The view swings round after the head.
+    const at = model.head.position; viewYaw += spin(viewYaw, model.yaw) * (1 - Math.exp(-dt * VIEW_TURN));
     floor.material.uniforms.head.value.set(at.x, at.z);
 
     // Back as far as BACK over open floor (a wall or the printer behind it would be in the way of the view), looking nearer
@@ -320,11 +253,7 @@ export function createSnake({ canvas, grid, home, score, blocks = () => [], bump
     from.copy(follow).addScaledVector(ahead, -distance).setY(UP); look.copy(follow).addScaledVector(ahead, AHEAD * distance / BACK).setY(0.1);
     wobble.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.12 * shake); shake = Math.max(0, shake - dt * 3);
 
-    apple.visible = !!s.apple;
-    if (s.apple) {
-      apple.position.set(s.apple[0], reduced ? 0 : 0.03 + Math.sin(s.time * 3) * 0.03, s.apple[1]);
-      if (!reduced) apple.rotation.y += dt; beam.material.opacity = reduced ? 0.22 : 0.18 + Math.sin(s.time * 4) * 0.06;
-    }
+    if (s.apple) beam.material.opacity = reduced ? 0.22 : 0.18 + Math.sin(s.time * 4) * 0.06;
   }
 
   // The grid's cells for the shader, again only when the furniture's moved.

@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { walkGrid, index, CELL } from '../client/office/path.js';
-import { createSnake, newSnake, turn, go, step, tick, reach, settled, spine, roomy, placeApple, pack, unpack, due, KEEP, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
-import { checkUp } from '../client/office/meeting.js';
+import { createSnake, newSnake, turn, go, step, tick, reach, settled, roomy, placeApple, pack, unpack, due, KEEP, SPAN, DIRS, LENGTH, GROW, STALL, CLEAR } from '../client/office/snake.js';
+import { createSnakeModel, snakeColours, spine } from '../client/office/snake-model.js';
+import { fruitFood } from '../client/office/fruit.js';
+import { shared } from '../client/office/furniture.js';
+import { checkUp, COLOURS, FRUITS } from '../client/office/meeting.js';
 
 const box = (x1, z1, x2, z2) => new THREE.Box3(new THREE.Vector3(x1, 0, z1), new THREE.Vector3(x2, 1, z2));
 const V = (x, z) => new THREE.Vector3(x, 0, z), first = () => 0;
@@ -142,12 +145,59 @@ test('a ring keeps to its bit of the body, steady while the body turns a corner'
   for (let k = 1; k < xs.length; k++) assert.ok(xs[k] >= xs[k - 1] - 1e-9, `frame ${k}: ${xs[k - 1]} → ${xs[k]}`);
 });
 
+// The 3D's textures draw on canvases: a document whose canvases take any drawing, put back after the test.
+const ctx = () => new Proxy({}, { get: (o, k) => k in o ? o[k] : () => ({ addColorStop() {} }), set: (o, k, v) => { o[k] = v; return true; } });
+const stubDocument = { createElement: () => ({ getContext: ctx }) };
+const paper = t => { const was = globalThis.document; globalThis.document = stubDocument; t.after(() => { if (was) globalThis.document = was; else delete globalThis.document; }); };
+const luminance = hex => { const c = new THREE.Color(hex); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; };
+
+test('a snake in a colour: darker bands and a paler belly; classic with no look', () => {
+  assert.deepEqual(snakeColours(null), { skin: '#5cae4f', band: '#3d7d3c', belly: '#f0e2a6' });
+  for (const colour of COLOURS) {
+    const { skin, band, belly } = snakeColours({ fruit: 'apple', colour });
+    assert.equal(skin, colour); assert.ok(luminance(band) < luminance(skin) && luminance(belly) > luminance(skin), colour);
+  }
+});
+
+test('each colour\'s head is built once', t => {
+  paper(t);
+  const blue = () => createSnakeModel({ fruit: 'pear', colour: '#3a86ff' }), a = blue(), b = blue(), pink = createSnakeModel({ fruit: 'pear', colour: '#ff5d8f' });
+  assert.equal(a.head.children[0].geometry, b.head.children[0].geometry);
+  assert.notEqual(pink.head.children[0].geometry, a.head.children[0].geometry);
+});
+
+test('the food is the fruit, small and shared', t => {
+  paper(t);
+  const a = fruitFood('pear', '#3a86ff'), b = fruitFood('pear', '#3a86ff');
+  assert.equal(a.children[0].geometry, b.children[0].geometry); assert.equal(a.children[0].material, b.children[0].material);
+  assert.equal(a.children[0].material.userData.shared, true);
+  for (const [fruit] of FRUITS) {
+    const box = new THREE.Box3().setFromObject(fruitFood(fruit, '#3a86ff')), tall = box.max.y - box.min.y;
+    assert.ok(tall >= 0.17 && tall <= 0.23, `${fruit} ${tall}`); assert.ok(Math.abs(box.min.y) < 0.01, `${fruit} ${box.min.y}`);
+  }
+  assert.equal(createSnakeModel(null).meal.children[0].geometry, shared['snake-apple']);
+});
+
+test('reduced motion keeps the body and food still', t => {
+  paper(t);
+  const body = Array.from({ length: 6 }, (_, i) => [2.625 - i * SPAN, 1.125]), prev = body.map(([x, z]) => [x - SPAN, z]);
+  // Two updates: the tube and the food's height after each.
+  const twice = reduced => {
+    const m = createSnakeModel(null), seen = [];
+    m.set({ body, prev, acc: 0.5, dir: 1, mode: 'play', rate: 8, stall: 0 }); m.food([1.125, 1.125]);
+    for (let k = 0; k < 2; k++) { m.update(0.1, reduced); seen.push([...m.body.geometry.attributes.position.array], m.meal.position.y); }
+    return seen;
+  };
+  const [p1, y1, p2, y2] = twice(true);
+  assert.deepEqual(p2, p1); assert.equal(y2, y1);
+  const [q1, z1, q2, z2] = twice(false);
+  assert.notDeepEqual(q2, q1); assert.notEqual(z2, z1);
+});
 
 // Phone controls: a canvas that records its listeners, storage and a coarse pointer.
 function phone(stored) {
   const saved = {}, was = { storage: globalThis.localStorage, media: globalThis.matchMedia, document: globalThis.document };
-  const ctx = () => new Proxy({}, { get: (o, k) => k in o ? o[k] : () => ({ addColorStop() {} }), set: (o, k, v) => { o[k] = v; return true; } });
-  globalThis.document = { createElement: () => ({ getContext: ctx }) }; // the 3D's textures draw on canvases
+  globalThis.document = stubDocument;
   const store = { getItem: k => saved[k] ?? null, setItem: (k, v) => { saved[k] = v; } };
   if (stored !== undefined) saved['ai-control-snake-touch'] = stored;
   Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true, writable: true });

@@ -326,6 +326,26 @@ function stemGeometry(fruit, h) {
   return geometry;
 }
 
+// A fruit as a snake's food: its body and stem, no face, FOOD m tall, standing on the floor over its middle. The size is
+// baked in so the body's outline is as thick as the classic apple's; the stem's is thinner, as it's a quarter its size.
+// Each fruit's shape is made once, and each fruit and colour's skin.
+const FOOD = 0.2, foodShapes = new Map(), foodSkins = new Map();
+export function fruitFood(fruit, colour) {
+  if (!foodShapes.has(fruit)) {
+    const shape = bodyShape(fruit), body = shape.geometry.clone(), stem = stemGeometry(fruit, shape.height)?.clone(), box = new THREE.Box3();
+    for (const g of [body, stem]) if (g) { g.computeBoundingBox(); box.union(g.boundingBox); }
+    const k = FOOD / (box.max.y - box.min.y), centre = box.getCenter(V(0, 0));
+    for (const g of [body, stem]) g?.translate(-centre.x, -box.min.y, -centre.z).scale(k, k, k);
+    foodShapes.set(fruit, { body, stem });
+  }
+  const { body, stem } = foodShapes.get(fruit), key = fruit + colour;
+  if (!foodSkins.has(key)) { const skin = bodyMaterial(fruit, colour); skin.userData.shared = true; foodSkins.set(key, skin); }
+  const group = new THREE.Group();
+  group.add(withOutline(new THREE.Mesh(body, foodSkins.get(key)), 0.008));
+  if (stem) group.add(withOutline(new THREE.Mesh(stem, painted()), 0.004));
+  return group;
+}
+
 export function createFruit({ fruit, color, accessories = [], trim = '#ff5d8f' }, { scale = 1 } = {}) {
   const shape = bodyShape(fruit), ink = toonMaterial(INK), limbMaterial = toonMaterial(LIMB), own = [];
   const group = new THREE.Group(), body = new THREE.Group();
