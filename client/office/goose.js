@@ -8,7 +8,7 @@ import { piece } from './furniture.js';
 import { toonMaterial, withOutline } from './toon.js';
 import { findPath, nearestOpen, index } from './path.js';
 import { reach as flood } from './snake.js';
-import { standSpots, nearestSpot, nextSpot, gooseRole, routeAt, gapOf, eased, planOf, planKey, planDue, round2, PLAN_EVERY } from './goose-plan.js';
+import { standSpots, nearestSpot, nextSpot, gooseRole, routeAt, alongRoute, gapOf, eased, planOf, planKey, planDue, round2, PLAN_EVERY } from './goose-plan.js';
 
 export const GOOSE = 'goose'; // its id for the bubbles and props.js's hits
 // m/s by mode (you walk at 4), standing in the rest; metres per radian of a leg's swing.
@@ -89,12 +89,12 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   const at = root.position, pose = { ...REST }, aim = { ...REST }, dir = new THREE.Vector3(), local = new THREE.Vector3(), tip = new THREE.Vector3(), above = new THREE.Vector3();
   let t = 0, yaw = 0, phase = 0, stepping = 0, mode = 'loiter', idle = 'look', side = 1, until = 0, path = null, loot = null, mine = false, last = null, victim = null, prey = null; // mine: it's had it in its beak; last: what it took last time; prey: whose id it's chasing
   let chaseUntil = 0, replanAt = 0, calmUntil = 0, honkUntil = 0, honkIn = rand(HONKS), stealIn = rand(THEFTS), prankIn = rand(PRANKS), visitIn = rand(VISITS);
-  let target = null, visiting = null; // what it has its eye on (strike); the food it's by: { food, spots, spot, leaveAt }
+  let target = null, visiting = null, fed = []; // what it has its eye on (strike); the food it's by: { food, spots, spot, leaveAt }; foods() this frame
   // At a meeting: this page's role and the keeper's id; the last plan heard from anyone ({ m, r: when, age }) and the keeper's one
   // being played; how far the drawn goose is off it; a copy held in the beak; took: you took back what it had, so plans still
   // saying it has it are let be till one says it hasn't; when it may show at home; who's at the meeting, and who's newly come.
   let role = 'home', keeper = null, kept = null, plan = null, offset = [0, 0], ghost = null, took = false, spawnAt = 0, present = new Set();
-  const arrived = new Set(), aimAt = new THREE.Vector3(), goal = new THREE.Vector3();
+  const arrived = new Set(), aimAt = new THREE.Vector3(), goal = new THREE.Vector3(), onRoute = [0, 0, 0, 0]; // onRoute: where play() has the plan put it, [x, z, dx, dz]
   // Keeping it: when its last plan went and what made it that plan (planKey); you as one it might go for, and what the next plan's
   // key is worked out from, both filled in place.
   let sentAt = -Infinity, sentKey = null;
@@ -139,9 +139,9 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   // Off to the snake's food nearest it: to the nearest spot 0.75–1 m from it that still leaves the snake a way in (goose-plan.js)
   // and has a way there. Only the spots it can get to are kept (one flood from where it stands), so no search for a way is wasted.
   const visit = () => {
-    const list = foods(), food = nearestSpot(list.map(f => f.food), [at.x, at.z]); if (!food) return;
+    const food = nearestSpot(fed.map(f => f.food), [at.x, at.z]); if (!food) return;
     const grid = walkable(), steps = flood(grid, [at.x, at.z]), far = s => Math.hypot(s[0] - at.x, s[1] - at.z);
-    const spots = standSpots(grid, food, list.find(f => f.food === food).head).filter(s => steps[index(grid, { x: s[0], z: s[1] })] >= 0).sort((a, b) => far(a) - far(b));
+    const spots = standSpots(grid, food, fed.find(f => f.food === food).head).filter(s => steps[index(grid, { x: s[0], z: s[1] })] >= 0).sort((a, b) => far(a) - far(b));
     for (const s of spots) { const way = wayTo(s, food); if (way) { path = way; mode = 'visit'; visiting = { food, spots, spot: s, leaveAt: Infinity }; return; } }
   };
   // A while at a spot by the food, looking about or pecking; its stay counts from first getting there.
@@ -186,12 +186,13 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
 
   // What it's up to, a frame at a time.
   function think(dt) {
+    fed = foods(); // once a frame
     if (loot?.held) { const taken = mine; drop(); if (taken) poked('took', '💢'); else loiter(); } // you got there first, or took it back
     if (mode !== 'chase' && t > calmUntil) { const p = near(); if (p) provoke(SHORT, '🪿', p.id); } // come too close and it charges
-    if (mode === 'loiter' || mode === 'walk') { honkIn -= dt; stealIn -= dt; prankIn -= dt; if (foods().length) visitIn -= dt; }
+    if (mode === 'loiter' || mode === 'walk') { honkIn -= dt; stealIn -= dt; prankIn -= dt; if (fed.length) visitIn -= dt; }
     if (honkIn < 0) { honkIn = rand(HONKS); if (role !== 'keeper' || alone()) honk(); } // kept for others, it honks only at something, which they hear of
     // Off again when its stay is up, or once the food's gone (eaten, or its snake with it).
-    if ((mode === 'visit' || mode === 'mill') && (t > visiting.leaveAt || !foods().some(f => Math.hypot(f.food[0] - visiting.food[0], f.food[1] - visiting.food[1]) < 0.01))) { visiting = null; loiter(); }
+    if ((mode === 'visit' || mode === 'mill') && (t > visiting.leaveAt || !fed.some(f => Math.hypot(f.food[0] - visiting.food[0], f.food[1] - visiting.food[1]) < 0.01))) { visiting = null; loiter(); }
     if (mode === 'chase') {
       const p = quarry(prey); // after them where they are now, till they're busy or gone, or it's had enough
       if (!p || p.busy || t > chaseUntil) { calmUntil = t + 2; loiter(1); return; }
@@ -270,17 +271,18 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     if (!m.carry) { took = false; drop(); } else if (!took && !carrying()) ghost = props.holdGhost(m.carry, bill);
   }
   // The keeper's goose played back, a frame at a time: where the plan's route puts it by now, plus what's left of the offset. It
-  // faces along the route while that goes on (routeAt calls a route with no speed moving), keeps that heading once a walk's
-  // route runs out, and turns to the plan's yaw when it stands; its feet go by how far it's drawn moving.
+  // faces along the route while that goes on (alongRoute calls a route with no speed moving), keeps that heading once a walk's
+  // route runs out, and turns to the plan's yaw when it stands; its feet go by how far it's drawn moving. Nothing new is made a
+  // frame: the spot goes into `onRoute`, the offset eases in place.
   function play(dt) {
     if (loot?.held) { drop(); took = true; poked('took', '💢'); } // you took it back: yours at once
     if (!plan) return; // standing where it is till the new keeper's first plan
-    const { m, r, age } = plan, now = routeAt(m.at, m.route, m.speed, t - r + age / 1000);
-    offset = eased(offset, dt);
-    const x = now.at[0] + offset[0], z = now.at[1] + offset[1], moved = Math.hypot(x - at.x, z - at.z);
+    const { m, r, age } = plan, passed = alongRoute(m.at, m.route, m.speed, t - r + age / 1000, onRoute);
+    eased(offset, dt, offset);
+    const x = onRoute[0] + offset[0], z = onRoute[1] + offset[1], moved = Math.hypot(x - at.x, z - at.z);
     at.x = x; at.z = z;
     if (moved > dt * 0.05) { phase += moved / STRIDE; stepping = 1; } // over 5 cm/s
-    if (!(m.speed > 0)) turnTo(m.yaw, dt); else if (now.moving) turnTo(Math.atan2(now.dir[0], now.dir[1]), dt); // the yaw it set off with is stale
+    if (!(m.speed > 0)) turnTo(m.yaw, dt); else if (passed < m.route.length) turnTo(Math.atan2(onRoute[2], onRoute[3]), dt); // the yaw it set off with is stale
   }
   // What the keeper's goose did, acted out here: a nip shoves you if it's you; a take puts your own thing of that kind by its spot
   // in the beak, else a copy; a wake startles your sleeper by that seat. A nip, drop and wake each come with their honk.

@@ -13,20 +13,27 @@ export function gooseRole(players, me) {
 // Where a goose at `at` has got to after `seconds` along `route` (waypoints still ahead) at `speed` m/s: its spot, the route left,
 // whether it's still moving and the unit heading of the leg it's on. At the end it stands.
 export function routeAt(at, route, speed, seconds) {
-  let left = Math.max(0, seconds) * speed, [x, z] = at, i = 0, dir = null;
-  for (; i < route.length; i++) {
-    const [tx, tz] = route[i], len = Math.hypot(tx - x, tz - z);
-    if (len > 0) dir = [(tx - x) / len, (tz - z) / len];
-    if (len > left) { x += dir[0] * left; z += dir[1] * left; return { at: [x, z], route: route.slice(i), moving: true, dir }; }
+  const out = [0, 0, 0, 0], passed = alongRoute(at, route, speed, seconds, out), moving = passed < route.length;
+  return { at: [out[0], out[1]], route: route.slice(passed), moving, dir: moving ? [out[2], out[3]] : null };
+}
+// The same, making nothing (a replayed goose, every frame): its spot and heading into `out` as [x, z, dx, dz] (no heading at the
+// end), and how many waypoints it's passed, route.length once it stands at the end.
+export function alongRoute(at, route, speed, seconds, out) {
+  let left = Math.max(0, seconds) * speed, x = at[0], z = at[1];
+  for (let i = 0; i < route.length; i++) {
+    const tx = route[i][0], tz = route[i][1], len = Math.hypot(tx - x, tz - z);
+    if (len > left) { out[2] = (tx - x) / len; out[3] = (tz - z) / len; out[0] = x + out[2] * left; out[1] = z + out[3] * left; return i; }
     left -= len; x = tx; z = tz;
   }
-  return { at: [x, z], route: [], moving: false, dir: null };
+  out[0] = x; out[1] = z; out[2] = out[3] = 0;
+  return route.length;
 }
 
-// A drawn goose further than JUMP metres off its plan snaps to it; nearer, the offset eases away by exp(-EASE t).
+// A drawn goose further than JUMP metres off its plan snaps to it; nearer, the offset eases away by exp(-EASE t), into `out`
+// (a new array, or `offset` itself to ease it in place).
 export const JUMP = 1, EASE = 4;
 export const gapOf = (drawn, planned) => { const g = [drawn[0] - planned[0], drawn[1] - planned[1]]; return Math.hypot(...g) > JUMP ? [0, 0] : g; };
-export const eased = (offset, dt) => offset.map(v => v * Math.exp(-EASE * dt));
+export const eased = (offset, dt, out = []) => { const k = Math.exp(-EASE * dt); for (let i = 0; i < offset.length; i++) out[i] = offset[i] * k; return out; };
 
 // Open cells 0.75 to 1 m from the food (centres), from which a block of radius r still leaves the food's cell reachable from `head`.
 export function standSpots(grid, food, head, r = 0.2) {

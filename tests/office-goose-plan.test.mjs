@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { walkGrid, index, CELL } from '../client/office/path.js';
 import { reach, DIRS, CLEAR } from '../client/office/snake.js';
 import { checkUp, COLOURS } from '../client/office/meeting.js';
-import { gooseRole, routeAt, gapOf, eased, standSpots, nearestSpot, nextSpot, planDue, planOf, planKey } from '../client/office/goose-plan.js';
+import { gooseRole, routeAt, alongRoute, gapOf, eased, standSpots, nearestSpot, nextSpot, planDue, planOf, planKey } from '../client/office/goose-plan.js';
 
 const P = (id, extra = {}) => ({ id, name: id, fruit: 'apple', colour: COLOURS[0], at: 'meeting', ...extra });
 test('the role from the roster', () => {
@@ -21,6 +21,16 @@ test('where a plan puts the goose after a while, standing at the end', () => {
   const end = routeAt([0, 0], route, 1, 5); assert.ok(near(end.at, [1, 2])); assert.deepEqual(end.route, []); assert.equal(end.moving, false); assert.equal(end.dir, null);
   assert.ok(near(routeAt([0, 0], route, 1, -3).at, [0, 0]));
   assert.ok(near(routeAt([0, 0], route, 0, 5).at, [0, 0])); assert.ok(near(routeAt([2, 2], [], 1, 5).at, [2, 2]));
+});
+// Played back every frame: the same, written into an array kept for it.
+test('along a route and easing, in place', () => {
+  const route = [[1, 0], [1, 2]], out = [9, 9, 9, 9];
+  for (const [speed, seconds] of [[1, 0.5], [1, 1.5], [1, 5], [0, 5], [1, -3]]) {
+    const now = routeAt([0, 0], route, speed, seconds), passed = alongRoute([0, 0], route, speed, seconds, out);
+    assert.deepEqual(out.slice(0, 2), now.at); assert.equal(passed < route.length, now.moving); assert.deepEqual(route.slice(passed), now.route);
+    if (now.moving) assert.deepEqual(out.slice(2), now.dir);
+  }
+  const offset = [1, 0.5]; assert.equal(eased(offset, 0.25, offset), offset); assert.ok(Math.abs(offset[0] - Math.exp(-1)) < 1e-12 && Math.abs(offset[1] - Math.exp(-1) / 2) < 1e-12);
 });
 test('catching up: a gap over 1 m jumps, a smaller one eases out', () => {
   assert.deepEqual(gapOf([0.6, 0.8], [0, 0]), [0.6, 0.8]); // exactly 1 m eases
