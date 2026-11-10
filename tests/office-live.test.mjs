@@ -384,3 +384,15 @@ test('removed by the host: signed out at once, the pages told, no reconnecting',
   const n = s.upgrades(); await wait(300); assert.equal(s.upgrades(), n, 'no reconnect');
   await until(() => !hp.sees('Anna'), 'gone from the roster');
 });
+
+test('a removal that does not sign you out reconnects and tells the pages nothing', async t => {
+  const s = await setup(t); let lie = false;
+  const host = await s.player('Host', { host: true });
+  const fake = (url, init) => lie && JSON.parse(init.body).join === false ? Promise.resolve(new Response(JSON.stringify({ day: '2026-11-09', players: [] }), { status: 200 })) : fetch(url, init);
+  const anna = await s.player('Anna', { fetch: fake }), hp = open(host), ap = open(anna);
+  await until(() => hp.sees('Anna') && ap.last('welcome'), 'Anna in');
+  lie = true; const n = s.upgrades();
+  hp.say({ type: 'remove', name: 'Anna' });
+  await until(() => s.upgrades() > n, 'a reconnect');
+  assert.equal(ap.last('refused'), undefined);
+});

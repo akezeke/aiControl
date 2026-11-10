@@ -82,8 +82,9 @@ export function liveUpgrade({ auth, origins, hosts, online, beatMs = 30_000 }) {
 // `hubFile`: the hub's own file (scripts/hub.mjs), there only on the hub's machine; its hostKey makes this AI Control the host.
 export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.json'), fetch = globalThis.fetch, now = Date.now, lingerMs = 5000, retryMs = 1000, beatMs = 15_000 }) {
   // The file as last read or written; the last good board, the scores it was sent with and when; the request in flight.
-  let saved = {}, text = null, last = null, sent = '', at = -Infinity, inflight = null, refusal = null;
-  // The colour the hub last refused a sync for (and what was held then): shown until another is picked.
+  let saved = {}, text = null, last = null, sent = '', at = -Infinity, inflight = null;
+  // `refusal`: the colour the hub last refused a sync for (and what was held then), shown until another is picked.
+  let refusal = null;
   // Re-read on every call: `npm run hub` signs in by writing this file while the server runs (and the token must stay one
   // player's). A file that changed under us drops the board kept for the old one. It's tiny and read only on a request.
   const load = () => {
@@ -199,11 +200,19 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       if (l.ws !== ws) return;
       l.ws = null; gone(l);
       if (link !== l || l.outdated) return;
-      // Removed by the host: signed out at once, and the pages told if the hub says so; no reconnecting.
-      if (code === 4003) { online.sync({}).then(r => { if (!r.joined) toPages({ type: 'refused', why: 'removed' }); }, () => {}); return; }
-      l.retry = setTimeout(() => { l.retry = null; if (link === l) connect(l); }, l.delay); l.retry.unref();
-      l.delay = Math.min(l.delay * 2, RETRY_MAX_MS);
+      // Removed by the host: ask the hub (not the cache) at once; signed out means the pages are told and there's no reconnecting,
+      // anything else (the hub says nothing of it, or can't be reached) is any other close.
+      if (code === 4003) {
+        at = -Infinity;
+        online.sync({}).then(r => { if (!r.joined) toPages({ type: 'refused', why: 'removed' }); else if (link === l && !l.ws && !l.retry) retry(l); }, () => { if (link === l && !l.ws && !l.retry) retry(l); });
+        return;
+      }
+      retry(l);
     });
+  }
+  function retry(l) {
+    l.retry = setTimeout(() => { l.retry = null; if (link === l) connect(l); }, l.delay); l.retry.unref();
+    l.delay = Math.min(l.delay * 2, RETRY_MAX_MS);
   }
   function heard(l, m) {
     if (m.type === 'refused' && m.why === 'version') { l.outdated = true; toPages(m); return; }
@@ -215,7 +224,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     if (!l.me) return;
     if (m.type === 'roster') {
       l.roster = m;
-      const mine = m.players.find(p => p.id === l.me.id); if (mine) Object.assign(l.me, { colour: mine.colour, at: mine.at });
+      const mine = m.players.find(p => p.id === l.me.id); if (mine) { Object.assign(l.me, { colour: mine.colour, at: mine.at }); if (mine.colour !== saved.colour) save({ ...saved, ...look(), colour: mine.colour }); }
       for (const id of l.places.keys()) if (!m.players.some(p => p.id === id && p.at === 'meeting')) l.places.delete(id);
     } else if (m.type === 'floor') l.floor = m.floor;
     else if (m.type === 'refused') l.asked = l.me.at; // still where it was; a page saying where again asks again
