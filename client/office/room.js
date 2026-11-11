@@ -248,7 +248,7 @@ export function createRoom(scene, renderer) {
   const deskShadows = floorShadow(1, 1, 0.3); deskShadows.geometry = new THREE.BufferGeometry(); root.add(deskShadows);
   const room = {
     // The secret room behind the lounge's bookshelf; pressing its right book calls room.onSecret (office.js walks you over).
-    secret: createSecret({ onPress: () => room.onSecret?.(), onMove: () => room.refreshFlight() }),
+    secret: createSecret({ onPress: () => room.onSecret?.(), onMove: () => room.refreshFlight(), onSlide: open => room.onShelf?.(open) }),
     // The kitchen through the left wall's doors; when it's first built or its doors move, things fly differently (and new things need dimming).
     kitchen: createKitchen({ onMove: () => { room.refreshFlight(); lights.refresh(); } }),
     colliders: [], flightColliders: [], hanging: [], lintels: [], cutouts: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},

@@ -260,10 +260,12 @@ export function createKitchen({ onMove } = {}) {
       const edge = origin.z + KITCHEN.back - WALL_T, east = edge < -WALL_T ? [Object.assign(new THREE.Box3(V(-WALL_T, 0, edge), V(0, WALL_H, -WALL_T)), { surface: 'wall-e' })] : [];
       return [...flightBoxes(origin, { doorShut: false }).filter(b => /^wall-[nsw]/.test(b.surface)), ...east, ...walkBoxes(origin), ...blocks, behind(origin)];
     },
-    // Each frame, with where you stand (not the camera, which the overview lifts away).
-    update(dt, at, still, overview) {
+    // Each frame, with where you stand (not the camera, which the overview lifts away) and where the others at a meeting are:
+    // the doors open for anyone near them.
+    update(dt, at, still, overview, others = []) {
       if (!origin) return;
-      const inside = kitchen.inside(at), far = Math.hypot(at.x - (origin.x + WALL_T / 2), at.z - origin.z), goal = !held && (inside || far < (t > 0 ? DOOR_FAR : DOOR_NEAR)) ? 1 : 0, was = t;
+      const near = p => kitchen.inside(p) || Math.hypot(p.x - (origin.x + WALL_T / 2), p.z - origin.z) < (t > 0 ? DOOR_FAR : DOOR_NEAR);
+      const inside = kitchen.inside(at), goal = !held && (near(at) || others.some(near)) ? 1 : 0, was = t;
       if (t !== goal) t = still ? goal : THREE.MathUtils.clamp(t + (goal ? dt : -dt) / MOVE, 0, 1);
       const shown = (t > 0 || inside) && overview < 0.01, opening = !opened && (t > 0 || inside);
       // The first time it opens, whatever isn't built yet is.

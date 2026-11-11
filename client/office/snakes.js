@@ -115,6 +115,8 @@ export function createSnakes(scene, { room, reducedMotion = () => false, clock =
     // Whose snake started from that plant, or null.
     taken(plant) { for (const n of snakes.values()) if (n.plant === plant) return n.name; return null; },
     has(id) { return snakes.has(id); },
+    // Each snake's cells as shown, for yours to crash into: theirs, not copies, so only read them.
+    bodies() { return Array.from(snakes.values(), n => n.playback.s.body); },
     // Every snake in ready or play with its food showing: { food, head } as cells' centres, copies, for the goose.
     foods() { const out = []; for (const n of snakes.values()) { const { s, food } = n.playback; if ((s.mode === 'ready' || s.mode === 'play') && food && s.body[0]) out.push({ food: [...food], head: [...s.body[0]] }); } return out; },
     update(dt) {

@@ -73,15 +73,22 @@ const loose = (item, kind) => { item.userData.loose = kind; return item; };
 // A takeaway coffee: paper cup, cardboard sleeve, lid.
 export const coffeeCup = () => loose(piece('cup', () => [[cyl(0.04, 0.03, 0.12, 0, 0.06, 0), '#f4efe6'], [cyl(0.0385, 0.035, 0.045, 0, 0.065, 0), '#b07a4a'], [cyl(0.043, 0.043, 0.012, 0, 0.124, 0), '#ffffff'], [cyl(0.03, 0.038, 0.012, 0, 0.136, 0), '#ffffff']], 0.005), 'cup');
 
-// Floor plants in three shapes.
+// Floor plants in three shapes. A snake plant is its pot and its leaves apart (`userData.leaves`), so the leaves can go while
+// its snake is out (office.js).
+const pot = () => [[cyl(0.2, 0.15, 0.38, 0, 0.19, 0, 16), '#d9774b'], [cyl(0.21, 0.205, 0.05, 0, 0.38, 0, 16), '#c4673d'], [cyl(0.185, 0.185, 0.02, 0, 0.4, 0, 16), '#5a3d2b']];
+const greens = ['#4f9a4a', '#5cae4f', '#3f8a44', '#6cbf5a'];
 export function plant(kind = 'bush') {
-  return piece(`plant-${kind}`, () => {
-    const parts = [[cyl(0.2, 0.15, 0.38, 0, 0.19, 0, 16), '#d9774b'], [cyl(0.21, 0.205, 0.05, 0, 0.38, 0, 16), '#c4673d'], [cyl(0.185, 0.185, 0.02, 0, 0.4, 0, 16), '#5a3d2b']];
-    const greens = ['#4f9a4a', '#5cae4f', '#3f8a44', '#6cbf5a'];
-    if (kind === 'snake') for (let i = 0; i < 8; i++) {
+  if (kind === 'snake') {
+    const group = new THREE.Group(), leaves = piece('plant-snake-leaves', () => Array.from({ length: 8 }, (_, i) => {
       const a = i * 2.4, r = 0.04 + jitter(i) * 0.09, tall = 0.55 + jitter(i, 2) * 0.45;
-      parts.push([new THREE.ConeGeometry(0.06, tall, 5).scale(1, 1, 0.3).rotateY(a).translate(0, tall / 2, 0).rotateX(Math.cos(a) * 0.18).rotateZ(Math.sin(a) * 0.18).translate(Math.cos(a) * r, 0.39, Math.sin(a) * r), greens[i % 4]]);
-    } else if (kind === 'tree') {
+      return [new THREE.ConeGeometry(0.06, tall, 5).scale(1, 1, 0.3).rotateY(a).translate(0, tall / 2, 0).rotateX(Math.cos(a) * 0.18).rotateZ(Math.sin(a) * 0.18).translate(Math.cos(a) * r, 0.39, Math.sin(a) * r), greens[i % 4]];
+    }), 0.01);
+    group.add(piece('plant-pot', pot, 0.01), leaves); group.userData.leaves = leaves;
+    return group;
+  }
+  return piece(`plant-${kind}`, () => {
+    const parts = pot();
+    if (kind === 'tree') {
       parts.push([cyl(0.025, 0.035, 1.1, 0, 0.95, 0, 8), '#6b4423']);
       for (let i = 0; i < 9; i++) { const a = i * 2.1, r = 0.12 + jitter(i) * 0.1; parts.push([ball(0.16 + jitter(i, 3) * 0.08, Math.cos(a) * r, 1.25 + jitter(i, 4) * 0.5, Math.sin(a) * r), greens[i % 4]]); }
     } else for (let i = 0; i < 8; i++) { const a = i * 2.4, r = 0.1 + jitter(i) * 0.08; parts.push([ball(0.15 + jitter(i, 5) * 0.08, Math.cos(a) * r, 0.55 + jitter(i, 6) * 0.3, Math.sin(a) * r), greens[i % 4]]); }

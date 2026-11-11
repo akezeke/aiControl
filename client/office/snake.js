@@ -28,10 +28,12 @@ const openAt = (grid, x, z) => grid.open[index(grid, { x, z })] === 1;
 // Inside one of `blocks` (things moving about, { x, z, r }: the goose), by its red circle. Only the head minds them, so the
 // goose can waddle across the body.
 const inside = (blocks, [x, z]) => blocks.some(b => Math.hypot(x - b.x, z - b.z) < b.r + CLEAR);
+// On one of `bodies`: the other snakes at a meeting, as they're shown here. They end it as its own body does.
+const inBodies = (bodies, c) => bodies.some(body => body.some(b => same(b, c)));
 // The next step would hit something: the way it's heading, or will be once the next turn's taken.
-const shut = (s, grid, blocks) => {
+const shut = (s, grid, blocks, bodies) => {
   const d = DIRS[s.turns.length ? (s.dir + s.turns[0] + 4) % 4 : s.dir], next = [s.body[0][0] + d[0] * SPAN, s.body[0][1] + d[1] * SPAN];
-  return !openAt(grid, ...next) || inside(blocks, next) || (s.grow > 0 ? s.body : s.body.slice(0, -1)).some(b => same(b, next));
+  return !openAt(grid, ...next) || inside(blocks, next) || (s.grow > 0 ? s.body : s.body.slice(0, -1)).some(b => same(b, next)) || inBodies(bodies, next);
 };
 export const centre = (grid, k) => [grid.left + (k % grid.cols + 0.5) * CELL, grid.back + (Math.floor(k / grid.cols) + 0.5) * CELL];
 
@@ -97,13 +99,13 @@ export function turn(s, side) {
 export const go = s => { if (s.mode === 'ready') s.mode = 'play'; };
 export const settled = s => s.mode === 'over' && s.time - s.overAt >= AGAIN;
 // One step: 'step', 'eat', 'crash' or 'bump' (into one of `blocks`, which ends it too).
-export function step(s, grid, blocks = [], rand = Math.random) {
+export function step(s, grid, blocks = [], rand = Math.random, bodies = []) {
   if (s.turns.length) s.dir = (s.dir + s.turns.shift() + 4) % 4;
   const d = DIRS[s.dir], next = [s.body[0][0] + d[0] * SPAN, s.body[0][1] + d[1] * SPAN], eats = !!s.apple && same(next, s.apple);
   if (eats) s.grow += GROW;
   const body = s.grow > 0 ? s.body : s.body.slice(0, -1); // the tail moves off, unless it's growing
   const bump = inside(blocks, next);
-  if (bump || !openAt(grid, ...next) || body.some(b => same(b, next))) { s.mode = 'over'; s.overAt = s.time; s.prev = s.body; s.acc = 0; s.turns = []; s.record = s.eaten > s.best; s.best = Math.max(s.best, s.eaten); return bump ? 'bump' : 'crash'; }
+  if (bump || !openAt(grid, ...next) || body.some(b => same(b, next)) || inBodies(bodies, next)) { s.mode = 'over'; s.overAt = s.time; s.prev = s.body; s.acc = 0; s.turns = []; s.record = s.eaten > s.best; s.best = Math.max(s.best, s.eaten); return bump ? 'bump' : 'crash'; }
   if (s.grow > 0) s.grow--;
   s.prev = s.body; s.body = [next, ...body];
   if (!eats) return 'step';
@@ -113,17 +115,17 @@ export function step(s, grid, blocks = [], rand = Math.random) {
 // `dt` seconds on: what happened, a step at a time. An apple something's been put down on goes somewhere else. About to hit
 // something, it holds where it is up to STALL seconds; a turn then is taken on the spot (one into something else as well, so
 // the next can still save it), and it crashes if it's still shut when the time's up.
-export function tick(s, grid, dt, blocks = [], rand = Math.random) {
+export function tick(s, grid, dt, blocks = [], rand = Math.random, bodies = []) {
   const happened = []; s.time += dt;
   if (s.apple && !openAt(grid, ...s.apple)) s.apple = placeApple(s, grid, rand);
   if (s.mode !== 'play') return happened;
   s.acc += dt * s.rate;
   while (s.mode === 'play' && s.acc >= 1) {
-    if (shut(s, grid, blocks)) {
+    if (shut(s, grid, blocks, bodies)) {
       if (s.turns.length) { s.dir = (s.dir + s.turns.shift() + 4) % 4; continue; }
       if ((s.stall += (s.acc - 1) / s.rate) < STALL) { s.acc = 1; break; } // only the time since the step fell due, whatever the frame rate
     }
-    s.stall = 0; s.acc--; happened.push(step(s, grid, blocks, rand)); // a crash stops it where it is
+    s.stall = 0; s.acc--; happened.push(step(s, grid, blocks, rand, bodies)); // a crash stops it where it is
   }
   return happened;
 }
@@ -180,8 +182,9 @@ function gridMaterial() {
 // `grid()`: the walk grid (null before there's an office); `plants()`: where the snake plants stand, one per corner (`use(i)`
 // picks the one it's played from); `look()`: your meeting look, { fruit, colour }, or null for the classic green snake;
 // `send(message)`: tells the meeting where it is (pack's, or { type: 'snake', mode: 'off' } on leaving); `score(goal,
-// verdict)`: the score bar (null clears it); `blocks()`: what's moving about to keep off ({ x, z, r }: the goose); `bump()`: one was hit.
-export function createSnake({ canvas, grid, plants, look = () => null, send = () => {}, score, blocks = () => [], bump = () => {} }) {
+// verdict)`: the score bar (null clears it); `blocks()`: what's moving about to keep off ({ x, z, r }: the goose); `bump()`: one was hit;
+// `bodies()`: the other snakes at a meeting (each its cells, head first), which it crashes into.
+export function createSnake({ canvas, grid, plants, look = () => null, send = () => {}, score, blocks = () => [], bump = () => {}, bodies = () => [] }) {
   let best = 0; try { best = Number(localStorage.getItem(BEST)) || 0; } catch { /* no storage here */ }
   let touchMode = 'swipe'; try { if (localStorage.getItem(TOUCH) === 'tap') touchMode = 'tap'; } catch { /* no storage here */ }
   let s = null, active = false, linger = 0, shake = 0, viewYaw = 0, distance = 0, fresh = true, bumped = false, shown = '', gridKey = '';
@@ -229,6 +232,7 @@ export function createSnake({ canvas, grid, plants, look = () => null, send = ()
     get model() { return model; }, // null before the first game
     // Plays from plant i: the same one as last time keeps the snake (a paused game goes on), another starts afresh there.
     use(i) { if (i !== plant) { plant = i; s = null; } },
+    get out() { return active ? plant : -1; }, // the plant it's out from while you're at it, else -1
     enter() { active = true; fresh = true; if (!s || s.mode === 'over') restart(); else s.mode = 'ready'; shown = ''; showScore(); },
     // Drawn on while the view comes back. The meeting hears it's gone, once.
     leave() { active = false; held.clear(); linger = 0.6; score(null); shown = ''; if (sent) { send({ type: 'snake', mode: 'off' }); sent = null; } },
@@ -253,7 +257,7 @@ export function createSnake({ canvas, grid, plants, look = () => null, send = ()
       const g = grid(); root.visible = !!s && !!g; if (!root.visible) return;
       const near = blocks(); dress();
       if (active) {
-        const happened = tick(s, g, dt, near);
+        const happened = tick(s, g, dt, near, Math.random, bodies());
         for (const h of happened) {
           if (h === 'eat' && !reduced) model.gulp();
           if (h === 'bump') { bumped = true; bump(); }

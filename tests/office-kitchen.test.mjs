@@ -391,3 +391,11 @@ test("a tap through the open doorway walks there, either way: the casing's box d
     assert.ok(Math.abs(hit.point.x - to) < 0.01);
   }
 });
+
+test('at a meeting the doors open for anyone near them, and shut once nobody is', t => {
+  const { kitchen } = setup(t);
+  for (let i = 0; i < 60; i++) kitchen.update(1 / 60, far, false, 0, [{ x: near.x, z: near.z }]);
+  assert.equal(kitchen.shown, true, 'someone else by the door');
+  run(kitchen, far, 2);
+  assert.equal(kitchen.shown, false);
+});

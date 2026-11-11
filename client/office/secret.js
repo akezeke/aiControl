@@ -3,7 +3,8 @@
 // aside. Behind it is a games room: confetti carpet, a neon sign, string lights, a disco ball whose spots sweep the walls and
 // floor, a lava lamp and beanbags, under two coloured lamps of its own that don't reach the office. Nothing in it is even
 // built until the shelf first moves; after that, shut (or in the overview) it's skipped whole: not drawn, its matrices not
-// kept up and no ray tested on it. The shelf slides shut by itself once you've left and walked off.
+// kept up and no ray tested on it. From inside, walking up to the shelf opens it (there's no book on that side). It slides
+// shut by itself once nobody's in the room or near its doorway: you, or (at a meeting) anyone else there.
 // Fruit and the goose stay out (no paths in here yet). With reduced motion the shelf jumps and nothing in there moves.
 import * as THREE from 'three';
 import { WALL_H, WALL_T, mesh, once, canvasTexture, glowTexture, paint, painted, piece } from './furniture.js';
@@ -16,7 +17,8 @@ export const DOOR = { w: 1.3, h: 2.2, back: 3.8 };
 // The games room, from the doorway's middle on its far side: how far it reaches in (x), behind it (-z) and in front (+z).
 export const SECRET = { w: 13, back: 4.1, front: 3.1 };
 const SHELF = { w: 1.5, h: 2.3, d: 0.38 }, SLIDE = 1.6, MOVE = 1.4; // metres; seconds to slide open or shut
-const SHUT_AFTER = 5, AWAY = 3; // it shuts once you've been out of the room and this far from the doorway this many seconds
+const SHUT_AFTER = 5, AWAY = 3; // it shuts once everyone's been out of the room and this far from the doorway this many seconds
+const REACH = 1.2; // metres from the doorway that open it from inside
 // The right book: which shelf (from the floor), where along it, its size; it leans out LEAN and tips out further when pressed.
 const KEY = { shelf: 2, x: 0.36, w: 0.06, h: 0.32 }, LEAN = 0.07, PRESS = 0.6;
 const NEON = ['#ff4fd8', '#38f2ff', '#ffe14f', '#7dff6b', '#ff8a3d'];
@@ -66,7 +68,8 @@ const neon = (g, w, h) => {
   for (let k = 1; k <= 12; k++) g.lineTo(w * 0.18 + k * w * 0.64 / 12, h * (k % 2 ? 0.72 : 0.8)); g.stroke();
 };
 
-export function createSecret({ onPress, onMove }) {
+// `onSlide(open)`: you opened or shut it (the book, or walking up to it from inside), for the others at a meeting.
+export function createSecret({ onPress, onMove, onSlide }) {
   let open = false, t = 0, idle = 0, press = 0, time = 0, built = null;
   const games = []; // what's played in here (darts.js): built into the room and updated with it
   const shelf = new THREE.Group(); shelf.userData.secret = 'shelf'; // userData keeps room.js's bake off what moves
@@ -86,7 +89,10 @@ export function createSecret({ onPress, onMove }) {
     // Where to stand to press the right book.
     get shown() { return !!built?.room?.visible; },
     get spot() { return built && new THREE.Vector3(built.door.x - 0.9, 0, built.door.z); },
-    toggle() { open = !open; idle = 0; press = PRESS; },
+    get open() { return open; },
+    toggle() { open = !open; idle = 0; press = PRESS; onSlide?.(open); },
+    // Someone else at the meeting slid it.
+    set(on) { if (on !== open) { open = on; idle = 0; } },
     add(game) { games.push(game); if (built?.room) game.build(built.room); },
     // A room `width` × `depth` (a new shell): the shelf and the games room go in `shell`; returns what blocks walking.
     build({ width, depth, shell }) {
@@ -112,12 +118,13 @@ export function createSecret({ onPress, onMove }) {
       const edge = secret.bounds({ width, depth }).back, outside = edge < -WALL_T ? [Object.assign(box(-WALL_T, edge, x0 + w + WALL_T, -WALL_T), { surface: 'behind', walkOnly: true })] : [];
       return [...walls, ...blocks, collider, ...outside];
     },
-    // Each frame, with where you stand (not the camera, which the overview lifts away).
-    update(dt, at, still, overview) {
+    // Each frame, with where you stand (not the camera, which the overview lifts away) and where the others at a meeting are.
+    update(dt, at, still, overview, others = []) {
       if (!built) return;
       time += dt;
-      const inside = secret.inside(at);
-      if (open && !inside && Math.hypot(at.x - built.door.x, at.z - built.door.z) > AWAY) { if ((idle += dt) > SHUT_AFTER) open = false; } else idle = 0;
+      const inside = secret.inside(at), off = p => Math.hypot(p.x - built.door.x, p.z - built.door.z), near = p => secret.inside(p) || off(p) <= AWAY;
+      if (!open && inside && off(at) < REACH) { open = true; idle = 0; onSlide?.(true); }
+      if (open && !near(at) && !others.some(near)) { if ((idle += dt) > SHUT_AFTER) open = false; } else idle = 0;
       const goal = open ? 1 : 0;
       // ponytail: onMove wakes every loose thing each frame of the slide, on purpose: the shelf pushes what's in its way and drops what's on top. About a step per thing per frame, for 1.4 s.
       if (t !== goal) { t = still ? goal : THREE.MathUtils.clamp(t + (goal ? dt : -dt) / MOVE, 0, 1); place(); onMove?.(); }

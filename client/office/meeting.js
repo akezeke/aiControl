@@ -71,6 +71,8 @@ const checks = {
     }
   },
   poke: m => ['hit', 'click', 'took'].includes(m.why) ? { type: 'poke', why: m.why } : null,
+  // The secret room's shelf, slid open or shut by whoever did it.
+  shelf: m => typeof m.open === 'boolean' ? { type: 'shelf', open: m.open } : null,
 };
 const run = (table, msg) => own(msg, ['type']) && Object.hasOwn(table, msg.type) ? table[msg.type](msg) : null;
 export const checkUp = msg => run(checks, msg);
@@ -90,6 +92,7 @@ const down = {
   goose: m => { const msg = withId('goose', ['at', 'yaw', 'mode', 'idle', 'speed', 'route', 'carry', 'target'])(m); return msg && m.age === undefined ? msg : msg && num(m.age, 0, 10000) ? { ...msg, age: m.age } : null; },
   goosed: withId('goosed', ['what', 'who', 'kind', 'spot', 'icon']),
   poke: withId('poke', ['why']),
+  shelf: withId('shelf', ['open']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,
   // The hub's answer to hello: your id in the roster, the colour you got and where you are.

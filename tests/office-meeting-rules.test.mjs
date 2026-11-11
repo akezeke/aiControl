@@ -96,6 +96,10 @@ test('checks drop every malformed message', () => {
   for (const msg of [{ ...plan, id: 'a1' }, { ...plan, id: 'a1', age: 2500 }, ...events.map(e => ({ ...e, id: 'a1' })), ...pokes.map(p => ({ ...p, id: 'a1' }))]) assert.deepEqual(checkDown(msg), msg);
   for (const msg of [{ ...plan, id: 'a1', age: 10001 }, { ...plan, id: 'a1', age: -1 }, plan, ...events, ...pokes]) assert.equal(checkDown(msg), null, JSON.stringify(msg));
   assert.deepEqual(checkDown({ type: 'goosed', what: 'drop', kind: 'mug', id: 'a1' }), { type: 'goosed', id: 'a1', what: 'drop' });
+  assert.deepEqual(checkUp({ type: 'shelf', open: true, x: 1 }), { type: 'shelf', open: true });
+  assert.equal(checkUp({ type: 'shelf', open: 'yes' }), null);
+  assert.deepEqual(checkDown({ type: 'shelf', open: false, id: 'a1' }), { type: 'shelf', id: 'a1', open: false });
+  assert.equal(checkDown({ type: 'shelf', open: false }), null);
   assert.deepEqual(checkDown({ type: 'roster', players: [{ ...player, goose: true }, { ...player, goose: false }, player] }).players.map(p => p.goose), [true, undefined, undefined]);
   assert.ok(!('goose' in checkDown({ type: 'roster', players: [{ ...player, goose: false }] }).players[0]));
   assert.equal(checkDown({ type: 'roster', players: [{ ...player, goose: 'yes' }] }), null);

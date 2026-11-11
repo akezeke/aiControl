@@ -29,6 +29,15 @@ test('starts curled up at the spot, facing the longest way clear, and waits', ()
   assert.ok(Math.abs(s.body[0][1] - s.body[1][1] - SPAN) < 1e-9);
 });
 
+test("another player's snake ends it as its own body does, after the same hold for a turn", () => {
+  const s = newSnake(open, V(5, 5), 0, first); s.dir = 1; s.apple = null; go(s);
+  const [x, z] = s.body[0], theirs = [at(x, z, [1, 0]), at(x, z, [1, 1]), at(x, z, [1, 2])];
+  tick(s, open, 1.05 / s.rate, [], first, [theirs]); assert.equal(s.mode, 'play'); assert.deepEqual(s.body[0], [x, z]);
+  assert.deepEqual(tick(s, open, STALL + 0.02, [], first, [theirs]), ['crash']); assert.equal(s.mode, 'over');
+  const t = newSnake(open, V(5, 5), 0, first); t.dir = 1; t.apple = null; go(t);
+  assert.deepEqual(tick(t, open, 1.05 / t.rate, [], first, [[at(x, z, [0, 1])]]), ['step'], 'beside it is clear');
+});
+
 test('turns left or right of its heading at the next step, two at most waiting', () => {
   const s = newSnake(open, V(5, 5), 0, first); s.dir = 0; s.apple = null;
   turn(s, 1); assert.equal(s.mode, 'play'); assert.equal(s.dir, 0);

@@ -180,7 +180,7 @@ export function mountOffice(container, hooks) {
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
   // Snake, out on the office floor from whichever corner's snake plant was clicked: you walk to that one (stand) and it starts there.
   const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), plants: () => room.snakePlants?.map(p => p.position) ?? [], score: (goal, verdict) => overlays.setScore(goal && leaderLine(goal, online.top('snake')[0]), verdict, false),
-    blocks: () => goose.columns(), bump: () => goose.honk('💢'),
+    blocks: () => goose.columns(), bump: () => goose.honk('💢'), bodies: () => atMeeting() ? snakes.bodies() : [],
     look: () => { const me = live.roster().find(p => p.id === live.id()), l = me ?? online.state()?.look; return l ? { fruit: l.fruit, colour: l.colour } : null; }, send: m => { if (atMeeting()) live.send(m); } });
   // At a meeting, a plant someone's snake is out from says whose it is instead of starting yours.
   scene.add(snake.root); room.onSnake = i => { const who = atMeeting() && snakes.taken(i); if (who) bubbles.say(plantBubble(i), '🐍', who); else { snake.use(i); onPlay(snake); } };
@@ -252,7 +252,10 @@ export function mountOffice(container, hooks) {
   };
   const say = () => live.presence(sample(), true);
   // The hub only relays moves, so whoever arrives gets everyone's place sent again; someone standing still would otherwise stay unseen.
-  const meet = () => { shownTo = atMeeting(); goose.roster(shownTo ? live.roster() : [], live.id()); friends.sync(live.roster(), live.id(), shownTo); snakes.sync(live.roster(), live.id(), shownTo); if (shownTo) say(); };
+  // An open shelf is said again too: the secret room's shelf is the meeting's, slid by whoever opens or shuts it (secret.js).
+  const meet = () => { shownTo = atMeeting(); goose.roster(shownTo ? live.roster() : [], live.id()); friends.sync(live.roster(), live.id(), shownTo); snakes.sync(live.roster(), live.id(), shownTo); if (shownTo) { say(); if (room.secret.open) live.send({ type: 'shelf', open: true }); } };
+  room.onShelf = open => { if (atMeeting()) live.send({ type: 'shelf', open }); };
+  live.on('shelf', m => { if (shownTo) room.secret.set(m.open); });
   live.on('roster', meet); live.on('welcome', meet); live.on('roster', () => signIn.refresh()); // the slip's colours: yours, and those taken
   online.follow(live); online.watch(meet); // learning you're hosting (a sync after welcome) starts your presence
   for (const type of ['goose', 'goosed', 'poke']) live.on(type, m => goose.heard(m));
@@ -266,6 +269,8 @@ export function mountOffice(container, hooks) {
     speed += (moved - speed) * Math.min(1, dt * 12);
     if (atMeeting() !== shownTo) meet();
     friends.update(dt); snakes.update(dt);
+    // A snake plant's leaves are gone while its snake is out: yours, or someone's at the meeting.
+    room.snakePlants?.forEach((p, i) => { p.userData.leaves.visible = snake.out !== i && !snakes.taken(i); });
     if (!shownTo) return;
     live.presence(sample());
   });
@@ -391,7 +396,8 @@ export function mountOffice(container, hooks) {
     if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
     // In the secret room or the kitchen the office's bubbles don't show through its walls. The overview looks down on all of it.
     const away = view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
-    snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : plantOf(id) >= 0 ? plantTop(plantOf(id)) : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    const others = friends.positions(); // the others at a meeting: doors open and stay open for them too
+    snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount, others); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount, others); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : plantOf(id) >= 0 ? plantTop(plantOf(id)) : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });
