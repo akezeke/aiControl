@@ -34,6 +34,7 @@ import { setSkyPlace } from './windows.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
 import { inSlices, shaders, textures } from './ready.js';
+import { createDebug } from './debug.js';
 import { hireChoices } from '../hire.js';
 
 const PICKED = '#ffd23f'; // the sidebar's highlighter
@@ -54,6 +55,7 @@ export function mountOffice(container, hooks) {
   scene.background = new THREE.Color('#f6e7c8');
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
   camera.userData.canvas = renderer.domElement;
+  const debug = createDebug(container, renderer, () => renderer.render(scene, office.camera)); // F3
   const room = createRoom(scene, renderer);
   // Ways round the furniture (path.js) for whoever walks: fruit coming and going, and the goose. The grid is worked out again
   // only when the boxes really change (room.sync hands over a new list of them with every snapshot).
@@ -427,6 +429,7 @@ export function mountOffice(container, hooks) {
   // 144 Hz → 72). `gap` is the screen's refresh interval, smoothed.
   const phone = globalThis.matchMedia?.('(max-width: 640px)');
   let raf = 0, last = performance.now(), previous = last, gap = 1000 / 60, tick = 0;
+  debug.watch({ player, snake, planes, endlessPlanes, view, room, secret: room.secret, kitchen: room.kitchen, cast, goose, props, bubbles, boards, friends, snakes });
   const loop = now => {
     raf = requestAnimationFrame(loop);
     gap += (Math.min(50, Math.max(0, now - previous)) - gap) * 0.05; previous = now;
@@ -434,8 +437,7 @@ export function mountOffice(container, hooks) {
     // On a phone the open panel covers the whole office.
     if (phone?.matches && document.body.classList.contains('panel-open')) return;
     const dt = frameTime(now, last, 0.1); last = now;
-    for (const fn of frames) fn(dt, now);
-    renderer.render(scene, office.camera);
+    debug.frame(frames, dt, now); // each of `frames`, then the render
   };
   // Nothing renders while the tab is hidden; polling stops then too.
   const visibility = () => { cancelAnimationFrame(raf); raf = 0; if (!document.hidden) { last = previous = performance.now(); raf = requestAnimationFrame(loop); } };
@@ -497,7 +499,7 @@ export function mountOffice(container, hooks) {
         object.geometry?.dispose();
         for (const material of [object.material].flat().filter(Boolean)) { for (const value of Object.values(material)) if (value?.isTexture) value.dispose(); material.dispose(); }
       });
-      renderer.dispose(); renderer.domElement.remove();
+      renderer.dispose(); renderer.domElement.remove(); debug.dispose();
     },
     room, cast, player, view,
     outlines: showOutlines, // on everything, or only on what's hovered or picked (the theme menu)
