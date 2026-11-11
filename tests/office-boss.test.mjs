@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { BOSS, CHAIR, DESK, DOOR_X, STAND, behindGlass, shutOffice } from '../client/office/boss-plan.js';
 import { AISLE, layoutOffice } from '../client/office/layout.js';
@@ -147,4 +148,10 @@ test("the monitor's drawn when the minute turns, only while it's in view, and th
   minute = 1; away(); tick(); assert.equal(drawn(), v, 'out of view: not drawn');
   facing(); tick(); assert.ok(drawn() > v, 'back in view: drawn'); v = drawn();
   game.enter(); tick(); v = drawn(); state.start = true; tick(); assert.ok(drawn() > v, "the desktop's Start menu opened");
+});
+test('sat at the boss\'s computer, no speech bubbles cover its desktop or take its clicks', () => {
+  const source = readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8');
+  const away = source.match(/const away = ([^;]*);/)?.[1] ?? '';
+  assert.match(away, /^playing === bossDesk \|\|/, 'from sitting down to standing up');
+  assert.match(source, /bubbles\.update\(camera, id => away \? null :/, 'a bubble with nowhere to be is hidden');
 });

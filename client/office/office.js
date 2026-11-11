@@ -439,7 +439,8 @@ export function mountOffice(container, hooks) {
     // What you hold drops at the secret room's door (things in hand only know the office).
     if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
     // In the secret room or the kitchen the office's bubbles don't show through its walls. The overview looks down on all of it.
-    const away = view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
+    // At the boss's computer its desktop has the view: they'd cover it and take its clicks.
+    const away = playing === bossDesk || view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
     const others = friends.positions(), bossFriend = seatedFriend(others); // the others at a meeting (doors open and stay open for them too); who of them is at the boss's computer
     const me = myLook(); room.boss.dress(me?.fruit, me?.colour, online.state()?.name); // the boss's office is all you; redrawn only when that changes
     snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere(), playing === bossDesk ? 'you' : bossFriend ? 'friend' : null, camera); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount, others); room.boss.update(dt, player.position, reducedAtmosphere(), view.amount, others); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount, others); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : plantOf(id) >= 0 ? plantTop(plantOf(id)) : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
