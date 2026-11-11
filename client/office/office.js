@@ -199,7 +199,7 @@ export function mountOffice(container, hooks) {
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip), online }));
   const boards = createBoards(room, () => online.rows());
   // Office meetings' live link (live.js), open while you're in one and the page is shown. You're home until the door says otherwise.
-  const live = createLive({ joined: () => !!online.state()?.joined });
+  const live = createLive({ joined: () => !!online.state()?.joined }); debug.messages(live);
   live.where('home');
   // Joining a meeting at the clipboard by the door: the slip, and the page redrawn whenever the board comes back different.
   const signIn = createSignIn(container, online, live);

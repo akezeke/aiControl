@@ -4,6 +4,7 @@
 // short of 60, the GPU (or the page's layout and style) is what's slow. Copy puts all of it on the clipboard (over plain
 // http, where there's no clipboard API, by the old copy command). Rec keeps every refresh till Stop, which copies the lot: a
 // summary (which GPU, the frame rate's average and low, the worst gap, each part's average and worst) and a line a refresh.
+// A meeting's messages are timed too, by type ("msg pos"), though they're handled between frames.
 // Off, a frame is just its jobs and the render.
 import { copyText } from './boards.js';
 
@@ -80,6 +81,14 @@ export function createDebug(container, renderer, render) {
           spent.set(name, (spent.get(name) || 0) + performance.now() - t); return out;
         };
       }
+    },
+    // Each handler `live.on` is given (live.js), timed as "msg <type>": a meeting's messages, between frames.
+    messages(live) {
+      const listen = live.on;
+      live.on = (type, fn) => listen(type, m => {
+        if (!on) return fn(m);
+        const t = performance.now(), name = `msg ${type}`; fn(m); spent.set(name, (spent.get(name) || 0) + performance.now() - t);
+      });
     },
     // One frame: each job, then the render.
     frame(jobs, dt, now) {
