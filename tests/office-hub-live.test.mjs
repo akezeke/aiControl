@@ -106,7 +106,7 @@ test("snakes go to the others at the meeting, with the sender's id", async t => 
   c.send(snake); assert.equal((await b.quiet('snake')).length, 0);
 });
 
-test("paper planes go to the others at the meeting, with the sender's id", async t => {
+test("paper planes and the lights go to the others at the meeting, with the sender's id", async t => {
   const h = await setup(t);
   const [a, b, c] = [await h.join('a'), await h.join('b'), await h.join('c')];
   for (const p of [a, b]) p.send({ type: 'where', at: 'meeting' });
@@ -115,6 +115,8 @@ test("paper planes go to the others at the meeting, with the sender's id", async
   a.send(plane); assert.deepEqual(await b.next('plane'), { ...plane, id: a.welcome.id });
   a.send({ type: 'plane', mode: 'off' }); assert.deepEqual(await b.next('plane'), { type: 'plane', mode: 'off', id: a.welcome.id });
   assert.equal((await c.quiet('plane')).length, 0);
+  a.send({ type: 'lights', on: false }); assert.deepEqual(await b.next('lights'), { type: 'lights', on: false, id: a.welcome.id });
+  assert.equal((await c.quiet('lights')).length, 0);
 });
 
 const meeting = { type: 'where', at: 'meeting' }, home = { type: 'where', at: 'home' };

@@ -14,7 +14,7 @@ import { identity } from '../client/office/status.js';
 import { fail } from './requests.mjs';
 
 const FRESH_MS = 10_000, PLAN_MS = 10_000, TIMEOUT_MS = 5000, MAX_BYTES = 64 * 1024, MAX_PLAYERS = 64;
-const RETRY_MAX_MS = 30_000, PER_SECOND = 20, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'snake', 'plane', 'remove', 'goose', 'goosed', 'poke', 'shelf']);
+const RETRY_MAX_MS = 30_000, PER_SECOND = 20, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'snake', 'plane', 'lights', 'remove', 'goose', 'goosed', 'poke', 'shelf']);
 const object = v => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // `host.tailnet.ts.net/<key>`, or with its own http(s):// in front; the key is the last part of the path.

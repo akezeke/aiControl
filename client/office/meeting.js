@@ -75,6 +75,8 @@ const checks = {
   plane: m => m.mode === 'off' ? { type: 'plane', mode: 'off' }
     : m.mode === 'fly' && num(m.x, -12, 200) && num(m.y, -1, 6) && num(m.z, -12, 200) && num(m.yaw) && num(m.pitch, -Math.PI, Math.PI) && num(m.roll, -Math.PI, Math.PI) && num(m.t, 0)
       ? { type: 'plane', mode: 'fly', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pitch: m.pitch, roll: m.roll, t: m.t } : null,
+  // The room's lights, switched on or off by whoever did it.
+  lights: m => typeof m.on === 'boolean' ? { type: 'lights', on: m.on } : null,
   // The secret room's shelf, slid open or shut by whoever did it.
   shelf: m => typeof m.open === 'boolean' ? { type: 'shelf', open: m.open } : null,
 };
@@ -97,6 +99,7 @@ const down = {
   goosed: withId('goosed', ['what', 'who', 'kind', 'spot', 'icon']),
   poke: withId('poke', ['why']),
   shelf: withId('shelf', ['open']),
+  lights: withId('lights', ['on']),
   plane: withId('plane', ['mode', 'x', 'y', 'z', 'yaw', 'pitch', 'roll', 't']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,

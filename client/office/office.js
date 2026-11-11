@@ -225,7 +225,7 @@ export function mountOffice(container, hooks) {
   room.onDoor = () => { nobody = false; if (view.overview || !doorChoice()) return; player.unlock(); card.show(null); menu.close(); showDoor(dot ? player.centre : mouse || pressed, true); };
   const fadeTo = (on, then) => { clearTimeout(fading); const still = reducedAtmosphere(); fade.classList.toggle('still', still); fade.classList.toggle('on', on); if (then) fading = setTimeout(then, still ? 0 : FADE_MS); };
   // A whole other room: what's in it is just there (no desks rising, nobody walking in), and nothing of the last one is left up, friends' throws included.
-  const switchRooms = into => { goose.reset(into); room.synced = false; cast.synced = false; play(null); menu.close(); door.close(); card.show(null); unhover(); office.talking = null; props.clearGhosts(); trickshot.clearGhosts(); };
+  const switchRooms = into => { goose.reset(into); room.lights.visit(!!into); if (!into) said.shelf = said.lights = null; room.synced = false; cast.synced = false; play(null); menu.close(); door.close(); card.show(null); unhover(); office.talking = null; props.clearGhosts(); trickshot.clearGhosts(); };
   const does = {
     ask() { live.where('meeting'); showDoor(); clearTimeout(asking); asking = setTimeout(() => { if (visit.at === 'leaving' && !visit.fading) step('floorGone'); }, WAIT_MS); },
     fadeOut() { door.close(); fadeTo(true, () => step('faded')); },
@@ -255,10 +255,22 @@ export function mountOffice(container, hooks) {
   };
   const say = () => live.presence(sample(), true);
   // The hub only relays moves, so whoever arrives gets everyone's place sent again; someone standing still would otherwise stay unseen.
-  // An open shelf is said again too: the secret room's shelf is the meeting's, slid by whoever opens or shuts it (secret.js).
-  const meet = () => { shownTo = atMeeting(); goose.roster(shownTo ? live.roster() : [], live.id()); friends.sync(live.roster(), live.id(), shownTo); snakes.sync(live.roster(), live.id(), shownTo); flyers.sync(live.roster(), live.id(), shownTo); if (shownTo) { say(); if (room.secret.open) live.send({ type: 'shelf', open: true }); } };
-  room.onShelf = open => { if (atMeeting()) live.send({ type: 'shelf', open }); };
-  live.on('shelf', m => { if (shownTo) room.secret.set(m.open); });
+  // An open shelf and the lights off are said again too: the secret room's shelf (secret.js) and the switch by the door
+  // (lights.js) are the meeting's, set by whoever slides or flips them. `said`: what the meeting last said of each (null:
+  // nothing), yours included. What's said as you arrive comes while the door fades, before you're shown, so it's kept and put
+  // right once you are.
+  const said = { shelf: null, lights: null };
+  const meet = () => {
+    shownTo = atMeeting(); goose.roster(shownTo ? live.roster() : [], live.id()); friends.sync(live.roster(), live.id(), shownTo); snakes.sync(live.roster(), live.id(), shownTo); flyers.sync(live.roster(), live.id(), shownTo);
+    if (!shownTo) return;
+    if (said.shelf !== null) room.secret.set(said.shelf);
+    if (said.lights !== null) room.lights.set(said.lights);
+    say(); if (room.secret.open) live.send({ type: 'shelf', open: true }); if (!room.lights.on) live.send({ type: 'lights', on: false });
+  };
+  room.onShelf = open => { if (atMeeting()) { said.shelf = open; live.send({ type: 'shelf', open }); } };
+  room.lights.onFlip = on => { if (atMeeting()) { said.lights = on; live.send({ type: 'lights', on }); } };
+  live.on('shelf', m => { said.shelf = m.open; if (shownTo) room.secret.set(m.open); });
+  live.on('lights', m => { said.lights = m.on; if (shownTo) room.lights.set(m.on); });
   live.on('roster', meet); live.on('welcome', meet); live.on('roster', () => signIn.refresh()); // the slip's colours: yours, and those taken
   online.follow(live); online.watch(meet); // learning you're hosting (a sync after welcome) starts your presence
   for (const type of ['goose', 'goosed', 'poke']) live.on(type, m => goose.heard(m));

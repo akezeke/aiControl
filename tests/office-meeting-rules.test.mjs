@@ -263,3 +263,10 @@ test('a paper plane in flight goes up and down with its pose and clock; off is j
   assert.deepEqual(checkDown({ type: 'plane', mode: 'off', id: 'a1' }), { type: 'plane', id: 'a1', mode: 'off' });
   assert.equal(checkDown(fly), null);
 });
+
+test('the lights: on or off, and nothing else', () => {
+  assert.deepEqual(checkUp({ type: 'lights', on: false, x: 1 }), { type: 'lights', on: false });
+  assert.equal(checkUp({ type: 'lights', on: 'off' }), null);
+  assert.deepEqual(checkDown({ type: 'lights', on: true, id: 'a1' }), { type: 'lights', id: 'a1', on: true });
+  assert.equal(checkDown({ type: 'lights', on: true }), null);
+});

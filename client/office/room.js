@@ -247,6 +247,7 @@ export function createRoom(scene, renderer) {
   const desks = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
   const deskShadows = floorShadow(1, 1, 0.3); deskShadows.geometry = new THREE.BufferGeometry(); root.add(deskShadows);
   const room = {
+    lights, // the switch by the door's (lights.js): at a meeting, office.js shares it
     // The secret room behind the lounge's bookshelf; pressing its right book calls room.onSecret (office.js walks you over).
     secret: createSecret({ onPress: () => room.onSecret?.(), onMove: () => room.refreshFlight(), onSlide: open => room.onShelf?.(open) }),
     // The kitchen through the left wall's doors; when it's first built or its doors move, things fly differently (and new things need dimming).

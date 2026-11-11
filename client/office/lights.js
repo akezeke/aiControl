@@ -1,5 +1,5 @@
 // The office's light: fill and daylight, the ceiling lamps, and the monitors' glow. The switch by the door dims the room
-// (each browser remembers it); dimmed, the screens light their desks and sitters in their colour.
+// (each browser remembers it; at a meeting it's the meeting's, office.js); dimmed, the screens light their desks and sitters in their colour.
 import * as THREE from 'three';
 import { mesh, rounded } from './furniture.js';
 import { toonMaterial } from './toon.js';
@@ -28,10 +28,10 @@ export function createLights(root, beam) {
     const light = new THREE.SpotLight('#ffffff', 0, 2.5, 1.35, 1, 1); root.add(light, light.target);
     return { light, desk: null, on: false, level: 0, strength: 0 };
   });
-  let on = true, level = -1, stale = true, assignIn = 0, rocker = null, led = null;
+  const saved = () => { try { return localStorage.getItem(KEY) !== 'off'; } catch { return true; } };
+  let on = saved(), away = false, level = -1, stale = true, assignIn = 0, rocker = null, led = null; // away: in someone else's office
   // Start-up: the room opens dark, then the lamps come on a row at a time from the door, the room brightening with each.
   let boot = { rows: 0, t: -HOLD, key: '', show: null };
-  try { on = localStorage.getItem(KEY) !== 'off'; } catch {}
 
   const apply = () => root.traverse(node => {
     for (const target of [node, ...[node.material].flat()]) {
@@ -45,7 +45,12 @@ export function createLights(root, beam) {
 
   const lights = {
     get on() { return on; },
-    toggle() { on = !on; show(); try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch {} },
+    // The switch: flipped, kept for this browser unless away, and told (`onFlip`: office.js says it to the meeting).
+    toggle() { on = !on; show(); if (!away) try { localStorage.setItem(KEY, on ? 'on' : 'off'); } catch {} lights.onFlip?.(on); },
+    // As the meeting says, not kept.
+    set(value) { if (value !== on) { on = value; show(); } },
+    // Into someone else's office (true): on, till the meeting says otherwise; home again: yours, as kept.
+    visit(value) { away = value; lights.set(value || saved()); },
     // Something new (a rebuilt shell) may need dimming.
     refresh() { stale = true; },
     // The room's rows of lamps and how to light them: show(lit), lit[i] for the i-th row from the door, or null for all as usual.
