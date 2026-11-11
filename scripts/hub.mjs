@@ -37,7 +37,9 @@ async function stop() {
 }
 async function start() {
   if (running()) return;
-  const command = `${quote(process.execPath)} ${quote(join(root, 'scripts/hub.mjs'))} --serve 2>&1 | tee -a ${quote(log)}`;
+  // An edit to the hub or anything it imports restarts it; it saves on its way out. --watch before
+  // --watch-preserve-output for Node 22.14, as in start.mjs.
+  const command = `${quote(process.execPath)} --watch --watch-preserve-output ${quote(join(root, 'scripts/hub.mjs'))} --serve 2>&1 | tee -a ${quote(log)}`;
   execFileSync('tmux', ['new-session', '-d', '-s', session, '-c', root, '-e', `PATH=${process.env.PATH}`, command]);
   if (!await until(listening)) throw new Error(`The hub didn't start. See ${log}.`);
 }
