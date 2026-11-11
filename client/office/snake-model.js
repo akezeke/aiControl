@@ -55,6 +55,10 @@ export function createSnakeModel(look) {
     tint.set(up < -0.3 ? belly : (r / PER * SPAN) % 0.32 < 0.08 && up > 0 ? band : skin).toArray(colors, (r * (AROUND + 1) + a) * 3);
   }
   tube.setAttribute('color', new THREE.BufferAttribute(colors, 3)); tube.setAttribute('outlineNormal', tube.attributes.normal);
+  // Its triangles ring after ring (the cylinder's go round column by column), so only the rings the body uses are drawn and sent
+  // each frame: a short snake's few dozen, not all RINGS (375 KB a frame, for each snake at a meeting).
+  const index = []; for (let r = 0; r < RINGS - 1; r++) for (let a = 0; a < AROUND; a++) { const p = r * (AROUND + 1) + a, q = p + AROUND + 1; index.push(p, q, p + 1, q, q + 1, p + 1); }
+  tube.setIndex(index);
   const material = toonMaterial('#ffffff', { vertexColors: true }), body = withOutline(new THREE.Mesh(tube, material), 0.008);
   body.frustumCulled = body.children[0].frustumCulled = false; body.raycast = () => {}; root.add(body);
   // The head, facing +z, a little wider than the neck: a flat skull over a pale jaw, eyes up top, nostrils, a forked tongue that flicks.
@@ -78,9 +82,7 @@ export function createSnakeModel(look) {
     const per = Math.min(PER, Math.floor((RINGS - 1) / (n - 1))), rings = (n - 1) * per + 1, long = (n - 1) * SPAN, tail = Math.min(TAIL, long * 0.6);
     const sway = reduced || s.mode !== 'play' ? 0 : 0.018, back = DIRS[s.dir], pos = tube.attributes.position.array, nor = tube.attributes.normal.array;
     bulge += dt * (s.rate * SPAN + 1);
-    for (let r = 0; r < RINGS; r++) {
-      // Rings past the tail fold away under the floor, at its tip.
-      if (r >= rings) { for (let a = 0, k = r * (AROUND + 1) * 3; a <= AROUND; a++, k += 3) { pos[k] = mid.x; pos[k + 1] = -0.05; pos[k + 2] = mid.z; } continue; }
+    for (let r = 0; r < rings; r++) {
       const d = r / per * SPAN; // metres down the body, as it'd be laid out straight
       spine(points, r / per, mid, t); if (t.lengthSq() < 1e-8) t.set(-back[0], 0, -back[1]); t.normalize();
       side.crossVectors(vertical, t);
@@ -93,7 +95,8 @@ export function createSnakeModel(look) {
         nor[k] = nx; nor[k + 1] = ny; nor[k + 2] = nz;
       }
     }
-    tube.attributes.position.needsUpdate = tube.attributes.normal.needsUpdate = true;
+    tube.setDrawRange(0, (rings - 1) * AROUND * 6); // rings past the tail aren't drawn
+    for (const attribute of [tube.attributes.position, tube.attributes.normal]) { attribute.clearUpdateRanges(); attribute.addUpdateRange(0, rings * (AROUND + 1) * 3); attribute.needsUpdate = true; }
   }
 
   return {
