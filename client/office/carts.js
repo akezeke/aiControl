@@ -1,6 +1,6 @@
 // PICO-8 carts for the boss desk: Lexaloffle's own BBS widget plays them, in the viewer's browser only (nothing is fetched
 // or kept here but the pids someone pasted). Lexaloffle has no cart browser to embed, so browsing is their BBS in a new tab.
-export const BROWSE_URL = 'https://www.lexaloffle.com/bbs/?cat=7', CARTS_KEY = 'ai-control-office-carts';
+export const BROWSE_URL = 'https://www.lexaloffle.com/bbs/?cat=7&carts_tab=1&#sub=2&mode=carts', CARTS_KEY = 'ai-control-office-carts';
 const KEEP = 8, PID = /^[\w-]{1,64}$/, BBS = /https?:\/\/(?:www\.)?lexaloffle\.com\/bbs\/[^\s"'<>]*/i;
 
 // Only carts checked by hand: an author can turn embedding off (Celeste, Porklike and Dank Tomb have), and the widget then

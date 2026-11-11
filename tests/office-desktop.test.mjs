@@ -47,8 +47,10 @@ test('opening a cart makes exactly the widget frame; leaving takes it away', t =
   assert.equal(frame.attributes.referrerpolicy, 'no-referrer');
   assert.equal(frame.attributes.allow, 'fullscreen; gamepad; autoplay');
   assert.equal(frame.attributes.sandbox, 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox');
-  assert.equal(frame.attributes.width, '621'); assert.equal(frame.attributes.height, '513');
-  assert.ok(find(d.root, n => n.textContent === 'Needs internet'), 'behind the frame, for a failed load');
+  // The widget is 95% of its width tall plus a line: at 526 × 522 its 496 px game fits the window with no scrollbar.
+  assert.equal(frame.attributes.width, '526'); assert.equal(frame.attributes.height, '522'); assert.equal(frame.attributes.scrolling, 'no');
+  // Behind the frame till the widget paints over it; a failed load gets the browser's own error page over it.
+  assert.ok(find(d.root, n => n.textContent === 'Loading…'), 'behind the frame'); assert.equal(find(d.root, n => n.textContent === 'Needs internet'), undefined);
   d.hide(); assert.equal(iframeOf(d.root), undefined); assert.equal(d.state().cart, null);
 });
 test('offline, a cart says so instead of a blank frame', t => {
@@ -68,4 +70,19 @@ test('place follows the screen as it moves (a resize)', t => {
 test('the made-up carts are the same picture for the same seed and time, and move', () => {
   assert.deepEqual(fakeCart(3, 1.5), fakeCart(3, 1.5)); assert.notDeepEqual(fakeCart(3, 1.5), fakeCart(3, 2)); assert.notDeepEqual(fakeCart(2, 1.5), fakeCart(3, 1.5));
   assert.ok(fakeCart(2, 0).every(i => i < 16));
+});
+test('the Start menu opens and shuts over a playing cart without moving its frame (that reloads it)', t => {
+  const d = desktop(t); d.openPico(); d.openCart('porklike-2');
+  const frame = iframeOf(d.root), stage = frame.parent, menu = find(d.root, n => n.className.includes('office-desktop-menu')); let moved = 0;
+  const remove = frame.remove; frame.remove = () => { moved++; remove(); };
+  d.openStart(); assert.equal(menu.hidden, false);
+  d.root.listeners.keydown({ key: 'Escape', stopPropagation() {} }); assert.equal(menu.hidden, true); assert.equal(d.state().start, false);
+  assert.equal(moved, 0); assert.equal(iframeOf(d.root), frame); assert.equal(frame.parent, stage);
+});
+test('a tap opens PICO-8 (a double tap often sends no dblclick); a mouse still double-clicks', t => {
+  const d = desktop(t), icon = find(d.root, n => n.className === 'office-desktop-icon');
+  icon.listeners.pointerdown?.({ pointerType: 'mouse' }); icon.listeners.click({}); assert.equal(d.state().window, null, 'one click only selects it');
+  icon.listeners.dblclick({}); assert.equal(d.state().window, 'pico');
+  const e = desktop(t), tapped = find(e.root, n => n.className === 'office-desktop-icon');
+  tapped.listeners.pointerdown?.({ pointerType: 'touch' }); tapped.listeners.click({}); assert.equal(e.state().window, 'pico');
 });

@@ -6,9 +6,10 @@ import { BROWSE_URL, STARTERS, bbsUrl, cartPid, recentCarts, rememberCart, widge
 export const LAYOUT = { w: 1080, h: 640 }; // the monitor canvas's 432 × 256, 2.5 times over
 export const TASKBAR = 44, TITLE = 26, BAR = 28, BEVEL = 2;
 export const ICON = { x: 24, y: 24, w: 104, h: 104 }, CONSOLE = { w: 64, h: 48 };
-// The window holds the widget at its own 621 × 513 under its title and the ← back bar.
+// The window holds the widget under its title and the ← back bar. The widget is 95% of its width tall plus a line, so a wider
+// frame scrolls; at 526 × 522 its game is at its largest (496 px) and it fits, scrolling off in case a font runs taller.
 export const WINDOW = { x: 220, y: 8, w: 640, h: 580 };
-export const FRAME = { w: 621, h: 513 };
+export const FRAME = { w: 526, h: 522 };
 export const PICO_PALETTE = ['#000000', '#1d2b53', '#7e2553', '#008751', '#ab5236', '#5f574f', '#c2c3c7', '#fff1e8', '#ff004d', '#ffa300', '#ffec27', '#00e436', '#29adff', '#83769c', '#ff77a8', '#ffccaa'];
 const FACE = '#c3c3c3', LIGHT = '#ffffff', SHADE = '#5a5a5a', DESK = '#4a5a78', INK = '#1d2b53', RED = '#ff004d', CREAM = '#fff1e8';
 const FONT = 'Silkscreen, monospace';
@@ -28,8 +29,11 @@ export function createDesktop(container, { onShutDown, storage, online = () => n
   let frame = null, refused = false, offline = false, clock = '';
 
   const root = make('div', 'office-desktop'); root.hidden = true;
-  const icon = button('office-desktop-icon', null, () => {}), label = make('span', 'office-desktop-label', 'PICO-8');
+  // A mouse double-clicks it open, as on any desktop; a finger or a pen taps once (a double tap often sends no dblclick).
+  let tapped = false;
+  const icon = button('office-desktop-icon', null, () => { if (tapped) openPico(); }), label = make('span', 'office-desktop-label', 'PICO-8');
   icon.append(make('span', 'office-desktop-console'), label);
+  icon.addEventListener('pointerdown', event => { tapped = event.pointerType !== 'mouse'; });
   icon.addEventListener('dblclick', () => openPico());
   icon.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); openPico(); } });
   const pico = make('div', 'office-desktop-window'), body = make('div', 'office-desktop-body'), title = make('div', 'office-desktop-title');
@@ -66,7 +70,8 @@ export function createDesktop(container, { onShutDown, storage, online = () => n
     const bar = make('div', 'office-desktop-bar'), stage = make('div', 'office-desktop-stage');
     bar.append(button('office-desktop-bevel', '← Back', () => back()));
     if (offline) stage.append(make('p', null, 'Offline: carts load from lexaloffle.com'));
-    else stage.append(make('p', null, 'Needs internet'), frame);
+    // Shows till the widget paints over it. A failed load paints the browser's own error page over it instead.
+    else stage.append(make('p', null, 'Loading…'), frame);
     return [bar, stage];
   }
   function render() {
@@ -77,8 +82,9 @@ export function createDesktop(container, { onShutDown, storage, online = () => n
   // Taking the frame out of the page stops the cart and its sound.
   const drop = () => { frame?.remove(); frame = null; state.cart = null; offline = false; };
 
-  function openStart() { state.start = true; render(); }
-  function closeStart() { state.start = false; render(); }
+  // Only the menu: building the window again would move a playing cart's frame, and a moved frame loads again.
+  function openStart() { state.start = true; menu.hidden = false; }
+  function closeStart() { state.start = false; menu.hidden = true; }
   function openPico() { state.window = 'pico'; state.start = false; refused = false; render(); }
   function closePico() { drop(); state.window = null; render(); icon.focus({ preventScroll: true }); }
   function back() { drop(); refused = false; render(); }
@@ -87,7 +93,7 @@ export function createDesktop(container, { onShutDown, storage, online = () => n
     if (!online()) offline = true;
     else {
       frame = make('iframe');
-      for (const [name, value] of Object.entries({ src: widgetUrl(pid), title: `Cart #${pid}`, width: String(FRAME.w), height: String(FRAME.h), referrerpolicy: 'no-referrer', allow: 'fullscreen; gamepad; autoplay', sandbox: SANDBOX })) frame.setAttribute(name, value);
+      for (const [name, value] of Object.entries({ src: widgetUrl(pid), title: `Cart #${pid}`, width: String(FRAME.w), height: String(FRAME.h), scrolling: 'no', referrerpolicy: 'no-referrer', allow: 'fullscreen; gamepad; autoplay', sandbox: SANDBOX })) frame.setAttribute(name, value);
       const loaded = frame; frame.addEventListener('load', () => loaded.focus());
       state.cart = pid;
     }

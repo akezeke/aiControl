@@ -152,7 +152,8 @@ export function createBossDesk({ annex, desktop, camera, fonts = document.fonts,
     enter() { seated = true; },
     // Taking the desktop down takes the cart's frame out of the page, which stops it and its sound.
     leave() { seated = shown = false; desktop.hide(); mode = 'idle'; minute = Math.floor(now() / 60_000); draw(IDLE); },
-    key: code => code !== 'Escape',
+    // The keys that would stand you up or click (player.js's gameKey) are kept, so they don't; Esc stands you up, and the browser's own keys are the browser's.
+    key: code => /^(Key[WASDE]|Arrow\w+|Space)$/.test(code),
     click: () => false,
     // Each frame, once the camera's placed. `arrived`: the camera's all the way in (not the overview, not on its way in or out).
     // `friend`: who's sitting here at a meeting, or null. `still`: reduced motion, so a friend's game stands still.

@@ -101,12 +101,13 @@ test('a screen counts as in view only in front of the camera and facing it', () 
   assert.equal(seen(anchor(-2, Math.PI)), false, 'turned away');
   assert.equal(seen(anchor(2, Math.PI)), false, 'behind you, facing you');
 });
-test("the boss desk keeps every key but Esc, has no blur, and leaving takes the desktop down", t => {
+test("the boss desk keeps the walking keys and E (sat, they'd stand you up or click), not the browser's, has no blur, and leaving takes the desktop down", t => {
   noDocument(t);
   const calls = [], desktop = stubDesktop(calls);
   const game = createBossDesk({ annex: build(emptyRoom(10)).boss, desktop, camera: camera(), fonts });
   assert.equal(game.exact, true); assert.equal(game.blur, undefined, "the cart's iframe taking focus blurs the window: that mustn't stop it");
-  assert.equal(game.key('KeyW', true), true); assert.equal(game.key('ArrowLeft', true), true); assert.equal(game.key('Escape', true), false);
+  for (const code of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'ArrowLeft', 'ArrowUp', 'Space']) assert.equal(game.key(code, true), true, code);
+  for (const code of ['Escape', 'F5', 'F11', 'F12', 'Slash', 'KeyR']) assert.equal(game.key(code, true), false, code);
   assert.deepEqual(game.stand(), STAND);
   game.enter(); game.update(0.016, { still: false, friend: null, arrived: true }); assert.ok(calls.includes('place'));
   game.update(0.016, { still: false, friend: null, arrived: false }); assert.equal(calls.at(-1), 'hide', 'gone before the camera pulls back');

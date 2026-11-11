@@ -21,7 +21,7 @@ test('cartPid refuses threads, other hosts and junk', () => {
 test('urls', () => {
   assert.equal(widgetUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/widget.php?pid=porklike-2');
   assert.equal(bbsUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/?pid=porklike-2#p');
-  assert.equal(BROWSE_URL, 'https://www.lexaloffle.com/bbs/?cat=7');
+  assert.equal(BROWSE_URL, 'https://www.lexaloffle.com/bbs/?cat=7&carts_tab=1&#sub=2&mode=carts');
 });
 
 test('pasted carts are kept newest first, without repeats, at most 8', () => {
