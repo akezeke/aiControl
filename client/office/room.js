@@ -8,11 +8,13 @@ import { toonMaterial, withOutline } from './toon.js';
 import { createLights, dims } from './lights.js';
 import { createSlacking } from './slack.js';
 import { createWindows } from './windows.js';
-import { createScreens, SCREEN_W, SCREEN_H } from './screens.js';
+import { createScreens, SCREEN_W, SCREEN_H, viewTest } from './screens.js';
 import { createSecret, DOOR } from './secret.js';
 import { createKitchen } from './kitchen.js';
-import { bays, cardsMesh, officeCutouts, scoreGap, SCOREBOARD } from './cutouts.js';
-import { DESK_W, DESK_D, COFFEE_X, KITCHEN_DOOR_W, kitchenDoor } from './layout.js';
+import { createBossOffice } from './boss.js';
+import { DESK } from './boss-plan.js';
+import { cardsMesh, officeCutouts, SCOREBOARD, windowsWall } from './cutouts.js';
+import { BOSS_FRONT, DESK_W, DESK_D, COFFEE_X, KITCHEN_DOOR_W, SHELF_Z, kitchenDoor, whiteboardZ } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
   counter, coffeeMachine, mugShelf, waterCooler, bookshelf, printer, filingCabinet, paperStack, paperPlane, coatRack, extinguisher, glowTexture, floorShadow,
@@ -155,6 +157,16 @@ function createDesk(color, width = DESK_W, helper = false, notes = 0, provider =
   return desk;
 }
 
+// The boss's desk (boss.js puts it in the boss's office): wider, dark wood, a bigger monitor (scaled about its foot) and a headrest
+// carrying on the chair's back.
+function bossDesk() {
+  const desk = createDesk('#6b4f3a', DESK.width);
+  desk.monitor.scale.setScalar(DESK.monitor); desk.monitor.position.set(0, (1 - DESK.monitor) * DESK_H, (1 - DESK.monitor) * MONITOR_Z);
+  const rest = piece('bossHeadrest', () => [[rounded(0.46, 0.24, 0.08, 0.04).translate(0, 0.36, 0).rotateX(-0.15).translate(0, SEAT_H + 0.38, BACK_Z - 0.04), '#6b4f3a']]);
+  desk.chair.add(rest);
+  return desk;
+}
+
 const tints = { green: ['#0f2a1a', '#5ee08a'], amber: ['#2e2108', '#ffb23e'], blue: ['#0c2238', '#5db4ff'], dark: ['#151821', '#7d8699'], red: ['#2e0f0f', '#ff6b6b'], off: ['#0d0e12', '#3a3f4b'] };
 // Drawn at 432×256 and scaled to the canvas, so helpers' smaller screens show the same thing.
 function drawScreen(g, w, h, monitor = null, tone = 'off') {
@@ -244,6 +256,9 @@ export function createRoom(scene, renderer) {
   const lights = createLights(root, BEAM);
   // Back to the terminal: redrawn from the latest status even if it hasn't changed.
   const slacking = createSlacking(desk => { desk.screenKey = null; redraw(desk, desk.status); });
+  // Whether a desk's screen is in the camera's view this frame, worked out once a frame and only if a slacker's screen is due.
+  let looking = null, viewing = null;
+  const seen = desk => !looking || (viewing ??= (looking.updateMatrixWorld(), viewTest(looking)))(desk.screen);
   const desks = new Map(), signs = new Map(), podColors = new Map(); // pod key → index into teams, kept as pods come and go
   const deskShadows = floorShadow(1, 1, 0.3); deskShadows.geometry = new THREE.BufferGeometry(); root.add(deskShadows);
   const room = {
@@ -252,12 +267,14 @@ export function createRoom(scene, renderer) {
     secret: createSecret({ onPress: () => room.onSecret?.(), onMove: () => room.refreshFlight(), onSlide: open => room.onShelf?.(open) }),
     // The kitchen through the left wall's doors; when it's first built or its doors move, things fly differently (and new things need dimming).
     kitchen: createKitchen({ onMove: () => { room.refreshFlight(); lights.refresh(); } }),
+    // The boss's glass office in the back-left corner; clicking its chair or monitor calls room.onBoss (office.js sits you down).
+    boss: createBossOffice({ desk: bossDesk(), onSit: () => room.onBoss?.(), onMove: () => room.refreshFlight() }),
     colliders: [], flightColliders: [], hanging: [], lintels: [], cutouts: [], furnitureColliders: [], fadeables: { ceiling: null, walls: [] }, boards: {},
     // What thrown things meet: what blocks walking, less what's only for walking, plus what you can't walk into (the wall over a
     // doorway). A new list whenever room.colliders changes or a door moves: it's how props.js knows to wake things.
     // ponytail: so things can be thrown into the games room and lie there. Picked up in there they land back in the office, the
     // goose ignores them, and a ball in there floats over nothing in the overview, which doesn't draw the room.
-    refreshFlight() { room.flightColliders = [...room.colliders.filter(box => !box.walkOnly), ...room.lintels, ...room.kitchen.flight, ...room.cutouts]; },
+    refreshFlight() { room.flightColliders = [...room.colliders.filter(box => !box.walkOnly), ...room.lintels, ...room.kitchen.flight, ...room.boss.flight, ...room.cutouts]; },
     deskAnchor(id) {
       const desk = desks.get(id); if (!desk) return null;
       desk.group.updateMatrixWorld();
@@ -333,8 +350,9 @@ export function createRoom(scene, renderer) {
       return { anchor: monitor.children.find(child => child.userData.glass === (side ? 'side' : 'main')), side };
     },
     // Each frame: the light switch, the screens' light on the desks nearest the camera, anyone slacking off, then the screens
-    // drawn on since the last frame.
-    update(dt, eye, still) {
+    // drawn on since the last frame. `boss` (slack.js): 'you' or 'friend' while someone's at the boss's computer; `camera`, to
+    // draw only the slackers' screens in view.
+    update(dt, eye, still, boss = null, camera = null) {
       const all = [...desks.values()];
       let moved = false;
       for (const desk of all) {
@@ -349,7 +367,8 @@ export function createRoom(scene, renderer) {
       if (moved) shade();
       // A pod's sign and rug go with its last desk (and come with its first).
       for (const sign of signs.values()) sign.group.visible = sign.deskIds.some(id => desks.get(id)?.lift > 0);
-      lights.update(dt, eye, still, all); slacking.update(dt, eye, still, all); screens.flush();
+      looking = camera; viewing = null;
+      lights.update(dt, eye, still, all); slacking.update(dt, eye, still, all, boss, seen); screens.flush();
     },
     dispose() { disposeTree(root); },
   };
@@ -447,7 +466,8 @@ export function createRoom(scene, renderer) {
     const left = wall(depth, -WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(1, 0, 0), undefined, along(kitchenDoor(depth)), KITCHEN_DOOR_W);
     // The right wall has the secret room's doorway in it, behind the lounge's tall bookshelf (secret.js).
     const right = wall(depth, width + WALL_T / 2, depth / 2, Math.PI / 2, new THREE.Vector3(-1, 0, 0), '#ee8a6c', DOOR.back - depth / 2);
-    room.wallColliders.push(...room.secret.build({ width, depth, shell }), ...room.kitchen.build({ depth, shell, wall: left }));
+    room.wallColliders.push(...room.secret.build({ width, depth, shell }), ...room.kitchen.build({ depth, shell, wall: left }), ...room.boss.colliders);
+    room.lintels.push(...room.boss.lintels);
     // Hangs `item` on a wall at world height y; `along` is the wall's local x. Back and left walls face +z locally, front and right -z.
     const hang = (on, item, along, y, out = 0.02) => { const flip = on === front || on === right; item.position.set(along, y - WALL_H / 2, (WALL_T / 2 + out) * (flip ? -1 : 1)); if (flip) item.rotation.y = Math.PI; on.add(item); return item; };
 
@@ -465,16 +485,13 @@ export function createRoom(scene, renderer) {
 
     // Windows on the back wall (windows.js), with posters and plants between them; the middle gap has the scoreboard (below).
     // (cutouts.js, where the cardboard fruit keep clear of both).
-    const count = bays(width), xs = Array.from({ length: count }, (_, i) => -width / 2 + (i + 0.5) * width / count), mid = scoreGap(width);
-    const windows = createWindows(xs); back.add(windows);
-    for (const [i, x] of xs.entries()) {
-      if (i && i !== mid) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
-    }
+    const backWall = windowsWall(width), windows = createWindows(backWall.windows.map(x => x - width / 2)); back.add(windows); // the first behind the boss's desk (boss.js)
+    backWall.gaps.forEach((gap, i) => { if (!gap.board) { hang(back, picture(i, 0.7, 0.95), gap.x - width / 2, 1.75); if (i % 2 === 0) place(plant('bush'), gap.x, 0.45); } });
     // A snake plant in each corner starts the snake game, one per player (room.onSnake(index), from office.js; snake.js). Plants 0 and 1 are
     // the back corners, 2 and 3 the front ones either side of the door (placed with the lounge and the coffee corner below).
     room.snakePlants = [];
     const snakePlant = (x, z) => { const i = room.snakePlants.length, p = place(plant('snake'), x, z); p.userData.toggle = () => room.onSnake?.(i); room.snakePlants.push(p); };
-    snakePlant(0.5, 0.5); snakePlant(width - 0.5, 0.5);
+    snakePlant(0.45, BOSS_FRONT + 0.45); snakePlant(width - 0.5, 0.5); // the first outside the boss's glass
 
     // Door in the front wall, facing into the room, with a coat rack, an extinguisher and the light switch beside it. In a
     // meeting it goes to the host's office and back (room.onDoor, from office.js; visit.js).
@@ -494,14 +511,14 @@ export function createRoom(scene, renderer) {
 
     // Boards; boards.js draws on their faces. The whiteboard is on the left wall, the clock above the door, the waiting board beside it.
     const board = (w, h, frameColor, keep) => { const g = new THREE.Group(); const frame = mesh(rounded(w + 0.1, h + 0.1, 0.05, 0.02), toonMaterial(frameColor), 0.008); g.add(frame); const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }), keep)); face.position.z = 0.03; g.add(face); g.userData.face = face; return g; };
-    // Its foot sits at the middle of the left wall, clear of the kitchen doorway at the front; readable with the lights off.
-    const whiteboard = hang(left, board(3, 1.5, '#c0c4cc', 0.5), 0, 1.75, 0.03);
+    // On the left wall, between the bookshelf and the kitchen doorway (layout.js); readable with the lights off.
+    const boardAt = along(whiteboardZ(depth)), whiteboard = hang(left, board(3, 1.5, '#c0c4cc', 0.5), boardAt, 1.75, 0.03);
     const clock = new THREE.Group(); const rim = mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 32).rotateX(Math.PI / 2), toonMaterial('#2f3542'), 0.008); clock.add(rim);
     const clockFace = new THREE.Mesh(new THREE.CircleGeometry(0.25, 32), dims(new THREE.MeshBasicMaterial({ color: '#ffffff' }))); clockFace.position.z = 0.032; clock.add(clockFace); clock.userData.face = clockFace;
     hang(front, clock, door.x - width / 2, 2.6, 0.04);
     const waiting = hang(front, board(1.1, 0.8, '#3a4352'), door.x - width / 2 - 1.4, 1.5, 0.03);
     // Post-its on the boards' frames, clear of what boards.js writes.
-    hang(left, notes('whiteboard', [[0, 0.32, 0.1, NOTE.yellow], [0.012, 0.2, -0.07, NOTE.yellow], [-0.008, -0.34, 0.05, NOTE.pink]]), 1.54, 1.75, 0.0585);
+    hang(left, notes('whiteboard', [[0, 0.32, 0.1, NOTE.yellow], [0.012, 0.2, -0.07, NOTE.yellow], [-0.008, -0.34, 0.05, NOTE.pink]]), boardAt + 1.54, 1.75, 0.0585);
     hang(front, notes('noticeboard', [[-0.57, 0.41, -0.15, NOTE.pink], [0.57, -0.4, 0.12, NOTE.blue], [0.585, -0.29, -0.06, NOTE.yellow]]), door.x - width / 2 - 1.4, 1.5, 0.0585);
     // The meetings clipboard (Office online), the far side of the door from the waiting board: boards.js writes the meeting
     // you've joined and who's in it, a click brings up the slip (signin.js, through room.onMeeting). Not in room.boards, so a
@@ -511,12 +528,13 @@ export function createRoom(scene, renderer) {
     meeting.userData.toggle = () => room.onMeeting?.();
     room.meeting = { group: meeting, face: meeting.userData.face };
     // The scoreboard: every game's best three (Office online's, else your own; boards.js), on the back wall between two windows.
-    const scoreboard = hang(back, board(SCOREBOARD - 0.1, 1.2, '#c0c4cc', 0.5), xs[mid] - width / count / 2, 1.75, 0.03);
+    const scoreboard = hang(back, board(SCOREBOARD - 0.1, 1.2, '#c0c4cc', 0.5), backWall.gaps.find(gap => gap.board).x - width / 2, 1.75, 0.03);
     room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face, plate, scores: scoreboard.userData.face };
 
     // Left wall: a bookshelf at the back, the whiteboard, pictures where there's room; the front is kept clear for the kitchen doorway.
-    place(bookshelf(), 0.2, 1.45, Math.PI / 2); shadowUnder(0.25, 1.45, 0.5, 1);
-    if (depth / 2 - 1.6 - 1.95 > 1.1) hang(left, picture(1, 0.8, 0.6), along((1.95 + depth / 2 - 1.6) / 2), 1.7);
+    place(bookshelf(), 0.2, SHELF_Z, Math.PI / 2); shadowUnder(0.25, SHELF_Z, 0.5, 1);
+    const boardFrom = whiteboardZ(depth) - 1.6, boardTo = whiteboardZ(depth) + 1.65;
+    if (boardFrom - (SHELF_Z + 0.5) > 1.1) hang(left, picture(1, 0.8, 0.6), along((SHELF_Z + 0.5 + boardFrom) / 2), 1.7);
     // The coffee corner is in the front corner of the door wall, beside the kitchen doorway.
     const spot = COFFEE_X, row = depth - 0.32;
     place(counter(), spot, row, Math.PI); shadowUnder(spot, depth - 0.35, 2.1, 0.7);
@@ -530,8 +548,8 @@ export function createRoom(scene, renderer) {
     hang(front, mugShelf(), spot - width / 2, 1.75, 0.11);
     hang(front, notes('coffee', [[0, 0.05, 0.08, NOTE.yellow], [0.07, -0.05, -0.12, NOTE.green]]), spot - 0.75 - width / 2, 1.25, 0.004);
     bin('#3a3d46', spot + 1.9, depth - 0.3);
-    if (depth - 3.05 > depth / 2 + 1.65) place(waterCooler(), 0.24, depth - 3.05, Math.PI / 2);
-    if (depth - 3.65 > depth / 2 + 1.65) place(plant('bush'), 0.42, depth - 3.65);
+    if (depth - 3.05 > boardTo) place(waterCooler(), 0.24, depth - 3.05, Math.PI / 2);
+    if (depth - 3.65 > boardTo) place(plant('bush'), 0.42, depth - 3.65);
 
     // Right wall: printer and filing cabinet at the back, pictures along it, the lounge in the front corner.
     place(printer(), width - 0.36, 1.25, -Math.PI / 2); place(filingCabinet(), width - 0.32, 2.05, -Math.PI / 2); shadowUnder(width - 0.35, 1.65, 0.65, 1.4);
@@ -597,7 +615,8 @@ export function createRoom(scene, renderer) {
     for (const w of [back, front, left, right]) bake(w, [windows]);
   }
 
-  root.add(room.kitchen.group);
+  root.add(room.kitchen.group, room.boss.group);
+  room.boss.glass = screens.add(room.boss.screen, room.boss.texture, 0.54, 0.32);
   return room;
 }
 

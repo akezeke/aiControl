@@ -6,6 +6,15 @@
 export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3, VACANT_MS = 30_000, DONE_MS = 60_000;
 // The first column sits a little nearer the left wall (bookshelf and the kitchen doorway) than AISLE, leaving more room by the lounge.
 const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8, CELL_PAIRS = 3, LEFT = 1.5;
+// The boss's glass office takes the back-left corner (boss-plan.js): its front glass's outer face is this far from the windows
+// wall. The first column's pods start an aisle in front of it, the rest an aisle from the windows; the first column fills last
+// in each row, so it's a pod short and the room no deeper for the office until every column's full.
+export const BOSS_FRONT = 4.0;
+const back = col => AISLE + (col === 0 ? BOSS_FRONT : 0);
+
+// The left wall in front of the boss's glass (room.js): the bookshelf's middle (it's 0.9 long), then the whiteboard's (3.1 with
+// its frame), in the middle of the wall unless that's on the shelf, as it is in the shallowest rooms.
+export const SHELF_Z = BOSS_FRONT + 1.25, whiteboardZ = depth => Math.max(depth / 2, SHELF_Z + 0.45 + 0.1 + 1.55);
 
 // Where the coffee counter stands along the door wall (world x), and the kitchen doorway in the left wall (world z).
 export const KITCHEN_DOOR_W = 1.5, COFFEE_X = 1.05;
@@ -81,11 +90,13 @@ export function layoutOffice(sessions, previous, now = Date.now(), reserved = ne
   for (const pod of pods) { const old = before.get(pod.key); if (old && old.col < cols && !taken.has(`${old.col},${old.row}`)) { pod.col = old.col; pod.row = old.row; taken.add(`${pod.col},${pod.row}`); } }
   for (const pod of pods) {
     if (pod.col !== undefined) continue;
-    let cell = 0; while (taken.has(`${cell % cols},${Math.floor(cell / cols)}`)) cell++;
-    pod.col = cell % cols; pod.row = Math.floor(cell / cols); taken.add(`${pod.col},${pod.row}`);
+    const at = cell => [(cell + 1) % cols, Math.floor(cell / cols)];
+    let cell = 0; while (taken.has(at(cell).join())) cell++;
+    [pod.col, pod.row] = at(cell); taken.add(at(cell).join());
   }
-  const rows = Math.max(1, ...pods.map(pod => pod.row + 1));
-  const width = Math.max(MIN_ROOM, previous?.room.width || 0, cols * cellW + AISLE), depth = Math.max(MIN_ROOM, previous?.room.depth || 0, rows * cellD + AISLE + START);
+  // As deep as the first column's first pod needs, at least, so the boss's office has its aisle and the left wall its shelf and whiteboard.
+  const reach = ({ col, row }) => back(col) + (row + 1) * cellD + START;
+  const width = Math.max(MIN_ROOM, previous?.room.width || 0, cols * cellW + AISLE), depth = Math.max(MIN_ROOM, previous?.room.depth || 0, reach({ col: 0, row: 0 }), ...pods.map(reach));
 
   const vacant = new Map(top.filter(s => s.vacantSince !== undefined).map(s => [s.id, s.vacantSince]));
   // A helper that's finished (idle since it last wrote) sits DONE_MS, then walks out (`leaving`) and is gone VACANT_MS later.
@@ -100,7 +111,7 @@ export function layoutOffice(sessions, previous, now = Date.now(), reserved = ne
   pods.forEach(pod => {
     pod.left = LEFT + pod.col * cellW;
     pod.x = pod.left + pod.width / 2;
-    pod.z = AISLE + pod.row * cellD + pod.depth / 2;
+    pod.z = back(pod.col) + pod.row * cellD + pod.depth / 2;
     pod.slots.forEach((id, slot) => {
       if (id === undefined) return;
       // Helpers keep the seats they had, newcomers after them in the order they came.

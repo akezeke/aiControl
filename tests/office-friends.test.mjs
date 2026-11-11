@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { createTrack, gait, atMeeting, createFriends } from '../client/office/friends.js';
 import { createSnakes } from '../client/office/snakes.js';
 import { createFlyers } from '../client/office/planes.js';
+import { STAND, CHAIR, DESK, seatedAtBoss } from '../client/office/boss-plan.js';
 
 // Plays `moves` ([sent s, arrives s, x, extra]) through a track a frame at a time, from 0 to `until` s; the drawn place each frame.
 function play(moves, until, track = createTrack()) {
@@ -79,6 +80,23 @@ test('friends are not clickable', t => {
   friends.move('a', { x: 0, y: 0, z: 0, yaw: 0, pose: 'standing' }); friends.update(0.016);
   const ray = new THREE.Raycaster(new THREE.Vector3(0, 0.8, 5), new THREE.Vector3(0, 0, -1));
   assert.deepEqual(ray.intersectObject(scene.children[0], true), []);
+});
+
+// At a meeting, someone whose seated game is the boss desk's sits in its chair, facing as the desk does; anyone playing
+// anywhere else stands where they are.
+test('a friend playing at the boss stand spot sits in the boss chair; one playing elsewhere stands', t => {
+  const blank = () => new Proxy({}, { get: (_, k) => k === 'measureText' ? () => ({ width: 50 }) : () => ({ addColorStop() {} }), set: () => true }), was = globalThis.document;
+  globalThis.document = { createElement: () => ({ getContext: blank }) };
+  t.after(() => { if (was) globalThis.document = was; else delete globalThis.document; });
+  const scene = new THREE.Scene(), friends = createFriends(scene, { room: { kitchen: { inside: () => false, shown: false }, secret: { inside: () => false, shown: false } } });
+  const p = id => ({ id, name: 'Pip', fruit: 'apple', colour: '#3a86ff', at: 'meeting' });
+  friends.sync([p('a'), p('b')], 'me');
+  friends.move('a', { x: STAND.x, y: 0, z: STAND.z, yaw: Math.PI, pose: 'playing' }); friends.move('b', { x: 5, y: 0, z: 5, yaw: 0, pose: 'playing' }); friends.update(0.016);
+  const [a, b] = ['a', 'b'].map(id => friends.positions().find(q => q.id === id));
+  assert.equal(a.pose, 'playing'); assert.ok(seatedAtBoss(a) && !seatedAtBoss(b));
+  const near = (x, z, r) => scene.children.find(c => Math.hypot(c.position.x - x, c.position.z - z) < r);
+  const seated = near(CHAIR.x, CHAIR.z, 0.3); assert.ok(seated, 'in the chair'); assert.equal(seated.rotation.y, DESK.rotation);
+  assert.ok(near(5, 5, 0.01), 'the other stands where they are');
 });
 
 // Watching snakes: Pip (a) at the meeting, as fruit and, once heard, as a snake, on a clock the test moves (`frame` moves it
@@ -169,7 +187,7 @@ test('foods() lists the food and head of snakes in play, copied; positions() who
   assert.deepEqual(w.snakes.foods(), [{ food: [4.125, 1.875], head: [2.125, 3.125] }]);
   f.food[0] = 0; f.head[0] = 0; assert.deepEqual(w.snakes.foods(), [{ food: [4.125, 1.875], head: [2.125, 3.125] }], 'copies');
   w.snakes.heard('a', { ...msg, mode: 'over' }); assert.deepEqual(w.snakes.foods(), []);
-  assert.deepEqual(w.friends.positions(), [{ id: 'a', x: 5, z: 5, busy: false }]);
+  assert.deepEqual(w.friends.positions(), [{ id: 'a', x: 5, z: 5, busy: false, pose: 'standing' }]);
   w.friends.positions()[0].x = 0; assert.equal(w.friends.positions()[0].x, 5);
 });
 

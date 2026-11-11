@@ -109,6 +109,14 @@ export function poseTargets(pose, t, seed, fruit, wear = 0, habit = '') {
       return { x: 0, z, turn: 0, body: { y, tilt, lean }, limbs: {
         leftHand: hang(1), rightHand: hang(-1), leftFoot: V(0.09, DESK_H + 0.06, KEYS + SEAT_FORWARD - 0.1 - z), rightFoot: V(-0.09, DESK_H + 0.06, KEYS + SEAT_FORWARD - 0.1 - z) } };
     }
+    // Feet up while the boss is away (slack.js): sunk back in the chair as a sleeper is, heels on the desk, hands clasped behind
+    // the head, elbows out; a slow sway.
+    case 'feetup': {
+      const lean = -0.24 + wave(0.5) * 0.01, y = SEAT_H - 0.015, crown = fruit.surface(h * 0.82);
+      const z = BACK_Z + 0.015 + fruit.surface(h * 0.45).r + h * 0.09, hand = side => V(crown.x + side * crown.r * 0.55, y + h * 0.8, -crown.r - 0.06);
+      return { x: 0, z, turn: 0, elbows: 0.5, body: { y, tilt: wave(0.3) * 0.01, lean }, limbs: {
+        leftHand: hand(1), rightHand: hand(-1), leftFoot: V(0.09, DESK_H + 0.06, KEYS + SEAT_FORWARD - 0.1 - z), rightFoot: V(-0.09, DESK_H + 0.06, KEYS + SEAT_FORWARD - 0.1 - z) } };
+    }
     // Walking to or from the door: legs and arms swing in opposition.
     case 'walking': return { ...standing(Math.abs(wave(8)) * 0.03), x: 0, z: 0, limbs: {
       leftHand: V(0.34, LEG + h * 0.3, wave(8) * 0.14), rightHand: V(-0.34, LEG + h * 0.3, -wave(8) * 0.14),
@@ -300,9 +308,9 @@ export class Cast {
       const since = this.time - c.startled, startled = since < STARTLED, sitsUp = startled && !STANDING.has(c.pose) && c.pose !== 'crying';
       const finishing = this.time - c.finished < FINISHED, cheer = c.habits.finish, cheering = fans.get(c.id);
       const worry = red.length && ['typing', 'thinking'].includes(c.pose) && (this.time + c.seed) % GLANCE_EVERY < GLANCE_FOR ? nearest(c, o => o.pose === 'slumped' || o.pose === 'crying') : null;
-      const pose = talking || sitsUp ? 'listening' : finishing ? cheer : cheering ? 'thumbsup' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted'
+      const pose = talking || sitsUp ? 'listening' : finishing ? cheer : cheering ? 'thumbsup' : busy && slack?.show ? 'slacking' : busy && slack?.busted ? 'busted' : busy && slack?.feet ? 'feetup'
         : worry ? 'concerned' : STANDING.has(c.pose) && c.since ? waitingPose(c.since) : c.pose;
-      const face = startled ? 'frown' : talking && ['asleep', 'squeezed'].includes(c.expression) ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : pose === 'impatient' ? 'annoyed' : pose === 'stretching' ? 'asleep' : pose === 'cheering' || pose === 'thumbsup' ? 'smile' : pose === 'concerned' ? 'worried' : c.expression;
+      const face = startled ? 'frown' : talking && ['asleep', 'squeezed'].includes(c.expression) ? 'neutral' : pose === 'slacking' ? (slack.wary ? 'worried' : 'smile') : pose === 'busted' ? 'worried' : pose === 'feetup' ? 'smile' : pose === 'impatient' ? 'annoyed' : pose === 'stretching' ? 'asleep' : pose === 'cheering' || pose === 'thumbsup' ? 'smile' : pose === 'concerned' ? 'worried' : c.expression;
       if (c.shown !== pose) { if (c.shown) c.changed = this.time; c.shown = pose; }
       if (c.face !== face) { c.face = face; fruit.setExpression(face); }
       fruit.buzz(t);
@@ -312,8 +320,8 @@ export class Cast {
       const other = pose === 'thumbsup' ? cheering : pose === 'concerned' ? worry : null, turn = other ? toward(c, other.root.position) : 0;
       const target = poseTargets(pose, t, c.seed, fruit, c.wear, pose === 'thumbsup' ? (turn > 0 ? 'left' : 'right') : c.habits[pose]);
       if (startled && !still && since < 0.4) target.body.y += 0.16 * Math.sin(Math.PI * since / 0.4);
-      // Worn out: slouched lower and to one side (a sleeper already is; one caught slacking sits up straight).
-      if (c.wear && pose !== 'sleeping' && pose !== 'busted') { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }
+      // Worn out: slouched lower and to one side (a sleeper already is, and one with their feet up; one caught slacking sits up straight).
+      if (c.wear && pose !== 'sleeping' && pose !== 'busted' && pose !== 'feetup') { target.body.lean += 0.12 * c.wear; target.body.y -= 0.03 * c.wear; target.body.tilt += 0.1 * c.wear; }
       if (other) {
         if (other === cheering) target.turn = THREE.MathUtils.clamp(turn, -1.3, 1.3); else target.body.turn = THREE.MathUtils.clamp(turn, -0.9, 0.9);
         other.fruit.body.getWorldPosition(head).y += other.fruit.height * other.scale * 0.6; target.glance = fruit.group.worldToLocal(head);

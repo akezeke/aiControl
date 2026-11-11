@@ -2,12 +2,16 @@
 // video, a won game of solitaire, a fish tank, a little runner game). When the boss comes close, or around behind them where
 // the screen shows, it's back to the terminal and they type away, sitting up straight. With reduced motion the show is a still.
 // Drawn on the desk's own screen canvas, so there are no video files to decode or license.
+// While someone's at the boss's computer (boss.js) the whole floor slacks: every idle desk within a few seconds, the working
+// ones with their feet up. When the boss gets up, whoever faces the boss's chair is caught at once; the rest carry on a while.
 import * as THREE from 'three';
+import { CHAIR } from './boss-plan.js';
 
 const W = 432, H = 256; // the screen canvas, as drawScreen in room.js sees it
 const FIRST = [15, 30], GAP = [20, 40], LENGTH = [20, 40], CALM = 120, BUSTED = 3; // seconds; CALM: a caught desk behaves this long
 const HEARD = 1.5, SEEN = 3.5, FPS = 12; // metres: anywhere this near, or this near on the side the screen faces
 const NOTICE = 2; // seconds the boss can watch before they notice (wary halfway, it shows on their face)
+const ALL_IN = 4, MAX_DRAWS = 3; // seconds: the floor's all at it this soon after the boss sits; screens redrawn a frame, at most
 const SLACKERS = new Set(['dark']); // the screen tones (status.js) of desks that may slack: idle only, so a working desk always shows its output
 const SUITS = ['♥', '♠', '♦', '♣'], INK = '#1b1a1f';
 const FISH = [[70, 60, 22, '#ff8c42'], [118, 45, 15, '#ffd23f'], [160, 75, 26, '#ff5d73'], [196, 35, 13, '#9b5de5']]; // y, speed, size, colour
@@ -86,50 +90,85 @@ function card(g, x, y, suit) {
   g.fillStyle = suit % 2 ? INK : '#d62828'; g.font = 'bold 22px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(SUITS[suit], x + 18, y + 26);
 }
 
+// Whether a desk's sitter faces `at` ({ x, z }, world): their facing (the desk's +z) within about 70° of the way from the chair to it.
+const chairAt = new THREE.Vector3(), facing = new THREE.Vector3();
+export function facesToward(desk, at) {
+  desk.chair.getWorldPosition(chairAt); desk.group.getWorldDirection(facing);
+  const dx = at.x - chairAt.x, dz = at.z - chairAt.z, d = Math.hypot(dx, dz);
+  return d > 0 && (facing.x * dx + facing.z * dz) > d * 0.3;
+}
+
 // Each desk carries `slack`: { show (playing), wary (they sense the boss), busted (seconds of eager typing left), calm (seconds
-// before it can slack again) };
-// animation.js reads it for the sitter. `terminal(desk)` puts the session's own screen back.
+// before it can slack again), feet (up on the desk: a working sitter while the boss is away) }; animation.js reads it for the
+// sitter. `terminal(desk)` puts the session's own screen back.
+// An episode is one desk's show: `delay` before it starts (the boss just sat down), `t` into it, `left` to run, `noticed`
+// (0..1, caught at 1). One at a time with the boss about; any number while they're away, the screens shared out MAX_DRAWS a
+// frame from where the last frame left off, and only those `seen`.
 export function createSlacking(terminal) {
-  let wait = rand(FIRST), current = null;
-  const at = new THREE.Vector3(), to = new THREE.Vector3();
+  let wait = rand(FIRST), away = null, start = 0;
+  const episodes = new Map(), at = new THREE.Vector3(), to = new THREE.Vector3();
   // Near enough to hear, or around behind them, on the side the screen faces (back toward the chair: -z in the desk's frame).
   const spotted = (desk, eye, margin = 1) => {
     desk.screen.getWorldPosition(at); to.copy(eye).sub(at);
     const distance = to.length(), r = desk.group.rotation.y;
     return distance < HEARD * margin || (distance < SEEN * margin && -(to.x * Math.sin(r) + to.z * Math.cos(r)) > distance * 0.3);
   };
-  const stop = caught => {
-    const { desk } = current; current = null; desk.slack.show = null; desk.slack.wary = false;
+  const begin = (desk, delay) => {
+    const episode = { desk, t: 3, drawn: 0, frameIn: 0, noticed: 0, left: rand(LENGTH), state: {}, delay, show: shows[Math.floor(Math.random() * shows.length)] }; // a few seconds in, everything is on screen
+    episodes.set(desk, episode); if (delay <= 0) desk.slack.show = episode.show;
+  };
+  const stop = (episode, caught) => {
+    const { desk } = episode; episodes.delete(desk); desk.slack.show = null; desk.slack.wary = false;
     if (caught) { desk.slack.busted = BUSTED; desk.slack.calm = CALM; }
     terminal(desk);
   };
+  const draw = (episode, still, seen) => {
+    const { desk } = episode;
+    if (episode.delay > 0 || episode.frameIn > 0 || (still && episode.drawn) || !seen(desk)) return false;
+    const g = desk.screenTexture.image.getContext('2d');
+    g.save(); g.setTransform(g.canvas.width / W, 0, 0, g.canvas.height / H, 0, 0);
+    desk.slack.show(g, episode.t, episode.state, episode.t - episode.drawn); g.restore();
+    desk.screenTexture.needsUpdate = true; episode.drawn = episode.t; episode.frameIn = 1 / FPS;
+    return true;
+  };
   return {
-    update(dt, eye, still, desks) {
+    // `boss`: 'you' or 'friend' while someone's at the boss's computer, else null. Seated yourself you can't catch anyone.
+    update(dt, eye, still, desks, boss = null, seen = () => true) {
       dt = Math.max(0, dt); // the first frame's dt can be negative (its timestamp predates the loop starting)
-      for (const { slack } of desks) { slack.busted = Math.max(0, slack.busted - dt); slack.calm = Math.max(0, slack.calm - dt); }
-      if (current) {
-        const { desk } = current;
-        if (!SLACKERS.has(desk.glow) || !desk.group.parent || (current.left -= dt) <= 0) stop(false);
-        else if ((current.noticed = Math.max(0, current.noticed + (spotted(desk, eye) ? dt : -dt) / NOTICE)) >= 1) stop(true);
-        else {
-          desk.slack.wary = current.noticed > 0.5;
-          if ((current.frameIn -= dt) <= 0 && !(still && current.drawn)) {
-            const g = desk.screenTexture.image.getContext('2d');
-            g.save(); g.setTransform(g.canvas.width / W, 0, 0, g.canvas.height / H, 0, 0);
-            desk.slack.show(g, current.t, current.state, current.t - current.drawn); g.restore();
-            desk.screenTexture.needsUpdate = true; current.drawn = current.t; current.frameIn = 1 / FPS;
-          }
+      for (const desk of desks) { const { slack } = desk; slack.busted = Math.max(0, slack.busted - dt); slack.calm = Math.max(0, slack.calm - dt); slack.feet = !!boss && desk.glow === 'green'; }
+      if (boss) {
+        // Everyone at it, a few seconds apart; with a friend in the chair, not right under your nose.
+        for (const desk of desks) if (SLACKERS.has(desk.glow) && !desk.slack.calm && desk.group.parent && !episodes.has(desk) && (boss === 'you' || !spotted(desk, eye, 1.6))) begin(desk, Math.random() * ALL_IN);
+      } else if (away) {
+        // The boss is up: whoever faces their chair is caught; the rest have a while yet, and those yet to start never do.
+        for (const episode of episodes.values()) {
+          if (episode.delay > 0) stop(episode, false);
+          else if (facesToward(episode.desk, CHAIR)) stop(episode, true);
+          else episode.left = rand(LENGTH);
         }
-        if (current && !still) current.t += dt;
-        return;
       }
-      if ((wait -= dt) > 0) return;
-      wait = rand(GAP);
-      // Not under the boss's nose: that would be over before it started.
-      const ready = desks.filter(desk => SLACKERS.has(desk.glow) && !desk.slack.calm && !spotted(desk, eye, 1.6));
-      const desk = ready[Math.floor(Math.random() * ready.length)]; if (!desk) return;
-      desk.slack.show = shows[Math.floor(Math.random() * shows.length)];
-      current = { desk, t: 3, drawn: 0, frameIn: 0, noticed: 0, left: rand(LENGTH), state: {} }; // a few seconds in, everything is on screen
+      away = boss;
+      for (const episode of episodes.values()) {
+        const { desk } = episode;
+        if (!SLACKERS.has(desk.glow) || !desk.group.parent) { stop(episode, false); continue; }
+        if (episode.delay > 0) { if ((episode.delay -= dt) > 0) continue; desk.slack.show = episode.show; }
+        if (!boss && (episode.left -= dt) <= 0) { stop(episode, false); continue; }
+        episode.noticed = boss === 'you' ? 0 : Math.max(0, episode.noticed + (spotted(desk, eye) ? dt : -dt) / NOTICE);
+        if (episode.noticed >= 1) { stop(episode, true); continue; }
+        desk.slack.wary = episode.noticed > 0.5; episode.frameIn -= dt;
+      }
+      if (!boss && !episodes.size && (wait -= dt) <= 0) {
+        wait = rand(GAP);
+        // Not under the boss's nose: that would be over before it started.
+        const ready = desks.filter(desk => SLACKERS.has(desk.glow) && !desk.slack.calm && desk.group.parent && !spotted(desk, eye, 1.6));
+        const desk = ready[Math.floor(Math.random() * ready.length)]; if (desk) begin(desk, 0);
+      }
+      // Redraws, at most MAX_DRAWS, starting after the last one drawn last frame so every screen gets its turn.
+      let drawn = 0, k = 0, next = start;
+      for (const episode of episodes.values()) { if (k >= start && drawn < MAX_DRAWS && draw(episode, still, seen)) { drawn++; next = k + 1; } k++; }
+      k = 0; for (const episode of episodes.values()) { if (k >= start || drawn >= MAX_DRAWS) break; if (draw(episode, still, seen)) { drawn++; next = k + 1; } k++; }
+      start = episodes.size ? next % episodes.size : 0;
+      if (!still) for (const episode of episodes.values()) if (episode.delay <= 0) episode.t += dt;
     },
   };
 }

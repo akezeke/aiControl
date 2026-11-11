@@ -86,8 +86,9 @@ function bendNeck(tube, { lean, turn, len, bend, bow }) {
 // `walkable()`: path.js's grid of the room as it is now; `busy()`: you're in the overview or off to someone, so it lets you be;
 // `say(icon, text)`: its speech bubble; `sleepers()`: [{ id, at }] of who's asleep and their seat; `wake(id, line)`: one jumps;
 // `foods()`: [{ food: [x, z], head: [x, z] }] of each snake's food and its head; `others()`: [{ id, x, z, busy }] of the others at a
-// meeting; `me()`: your id; `net(message)`: one to the meeting.
-export function createGoose(scene, { props, player, walkable, bounds, busy, reducedMotion, say, sleepers, wake, foods = () => [], others = () => [], me = () => null, net = () => {} }) {
+// meeting; `me()`: your id; `net(message)`: one to the meeting; `barred({ x, z })`: behind glass it can't get through (the boss's
+// office, office.js), so whoever's there it doesn't go for and whatever's there it doesn't go after.
+export function createGoose(scene, { props, player, walkable, bounds, busy, reducedMotion, say, sleepers, wake, foods = () => [], others = () => [], me = () => null, net = () => {}, barred = () => false }) {
   const { root, body, neck, head, jaw, wings, legs } = model(); root.visible = false; scene.add(root);
   const at = root.position, pose = { ...REST }, aim = { ...REST }, dir = new THREE.Vector3(), local = new THREE.Vector3(), tip = new THREE.Vector3(), above = new THREE.Vector3();
   let t = 0, yaw = 0, phase = 0, stepping = 0, mode = 'loiter', idle = 'look', side = 1, until = 0, path = null, loot = null, mine = false, last = null, victim = null, prey = null; // mine: it's had it in its beak; last: what it took last time; prey: whose id it's chasing
@@ -121,7 +122,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   // Something lying still it can get at from the floor (a desk thing from beside its desk), from a few tries; not what it just left.
   const steal = () => {
     const grid = walkable();
-    for (const b of props.loose().filter(b => b !== last).sort(() => Math.random() - 0.5).slice(0, 4)) {
+    for (const b of props.loose().filter(b => b !== last && !barred(b.pos)).sort(() => Math.random() - 0.5).slice(0, 4)) {
       const stand = nearestOpen(grid, b.pos);
       if (stand && reach(stand, b.pos) && go(stand, 'fetch')) { loot = last = b; return; }
     }
@@ -129,7 +130,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   // Someone asleep it can stand beside (the open spot nearest their seat), from a few tries.
   const prank = () => {
     const grid = walkable();
-    for (const s of sleepers().sort(() => Math.random() - 0.5).slice(0, 3)) {
+    for (const s of sleepers().filter(s => !barred(s.at)).sort(() => Math.random() - 0.5).slice(0, 3)) {
       const stand = nearestOpen(grid, s.at);
       if (stand && flat(stand, s.at) < 1.2 && go(stand, 'sneak')) { victim = s; return; }
     }
@@ -194,14 +195,15 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
   // Who it might go for, as they are now ({ id, x, z, busy }): you, and while it's kept here, the others at the meeting.
   const you = () => { yourself.id = me(); yourself.x = player.position.x; yourself.z = player.position.z; yourself.busy = busy(); return yourself; };
   const quarry = id => { if (id === me()) return you(); if (role === 'keeper') for (const o of others()) if (o.id === id) return o; return null; };
-  const close = p => !p.busy && Math.hypot(p.x - at.x, p.z - at.z) < NEAR;
+  const out = p => p.busy || barred(p); // busy, or behind the glass
+  const close = p => !out(p) && Math.hypot(p.x - at.x, p.z - at.z) < NEAR;
   const near = () => { if (close(you())) return yourself; if (role === 'keeper') for (const o of others()) if (close(o)) return o; return null; };
   // Gets cross: drops what it has, honks, and goes for `id` for `seconds`, unless they're busy. At home (or keeping it alone) with
   // reduced motion it only honks; a keeper goes for them whatever its own page's setting.
   const provoke = (seconds, icon = '🪿', id = me()) => {
     if ((role === 'home' || alone()) && reducedMotion()) { honk(icon); return; }
     drop(); honk(icon); tell({ type: 'goosed', what: 'honk', icon });
-    const p = quarry(id); if (!p || p.busy) return;
+    const p = quarry(id); if (!p || out(p)) return;
     mode = 'chase'; prey = id; chaseUntil = Math.max(chaseUntil, t + seconds); replanAt = 0;
   };
   // Caught them: a nip and a honk, a shove if it's you (not while busy, or with reduced motion), and that'll do for a while.
@@ -234,7 +236,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     if ((mode === 'mill' || mode === 'loiter') && t > mindAt) budge(); // standing about: still not in the snake's way?
     if (mode === 'chase') {
       const p = quarry(prey); // after them where they are now, till they're busy or gone, or it's had enough
-      if (!p || p.busy || t > chaseUntil) { calmUntil = t + 2; loiter(1); return; }
+      if (!p || out(p) || t > chaseUntil) { calmUntil = t + 2; loiter(1); return; }
       if (t > replanAt) { replanAt = t + REPLAN; goal.set(p.x, 0, p.z); path = findPath(walkable(), at, goal) || [goal.clone()]; }
       follow(dt);
       if (Math.hypot(p.x - at.x, p.z - at.z) < NIP) nip(p);

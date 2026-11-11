@@ -33,6 +33,9 @@ import { createPlanes, createFlyers } from './planes.js';
 import { setSkyPlace } from './windows.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
+import { STAND, behindGlass, seatedFriend, shutOffice } from './boss-plan.js';
+import { createBossDesk } from './boss.js';
+import { createDesktop } from './desktop.js';
 import { inSlices, shaders, textures } from './ready.js';
 import { createDebug } from './debug.js';
 import { hireChoices } from '../hire.js';
@@ -62,6 +65,9 @@ export function mountOffice(container, hooks) {
   let grid = null;
   const walkable = () => { const key = gridKey(room.colliders, layout.room); return grid?.key === key ? grid : grid = walkGrid(room.colliders, layout.room); };
   const route = (from, to) => layout ? findPath(walkable(), from, to) : null;
+  // The snake and the goose roam it with the boss's office shut (boss-plan.js): a copy, made again only with the grid.
+  let roam = null;
+  const roaming = () => { const g = walkable(); if (roam?.from !== g) roam = { from: g, grid: shutOffice(g) }; return roam.grid; };
   // Yours takes in the secret room too (its shut door is one of the boxes).
   let yourGrid = null;
   const yourRoute = (from, to) => {
@@ -172,19 +178,25 @@ export function mountOffice(container, hooks) {
   const onPlay = game => {
     if (view.overview) return;
     if (game.free) { toMark(game); return; }
-    const { x, z, yaw } = game.stand(), spot = new THREE.Vector3(x, 0, z);
-    if (player.position.clone().setY(0).distanceTo(spot) < 1.4) { player.place(player.position.x, player.position.z, yaw); play(game); }
-    else player.walkTo(spot, () => { player.place(player.position.x, player.position.z, yaw); play(game); }, 0.3, true);
+    // An exact game (the boss desk) sits you at its spot itself, where the others at a meeting look for you; the rest where you got to.
+    const { x, z, yaw } = game.stand(), spot = new THREE.Vector3(x, 0, z), sit = () => { player.place(game.exact ? x : player.position.x, game.exact ? z : player.position.z, yaw); play(game); };
+    if (player.position.clone().setY(0).distanceTo(spot) < (game.exact ? 0.05 : 1.4)) sit();
+    else player.walkTo(spot, sit, 0.3, true);
   };
+  // The boss desk's computer (desktop.js), laid over the canvas: only the desktop itself takes the pointer. Shut down stands you up.
+  const screenLayer = document.createElement('div'); screenLayer.className = 'office-desktop-layer'; renderer.domElement.after(screenLayer);
+  const desktop = createDesktop(screenLayer, { onShutDown: () => play(null), storage: (() => { try { return window.localStorage; } catch { return null; } })() });
+  const bossDesk = createBossDesk({ annex: room.boss, desktop, camera });
+  room.onBoss = () => onPlay(bossDesk);
   // Office online (online.js): friends' bests, for the games' own displays and the meetings clipboard.
   const online = createOnline({ api: (path, body) => hooks.api(path, body) });
   const darts = createDarts({ hands: view.hands, camera, canvas: renderer.domElement, onPlay, online }), golf = createGolf({ camera, canvas: renderer.domElement, ray: at => rayAt(at, renderer.domElement, camera), onPlay, online });
   const pinball = createPinball({ canvas: renderer.domElement, camera, onPlay, online });
   room.secret.add(darts); room.secret.add(golf); room.secret.add(pinball);
   // Snake, out on the office floor from whichever corner's snake plant was clicked: you walk to that one (stand) and it starts there.
-  const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && walkable(), plants: () => room.snakePlants?.map(p => p.position) ?? [], score: (goal, verdict) => overlays.setScore(goal && leaderLine(goal, online.top('snake')[0]), verdict, false),
+  const snake = createSnake({ canvas: renderer.domElement, grid: () => layout && roaming(), plants: () => room.snakePlants?.map(p => p.position) ?? [], score: (goal, verdict) => overlays.setScore(goal && leaderLine(goal, online.top('snake')[0]), verdict, false),
     blocks: () => goose.columns(), bump: () => goose.honk('💢'), bodies: () => atMeeting() ? snakes.bodies() : [],
-    look: () => { const me = live.roster().find(p => p.id === live.id()), l = me ?? online.state()?.look; return l ? { fruit: l.fruit, colour: l.colour } : null; }, send: m => tell(m) });
+    look: () => { const l = myLook(); return l ? { fruit: l.fruit, colour: l.colour } : null; }, send: m => tell(m) });
   // At a meeting, a plant someone's snake is out from says whose it is instead of starting yours.
   scene.add(snake.root); room.onSnake = i => { const who = atMeeting() && snakes.taken(i); if (who) bubbles.say(plantBubble(i), '🐍', who); else { snake.use(i); onPlay(snake); } };
   // Paper planes: from the stack of paper on the filing cabinet by the printer, round the office through the day's rings; from
@@ -201,6 +213,8 @@ export function mountOffice(container, hooks) {
   const boards = createBoards(room, () => online.rows());
   // Office meetings' live link (live.js), open while you're in one and the page is shown. You're home until the door says otherwise.
   const live = createLive({ joined: () => !!online.state()?.joined }); debug.messages(live);
+  // How you look: as the meeting's roster has you, or as you saved it.
+  const myLook = () => live.roster().find(p => p.id === live.id()) ?? online.state()?.look;
   live.where('home');
   // Joining a meeting at the clipboard by the door: the slip, and the page redrawn whenever the board comes back different.
   const signIn = createSignIn(container, online, live);
@@ -208,7 +222,7 @@ export function mountOffice(container, hooks) {
   online.watch(() => { boards.meeting(online.state()); boards.scores(); signIn.refresh(); live.refresh(); if (!online.state()?.joined) step('left'); });
   const bubbles = new Bubbles(container, id => { if (plantOf(id) < 0) office.talkTo(id); });
   // It lets you be in the overview and on your way to someone.
-  const goose = createGoose(scene, { props, player, walkable, bounds: () => layout?.room, busy: () => view.overview || !!player.flight || !!office.talking || room.kitchen.inside(player.position),
+  const goose = createGoose(scene, { props, player, walkable: roaming, barred: behindGlass, bounds: () => layout?.room, busy: () => view.overview || !!player.flight || !!office.talking || room.kitchen.inside(player.position),
     reducedMotion: () => reducedAtmosphere(), say: (icon, text) => bubbles.say(GOOSE, icon, text),
     foods: () => [snake.food(), ...(atMeeting() ? snakes.foods() : [])].filter(Boolean), others: () => friends.positions(), me: () => live.id(),
     net: m => tell(m),
@@ -426,8 +440,10 @@ export function mountOffice(container, hooks) {
     if (props.holding && room.secret.inside(player.position)) props.throw(null, true);
     // In the secret room or the kitchen the office's bubbles don't show through its walls. The overview looks down on all of it.
     const away = view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
-    const others = friends.positions(); // the others at a meeting: doors open and stay open for them too
-    snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere()); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount, others); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount, others); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : plantOf(id) >= 0 ? plantTop(plantOf(id)) : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    const others = friends.positions(), bossFriend = seatedFriend(others); // the others at a meeting (doors open and stay open for them too); who of them is at the boss's computer
+    const me = myLook(); room.boss.dress(me?.fruit, me?.colour, online.state()?.name); // the boss's office is all you; redrawn only when that changes
+    snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere(), playing === bossDesk ? 'you' : bossFriend ? 'friend' : null, camera); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount, others); room.boss.update(dt, player.position, reducedAtmosphere(), view.amount, others); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount, others); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : plantOf(id) >= 0 ? plantTop(plantOf(id)) : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
+    bossDesk.update(dt, { still: reducedAtmosphere(), friend: bossFriend, arrived: playing === bossDesk && view.gameAmount === 1 && view.amount === 0 });
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
     tiltSigns();
   });
@@ -505,9 +521,9 @@ export function mountOffice(container, hooks) {
     overlays.setUsageLow(!away && (snapshot.usage || []).some(account => account.windows?.some(window => window.usedPercent >= 80)));
     boards.sync(snapshot, { error, waiting: waiting.map(session => session.title || session.project), visiting });
     office.layout = layout;
-    // First snapshot: stand just inside the door, looking into the room.
+    // First snapshot: in the boss's office, by its chair, looking out over the floor (coming to or from a meeting is by the door).
     // Not from inside a free game: you're out of it first. A seated one puts you back where it says when you leave it.
-    if (!office.placed) { office.placed = true; if (playing?.free) play(null); player.place(...doorSpot()); }
+    if (!office.placed) { office.placed = true; if (playing?.free) play(null); player.place(STAND.x, STAND.z, STAND.yaw); }
   }
   const doorSpot = () => { const { width, depth } = layout.room; return [layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))]; };
 
@@ -527,7 +543,7 @@ export function mountOffice(container, hooks) {
         object.geometry?.dispose();
         for (const material of [object.material].flat().filter(Boolean)) { for (const value of Object.values(material)) if (value?.isTexture) value.dispose(); material.dispose(); }
       });
-      renderer.dispose(); renderer.domElement.remove(); debug.dispose();
+      renderer.dispose(); renderer.domElement.remove(); debug.dispose(); desktop.dispose(); screenLayer.remove();
     },
     room, cast, player, view,
     outlines: showOutlines, // on everything, or only on what's hovered or picked (the theme menu)

@@ -111,3 +111,16 @@ test('startled, a sitter sits up to turn round, feet and hands off the desk, the
   waver.cast.startle('a');
   assert.ok(Math.abs(waver.run(1).limbs.rightHand.y - hand) < 0.15, 'someone already on their feet keeps standing');
 });
+
+// Feet up while the boss is away (slack.js): leant right back, heels on the desk as a sleeper's are, hands clasped behind the
+// head, up by it (a fruit's head is its top: most of its height above where it sits).
+test('feet up: leaning back, heels on the desk as when asleep, hands behind the head', () => {
+  const up = poseTargets('feetup', 0, 1, fruit), asleep = poseTargets('sleeping', 0, 1, fruit), typing = poseTargets('typing', 0, 1, fruit);
+  assert.deepEqual(up.limbs.leftFoot, asleep.limbs.leftFoot); assert.deepEqual(up.limbs.rightFoot, asleep.limbs.rightFoot); assert.ok(up.body.lean < typing.body.lean, 'leans back');
+  for (const hand of [up.limbs.leftHand, up.limbs.rightHand]) {
+    assert.ok(hand.y > up.body.y + fruit.height * 0.7 && hand.y > typing.limbs.leftHand.y, 'up by the head');
+    assert.ok(hand.z < 0, 'behind it');
+  }
+  assert.ok(up.limbs.leftHand.x > 0 && up.limbs.rightHand.x < 0, 'either side');
+  assert.deepEqual(poseTargets('feetup', 0, 1, fruit), poseTargets('feetup', 0, 1, fruit));
+});

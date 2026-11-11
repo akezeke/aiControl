@@ -144,3 +144,48 @@ body.panel-open .office-throw { display: none; }
 @keyframes office-panel-in { from { opacity: 0; transform: translateX(12px); } }
 
 /* The screenshots a session looked at, beside the scene like the session panel: the picture big, over a strip of them all. */
+
+/* The boss desk's computer (desktop.js): laid out at 1080 × 640 and transformed onto the monitor; over the canvas, under the
+   overlays. Grey bevelled chrome; the PICO-8 window in PICO-8's own colours. Its numbers are desktop.js's (drawDesktop draws
+   the same on the monitor). */
+.office-desktop-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.office-desktop-layer > .office-desktop { pointer-events: auto; }
+.office-desktop { position: absolute; left: 0; top: 0; width: 1080px; height: 640px; transform-origin: 0 0; overflow: hidden; background: #4a5a78; color: #000; font: 400 16px/1.2 'Silkscreen', ui-monospace, monospace; user-select: none; -webkit-user-select: none; }
+.office-desktop[hidden], .office-desktop [hidden] { display: none; }
+.office-desktop button, .office-desktop input { margin: 0; font: inherit; color: inherit; }
+.office-desktop button { cursor: default; }
+.office-desktop :focus-visible { outline: 2px dotted #1d2b53; outline-offset: -4px; }
+.office-desktop-bevel { border: 0; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
+.office-desktop-bevel:active { box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; }
+.office-desktop-icon { position: absolute; left: 24px; top: 24px; width: 104px; height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; padding: 8px 0 0; border: 0; background: none; color: #ffffff; }
+.office-desktop-icon:focus-visible { outline-color: #ffffff; }
+.office-desktop-icon:focus .office-desktop-label { background: #1d2b53; }
+.office-desktop-console { position: relative; width: 64px; height: 48px; box-sizing: border-box; border: 2px solid #000; background: #c2c3c7; }
+.office-desktop-console::before { content: ''; position: absolute; left: 4px; top: 4px; width: 32px; height: 24px; border: 2px solid #000; background: #1d2b53; }
+.office-desktop-console::after { content: ''; position: absolute; left: 46px; top: 8px; width: 8px; height: 8px; background: #ff004d; box-shadow: 0 12px 0 #29adff; }
+.office-desktop-label { padding: 2px 4px; }
+.office-desktop-taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 6px; background: #c3c3c3; box-shadow: inset 0 2px 0 #ffffff; }
+.office-desktop-start { width: 88px; height: 32px; }
+.office-desktop-clock { width: 88px; height: 32px; display: flex; align-items: center; justify-content: center; box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; }
+.office-desktop-menu { position: absolute; left: 6px; bottom: 44px; width: 200px; height: 44px; box-sizing: border-box; padding: 4px; }
+.office-desktop-item { width: 100%; height: 100%; padding: 0 8px; border: 0; background: none; text-align: left; }
+.office-desktop-item:hover, .office-desktop-item:focus-visible { background: #1d2b53; color: #fff1e8; }
+.office-desktop-window { position: absolute; left: 220px; top: 8px; width: 640px; height: 580px; box-sizing: border-box; display: flex; flex-direction: column; padding: 2px; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
+.office-desktop-title { flex: 0 0 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 3px 0 8px; background: #1d2b53; color: #fff1e8; }
+.office-desktop-close { width: 20px; height: 20px; padding: 0; border: 0; background: #ff004d; color: #fff1e8; font-size: 14px; line-height: 20px; }
+.office-desktop-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.office-desktop-bar { flex: 0 0 28px; display: flex; align-items: center; gap: 4px; padding: 0 2px; box-sizing: border-box; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
+.office-desktop-bar > button { height: 22px; padding: 0 10px; }
+.office-desktop-paste { flex: 1; height: 22px; box-sizing: border-box; padding: 0 6px; border: 0; background: #ffffff; box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; user-select: text; -webkit-user-select: text; }
+.office-desktop-note { margin: 0; padding: 4px 8px; background: #fff1e8; color: #ff004d; }
+.office-desktop-list { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 4px; list-style: none; background: #fff1e8; color: #1d2b53; }
+.office-desktop-list li { display: flex; align-items: center; gap: 8px; padding-right: 8px; }
+.office-desktop-cart { flex: 1; display: flex; align-items: baseline; gap: 12px; padding: 6px 8px; border: 0; background: none; text-align: left; }
+.office-desktop-cart small { color: #5f574f; font-size: 12px; }
+.office-desktop-cart:hover, .office-desktop-cart:focus-visible { background: #1d2b53; color: #fff1e8; }
+.office-desktop-cart:hover small, .office-desktop-cart:focus-visible small { color: #c2c3c7; }
+.office-desktop-link { color: #7e2553; font-size: 12px; white-space: nowrap; }
+.office-desktop-list li:last-child .office-desktop-link { padding: 8px; font-size: 16px; }
+.office-desktop-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; color: #c2c3c7; }
+.office-desktop-stage > p { position: absolute; margin: 0; }
+.office-desktop-stage > iframe { position: relative; display: block; border: 0; }

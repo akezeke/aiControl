@@ -27,7 +27,9 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'");
+    // frame-src replaces default-src for frames, so 'self' keeps the second session pane; Lexaloffle's widget plays the boss
+    // desk's PICO-8 carts.
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src 'self' https://www.lexaloffle.com; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'");
     if (origins[0].startsWith('https:')) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
     try {
       if (!hosts.includes(req.headers.host)) throw fail('Unrecognized host.', 403);

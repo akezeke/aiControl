@@ -318,7 +318,7 @@ const WIDTH = 10;
 function building(t, depth) {
   const was = globalThis.document; globalThis.document = { createElement: () => ({ getContext: blank }), fonts: undefined };
   t.after(() => { if (was) globalThis.document = was; else delete globalThis.document; });
-  const room = createRoom(new THREE.Scene(), {}), size = { width: WIDTH, depth }, door = kitchenDoor(depth), { kitchen, secret } = room;
+  const room = createRoom(new THREE.Scene(), { initTexture() {} }), size = { width: WIDTH, depth }, door = kitchenDoor(depth), { kitchen, secret } = room;
   room.sync({ room: size, door: { x: WIDTH / 2, z: depth }, desks: new Map(), pods: [], grid: { cols: 1, cellW: WIDTH - 1.9 } }, new Map());
   kitchen.update(1 / 60, V(-3, 1.6, door), true, 0); // built, the doors open
   return { room, kitchen, door, size, walls: room.colliders, bounds: secret.bounds(size) };
@@ -379,7 +379,7 @@ test('nothing of the kitchen stands in the office, so its windows wall hides it'
 test("a tap through the open doorway walks there, either way: the casing's box doesn't fill it", t => {
   const was = globalThis.document; globalThis.document = { createElement: () => ({ getContext: blank }), fonts: undefined };
   t.after(() => { if (was) globalThis.document = was; else delete globalThis.document; });
-  const scene = new THREE.Scene(), room = createRoom(scene, {}), depth = 14, door = kitchenDoor(depth), { kitchen } = room;
+  const scene = new THREE.Scene(), room = createRoom(scene, { initTexture() {} }), depth = 14, door = kitchenDoor(depth), { kitchen } = room;
   room.sync({ room: { width: WIDTH, depth }, door: { x: WIDTH / 2, z: depth }, desks: new Map(), pods: [], grid: { cols: 1, cellW: WIDTH - 1.9 } }, new Map());
   kitchen.update(1 / 60, new THREE.Vector3(1, 0, door), true, 0);
   scene.updateMatrixWorld(true);

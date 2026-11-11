@@ -11,13 +11,13 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z), grid = walkGrid([], { width: 
 const blank = () => new Proxy({}, { get: (t, k) => k in t ? t[k] : () => ({ addColorStop() {} }), set: (t, k, v) => { t[k] = v; return true; } });
 const P = (id, extra = {}) => ({ id, name: id, fruit: 'apple', colour: COLOURS[0], at: 'meeting', ...extra });
 // A goose in an empty 10 × 10 m office (or one with the walk grid `floor`). You stand at (1, 1), busy unless said. A thing: { kind: { key }, pos, rest: true }.
-function goose({ foods = () => [], others = () => [], things = [], sleepers = [], still = false, busy = true, floor = grid } = {}) {
+function goose({ foods = () => [], others = () => [], things = [], sleepers = [], still = false, busy = true, floor = grid, barred } = {}) {
   const sent = [], said = [], woken = [], ghosts = [], player = { position: V(1, 1.6, 1), step: v => player.position.add(v) };
   const props = { loose: () => things.filter(b => !b.held && !b.carried), carry: (b, at) => { if (b.held) return false; b.carried = at; return true; }, drop: b => { b.carried = null; },
     holdGhost: (kind, at) => { const h = { kind, at, gone: false, release() { h.gone = true; } }; ghosts.push(h); return h; } };
   const was = globalThis.document; globalThis.document = { createElement: () => ({ getContext: blank }) };
   let g; try { g = createGoose(new THREE.Scene(), { props, player, walkable: () => floor, bounds: () => ({ width: 10, depth: 10 }), busy: () => busy, reducedMotion: () => still,
-    say: icon => said.push(icon), sleepers: () => sleepers, wake: id => woken.push(id), foods, others, me: () => 'a', net: m => sent.push(m) }); }
+    say: icon => said.push(icon), sleepers: () => sleepers, wake: id => woken.push(id), foods, others, me: () => 'a', net: m => sent.push(m), barred }); }
   finally { if (was) globalThis.document = was; else delete globalThis.document; }
   const run = (seconds, each) => { for (let i = 0; i < Math.round(seconds * 60); i++) { g.update(1 / 60); if (each?.()) return true; } return false; };
   return { g, sent, said, woken, ghosts, player, run, at: () => [g.root.position.x, g.root.position.z] };
@@ -389,6 +389,20 @@ test('a chase ends, with no nip, once its prey is busy or gone from the meeting'
     end(friends); a.run(1 / 60); assert.notEqual(a.g.mode, 'chase');
     a.run(5); assert.notEqual(a.g.mode, 'chase'); assert.ok(!events(a).some(m => m.what === 'nip'));
   }
+});
+
+// The boss's office (`barred`, office.js): whoever's in there is behind glass, and so is whatever's lying there.
+test("whoever's in the boss's office it lets be, and what's lying or asleep there", () => {
+  let line = Infinity; const a = keeping({ busy: false, barred: p => p.z > line }); a.run(0.1);
+  const [x, z] = a.at(); line = z + 0.5; a.player.position.set(x, 1.6, z + 1); // a metre off, through the glass
+  a.run(2); assert.deepEqual(events(a), [], 'no charge'); assert.notEqual(a.g.mode, 'chase');
+  const office = p => p.z < 1, friends = [{ id: 'b', x: 2, z: 8, busy: false }], b = keeping({ others: () => friends, barred: office }); b.run(0.1);
+  b.g.heard({ type: 'poke', id: 'b', why: 'click' }); b.run(0.3); assert.equal(b.g.mode, 'chase');
+  friends[0].z = 0.5; b.run(1 / 60); assert.notEqual(b.g.mode, 'chase', 'in they go: the chase is off');
+  b.run(5); assert.ok(!events(b).some(m => m.what === 'nip'));
+  b.g.heard({ type: 'poke', id: 'b', why: 'click' }); b.run(0.6); assert.notEqual(b.g.mode, 'chase', 'a poke from in there only gets a honk');
+  const mug = { kind: { key: 'mug' }, pos: V(5, 0.05, 0.5), rest: true }, c = keeping({ things: [mug], sleepers: [{ id: 's', at: V(3, 0, 0.5) }], barred: office });
+  c.run(150); assert.ok(!events(c).some(m => m.what === 'take'), 'the mug in there is left be'); assert.deepEqual(c.woken, [], 'and the sleeper');
 });
 
 test('a keeper change mid-carry or mid-chase, to watching or home: it lets go, runs on and sends nothing', () => {

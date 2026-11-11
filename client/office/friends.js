@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { createFruit, LEG } from './fruit.js';
 import { poseTargets } from './animation.js';
 import { playerLook } from './meeting.js';
+import { CHAIR, DESK, seatedAtBoss } from './boss-plan.js';
 
 const SNAP = 3, RUNNING = 1.7;
 const GAP = 1 / 15, PAUSE = 0.25, NEED_MAX = 0.35, RELAX = 0.02, WARP = 0.1, MARGIN = 0.01, DRIFT = 1e-3, KEEP = 16;
@@ -117,21 +118,25 @@ export function createFriends(scene, { room, reducedMotion = () => false, clock 
       for (const f of friends.values()) {
         const at = tracks.get(f.id)?.at(when, f.at); if (!at) continue;
         f.placed = true;
-        f.root.position.set(at.x, at.y, at.z); f.root.rotation.y = at.yaw;
+        const h = f.fruit.height, pose = at.pose, run = pose === 'running', moving = run || pose === 'walking';
+        // Playing at the boss's computer: sat in its chair at the keyboard, placed as Cast places a sitter (animation.js).
+        const boss = pose === 'playing' && seatedAtBoss(at);
+        const target = boss ? poseTargets('typing', t, f.seed, f.fruit) : poseTargets('walking', moving && !still ? t * (run ? RUNNING : 1) : 0, moving ? f.seed : 0, f.fruit);
+        if (boss) { const facing = DESK.rotation, { x, z } = target; f.root.position.set(CHAIR.x + Math.cos(facing) * x + Math.sin(facing) * z, 0, CHAIR.z - Math.sin(facing) * x + Math.cos(facing) * z); f.root.rotation.y = facing; }
+        else { f.root.position.set(at.x, at.y, at.z); f.root.rotation.y = at.yaw; }
         // Out as their snake, or in a shut room behind its wall.
         const p = f.root.position; f.root.visible = !hidden(f.id) && !(room.kitchen.inside(p) && !room.kitchen.shown) && !(room.secret.inside(p) && !room.secret.shown);
         if (!f.root.visible) continue;
-        const h = f.fruit.height, pose = at.pose, run = pose === 'running', moving = run || pose === 'walking';
-        const target = poseTargets('walking', moving && !still ? t * (run ? RUNNING : 1) : 0, moving ? f.seed : 0, f.fruit);
         if (run) target.body.lean = 0.15;
         // Holding something out in front; playing a game, the hands up on it.
         if (pose === 'holding') target.limbs.rightHand = HAND.set(-0.14, 0.5 + h * 0.3, 0.3);
-        else if (pose === 'playing') { target.limbs.leftHand = HAND.set(0.12, 0.45 + h * 0.3, 0.3); target.limbs.rightHand = HAND2.set(-0.12, 0.45 + h * 0.3, 0.3); }
+        else if (pose === 'playing' && !boss) { target.limbs.leftHand = HAND.set(0.12, 0.45 + h * 0.3, 0.3); target.limbs.rightHand = HAND2.set(-0.12, 0.45 + h * 0.3, 0.3); }
         f.fruit.setBody(target.body); f.fruit.setLimbs(target.limbs, target.elbows);
       }
     },
-    // Where each friend with a position stands, shown or not, for the goose. `busy`: playing a game, or in the kitchen (it keeps off them).
-    positions() { return [...friends.values()].filter(f => f.placed).map(f => ({ id: f.id, x: f.at.x, z: f.at.z, busy: f.at.pose === 'playing' || room.kitchen.inside(f.root.position) })); },
+    // Where each friend with a position stands, shown or not, for the goose. `busy`: playing a game, or in the kitchen (it keeps
+    // off them); `pose` as they sent it, so office.js can tell who's at the boss's computer.
+    positions() { return [...friends.values()].filter(f => f.placed).map(f => ({ id: f.id, x: f.at.x, z: f.at.z, busy: f.at.pose === 'playing' || room.kitchen.inside(f.root.position), pose: f.at.pose })); },
     dispose() { for (const f of friends.values()) drop(f); friends.clear(); tracks.clear(); },
   };
 }

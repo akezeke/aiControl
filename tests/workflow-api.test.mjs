@@ -54,6 +54,7 @@ test('dashboard framing permits its own split pane while excluding foreign origi
   assert.equal(response.headers['x-frame-options'], 'SAMEORIGIN');
   assert.match(response.headers['content-security-policy'], /frame-ancestors 'self'/);
   assert.doesNotMatch(response.headers['content-security-policy'], /frame-ancestors \*/);
+  assert.match(response.headers['content-security-policy'], /frame-src 'self' https:\/\/www\.lexaloffle\.com(;|$)/);
 });
 
 test('workflow search and decisions are bounded and archived session inspection stays read only', async t => {

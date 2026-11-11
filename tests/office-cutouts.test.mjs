@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { COPY, cardsMaterial, officeCutouts } from '../client/office/cutouts.js';
+import { COPY, bays, cardsMaterial, officeCutouts, windowsWall } from '../client/office/cutouts.js';
+import { BOSS, DESK, STAND } from '../client/office/boss-plan.js';
 import { makeBody, simulate } from '../client/office/flight.js';
 import { WALL_H } from '../client/office/furniture.js';
 import { flightBoxes, surfaceTier } from '../client/office/kitchen-plan.js';
-import { AISLE, COFFEE_X, kitchenDoor, layoutOffice } from '../client/office/layout.js';
+import { AISLE, BOSS_FRONT, COFFEE_X, kitchenDoor, layoutOffice } from '../client/office/layout.js';
 import { CELL, findPath, nearestOpen, walkGrid } from '../client/office/path.js';
 import { pick } from '../client/office/player.js';
 import { BALLS } from '../client/office/props.js';
@@ -16,15 +17,16 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z), OURS = /^cutout-[a-z]/; // th
 const printed = [], blank = () => new Proxy({}, { get: (t, k) => k === 'fillText' ? text => printed.push(text) : k in t ? t[k] : () => ({ addColorStop() {} }), set: (t, k, v) => { t[k] = v; return true; } });
 const noDocument = t => { const was = globalThis.document; globalThis.document = { createElement: () => ({ getContext: blank }), fonts: undefined }; t.after(() => { if (was) globalThis.document = was; else delete globalThis.document; }); };
 const empty = (width, depth, cellW = width - AISLE) => ({ room: { width, depth }, door: { x: width / 2, z: depth }, desks: new Map(), pods: [], grid: { cols: 1, cellW } });
-const standing = (width, depth, cellW) => { const scene = new THREE.Scene(), room = createRoom(scene, {}); room.sync(empty(width, depth, cellW), new Map()); return { scene, room }; };
+const standing = (width, depth, cellW) => { const scene = new THREE.Scene(), room = createRoom(scene, { initTexture() {} }); room.sync(empty(width, depth, cellW), new Map()); return { scene, room }; };
 // Every project full, as much in the way as there can be: `helpers` says how many each desk has.
 const full = (pods, seats = 6, helpers = () => 3) => { const sessions = []; for (let p = 0; p < pods; p++) for (let s = 0; s < seats; s++) { const id = `p${p}s${String(s).padStart(2, '0')}`; sessions.push({ id, cwd: `/p${p}`, project: `p${p}`, status: 'working' }); for (let h = 0; h < helpers(s); h++) sessions.push({ id: `${id}h${h}`, parentId: id, status: 'working' }); } return layoutOffice(sessions, null); };
 // A project that's bigger than a cell's three pairs widens every cell (layout.js), so the gaps move: these are the sizes that do it differently.
 const BIG = [7, 8, 10, 12];
 const measured = (pods, seats) => { const { room: { width, depth }, grid: { cols, cellW } } = full(pods, seats, () => 0); return { width, depth, cols, cellW }; };
-// The real rooms: as many projects as it takes for each size, then the widest with the shallowest and the other way round, then the ones with bigger projects.
+// The real rooms: as many projects as it takes for each size, then the widest with the shallowest and the other way round, then the ones with bigger projects,
+// then two with the boss's column a pod short, so the room's no deeper for the boss's office.
 const REAL = [1, 4, 9, 16, 25].map(pods => measured(pods, 6));
-const ROOMS = [...REAL, { ...REAL[0], depth: REAL[4].depth }, { ...REAL[4], depth: REAL[0].depth }, ...[1, 2, 3, 4, 9, 16].flatMap(pods => BIG.map(seats => measured(pods, seats)))];
+const ROOMS = [...REAL, { ...REAL[0], depth: REAL[4].depth }, { ...REAL[4], depth: REAL[0].depth }, ...[1, 2, 3, 4, 9, 16].flatMap(pods => BIG.map(seats => measured(pods, seats))), ...[3, 5].map(pods => measured(pods, 6))];
 const clear = ([a0, a1], [b0, b1]) => a1 <= b0 || b1 <= a0;
 const stands = c => new THREE.Box3().union(c.card).union(c.strut);
 
@@ -43,9 +45,22 @@ const rightWall = (room, depth) => { const door = depth - DOOR.back; return [[do
 const across = b => { const out = []; for (const x of [-1, -0.5, 0, 0.5, 1]) for (const y of [-1, -0.5, 0, 0.5, 1]) out.push(V(x * b.half.x, y * b.half.y, 0).applyQuaternion(b.quaternion).add(b.centre)); return out; };
 const within = (b, p) => { const q = p.clone().sub(b.centre).applyQuaternion(b.quaternion.clone().invert()); return Math.abs(q.x) <= b.half.x && Math.abs(q.y) <= b.half.y && Math.abs(q.z) <= b.half.z; };
 
-test('the real rooms run from 8.6 by 10 to 35.4 by 32', () => {
+test("the real rooms run from 8.6 by 14 to 35.4 by 36 (a full grid: the boss's office pushes its column 4 m forward)", () => {
   const near = ({ width, depth }, [x, z]) => assert.ok(Math.abs(width - x) < 1e-6 && Math.abs(depth - z) < 1e-6, `${width} by ${depth}`);
-  near(REAL[0], [8.6, 10]); near(REAL[4], [35.4, 32]);
+  near(REAL[0], [8.6, 14]); near(REAL[4], [35.4, 36]);
+});
+
+// A window's sill reaches 0.88 either side of it, a poster 0.37 and the scoreboard SCOREBOARD / 2.
+test("along the windows wall: the boss's window, then a poster or the scoreboard between each two windows, clear of the boss's glass and of each other", () => {
+  for (let width = 8.6; width <= 40; width += 0.05) {
+    const { windows, gaps } = windowsWall(width), at = `${width.toFixed(2)} wide`;
+    assert.equal(windows[0], DESK.x, `${at}: the first behind the boss`); assert.equal(windows.length, bays(width), at); assert.equal(gaps.length, bays(width) - 1, at);
+    assert.equal(gaps.filter(g => g.board).length, 1, `${at}: one scoreboard`); assert.ok(gaps.every(g => g.board ? g.half === 0.95 : g.half === 0.37), at);
+    const spans = [...windows.map(x => [x - 0.88, x + 0.88]), ...gaps.map(g => [g.x - g.half, g.x + g.half])].sort((a, b) => a[0] - b[0]);
+    for (const [i, span] of spans.entries()) if (i) assert.ok(span[0] >= Math.max(spans[i - 1][1], BOSS.w + BOSS.glass) + 0.05, `${at}: ${span} on ${spans[i - 1]} or the boss's glass`);
+    assert.ok(spans.at(-1)[1] <= width - 0.3, `${at}: ${spans.at(-1)} off the end`);
+    gaps.forEach((g, i) => assert.ok(windows[i] < g.x && g.x < windows[i + 1], `${at}: gap ${i} between its windows`));
+  }
 });
 
 test("the pear, the orange and the banana, the kitchen's own cards; the lemon stays in the kitchen", () => {
@@ -110,7 +125,7 @@ function walks(layout) {
   for (let k = 0; k < was.length; k++) if (was[k] && grid.open[k] && !is[k]) lost.push([k % grid.cols * CELL, Math.floor(k / grid.cols) * CELL]);
   const seats = [...layout.desks.values()].flatMap(d => [V(d.x, 0, d.z - 0.87 * Math.cos(d.rotation)), ...room.deskAnchor(d.sessionId).helpers.map(h => h.seat)]);
   const ends = [...seats, room.secret.spot, V(0.9, 0, kitchenDoor(depth)), V(COFFEE_X, 0, depth - 1), V(width - 1, 0, 1.25), V(1, 0, depth / 2)];
-  return { grid, before, door, lost, ends };
+  return { grid, before, door, lost, ends, room, without, layout };
 }
 // Full of desks, nothing a walker could reach without them is cut off.
 const stillReached = ({ grid, before, door, lost, ends }) => {
@@ -120,9 +135,14 @@ const stillReached = ({ grid, before, door, lost, ends }) => {
   for (const end of reached) assert.ok(findPath(grid, door, end), `a way to ${end.toArray()}`);
 };
 const RUNS = [...[1, 2, 3, 4, 6, 9, 16, 25].map(pods => [pods, 6]), ...[1, 2, 3, 4, 5, 6, 16].flatMap(pods => BIG.map(seats => [pods, seats])), ...[1, 2].flatMap(pods => [9, 11, 13, 14].map(seats => [pods, seats]))];
+const STAND_AT = V(STAND.x, 0, STAND.z);
 for (const [pods, seats] of RUNS) test(`with ${pods} projects of ${seats}, three helpers on every desk, nothing's cut off`, t => {
   noDocument(t);
-  stillReached(walks(full(pods, seats)));
+  const walked = walks(full(pods, seats)), { room, without, door, layout } = walked, { width } = layout.room;
+  stillReached(walked);
+  const board = new THREE.Box3().setFromObject(room.boards.scores.parent); assert.ok(board.min.x >= BOSS.w + BOSS.glass, "the scoreboard clears the boss's office");
+  const wideBefore = walkGrid(without, room.secret.bounds(layout.room)), wideNow = walkGrid(room.colliders, room.secret.bounds(layout.room));
+  if (findPath(wideBefore, door, STAND_AT)) assert.ok(findPath(wideNow, door, STAND_AT), 'the boss desk, if it could be reached at all');
 });
 for (const seats of [7, 8]) test(`with ${seats} at one project and three helpers on the back row's last two desks, those desks can still be walked to`, t => {
   noDocument(t);
@@ -131,14 +151,15 @@ for (const seats of [7, 8]) test(`with ${seats} at one project and three helpers
 // Two helpers leave the row along the windows wide enough, so everything can be walked to: there's no excuse here.
 for (const [pods, seats] of [...[1, 2, 3, 4, 9, 16].map(pods => [pods, 6]), ...[1, 2, 4].flatMap(pods => BIG.map(seats => [pods, seats]))]) test(`with ${pods} projects of ${seats}, two helpers on every desk, every seat, door and corner can be walked to`, t => {
   noDocument(t);
-  const { grid, door, lost, ends } = walks(full(pods, seats, () => 2));
+  const { grid, door, lost, ends, room, layout } = walks(full(pods, seats, () => 2));
   assert.deepEqual(lost, [], 'no open floor walled off');
   for (const end of ends) assert.ok(findPath(grid, door, end), `a way to ${end.toArray()}`);
+  const wideNow = walkGrid(room.colliders, room.secret.bounds(layout.room)); assert.ok(findPath(wideNow, door, STAND_AT), 'the boss desk');
 });
 
 test('a bigger project in a room that needn\'t grow moves the pear to the new gap', t => {
   noDocument(t);
-  const scene = new THREE.Scene(), room = createRoom(scene, {}), pear = () => room.colliders.find(b => b.surface === 'cutout-pear');
+  const scene = new THREE.Scene(), room = createRoom(scene, { initTexture() {} }), pear = () => room.colliders.find(b => b.surface === 'cutout-pear');
   room.sync(empty(23, 15.5, 6.7), new Map());
   const was = pear().min.x, size = room.size;
   room.sync(empty(23, 15.5, 8.3), new Map());
@@ -150,7 +171,7 @@ test('a bigger project in a room that needn\'t grow moves the pear to the new ga
 
 test('growing the room moves their boxes, for walking and for throwing, and leaves none behind', t => {
   noDocument(t);
-  const scene = new THREE.Scene(), room = createRoom(scene, {}), find = list => list.filter(b => OURS.test(b.surface ?? ''));
+  const scene = new THREE.Scene(), room = createRoom(scene, { initTexture() {} }), find = list => list.filter(b => OURS.test(b.surface ?? ''));
   const [small, big] = [[8.6, 10, 6.7], [18.5, 15.5, 8.3]];
   room.sync(empty(...small), new Map());
   const walk = find(room.colliders).map(b => b.clone()), flight = find(room.flightColliders).map(b => b.centre.clone());
@@ -189,14 +210,14 @@ test("a tap goes through them to the floor: they don't get in the way of what's 
 
 test('one mesh, one material on the shared sheet, lit like the room, its sheet kept through a rebuild; the kitchen shares it and the rest of its print waits', t => {
   noDocument(t);
-  const scene = new THREE.Scene(), room = createRoom(scene, {}); room.sync(empty(8.6, 10), new Map());
+  const scene = new THREE.Scene(), room = createRoom(scene, { initTexture() {} }); room.sync(empty(8.6, 10), new Map());
   const material = cardsMaterial(), meshes = []; scene.traverse(node => { if (node.isMesh && node.material === material) meshes.push(node); });
   assert.equal(meshes.length, 1, 'one mesh in the office'); assert.ok(!Array.isArray(meshes[0].material));
   assert.equal(meshes[0].children.length, 0, 'no outline, so one draw');
   assert.notEqual(material.type, 'MeshBasicMaterial', 'lit, so it follows the switch');
   assert.equal(material.alphaTest, 0.5); assert.equal(material.userData.shared, true);
   // The sheet's built once, for whichever test built a room first, so it's drawn again here to see what's on it. This room's kitchen isn't open yet, so anything else is someone else's.
-  printed.length = 0; material.map.redraw();
+  printed.length = 0; material.map.image.getContext = blank; material.map.redraw(); // whoever built it first drew it with their own stand-in
   assert.ok(printed.some(line => /PEAR/.test(line)), 'its copy is on the sheet');
   assert.ok(!printed.includes(COPY.motto), 'the rest of the print is not'); assert.ok(!printed.includes(COPY.special[2]));
   const { width: w, height: h } = material.map.image; assert.ok(w * h <= 1200 * 900, `a small sheet: ${w} x ${h}`);
@@ -213,7 +234,7 @@ test('one mesh, one material on the shared sheet, lit like the room, its sheet k
 // Seen from exactly side-on, each face is seen from behind and isn't drawn, so without an edge of its own a card isn't there at all.
 test('side-on a card still has an edge, in the same one mesh', t => {
   noDocument(t);
-  const scene = new THREE.Scene(), room = createRoom(scene, {}); room.sync(empty(8.6, 10), new Map());
+  const scene = new THREE.Scene(), room = createRoom(scene, { initTexture() {} }); room.sync(empty(8.6, 10), new Map());
   let mesh; scene.traverse(node => { if (node.isMesh && node.material === cardsMaterial()) mesh = node; });
   const { position, normal } = mesh.geometry.attributes, p = V(0, 0, 0), n = V(0, 0, 0);
   for (const { card, fruit } of officeCutouts({ width: 8.6, depth: 10, cellW: 6.7 })) for (const [axis, half] of [[V(1, 0, 0), card.half.x], [V(0, 1, 0), card.half.y]]) for (const sign of [1, -1]) {
@@ -250,7 +271,7 @@ test('a snake plant in each corner, clear of the doors, the counter and each oth
     const heard = []; room.onSnake = i => heard.push(i); for (const p of room.snakePlants) p.userData.toggle();
     assert.deepEqual(heard, [0, 1, 2, 3], at);
     const [a, b, c, d] = room.snakePlants.map(p => p.position);
-    assert.ok(Math.hypot(a.x, a.z) < 0.8 && Math.hypot(b.x - width, b.z) < 0.8, `${at}: the back corners`);
+    assert.ok(Math.hypot(a.x, a.z - BOSS_FRONT) < 0.8 && Math.hypot(b.x - width, b.z) < 0.8, `${at}: the back corners (the left's outside the boss's glass)`);
     if (width - 2.1 - 1.3 > door.x + 1.4) assert.ok(c.x > door.x + 1 && c.z > depth - 0.8, `${at}: right of the door`); else assert.ok(c.x > width - 0.8 && c.z > depth - 4, `${at}: on the right wall by the lounge`); assert.ok(d.x < door.x - 1 && d.z > depth - 0.8, `${at}: left of the door`);
     const grid = walkGrid(room.colliders, { width, depth });
     for (const [i, p] of room.snakePlants.entries()) {

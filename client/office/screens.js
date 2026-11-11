@@ -68,3 +68,14 @@ export function createScreens(root, renderer) {
     },
   };
 }
+
+// Whether a screen can be seen from `camera` as it stands: its anchor's middle in the view and its face (the anchor's +z)
+// turned toward the camera. One frustum a call, for as many screens as are asked about.
+export function viewTest(camera) {
+  const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+  const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld), at = new THREE.Vector3(), normal = new THREE.Vector3(), to = new THREE.Vector3();
+  return anchor => {
+    at.setFromMatrixPosition(anchor.matrixWorld); normal.setFromMatrixColumn(anchor.matrixWorld, 2);
+    return frustum.containsPoint(at) && normal.dot(to.subVectors(eye, at)) > 0;
+  };
+}

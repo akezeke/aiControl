@@ -3,6 +3,7 @@
 // in gaps that move with the room: a thrown thing bounces off them, the player, the fruit and the goose walk round them, a tap goes through.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { BOSS, DESK } from './boss-plan.js';
 import { TiltedBox } from './flight.js';
 import { LIMB, outline } from './fruit.js';
 import { canvasTexture } from './furniture.js';
@@ -111,16 +112,28 @@ export const cardsMesh = standing => {
 // there is SCOREBOARD m wide with its frame. The room's at least two bays wide, so that gap's always there.
 export const bays = width => Math.max(1, Math.floor(width / 4));
 export const scoreGap = width => Math.floor(bays(width) / 2), SCOREBOARD = 1.9;
+const SILL = 0.88, POSTER = 0.37, SPACE = 0.1; // how far a window's sill and a poster reach from their middles; the least wall between two
+// Along the windows wall, left to right in world x: the boss's window behind their desk (boss-plan.js), then a poster or the
+// scoreboard between each two windows. Each keeps to its bay's even spacing unless that's on the boss's glass or what's before
+// it, and then moves along only as far as it clears them: in the narrowest rooms the scoreboard and the next window do.
+// `gaps`: a poster's or the scoreboard's middle, how far it reaches either side, and which it is.
+export function windowsWall(width) {
+  const count = bays(width), pitch = width / count, windows = [DESK.x], gaps = [];
+  let edge = BOSS.w + BOSS.glass + SPACE;
+  for (let i = 1; i < count; i++) {
+    const board = i === scoreGap(width), half = board ? SCOREBOARD / 2 : POSTER, x = Math.max(i * pitch, edge + half);
+    gaps.push({ x, half, board });
+    windows.push(Math.max((i + 0.5) * pitch, x + half + SPACE + SILL)); edge = windows.at(-1) + SILL + SPACE;
+  }
+  return { windows, gaps };
+}
 // The pear, in a room whose cells are `cellW` wide. A helper's desk can leave one row to walk along the windows wall (layout.js), so a walker has to step round the
 // pear between the third helpers either side: both ways past it are open only with it 1 to 9 cm short of where a cell ends, whatever the project's size (tests/office-cutouts.test.mjs).
 // So no sliding along to dodge a poster: the next gap along, and the last is always clear. With one project it stands beside the orange, as far along as the plant lets them.
-const PEAR_LEFT = 0.407, PEAR_RIGHT = 0.453, POSTER = 0.37, SHORT = 0.05; // how far each reaches from its x, and how far short
+const PEAR_LEFT = 0.407, PEAR_RIGHT = 0.453, SHORT = 0.05; // how far it reaches from its x either way, and how far short
 const pearX = (width, cellW) => {
-  const last = width - 1.95, pitch = width / bays(width);
-  for (let x = cellW - SHORT; x < last; x += cellW) {
-    const gap = Math.round(x / pitch), half = gap === scoreGap(width) ? SCOREBOARD / 2 : POSTER;
-    if (x + PEAR_RIGHT < gap * pitch - half || x - PEAR_LEFT > gap * pitch + half) return x;
-  }
+  const last = width - 1.95, { gaps } = windowsWall(width);
+  for (let x = cellW - SHORT; x < last; x += cellW) if (gaps.every(g => x + PEAR_RIGHT < g.x - g.half || x - PEAR_LEFT > g.x + g.half)) return x;
   return last;
 };
 // Where they stand in a room `width` by `depth`, and how: which card, x, z, yaw and lean in degrees. Windows are low enough to stand in front of; posters aren't.

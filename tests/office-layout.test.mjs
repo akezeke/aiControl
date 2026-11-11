@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutOffice, MAX_SUBAGENTS, COFFEE_X, kitchenDoor, KITCHEN_DOOR_W } from '../client/office/layout.js';
+import { layoutOffice, MAX_SUBAGENTS, COFFEE_X, kitchenDoor, KITCHEN_DOOR_W, SHELF_Z, whiteboardZ } from '../client/office/layout.js';
 
 const s = (id, project, extra = {}) => ({ id, project, cwd: `/p/${project}`, status: 'idle', ...extra });
 
@@ -110,10 +110,13 @@ test('the coffee corner fits by the door wall, and the kitchen door clears the w
     assert.ok(COFFEE_X + 0.6 <= width / 2 - 2, `width ${width}`); // the mug shelf, left of the waiting board
     assert.ok(COFFEE_X + 1.3 + 0.17 <= width / 2 - 0.75 - 0.1, `width ${width}`); // the bin, left of the extinguisher
   }
-  for (let depth = 8; depth <= 40; depth += 0.25) {
-    const door = kitchenDoor(depth);
+  // From the shallowest real room: the whiteboard (3.1 long with its frame) clears the bookshelf (0.9) behind it, and the doorway in front.
+  for (let depth = layoutOffice([], null).room.depth; depth <= 40; depth += 0.25) {
+    const door = kitchenDoor(depth), board = whiteboardZ(depth);
     assert.equal(door, depth - 1.5);
-    assert.ok(door - KITCHEN_DOOR_W / 2 >= depth / 2 + 1.55, `depth ${depth}`); // the whiteboard's frame
+    assert.ok(board === depth / 2 || board - 1.55 >= SHELF_Z + 0.45 + 0.05, `depth ${depth}: in the middle of the wall unless that's on the bookshelf`);
+    assert.ok(board - 1.55 >= SHELF_Z + 0.45 + 0.05, `depth ${depth}: the bookshelf`);
+    assert.ok(door - KITCHEN_DOOR_W / 2 >= board + 1.55, `depth ${depth}`); // the whiteboard's frame
     assert.ok(depth - 3.05 + 0.17 <= door - KITCHEN_DOOR_W / 2); // the water cooler
     assert.ok(depth - 0.32 - 0.35 >= door + KITCHEN_DOOR_W / 2); // the counter's front
   }
