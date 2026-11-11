@@ -420,7 +420,7 @@ export function mountOffice(container, hooks) {
   let readying = true;
   const whenIdle = fn => globalThis.requestIdleCallback ? requestIdleCallback(fn, { timeout: 500 }) : setTimeout(fn, 50);
   whenIdle(() => online.sync());
-  inSlices(frames, (function* () { yield* room.kitchen.prepare(renderer, camera, scene); yield* shaders(renderer, scene, camera); yield* textures(renderer, scene); })(), { whenIdle, stopped: () => !readying, up: () => layout });
+  inSlices(frames, (function* () { yield* room.kitchen.prepare(renderer, camera, scene); yield* room.secret.prepare(); yield* shaders(renderer, scene, camera); yield* textures(renderer, scene); })(), { whenIdle, stopped: () => !readying, up: () => layout });
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = container;
     if (!w || !h) return;

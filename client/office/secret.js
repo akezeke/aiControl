@@ -94,6 +94,9 @@ export function createSecret({ onPress, onMove, onSlide }) {
     // Someone else at the meeting slid it.
     set(on) { if (on !== open) { open = on; idle = 0; } },
     add(game) { games.push(game); if (built?.room) game.build(built.room); },
+    // Built ahead of its door, hidden, between frames (office.js), so the office's warm-up that follows (ready.js) compiles its
+    // shaders and sends its textures too: built and first drawn as the shelf slid, it froze the view for a third of a second.
+    * prepare() { if (built && !built.room) { furnish(); built.room.visible = false; yield; } },
     // A room `width` × `depth` (a new shell): the shelf and the games room go in `shell`; returns what blocks walking.
     build({ width, depth, shell }) {
       const door = new THREE.Vector3(width, 0, depth - DOOR.back), collider = new THREE.Box3();
@@ -131,11 +134,7 @@ export function createSecret({ onPress, onMove, onSlide }) {
       press = Math.max(0, press - dt);
       key.rotation.x = LEAN + (still ? 0 : 0.4 * Math.sin(Math.PI * press / PRESS));
       const shown = (t > 0 || inside) && overview < 0.01;
-      // The first time it shows, the room and its games are built.
-      if (shown && !built.room) {
-        built.room = buildRoom(); built.room.position.set(built.door.x + WALL_T, 0, built.door.z); built.shell.add(built.room);
-        for (const game of games) game.build(built.room);
-      }
+      if (shown && !built.room) furnish(); // prepare hasn't got to it (or the office was built again since)
       const { room } = built;
       if (room) room.visible = room.matrixWorldAutoUpdate = shown;
       for (const [light, power] of built.lamps) light.intensity = shown ? power : 0;
@@ -143,6 +142,11 @@ export function createSecret({ onPress, onMove, onSlide }) {
       for (const game of games) game.update(dt, at, still, shown);
     },
   };
+  // The room and its games, in the shell.
+  function furnish() {
+    built.room = buildRoom(); built.room.position.set(built.door.x + WALL_T, 0, built.door.z); built.shell.add(built.room);
+    for (const game of games) game.build(built.room);
+  }
   // The shelf where the slide has got to (eased, with a little judder while it moves), and what it blocks there.
   function place() {
     const e = t * t * (3 - 2 * t), z = built.door.z - SLIDE * e, judder = t > 0 && t < 1 ? Math.sin(time * 70) * 0.004 : 0;
