@@ -7,7 +7,7 @@ const none = { trickshot: { best: {}, daily: {} }, darts: null, pinball: 0, snak
 const holes = (n, strokes) => Object.fromEntries(Array.from({ length: n }, (_, i) => [i + 1, strokes]));
 
 test('the games, in board order', () => {
-  assert.deepEqual(GAMES.map(g => g.id), ['trickshotToday', 'trickshot', 'darts', 'pinball', 'golf', 'golfEndless', 'snake']);
+  assert.deepEqual(GAMES.map(g => g.id), ['trickshotToday', 'trickshot', 'darts', 'pinball', 'golf', 'golfEndless', 'snake', 'planesEndless']);
   assert.deepEqual(GAMES.filter(g => g.lower).map(g => g.id), ['darts', 'golf']);
 });
 

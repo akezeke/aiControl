@@ -106,6 +106,17 @@ test("snakes go to the others at the meeting, with the sender's id", async t => 
   c.send(snake); assert.equal((await b.quiet('snake')).length, 0);
 });
 
+test("paper planes go to the others at the meeting, with the sender's id", async t => {
+  const h = await setup(t);
+  const [a, b, c] = [await h.join('a'), await h.join('b'), await h.join('c')];
+  for (const p of [a, b]) p.send({ type: 'where', at: 'meeting' });
+  await lastRoster(a);
+  const plane = { type: 'plane', mode: 'fly', x: 3, y: 1.4, z: 5, yaw: 1, pitch: 0.1, roll: -0.3, t: 500 };
+  a.send(plane); assert.deepEqual(await b.next('plane'), { ...plane, id: a.welcome.id });
+  a.send({ type: 'plane', mode: 'off' }); assert.deepEqual(await b.next('plane'), { type: 'plane', mode: 'off', id: a.welcome.id });
+  assert.equal((await c.quiet('plane')).length, 0);
+});
+
 const meeting = { type: 'where', at: 'meeting' }, home = { type: 'where', at: 'home' };
 test('the goose keeper: the host at the meeting, else whoever has been there longest', async t => {
   const h = await setup(t);

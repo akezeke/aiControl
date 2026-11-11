@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { toonMaterial, withOutline } from './toon.js';
 import { nearestOpen } from './path.js';
 import { dayKey, fnv1a } from './daily.js';
+import { createTrack, atMeeting, tag } from './friends.js';
 import { WALL_H } from './furniture.js';
 import { newFlight, launch, fly, makeCourse, endless as endlessRings, holds, better, gap, medal, medalTime, MEDALS, HOLE, LAUNCH, AHEAD as LAID } from './planes-course.js';
 
@@ -28,6 +29,9 @@ const STICK = 44, DEAD = 5, EXPO = 0.6, AGAIN = 0.4;
 // hard bank isn't far for a thumb.
 const axis = px => { const m = Math.min(Math.max((Math.abs(px) - DEAD) / (STICK - DEAD), 0), 1); return Math.sign(px) * m * (1 - EXPO + EXPO * m * m); };
 const NEXT = '#ffd23f', LAST = '#5ee08a';
+// The meeting hears where a plane in flight is this often (ms; the hub takes 20 messages a second from each); a friend's is
+// dropped this many seconds after its last (it lies where it came down till then, or till they throw again).
+const TELL_MS = 100, SILENCE = 3;
 
 // Sound, made up as it goes (as pinball's): a whoosh off the hand, a chime a note up the scale for each ring (endless, a
 // little tune each ten), paper crumpling into things or skidding along the floor, and a run up the scale through the last
@@ -75,12 +79,16 @@ function dartGeometry() {
 
 // `canvas`: where presses come; `home()`: the paper stack (an Object3D, facing into the room); `grid()`: the walk grid;
 // `world()`: what it flies through ({ boxes, columns (people now), people (where they sit and stand at their desks: the rings
-// keep clear of those), width, depth }); `score(goal, verdict)`: the score bar (null clears it);
+// keep clear of those), width, depth }); `score(goal, verdict)`: the score bar (null clears it); `send(message)`: tells the
+// meeting where it is while it flies, and 'off' once it's put away (another thrown, or the game left);
 // `hit(id, line)`: someone was hit; `endless`: endless rings rather than the day's course.
-export function createPlanes({ canvas, home, grid, world, score, hit = () => {}, endless = false }) {
+export function createPlanes({ canvas, home, grid, world, score, hit = () => {}, send = () => {}, endless = false }) {
   const store = endless ? ENDLESS : BEST;
   let bests = {}; try { bests = JSON.parse(localStorage.getItem(store)) || {}; } catch { /* no storage here */ }
   let f = null, course = null, key = '', sig = '', looked = 0, active = false, linger = 0, shake = 0, since = 0, fresh = true, shown = '', record = false, said = null, held = null;
+  let told = -Infinity, out = false; // when the meeting last heard; whether it has a plane of yours up
+  const tell = force => { const now = performance.now(); if (!force && now - told < TELL_MS) return; told = now; out = true; send({ type: 'plane', mode: 'fly', x: f.x, y: f.y, z: f.z, yaw: f.yaw, pitch: f.pitch, roll: f.roll, t: Math.round(now) }); };
+  const recall = () => { if (out) { send({ type: 'plane', mode: 'off' }); out = false; } };
   const keys = new Set(), stick = { id: null, x: 0, y: 0, dx: 0, dy: 0 }, from = new THREE.Vector3(), look = new THREE.Vector3(), wobble = new THREE.Vector3();
   const root = new THREE.Group(); root.visible = false;
   const space = { boxes: [], columns: [], ceiling: WALL_H, width: 0, depth: 0 };
@@ -131,7 +139,7 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
     key = `${today}:${fnv1a(course.rings.map(r => `${r.x.toFixed(2)},${r.y.toFixed(2)},${r.z.toFixed(2)}`).join(';')).toString(36)}`;
     drawCourse();
   };
-  const restart = (relay = true) => { if (relay) lay(true); const at = start(); f = at && course ? newFlight(at) : null; fresh = true; record = false; said = null; since = 0; };
+  const restart = (relay = true) => { recall(); if (relay) lay(true); const at = start(); f = at && course ? newFlight(at) : null; fresh = true; record = false; said = null; since = 0; };
   const keep = () => {
     const run = { rings: f.next, time: f.done }; if (!run.rings || !better(run, best())) return;
     record = true; bests[key] = run;
@@ -171,7 +179,7 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
   const planes = {
     root,
     enter() { active = true; keys.clear(); held = null; if (!f || f.mode !== 'ready') restart(); shown = ''; showScore(); dim(true); hear(); },
-    leave() { active = false; keys.clear(); letGo(); linger = 0.6; score(null); shown = ''; dim(false); if (f?.mode === 'fly') { keep(); f.mode = 'over'; } },
+    leave() { active = false; keys.clear(); letGo(); linger = 0.6; score(null); shown = ''; dim(false); if (f?.mode === 'fly') { keep(); f.mode = 'over'; } recall(); },
     blur() { keys.clear(); letGo(); },
     // In front of the stack, facing it.
     stand() {
@@ -198,6 +206,7 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
       root.visible = !!f && !!course; if (!root.visible) return;
       if (active) {
         gather(); since += dt;
+        const flying = f.mode === 'fly';
         for (const event of fly(f, input(), space, course, dt)) {
           if (event.type === 'ring') {
             if (!reduced) meshOf(event.index).userData.pop = 1;
@@ -212,6 +221,7 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
             if (f.done == null) { keep(); if (record) play('best'); }
           }
         }
+        if (flying) tell(f.mode !== 'fly'); // where it came down, at once
         showScore();
       }
       draw(dt, reduced);
@@ -307,4 +317,49 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
   const lift = event => { if (active) hear(); if (event.pointerId === stick.id) letGo(); };
   canvas.addEventListener('pointerup', lift); canvas.addEventListener('pointercancel', lift);
   return planes;
+}
+
+// The others' planes at a meeting, played back from the `plane` messages theirs send (office.js feeds them in), each in their
+// colour with their name over it. Built from a player's first message; dropped on 'off', SILENCE s after their last, or when
+// they or you leave the meeting. Their rings are their own and aren't drawn.
+export function createFlyers(scene, { clock = () => performance.now() / 1000 } = {}) {
+  const flyers = new Map(), shape = dartGeometry(), ignored = () => {}; // id → { root, mesh, sprite, track, at, colour, name, heard }
+  let here = new Map();
+  function build(p) {
+    const root = new THREE.Group(), mesh = withOutline(new THREE.Mesh(shape, toonMaterial(p.colour, { side: THREE.DoubleSide })), 0.005);
+    mesh.rotation.order = 'YXZ'; mesh.scale.setScalar(LOOKS);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag(p.name, p.colour), transparent: true, toneMapped: false, depthWrite: false }));
+    sprite.renderOrder = 4; sprite.scale.set(0.6, 0.15, 1); root.add(mesh, sprite); root.visible = false;
+    root.traverse(o => { o.raycast = ignored; }); scene.add(root);
+    return { root, mesh, sprite, track: createTrack(), at: {}, colour: p.colour, name: p.name, heard: 0 };
+  }
+  function drop(id) {
+    const n = flyers.get(id); if (!n) return;
+    n.root.removeFromParent(); n.mesh.material.dispose(); n.sprite.material.map.dispose(); n.sprite.material.dispose(); // the outline's is shared
+    flyers.delete(id);
+  }
+  return {
+    // `me` is your own id; `show` false (you're not at the meeting) shows none. A new name or colour builds it again.
+    sync(roster, me, show = true) {
+      here = new Map(show ? atMeeting(roster, me).map(p => [p.id, p]) : []);
+      for (const [id, n] of flyers) { const p = here.get(id); if (!p || p.colour !== n.colour || p.name !== n.name) drop(id); }
+    },
+    heard(id, m) {
+      const p = here.get(id); if (!p) return;
+      if (m.mode === 'off') { drop(id); return; }
+      let n = flyers.get(id); if (!n) flyers.set(id, n = build(p));
+      n.track.heard(m, clock()); n.heard = clock();
+    },
+    has(id) { return flyers.has(id); },
+    update() {
+      const now = clock();
+      for (const [id, n] of flyers) {
+        if (now - n.heard > SILENCE) { drop(id); continue; }
+        const a = n.track.at(now, n.at); if (!a) continue;
+        n.root.visible = true; n.mesh.position.set(a.x, a.y, a.z); n.mesh.rotation.set(-a.pitch, a.yaw, a.roll);
+        n.sprite.position.set(a.x, a.y + 0.22, a.z);
+      }
+    },
+    dispose() { for (const id of [...flyers.keys()]) drop(id); here = new Map(); },
+  };
 }

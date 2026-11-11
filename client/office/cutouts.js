@@ -107,15 +107,20 @@ export const cardsMesh = standing => {
   return mesh;
 };
 
-// The windows wall's bays: a window in each, a poster between each two (room.js).
+// The windows wall's bays: a window in each, a poster between each two (room.js), but for the middle gap: the scoreboard
+// there is SCOREBOARD m wide with its frame. The room's at least two bays wide, so that gap's always there.
 export const bays = width => Math.max(1, Math.floor(width / 4));
+export const scoreGap = width => Math.floor(bays(width) / 2), SCOREBOARD = 1.9;
 // The pear, in a room whose cells are `cellW` wide. A helper's desk can leave one row to walk along the windows wall (layout.js), so a walker has to step round the
 // pear between the third helpers either side: both ways past it are open only with it 1 to 9 cm short of where a cell ends, whatever the project's size (tests/office-cutouts.test.mjs).
 // So no sliding along to dodge a poster: the next gap along, and the last is always clear. With one project it stands beside the orange, as far along as the plant lets them.
 const PEAR_LEFT = 0.407, PEAR_RIGHT = 0.453, POSTER = 0.37, SHORT = 0.05; // how far each reaches from its x, and how far short
 const pearX = (width, cellW) => {
   const last = width - 1.95, pitch = width / bays(width);
-  for (let x = cellW - SHORT; x < last; x += cellW) { const poster = Math.round(x / pitch) * pitch; if (x + PEAR_RIGHT < poster - POSTER || x - PEAR_LEFT > poster + POSTER) return x; }
+  for (let x = cellW - SHORT; x < last; x += cellW) {
+    const gap = Math.round(x / pitch), half = gap === scoreGap(width) ? SCOREBOARD / 2 : POSTER;
+    if (x + PEAR_RIGHT < gap * pitch - half || x - PEAR_LEFT > gap * pitch + half) return x;
+  }
   return last;
 };
 // Where they stand in a room `width` by `depth`, and how: which card, x, z, yaw and lean in degrees. Windows are low enough to stand in front of; posters aren't.

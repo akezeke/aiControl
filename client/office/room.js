@@ -11,7 +11,7 @@ import { createWindows } from './windows.js';
 import { createScreens, SCREEN_W, SCREEN_H } from './screens.js';
 import { createSecret, DOOR } from './secret.js';
 import { createKitchen } from './kitchen.js';
-import { bays, cardsMesh, officeCutouts } from './cutouts.js';
+import { bays, cardsMesh, officeCutouts, scoreGap, SCOREBOARD } from './cutouts.js';
 import { DESK_W, DESK_D, COFFEE_X, KITCHEN_DOOR_W, kitchenDoor } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
@@ -462,11 +462,12 @@ export function createRoom(scene, renderer) {
     // Post-its, hung or placed like anything else; bake() merges them into what's around.
     const notes = (key, list) => piece(`notes-${key}`, () => noteParts(list));
 
-    // Windows on the back wall (windows.js), with posters and plants between them.
-    const count = bays(width), xs = Array.from({ length: count }, (_, i) => -width / 2 + (i + 0.5) * width / count);
+    // Windows on the back wall (windows.js), with posters and plants between them; the middle gap has the scoreboard (below).
+    // (cutouts.js, where the cardboard fruit keep clear of both).
+    const count = bays(width), xs = Array.from({ length: count }, (_, i) => -width / 2 + (i + 0.5) * width / count), mid = scoreGap(width);
     const windows = createWindows(xs); back.add(windows);
     for (const [i, x] of xs.entries()) {
-      if (i) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
+      if (i && i !== mid) { hang(back, picture(i - 1, 0.7, 0.95), x - width / count / 2, 1.75); if (i % 2) place(plant('bush'), x - width / count / 2 + width / 2, 0.45); }
     }
     // A snake plant in each corner starts the snake game, one per player (room.onSnake(index), from office.js; snake.js). Plants 0 and 1 are
     // the back corners, 2 and 3 the front ones either side of the door (placed with the lounge and the coffee corner below).
@@ -508,7 +509,9 @@ export function createRoom(scene, renderer) {
     const meetingClip = mesh(rounded(0.16, 0.06, 0.03, 0.01), toonMaterial('#b8bec8'), 0.006); meetingClip.position.set(0, 0.33, 0.045); meeting.add(meetingClip);
     meeting.userData.toggle = () => room.onMeeting?.();
     room.meeting = { group: meeting, face: meeting.userData.face };
-    room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face, plate };
+    // The scoreboard: every game's best three (Office online's, else your own; boards.js), on the back wall between two windows.
+    const scoreboard = hang(back, board(SCOREBOARD - 0.1, 1.2, '#c0c4cc', 0.5), xs[mid] - width / count / 2, 1.75, 0.03);
+    room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face, plate, scores: scoreboard.userData.face };
 
     // Left wall: a bookshelf at the back, the whiteboard, pictures where there's room; the front is kept clear for the kitchen doorway.
     place(bookshelf(), 0.2, 1.45, Math.PI / 2); shadowUnder(0.25, 1.45, 0.5, 1);

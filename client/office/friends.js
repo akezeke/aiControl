@@ -14,10 +14,11 @@ const GAP = 1 / 15, PAUSE = 0.25, NEED_MAX = 0.35, RELAX = 0.02, WARP = 0.1, MAR
 // playback clock speeds up or slows down by up to 10% rather than jump when that changes. With nothing newer yet it waits
 // on the last place, then carries on from there. A pause (standing still) gets a stop just before the next move, so nobody
 // drifts across it, and a jump of more than 3 m (the door) snaps. Times are in seconds; `at` writes into `out`, allocating nothing.
+// A paper plane's moves (planes.js's flyers) carry its pitch and roll as well; a walker's are 0.
 export function createTrack() {
   const samples = [];
   let offset = Infinity, need = GAP, clock = null, then = null;
-  const copy = (out, s) => { out.x = s.x; out.y = s.y; out.z = s.z; out.yaw = s.yaw; out.pose = s.pose; return out; };
+  const copy = (out, s) => { out.x = s.x; out.y = s.y; out.z = s.z; out.yaw = s.yaw; out.pitch = s.pitch; out.roll = s.roll; out.pose = s.pose; return out; };
   return {
     heard(m, now) {
       const t = m.t === undefined ? now : m.t / 1000;
@@ -28,7 +29,7 @@ export function createTrack() {
       if (last && d === 0) samples.pop(); // the same moment again: the newer wins
       else if (pause) samples.push({ ...last, t: t - GAP }); // still till just before this
       const before = samples.at(-1);
-      samples.push({ t, x: m.x, y: m.y, z: m.z, yaw: m.yaw, pose: m.pose });
+      samples.push({ t, x: m.x, y: m.y, z: m.z, yaw: m.yaw, pitch: m.pitch ?? 0, roll: m.roll ?? 0, pose: m.pose });
       if (samples.length > KEEP) samples.shift();
       // The quickest a move has come (creeping up a little, as two machines' clocks drift), and how long this one took
       // from the one before it was due.
@@ -51,6 +52,7 @@ export function createTrack() {
       if (Math.hypot(b.x - a.x, b.z - a.z) > SNAP) return copy(out, b);
       const u = (clock - a.t) / (b.t - a.t), turn = Math.atan2(Math.sin(b.yaw - a.yaw), Math.cos(b.yaw - a.yaw));
       out.x = a.x + (b.x - a.x) * u; out.y = a.y + (b.y - a.y) * u; out.z = a.z + (b.z - a.z) * u; out.yaw = a.yaw + turn * u; out.pose = a.pose;
+      out.pitch = a.pitch + (b.pitch - a.pitch) * u; out.roll = a.roll + (b.roll - a.roll) * u;
       return out;
     },
   };

@@ -35,7 +35,8 @@ const hungOn = (room, normal, axis) => {
   for (const child of mesh.children) if (child.isMesh) for (let i = 0; i < child.geometry.attributes.position.count; i++) { p.fromBufferAttribute(child.geometry.attributes.position, i).applyMatrix4(child.matrixWorld); if (p.y > 1) at.push(p[axis]); }
   return at.sort((a, b) => a - b).reduce((spans, v) => { const last = spans.at(-1); if (last && v - last[1] < 1) last[1] = v; else spans.push([v, v]); return spans; }, []);
 };
-const postersOn = (room) => hungOn(room, V(0, 0, 1), 'x');
+// The posters and the scoreboard (not baked: boards.js draws on it), whose span is its frame's.
+const postersOn = room => { const board = new THREE.Box3().setFromObject(room.boards.scores.parent); return [...hungOn(room, V(0, 0, 1), 'x'), [board.min.x, board.max.x]].sort((a, b) => a[0] - b[0]); };
 // The secret shelf (secret.js), shut and slid open, as well as the pictures: it stands, so it's not on the wall.
 const rightWall = (room, depth) => { const door = depth - DOOR.back; return [[door - 2.35, door + 0.75], ...hungOn(room, V(-1, 0, 0), 'z')]; };
 // Points across a part of a card, and whether one's inside another's box, in that box's own turned frame.
@@ -142,7 +143,8 @@ test('a bigger project in a room that needn\'t grow moves the pear to the new ga
   const was = pear().min.x, size = room.size;
   room.sync(empty(23, 15.5, 8.3), new Map());
   assert.equal(room.size, size, 'the room is the same size');
-  assert.ok(Math.abs(pear().min.x - was - 1.6) < 1e-6, `the pear moved from ${was} to ${pear().min.x}`);
+  // To the gap at 16.6, 9.9 on: the new one at 8.3 is under the scoreboard (the middle of five bays, 8.25 to 10.15).
+  assert.ok(Math.abs(pear().min.x - was - 9.9) < 1e-6, `the pear moved from ${was} to ${pear().min.x}`);
   assert.equal(room.colliders.filter(b => b.surface === 'cutout-pear').length, 1, 'none left behind');
 });
 

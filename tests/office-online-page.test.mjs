@@ -10,14 +10,15 @@ const golf = JSON.stringify({ best: Object.fromEntries(Array.from({ length: 50 }
 const trickshot = JSON.stringify({ lines: {}, best: { [MONDAY[0].id]: 1200 }, daily: { '2026-11-09': [100, null, 20] } });
 
 test('localBests reads every game', () => {
-  const scores = localBests(store({ [KEYS.darts]: '11', [KEYS.pinball]: '48210', [KEYS.snake]: '7', [KEYS.golf]: golf, 'aiControl.trickshot': trickshot }), date);
-  assert.deepEqual(scores, { trickshotToday: { day: '2026-11-09', score: 120 }, trickshot: 1200, darts: 11, pinball: 48210, golf: 100, golfEndless: 3, snake: 7 });
+  const planes = JSON.stringify({ endless: { rings: 23, time: 40.2 } });
+  const scores = localBests(store({ [KEYS.darts]: '11', [KEYS.pinball]: '48210', [KEYS.snake]: '7', [KEYS.golf]: golf, [KEYS.planes]: planes, 'aiControl.trickshot': trickshot }), date);
+  assert.deepEqual(scores, { trickshotToday: { day: '2026-11-09', score: 120 }, trickshot: 1200, darts: 11, pinball: 48210, golf: 100, golfEndless: 3, snake: 7, planesEndless: 23 });
 });
 
 test('blocked storage gives no scores', () => {
   assert.deepEqual(localBests({ getItem() { throw new Error('denied'); } }, date), {});
   assert.deepEqual(localBests(null, date), {});
-  assert.deepEqual(localBests(store({ [KEYS.golf]: '{nope', [KEYS.darts]: '9' }), date), { darts: 9 });
+  assert.deepEqual(localBests(store({ [KEYS.golf]: '{nope', [KEYS.planes]: '{nope', [KEYS.darts]: '9' }), date), { darts: 9 });
 });
 
 test("the storage keys are the games' own", () => {
@@ -152,4 +153,21 @@ test('a colour refusal is sent again, and the live link hearing one, or a remova
   const on = {}; online.follow({ on: (type, fn) => { on[type] = fn; } });
   on.refused({ type: 'refused', why: 'full' }); on.refused({ type: 'refused', why: 'colour' }); on.refused({ type: 'refused', why: 'removed' }); on.refused({ type: 'refused', why: 'away' });
   await new Promise(r => setTimeout(r)); assert.equal(calls.length, 5);
+});
+
+test("the scoreboard's rows: every game, the board's best three, else your own bests alone", async () => {
+  const online = createOnline({ api: fakeApi(), scores: () => ({}) });
+  await online.sync();
+  const rows = online.rows();
+  assert.equal(rows.length, 8); assert.equal(rows.at(-1).label, 'Planes endless');
+  assert.deepEqual(rows.find(r => r.id === 'darts').top, [{ name: 'anna', text: '9 darts', you: true }, { name: 'Bo', text: '12 darts', you: false }]);
+  assert.deepEqual(rows.find(r => r.id === 'snake').top, []);
+  let mine = { snake: 4 }, told = 0;
+  const alone = createOnline({ api: fakeApi({ joined: false }), scores: () => mine });
+  alone.watch(() => told++);
+  await alone.sync();
+  assert.deepEqual(alone.rows().find(r => r.id === 'snake').top, [{ name: 'Me', text: '4', you: true }]);
+  mine = { snake: 9 }; await alone.sync();
+  assert.equal(told, 3, 'the first sync, and each new best'); // first: your bests, then joined:false came back; then the new best
+  assert.equal(alone.rows().find(r => r.id === 'snake').top[0].text, '9');
 });

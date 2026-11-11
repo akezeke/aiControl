@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTrack, gait, atMeeting, createFriends } from '../client/office/friends.js';
 import { createSnakes } from '../client/office/snakes.js';
+import { createFlyers } from '../client/office/planes.js';
 
 // Plays `moves` ([sent s, arrives s, x, extra]) through a track a frame at a time, from 0 to `until` s; the drawn place each frame.
 function play(moves, until, track = createTrack()) {
@@ -179,4 +180,18 @@ test('positions(): busy while playing, or in the kitchen; none before a position
   const k = watch(t, shut(true)); k.frame();
   assert.equal(k.friends.positions()[0].busy, true);
   assert.deepEqual(createFriends(new THREE.Scene(), { room: shut() }).positions(), []);
+});
+
+test("a friend's paper plane: built from their first move, in their colour and name, gone on off, silence or leaving", t => {
+  const w = watch(t), flyers = createFlyers(w.scene, { clock: () => w.now }), before = w.scene.children.length;
+  const fly = (t, x) => ({ type: 'plane', mode: 'fly', x, y: 1.4, z: 5, yaw: 0, pitch: 0.1, roll: 0.3, t });
+  const plane = () => w.scene.children[before]?.children[0];
+  flyers.sync([pip('meeting')], 'me');
+  flyers.heard('b', fly(0, 3)); assert.equal(w.scene.children.length, before, 'not at the meeting');
+  for (let k = 0; k < 40; k++) { if (k % 6 === 0) flyers.heard('a', fly(k * 100, 3 + k * 0.03)); w.frame(0.1); flyers.update(); }
+  assert.ok(flyers.has('a')); assert.equal(plane().material.color.getHexString(), '3a86ff');
+  assert.ok(plane().position.x > 3.5 && Math.abs(plane().rotation.z - 0.3) < 1e-9 && Math.abs(plane().rotation.x + 0.1) < 1e-9, `${plane().position.x}`);
+  flyers.heard('a', { type: 'plane', mode: 'off' }); assert.equal(flyers.has('a'), false); assert.equal(w.scene.children.length, before);
+  flyers.heard('a', fly(9000, 3)); w.now += 3.5; flyers.update(); assert.equal(flyers.has('a'), false, 'silence');
+  flyers.heard('a', fly(9500, 3)); flyers.sync([], 'me'); assert.equal(flyers.has('a'), false, 'left');
 });

@@ -13,9 +13,10 @@ export const GAMES = [
   { id: 'golf', label: 'Golf', lower: true, min: HOLE_COUNT, max: 1000 },
   { id: 'golfEndless', label: 'Golf endless', min: 0, max: 1e4 },
   { id: 'snake', label: 'Snake', min: 0, max: 1e5 },
+  { id: 'planesEndless', label: 'Planes endless', min: 0, max: 1e4 },
 ];
 const BY_ID = new Map(GAMES.map(g => [g.id, g]));
-const UNITS = { darts: ' darts', golf: ' strokes', golfEndless: ' holes' };
+const UNITS = { darts: ' darts', golf: ' strokes', golfEndless: ' holes', planesEndless: ' rings' };
 const object = v => !!v && typeof v === 'object' && !Array.isArray(v);
 const inRange = (game, v) => typeof v === 'number' && Number.isFinite(v) && v >= game.min && v <= game.max;
 const better = (game, a, b) => game.lower ? Math.min(a, b) : Math.max(a, b);
@@ -28,8 +29,9 @@ export const cleanName = name => {
   return /^[\p{L}\p{N}][\p{L}\p{N} ._'-]{0,15}$/u.test(trimmed) ? trimmed : null;
 };
 
-// One number per game from what the games keep in this browser; a game with nothing to show is left out.
-export function bests({ trickshot, darts, pinball, snake, golf }, day) {
+// One number per game from what the games keep in this browser; a game with nothing to show is left out. Planes only
+// endless: a day's course is laid round each office as it stands, so its times aren't for the same rings.
+export function bests({ trickshot, darts, pinball, snake, golf, planes }, day) {
   const out = {}, put = (id, v) => { if (v > 0) out[id] = v; };
   const today = trickshot?.daily?.[day];
   if (Array.isArray(today)) { const score = today.reduce((sum, v) => sum + (v || 0), 0); if (score > 0) out.trickshotToday = { day, score }; }
@@ -37,7 +39,7 @@ export function bests({ trickshot, darts, pinball, snake, golf }, day) {
   put('darts', darts); put('pinball', pinball);
   const holes = Array.from({ length: HOLE_COUNT }, (_, i) => golf?.best?.[i + 1]);
   if (holes.every(v => v > 0)) put('golf', holes.reduce((a, b) => a + b, 0));
-  put('golfEndless', golf?.endlessBest); put('snake', snake);
+  put('golfEndless', golf?.endlessBest); put('snake', snake); put('planesEndless', planes);
   return out;
 }
 

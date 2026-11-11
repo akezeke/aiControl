@@ -71,6 +71,10 @@ const checks = {
     }
   },
   poke: m => ['hit', 'click', 'took'].includes(m.why) ? { type: 'poke', why: m.why } : null,
+  // A paper plane in flight (planes.js): where it is, how it's turned and the sender's clock (ms, as pos); 'off' once put away.
+  plane: m => m.mode === 'off' ? { type: 'plane', mode: 'off' }
+    : m.mode === 'fly' && num(m.x, -12, 200) && num(m.y, -1, 6) && num(m.z, -12, 200) && num(m.yaw) && num(m.pitch, -Math.PI, Math.PI) && num(m.roll, -Math.PI, Math.PI) && num(m.t, 0)
+      ? { type: 'plane', mode: 'fly', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pitch: m.pitch, roll: m.roll, t: m.t } : null,
   // The secret room's shelf, slid open or shut by whoever did it.
   shelf: m => typeof m.open === 'boolean' ? { type: 'shelf', open: m.open } : null,
 };
@@ -93,6 +97,7 @@ const down = {
   goosed: withId('goosed', ['what', 'who', 'kind', 'spot', 'icon']),
   poke: withId('poke', ['why']),
   shelf: withId('shelf', ['open']),
+  plane: withId('plane', ['mode', 'x', 'y', 'z', 'yaw', 'pitch', 'roll', 't']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,
   // The hub's answer to hello: your id in the roster, the colour you got and where you are.

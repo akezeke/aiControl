@@ -1,5 +1,6 @@
 // What's written on the walls: usage limits and any agent the server can't reach on the whiteboard, the real time on the clock,
-// a sticky note per waiting session, the machine's name on the door, and a sign on the coffee machine while usage is used up.
+// a sticky note per waiting session, the machine's name on the door, a sign on the coffee machine while usage is used up, and
+// every game's best three on the scoreboard (Office online's, so it's the same at a meeting).
 // Visiting a meeting (visit.js) none of that is the host's to show: the boards are blank and the plate says whose office it is.
 // Each is a canvas texture redrawn only when what it shows changes. And the kitchen's: Trickshot's clipboard and score board.
 import * as THREE from 'three';
@@ -237,6 +238,25 @@ export function drawMeeting({ g, width: w, height: h }, { title, lines, closed }
   g.save(); g.translate(w / 2, h - 110); g.rotate(-0.14); g.textAlign = 'center'; g.fillStyle = INK.red; sized(g, closed, 84, w - 50); g.fillText(closed, 0, 0); g.restore();
 }
 
+// The scoreboard: online.js's rows (every game, its best three) down two columns, you in red, a dash for a game nobody's played.
+export function drawScoreboard({ g, width: w, height: h }, rows) {
+  g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h); g.lineCap = 'round'; g.textBaseline = 'alphabetic';
+  const per = Math.ceil(rows.length / 2), cw = (w - 60) / 2, rh = (h - 20) / per;
+  g.strokeStyle = '#c9d6ea'; g.lineWidth = 3; scribble(g, w / 2, 24, w / 2, h - 24, 3);
+  rows.forEach(({ label, top }, i) => {
+    const x = 30 + Math.floor(i / per) * cw + (i < per ? 0 : 20), y = 10 + (i % per) * rh, right = x + cw - 40;
+    g.textAlign = 'left'; g.fillStyle = INK.blue; sized(g, label, 36, cw - 40); g.fillText(label, x, y + 40);
+    if (!top.length) { g.fillStyle = '#8a8f99'; g.font = `28px ${SHARPIE}`; g.fillText('-', x + 6, y + 76); return; }
+    top.forEach(({ name, text, you }, n) => {
+      const at = y + 76 + n * 32;
+      g.fillStyle = you ? INK.red : INK.black; g.font = `28px ${SHARPIE}`;
+      g.textAlign = 'right'; g.fillText(text, right, at); const room = right - x - g.measureText(text).width - 50;
+      g.textAlign = 'left'; g.fillText(`${n + 1}`, x + 6, at); g.fillText(fit(g, name, room), x + 36, at);
+    });
+  });
+  g.textAlign = 'left';
+}
+
 // The controls beside the clipboard, on one small sheet: name, colour. A page's tab is yellow when it's that page.
 const TABS = [['Monday', '#e6e0cc'], ['Today', '#e6e0cc'], ['Random shot', '#bfe3c0'], ['Copy', '#cfe0ff']], TAB = { w: 0.15, h: 0.05, cell: [256, 85] };
 function drawTabs({ g, width: w }, page) {
@@ -300,8 +320,9 @@ export function createKitchenBoards(game, { inReach = () => true, read = () => {
   };
 }
 
-export function createBoards(room) {
-  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1, written = null, meeting = null, meetingKey = '';
+// `rows()`: the scoreboard's, online.js's rows().
+export function createBoards(room, rows = () => []) {
+  let boards = null, faces = null, usageKey = '', waitingKey = '', plateKey = null, minute = -1, written = null, meeting = null, meetingKey = '', scoresKey = '';
   const writeUsage = () => { drawWhiteboard(boards.whiteboard, ...written); boards.whiteboard.texture.needsUpdate = true; };
   // A canvas draws in a fallback until the font is in, so write the board again once it is.
   // Only when what it says changes: a sync that brings the same board back redraws nothing.
@@ -310,13 +331,18 @@ export function createBoards(room) {
     if (!boards?.meeting || key === meetingKey) return;
     meetingKey = key; drawMeeting(boards.meeting, page); boards.meeting.texture.needsUpdate = true;
   };
-  document.fonts?.load(`40px 'Permanent Marker'`).then(() => { if (written) writeUsage(); meetingKey = ''; writeMeeting(); }).catch(() => {});
+  const writeScores = () => {
+    const list = rows(), key = JSON.stringify(list);
+    if (!boards?.scores || key === scoresKey) return;
+    scoresKey = key; drawScoreboard(boards.scores, list); boards.scores.texture.needsUpdate = true;
+  };
+  document.fonts?.load(`40px 'Permanent Marker'`).then(() => { if (written) writeUsage(); meetingKey = scoresKey = ''; writeMeeting(); writeScores(); }).catch(() => {});
   const ensure = () => {
     // The room rebuilds its walls (and so its boards) when it resizes; repaint onto the new faces.
     if (faces === room.boards.whiteboard) return;
     faces = room.boards.whiteboard;
-    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512, 1.5), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), meeting: room.meeting && paint(room.meeting.face, 512, 640), sign: paint(room.coffeeSign.userData.face, 256, 192) };
-    usageKey = waitingKey = meetingKey = ''; plateKey = null; minute = -1;
+    boards = { whiteboard: paint(room.boards.whiteboard, 1024, 512, 1.5), clock: paint(room.boards.clock, 256, 256), waiting: paint(room.boards.waiting, 528, 384), plate: paint(room.boards.plate, 512, 112), meeting: room.meeting && paint(room.meeting.face, 512, 640), sign: paint(room.coffeeSign.userData.face, 256, 192), scores: room.boards.scores && paint(room.boards.scores, 960, 640, 1.5) };
+    usageKey = waitingKey = meetingKey = scoresKey = ''; plateKey = null; minute = -1;
   };
   return {
     // `visiting`: the host's name while you're at their office (office.js), else null.
@@ -336,8 +362,10 @@ export function createBoards(room) {
       if (machine !== plateKey) { plateKey = machine; drawPlate(boards.plate, machine); boards.plate.texture.needsUpdate = true; }
       const nextWaiting = JSON.stringify(away ? null : waiting);
       if (nextWaiting !== waitingKey) { waitingKey = nextWaiting; drawWaiting(boards.waiting, away ? null : waiting); boards.waiting.texture.needsUpdate = true; }
-      writeMeeting();
+      writeMeeting(); writeScores();
     },
+    // Office online's board changed, or your bests without one: the scoreboard again (if it says something new).
+    scores() { if (room.boards) { ensure(); writeScores(); } },
     // Office online's state (online.js), for the meetings clipboard.
     meeting(state) { meeting = state; if (room.boards) { ensure(); writeMeeting(); } }, // before the walls are up, sync paints it
     tick(now = Date.now()) {

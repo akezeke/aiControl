@@ -253,3 +253,13 @@ test("an older host's floor without desk things is still taken, with none on the
   assert.deepEqual([clean.desks[0].look.props, clean.desks[0].look.notes], [[], 0]);
   assert.deepEqual(checkFloor({ ...floor, desks: [{ ...floor.desks[0], look: { ...look, props: ['secret'], notes: 0 } }] }).desks[0].look.props, []);
 });
+
+test('a paper plane in flight goes up and down with its pose and clock; off is just off', () => {
+  const fly = { type: 'plane', mode: 'fly', x: 3, y: 1.4, z: 5, yaw: 7.1, pitch: -0.2, roll: 0.5, t: 1234 };
+  assert.deepEqual(checkUp({ ...fly, extra: 1 }), fly);
+  assert.deepEqual(checkUp({ type: 'plane', mode: 'off', x: 1 }), { type: 'plane', mode: 'off' });
+  for (const bad of [{ ...fly, mode: 'loop' }, { ...fly, y: 9 }, { ...fly, pitch: 4 }, { ...fly, roll: NaN }, { ...fly, t: undefined }, { ...fly, x: '3' }]) assert.equal(checkUp(bad), null, JSON.stringify(bad));
+  assert.deepEqual(checkDown({ ...fly, id: 'a1' }), { ...fly, id: 'a1' });
+  assert.deepEqual(checkDown({ type: 'plane', mode: 'off', id: 'a1' }), { type: 'plane', id: 'a1', mode: 'off' });
+  assert.equal(checkDown(fly), null);
+});

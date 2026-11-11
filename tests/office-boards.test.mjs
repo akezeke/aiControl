@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { clipboardLines, copyText, createKitchenBoards, dailyLines, drawClipboard, drawScores, drawWhiteboard, usedUp } from '../client/office/boards.js';
+import { clipboardLines, copyText, createKitchenBoards, dailyLines, drawClipboard, drawScoreboard, drawScores, drawWhiteboard, usedUp } from '../client/office/boards.js';
+import { GAMES } from '../client/office/leaderboard.js';
 import { challenges } from '../client/office/daily.js';
 import { ITEMS, MONDAY } from '../client/office/levels.js';
 
@@ -168,4 +169,15 @@ test('the boards redraw when progress changes or the day turns over, not every f
   t.mock.timers.tick(2 * 60_000);
   assert.ok(still() > 0, 'a new day');
   assert.equal(still(), 0, 'once');
+});
+
+test('the scoreboard writes every game, its best three in order with you in red, and a dash for one nobody has played', () => {
+  const written = [], g = new Proxy({}, { get: (t, k) => k === 'fillText' ? text => written.push([String(text), t.fillStyle]) : k === 'measureText' ? text => ({ width: String(text).length * 12 }) : k in t ? t[k] : () => {}, set: (t, k, v) => { t[k] = v; return true; } });
+  const rows = GAMES.map(({ id, label }) => ({ id, label, top: id === 'snake' ? [{ name: 'Bo', text: '31', you: false }, { name: 'Anna', text: '12', you: true }] : [] }));
+  drawScoreboard({ g, width: 960, height: 640 }, rows);
+  const texts = written.map(([text]) => text);
+  for (const { label } of GAMES) assert.ok(texts.includes(label), label);
+  assert.deepEqual(texts.slice(texts.indexOf('Snake') + 1, texts.indexOf('Snake') + 7), ['31', '1', 'Bo', '12', '2', 'Anna']);
+  assert.equal(written.find(([text]) => text === 'Anna')[1], '#d7263d');
+  assert.equal(texts.filter(text => text === '-').length, GAMES.length - 1);
 });
