@@ -29,14 +29,12 @@ try {
   if (!existsSync(authFile)) await configurePassword();
   await installHooks();
   await unlink(join(dataDir, 'server.json')).catch(() => {});
-  // Backend edits restart the server; the browser picks up client edits on refresh.
+  // An edit to the server or anything it imports restarts it, client modules it shares included (meeting.js,
+  // leaderboard.js, …), as with the hub; the browser picks up other client edits on refresh.
   // Some Node 22 releases (22.14) take the argument after each --watch flag as its value and pass it to the server
   // if it looks like a flag: a bare --watch after --watch-preserve-output starts a second watcher. Before it, the server
   // only gets --watch-preserve-output, which does nothing without --watch (Node 24 passes it on anyway).
-  // Node 22 supports explicit watch paths on macOS, but Linux needs its imported-module watcher.
-  const watchPaths = process.platform !== 'linux' || Number(process.versions.node.split('.')[0]) >= 24;
-  const watch = watchPaths ? ['server', 'scripts/server.mjs'].map(path => `--watch-path ${quote(join(root, path))}`).join(' ') : '';
-  const command = `${quote(process.execPath)} ${watchPaths ? watch : '--watch'} --watch-preserve-output ${quote(join(root, 'scripts/server.mjs'))}${local ? ' --local' : ''} 2>&1 | tee -a ${quote(join(dataDir, 'server.log'))}`;
+  const command = `${quote(process.execPath)} --watch --watch-preserve-output ${quote(join(root, 'scripts/server.mjs'))}${local ? ' --local' : ''} 2>&1 | tee -a ${quote(join(dataDir, 'server.log'))}`;
   execFileSync('tmux', ['new-session', '-d', '-s', session, '-c', root, '-e', `PATH=${process.env.PATH}`, command]);
   for (let i = 0; i < 100; i++) {
     await new Promise(resolve => setTimeout(resolve, 100));
