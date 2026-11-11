@@ -27,6 +27,10 @@ export class Bubbles {
   constructor(container, onClick) {
     this.layer = document.createElement('div'); this.layer.className = 'office-bubbles'; container.append(this.layer);
     this.nodes = new Map(); this.onClick = onClick; this.entries = []; this.said = new Map();
+    // The layer's size, kept by an observer: read from the layer each frame, after the last frame's writes, it made the browser
+    // work the whole page's styles out again there and then.
+    this.size = { w: 0, h: 0 };
+    globalThis.ResizeObserver && new ResizeObserver(([entry]) => { this.size = { w: entry.contentRect.width, h: entry.contentRect.height }; }).observe(this.layer);
   }
 
   // entries: [{ id, bubble: { icon, text, highlight } | null, unread }]; something just said (say) shows instead for a moment.
@@ -59,7 +63,8 @@ export class Bubbles {
   // One by the side of the screen slides back in, its tail still pointing at whoever it belongs to.
   update(camera, positionOf, zoomOut = 0) {
     for (const said of this.said.values()) if (said.until < performance.now()) { this.sync(); break; }
-    const { clientWidth: w, clientHeight: h } = this.layer, p = new THREE.Vector3();
+    if (!this.size.w) this.size = { w: this.layer.clientWidth, h: this.layer.clientHeight }; // before the observer's first word
+    const { w, h } = this.size, p = new THREE.Vector3();
     if (this.width !== w) { this.width = w; for (const node of this.nodes.values()) node.width = 0; } // widths change with the media queries
     for (const [id, node] of this.nodes) {
       const at = positionOf(id);
