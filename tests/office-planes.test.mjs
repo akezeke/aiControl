@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutOffice, DESK_W, DESK_D } from '../client/office/layout.js';
-import { touch, gap, newFlight, launch, fly, stepFlight, autopilot, makeCourse, endless, better, medal, medalTime, STEP, HOLE, RINGS, LAUNCH, AHEAD } from '../client/office/planes-course.js';
+import { touch, gap, newFlight, launch, fly, stepFlight, autopilot, makeCourse, endless, better, medal, medalTime, STEP, HOLE, RIM, RINGS, LAUNCH, AHEAD } from '../client/office/planes-course.js';
 
 const box = (x0, y0, z0, x1, y1, z1) => ({ min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 } });
 const room = (boxes = []) => ({ boxes, columns: [], ceiling: 3, width: 10, depth: 10 });
@@ -100,16 +100,17 @@ test('goes through a ring only forwards and inside it, and is pushed on', () => 
 });
 
 test('come at slantwise, a ring counts a little wider the way it slants, not the other way or head on', () => {
-  const ring = { x: 3, y: 1.4, z: 5, nx: 1, ny: 0, nz: 0 }, course = { rings: [ring] };
+  const ring = { x: 3, y: 1.4, z: 5, nx: 1, ny: 0, nz: 0 }, course = { rings: [ring] }, R = HOLE + RIM;
   // Just short of the ring's face, at `angle` off square, to cross it `side` out across and `up` out up.
   const through = (angle, side, up = 0) => {
     const f = newFlight({ x: 3 - Math.cos(angle) * 0.01, y: 1.4 + up, z: 5 + side - Math.sin(angle) * 0.01, yaw: Math.atan2(Math.cos(angle), Math.sin(angle)) });
     launch(f); f.pitch = 0; ahead(f, 3, {}, room(), course); return f.next;
   };
-  assert.equal(through(0, HOLE * 0.95), 1); assert.equal(through(0, HOLE * 1.1), 0, 'head on: the hole');
-  assert.equal(through(0.9, HOLE * 1.15), 1, 'slanted: wider that way');
-  assert.equal(through(0.9, 0, HOLE * 1.15), 0, 'not the other way');
-  assert.equal(through(1.3, HOLE * 1.6), 0, 'and only so wide');
+  assert.equal(through(0, R * 0.95), 1); assert.equal(through(0, R * 1.1), 0, 'head on: the hole');
+  assert.equal(through(0, HOLE + 0.05), 1, 'half over the rim still counts');
+  assert.equal(through(0.9, R * 1.15), 1, 'slanted: wider that way');
+  assert.equal(through(0.9, 0, R * 1.15), 0, 'not the other way');
+  assert.equal(through(1.3, R * 1.6), 0, 'and only so wide');
 });
 
 test('the same seed and office lay the same course; another seed another', () => {

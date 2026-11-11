@@ -25,7 +25,9 @@ const LEAST = 0.15;
 const LIFT = 0.6;
 export const SIZE = 0.06, HOLE = 0.42; // what the plane touches things from (m); a ring's opening
 // Come at slantwise, a ring's opening counts a little wider the way it's slanted (halfway to as wide as head on), to SIDE holes.
+// A plane half over the rim still takes it: its middle may cross up to RIM (m) past the opening, the hoop and a bit of wing.
 const SIDE = 1.5;
+export const RIM = 0.11;
 // Endless rings narrow by NARROW each, to SMALLEST.
 const NARROW = 0.005, SMALLEST = 0.3;
 
@@ -92,7 +94,7 @@ export function stepFlight(f, input, world, course, events = [], drag = 1) {
   const px = f.x, py = f.y, pz = f.z, level = Math.cos(f.pitch), d = f.speed * h;
   f.x += Math.sin(f.yaw) * level * d; f.y += Math.sin(f.pitch) * d + f.rise * h; f.z += Math.cos(f.yaw) * level * d; f.time += h;
   f.rise *= Math.exp(-h * 3);
-  const ring = course.rings[f.next], hole = course.hole ?? ring?.hole ?? HOLE;
+  const ring = course.rings[f.next], hole = course.hole ?? (ring?.hole ?? HOLE) + RIM; // a trial's hole (TRIAL) is its own, strict
   if (ring) {
     // Through it: across its face, the right way, inside the hole. `along`: how far out it crossed the way it was going (all of
     // that's on the slant), `square`: how square on it came (1 head on).
