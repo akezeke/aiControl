@@ -7,7 +7,12 @@
 // Whoever gets hit, or whose desk or things do, turns on the boss with a word or two (onHit); `others` adds anyone else who
 // can be hit (the goose). The goose can carry a thing off in its beak (carry, drop).
 // With reduced motion a kick or a drop lands at once, and pouring leaves its puddle without the stream. A throw flies: you aimed it.
-// At a meeting your throws are told (onThrow) and a friend's flies here as a copy (ghost, ghosts.js) that moves nothing of yours.
+// At a meeting your throws are told (onThrow) and a friend's flies here as a copy (ghost, ghosts.js) that moves nothing of yours,
+// but for the balls, which are the meeting's: whoever last moved one (a kick, a nudge, picking it up, a throw or a drop, or their
+// own ball knocking it; the goose's keeper, its beak) owns it, and tells the others (`send`) where it is and how fast it goes,
+// TELL s apart while it moves or is in hand and once where it comes to rest. The others fly it on from each word as theirs (so
+// it's smooth between), or hold it where they're told while it's in someone's hand. `n` counts the claims on a ball: a word with a
+// higher n is a newer claim and wins; at the same n the owner's word stands, and two claims at once go to the higher id (`me()`).
 import * as THREE from 'three';
 import { WALL_H, WALL_T, canvasTexture, coffeeCup, deskItem } from './furniture.js';
 import { toonMaterial, instancedOutline, highlight, withOutline } from './toon.js';
@@ -18,6 +23,7 @@ import { createGhosts } from './ghosts.js';
 
 export const REACH = 2.6; // from your eyes
 const BODY = 0.3, KICK = 10; // the boss is a column this wide; the hardest kick, m/s
+const TELL = 0.1, SNAP = 0.75, HAND = 12; // a ball's words: seconds apart; metres off past which it jumps rather than eases; how fast it eases into a hand (/s)
 const UP = new THREE.Vector3(0, 1, 0), axis = new THREE.Vector3(), q = new THREE.Quaternion();
 // Balls: `key` is its name at a meeting (meeting.js's KINDS); spots are [x, z] in a room `w` by `d`; `roll` is how fast they slow on the
 // ground, `drag` in the air, `tumble` how fast a throw spins them. `low` is how high their middle rests, `centre` where it is from their mesh's origin.
@@ -80,7 +86,7 @@ export function moveBody(b, dt, world, building, reachable = () => true) {
 // A new room joins the `||`s.
 export const reachableIn = (room, { width, depth }, p) => (p.x >= -WALL_T / 2 && p.x <= width + WALL_T / 2 && p.z >= 0 && p.z <= depth) || room.secret.inside(p) || room.kitchen.inside(p);
 
-export function createProps(scene, { room, cast, camera, player, view, bounds, reducedMotion, onHit, others = () => [], hand }) {
+export function createProps(scene, { room, cast, camera, player, view, bounds, reducedMotion, onHit, others = () => [], hand, send = null, me = () => '' }) {
   const root = new THREE.Group(); scene.add(root);
   const bodies = [], matrix = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), none = new THREE.Vector3(0, 0, 0), drawn = new THREE.Vector3();
   const near = new THREE.Vector3(), normal = new THREE.Vector3();
@@ -98,11 +104,15 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     const [geometry, material] = kind.make(), count = kind.spots(10, 10).length;
     const mesh = new THREE.InstancedMesh(geometry, material, count), hull = instancedOutline(mesh, inkOf(kind));
     balls.set(kind, mesh);
-    mesh.userData.prop = i => { const b = bodies.find(b => b.mesh === mesh && b.i === i); return b?.held ? null : b; };
+    mesh.userData.prop = i => { const b = bodies.find(b => b.mesh === mesh && b.i === i); return b?.held || b?.away ? null : b; };
     root.add(mesh);
-    for (let i = 0; i < count; i++) bodies.push(body(kind, { mesh, hull, i, free: true }));
+    for (let i = 0; i < count; i++) bodies.push(body(kind, { mesh, hull, i, free: true, n: 0, mine: false, away: false, target: new THREE.Vector3(), told: null, toldAt: new THREE.Vector3() }));
   }
-  let placed = false, holding = null, aimed = null, boxes = null, building = null;
+  let placed = false, holding = null, aimed = null, boxes = null, building = null, since = 0;
+  // A ball you just moved is yours to tell the meeting about (a ball, not a desk thing; already yours, the same claim).
+  const claim = b => { if (b.obj || b.mine) return; b.n++; b.mine = true; b.told = null; };
+  const round = v => Math.round(v * 1000) / 1000;
+  const word = (b, state) => [b.kind.key, b.i, b.n, state, ...b.pos.toArray().map(round), ...b.vel.toArray().map(round)];
   // Just thrown it's drawn coming out of your hand (`fromHand`, throwing.js). Everything else goes by where it really is.
   const show = b => {
     const at = b.fromHand ? drawnAt(drawn, b.pos, b.fromHand, b.flown, b.kind, worldAt(b.pos).colliders) : b.pos;
@@ -226,7 +236,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     grab(b) {
       if (holding || b.held || b.pos.distanceTo(player.position) > REACH) return;
       if (!b.free) free(b);
-      holding = b; b.held = true; b.carried = null; b.fromHand = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); hand.hold(null, b.kind.radius, b.kind.low);
+      claim(b); holding = b; b.held = true; b.carried = null; b.fromHand = null; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); hand.hold(null, b.kind.radius, b.kind.low);
       b.grip.setFromAxisAngle(UP, -player.yaw).multiply(b.turn);
       if (aimed === b) props.aim(null);
     },
@@ -264,7 +274,8 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       return out;
     },
     // Carried, a thing goes where `at()` says (a beak) until it's dropped, or you take it (b.held).
-    carry(b, at) { if (b.held) return false; if (!b.free) free(b); b.carried = at; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); return true; },
+    // `keeper`: it's the meeting's goose doing it (goose.js), so a ball it takes is yours to tell of once it's let go.
+    carry(b, at, keeper = false) { if (b.held || b.away) return false; if (!b.free) free(b); if (keeper) claim(b); b.carried = at; b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); return true; },
     drop(b) { b.carried = null; b.grace = 0.3; b.hits.clear(); },
     // A friend's throw at the meeting ({ kind, pos, vel, spin }): a copy of one of these that flies, lands and fades. False if it's none of them.
     ghost(thrown) {
@@ -275,11 +286,32 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
     // A copy of a stolen thing for the goose to hold at `at()` (as carry takes it): its handle (release() lets it fall and fade), or null for a kind that has none. Never one of loose().
     holdGhost(kind, at) { const made = copyOf(kind); return made && ghosts.hold(root, made.mesh, made.kind, at); },
     clearGhosts() { ghosts.clear(); }, // through the door: they were the other office's
+    // Another office: the balls back on their spots (at the next frame, in the room as it is then), with no claims on them.
+    reset() { if (holding && !holding.obj) props.throw(null, true); for (const b of bodies) if (!b.obj) Object.assign(b, { n: 0, mine: false, away: false, told: null, respawn: true }); },
+    // Words from `from` at the meeting (meeting.js's `balls`), each [kind, i, n, state, x, y, z, vx, vy, vz]: state 0 at rest, 1 on
+    // the move, 2 in a hand. `again`: said again for someone arriving, so only news to a ball that's heard less.
+    heard(list, from, again = false) {
+      for (const [key, i, n, state, x, y, z, vx, vy, vz] of list) {
+        const b = bodies.find(b => !b.obj && b.kind.key === key && b.i === i);
+        if (!b || n < b.n || (n === b.n && (again || (b.mine && from < me())))) continue;
+        if (b === holding) { holding = null; hand.free(); if (aimed === b) props.aim(null); } // they had it first
+        Object.assign(b, { n, mine: false, held: false, carried: null, fromHand: null, respawn: false, away: state === 2, by: from }); b.target.set(x, y, z);
+        if (b.away) { b.rest = false; b.vel.set(0, 0, 0); b.spin.set(0, 0, 0); continue; }
+        if (state === 0 || b.pos.distanceTo(b.target) > SNAP) b.pos.copy(b.target); else b.pos.lerp(b.target, 0.5);
+        b.vel.set(vx, vy, vz); b.rest = state === 0; if (b.rest) b.home.copy(b.pos);
+        show(b);
+      }
+    },
+    // Who's at the meeting now (a Set of ids): a ball in the hand of someone who's gone falls where it was.
+    gone(here) { for (const b of bodies) if (b.away && !here.has(b.by)) { b.away = false; b.rest = false; } },
+    // What you know of the balls anyone's moved, to say again to someone arriving.
+    known() { return bodies.filter(b => !b.obj && b.n > 0).map(b => word(b, b.away || b.held ? 2 : b.rest ? 0 : 1)); },
 
     update(dt) {
       const size = bounds(); if (!size) return;
       const { width: w, depth: d } = size, still = reducedMotion(), now = performance.now() / 1000;
       if (!placed) { placed = true; for (const b of bodies) { spawn(b, w, d); show(b); } }
+      for (const b of bodies) if (b.respawn) { b.respawn = false; spawn(b, w, d); show(b); }
       // Desks come and go: whatever rested on one falls, and there may be new things on them.
       if (boxes !== room.flightColliders) { boxes = world.colliders = room.flightColliders; indoors.colliders = room.kitchen.within.length ? [...boxes, ...room.kitchen.within] : boxes; building = room.secret.bounds(size); for (const b of bodies) { b.rest = false; if (!reachable(b.home)) start(b, w, d); } scan(); }
       gather();
@@ -293,6 +325,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       for (const b of bodies) {
         if (b.held) { hand.palm.getWorldPosition(b.pos); b.turn.setFromAxisAngle(UP, player.yaw).multiply(b.grip); show(b); continue; }
         if (b.carried) { b.fromHand = null; b.pos.copy(b.carried()); show(b); continue; }
+        if (b.away) { b.pos.lerp(b.target, still ? 1 : 1 - Math.exp(-dt * HAND)); show(b); continue; } // in someone's hand
         if (!Number.isFinite(b.pos.x + b.pos.y + b.pos.z)) { if (b.obj) b.pos.set(w / 2, 1, d / 2); else spawn(b, w, d); }
         if (b.grace) b.grace = Math.max(0, b.grace - dt);
         // You walk into it: a kick if you're moving and it's at your feet, else it's nudged aside.
@@ -303,6 +336,7 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
           normal.divideScalar(gap || 1); b.pos.x = player.position.x + normal.x * r; b.pos.z = player.position.z + normal.z * r;
           stopShort(axis.set(player.position.x, b.pos.y, player.position.z), b.pos, b.kind, worldAt(player.position).colliders); // against a wall it stays there, under your feet
           const speed = walk.length();
+          claim(b);
           if (speed > 0.5 && bottom < feet + 0.4) {
             const push = Math.min(KICK, speed * 1.5 + 1);
             b.vel.copy(walk).normalize().add(normal).normalize().multiplyScalar(push).setY(1 + push * 0.25); b.hits.clear();
@@ -315,14 +349,27 @@ export function createProps(scene, { room, cast, camera, player, view, bounds, r
       }
       // Things knock into each other, the heavier pushing the lighter more.
       for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
-        const a = bodies[i], b = bodies[j]; if (a.held || b.held || a.carried || b.carried) continue;
+        const a = bodies[i], b = bodies[j]; if (a.held || b.held || a.carried || b.carried || a.away || b.away) continue;
         normal.subVectors(b.pos, a.pos); const gap = normal.length(), r = a.kind.radius + b.kind.radius;
-        if (gap >= r || gap < 1e-6) continue;
+        if (gap >= r - 0.005 || gap < 1e-6) continue; // resting against each other (a ball on the floor by a lower one) isn't a knock: they'd never rest
         normal.divideScalar(gap);
         const ma = a.kind.radius ** 3, mb = b.kind.radius ** 3, share = mb / (ma + mb), closing = b.vel.clone().sub(a.vel).dot(normal);
         a.pos.addScaledVector(normal, -(r - gap) * share); b.pos.addScaledVector(normal, (r - gap) * (1 - share));
         if (closing < 0) { const j = -(1 + Math.min(a.kind.bounce, b.kind.bounce)) * closing / (1 / ma + 1 / mb); a.vel.addScaledVector(normal, -j / ma); b.vel.addScaledVector(normal, j / mb); }
         a.rest = b.rest = false; show(a); show(b);
+        if (a.mine) claim(b); else if (b.mine) claim(a); // your ball knocked it: yours too
+      }
+      // Yours, to the meeting: on the move or in hand (and moved), every TELL s; where it lands, once. Carried by the goose, its
+      // keeper says nothing till it's let go: everyone's goose carries its own.
+      if (send && (since += dt) >= TELL) {
+        since = 0; const list = [];
+        for (const b of bodies) {
+          if (b.obj || !b.mine || b.carried) continue;
+          const state = b.held ? 2 : b.rest ? 0 : 1;
+          if (state === b.told && (state === 0 || b.pos.distanceToSquared(b.toldAt) < (state === 2 ? 1e-4 : 1e-6))) continue; // nothing new
+          b.told = state; b.toldAt.copy(b.pos); list.push(word(b, state));
+        }
+        if (list.length) send({ type: 'balls', list });
       }
       for (const b of bodies) { const off = !b.held && !b.carried && hides(b.pos); if (off !== b.off) { b.off = off; show(b); } }
       ghosts.update(dt);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createGhosts, ghostLife, MOST, FADE } from '../client/office/ghosts.js';
-import { KINDS } from '../client/office/meeting.js';
+import { KINDS, BALL_KINDS } from '../client/office/meeting.js';
 import { BALLS, LOOSE, createProps } from '../client/office/props.js';
 import { ITEMS, STARTS } from '../client/office/levels.js';
 import { createTrickshot } from '../client/office/trickshot.js';
@@ -31,6 +31,8 @@ test("every throwable kind is in meeting.js's list", () => {
   assert.equal(new Set(BALLS.map(kind => kind.key)).size, BALLS.length, 'one name a ball');
   for (const key of Object.keys(LOOSE)) assert.equal(LOOSE[key].key, key);
   assert.deepEqual(new Set(KINDS), new Set([...props, ...kitchen]), 'nothing missing and nothing extra');
+  assert.deepEqual(BALL_KINDS, BALLS.map(kind => kind.key), 'the shared balls');
+  for (const kind of BALLS) assert.ok(kind.spots(40, 40).length <= 8, `${kind.key}: few enough for a word`);
 });
 
 // The real props on a stand-in office, as tests/office-flight.test.mjs has it: no document in Node, so a blank canvas for textures.

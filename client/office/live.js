@@ -3,6 +3,7 @@
 // meeting, closes when hidden, and reconnects with a backoff (1 s up to 30 s). Everything outside is passed in, so node can fake it.
 import { checkDown } from './meeting.js';
 const BACKOFF = [1000, 30000], EVERY = 66, STILL = 2000, MOVE = 0.02, TURN = 0.02;
+export const mm = v => Math.round(v * 1000) / 1000; // metres to the mm, radians to the thousandth: as much as anyone sees, a third the text
 
 // What the colour/fruit pickers show: your own look in the roster and everyone else's colours as taken.
 export function pickerState(roster, me) {
@@ -44,15 +45,15 @@ export function createLive({
     };
     s.onerror = () => {};
   }
-  function clear() { // what the link said is gone with it
+  function clear() { // what the link said is gone with it; it's lost, and comes back by itself (visit.js waits)
     const had = roster.length || floor;
     roster = []; floor = null; id = null;
-    if (had) { emit('roster', { type: 'roster', players: [] }); emit('floor', { type: 'floor', floor: null }); }
+    if (had) { emit('lost', { type: 'lost' }); emit('roster', { type: 'roster', players: [] }); emit('floor', { type: 'floor', floor: null }); }
   }
   function go(sample, t) {
     pending = null; if (flush) { clearTimer(flush); flush = null; }
     last = { x: sample.x, y: sample.y, z: sample.z, yaw: sample.yaw, pose: sample.pose }; lastAt = t;
-    send({ type: 'pos', ...last, t: Math.round(t) });
+    send({ type: 'pos', x: mm(last.x), y: mm(last.y), z: mm(last.z), yaw: mm(last.yaw), pose: last.pose, t: Math.round(t) });
   }
   function drop() { pending = null; if (flush) { clearTimer(flush); flush = null; } if (retry) { clearTimer(retry); retry = null; } const s = ws; if (s) s.close(); }
   // Connect or close to match: visible and in a meeting. Call when either changes.

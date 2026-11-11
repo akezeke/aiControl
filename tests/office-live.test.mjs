@@ -198,6 +198,7 @@ test('a hub restart: pages hear it went, and the link comes back saying where yo
   await until(() => bp.sees('Anna')?.at === 'meeting', 'Anna at the meeting');
   await s.restart();
   await until(() => ap.last('roster')?.players.length === 0 && ap.last('floor')?.floor === null, 'an empty roster and no floor');
+  assert.ok(ap.last('lost'), 'heard as lost, so a visit waits for it');
   await until(() => bp.sees('Anna')?.at === 'meeting' && bp.last('roster').players.length === 2, 'Anna back at the meeting', 5000);
 });
 
@@ -318,10 +319,10 @@ test("a page can't speak for another or send what checkUp drops", async t => {
   assert.ok(ap.all('floor').every(m => m.floor?.room.width !== 77));
   assert.deepEqual(ap.last('roster').players.map(p => p.name).sort(), ['Anna', 'Host']);
   assert.deepEqual(ap.sees('Host'), before);
-  // A flood from a page is cut at the server, so the hub never closes the link for it.
-  for (let i = 0; i < 50; i++) hp.say({ type: 'pos', x: i % 100, y: 0, z: 0, yaw: 0, pose: 'walking' });
+  // A flood from a page is cut at the server (its burst, 90, and no more), so the hub never closes the link for it.
+  for (let i = 0; i < 300; i++) hp.say({ type: 'pos', x: i % 100, y: 0, z: 0, yaw: 0, pose: 'walking' });
   await wait(300);
-  assert.ok(ap.all('pos').length <= 21, `got ${ap.all('pos').length}`);
+  assert.ok(ap.all('pos').length <= 100, `got ${ap.all('pos').length}`);
   assert.equal(s.upgrades(), 2);
 });
 
@@ -487,4 +488,16 @@ test('a new look after the hub refused your hello goes up at once in a fresh hel
     await until(() => page.last('welcome')?.colour === COLOURS[2], 'welcomed in the new colour', 1000);
     assert.equal(hub.lives.length, lives + (closed ? 2 : 1), closed ? 'a new link, now' : 'the same link');
   }
+});
+
+test("the lights and the shelf are kept for a page that opens later, as said by anyone (you too)", async t => {
+  const s = await setup(t);
+  const anna = await s.player('Anna'), bob = await s.player('Bob');
+  const ap = open(anna), bp = open(bob);
+  ap.say({ type: 'where', at: 'meeting' }); bp.say({ type: 'where', at: 'meeting' });
+  await until(() => bp.sees('Anna')?.at === 'meeting' && ap.sees('Bob')?.at === 'meeting', 'both there');
+  ap.say({ type: 'lights', on: false }); bp.say({ type: 'shelf', open: true });
+  await until(() => bp.last('lights') && ap.last('shelf'), 'heard');
+  const later = open(anna); await until(() => later.last('lights') && later.last('shelf'), 'a new page of Anna\'s hears both');
+  assert.equal(later.last('lights').on, false); assert.equal(later.last('shelf').open, true);
 });

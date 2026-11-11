@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FRUITS, COLOURS, KINDS, PROTOCOL, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor } from '../client/office/meeting.js';
+import { FRUITS, COLOURS, KINDS, PROTOCOL, SHED, allowance, playerLook, checkUp, checkDown, meetingFloor, checkFloor, floorSnapshot, fakeMonitor } from '../client/office/meeting.js';
 import { palettes, identity, PROPS, ACCESSORIES } from '../client/office/status.js';
 import { sharedLayout, layoutOffice } from '../client/office/layout.js';
 
@@ -269,4 +269,26 @@ test('the lights: on or off, and nothing else', () => {
   assert.equal(checkUp({ type: 'lights', on: 'off' }), null);
   assert.deepEqual(checkDown({ type: 'lights', on: true, id: 'a1' }), { type: 'lights', id: 'a1', on: true });
   assert.equal(checkDown({ type: 'lights', on: true }), null);
+});
+
+test('the balls: a word each, of a known ball, with its claim, state, place and speed; said again only as such', () => {
+  const word = ['football', 0, 3, 1, 5, 0.11, 5, 2.5, 0, -1];
+  assert.deepEqual(checkUp({ type: 'balls', list: [word, ['paper', 3, 0, 0, 1, 0.045, 1, 0, 0, 0]], x: 1 }), { type: 'balls', list: [word, ['paper', 3, 0, 0, 1, 0.045, 1, 0, 0, 0]] });
+  assert.deepEqual(checkUp({ type: 'balls', list: [word], again: true }), { type: 'balls', list: [word], again: true });
+  for (const bad of [[], [['mug', 0, 1, 1, 5, 0.1, 5, 0, 0, 0]], [['paper', 8, 1, 1, 5, 0.1, 5, 0, 0, 0]], [['paper', 0, 1.5, 1, 5, 0.1, 5, 0, 0, 0]], [['paper', 0, 1, 3, 5, 0.1, 5, 0, 0, 0]],
+    [['paper', 0, 1, 1, 5, 9, 5, 0, 0, 0]], [['paper', 0, 1, 1, 5, 0.1, 5, 99, 0, 0]], [['paper', 0, 1, 1, 5, 0.1, 5, 0, 0]], Array(17).fill(word)]) assert.equal(checkUp({ type: 'balls', list: bad }), null, JSON.stringify(bad));
+  assert.equal(checkUp({ type: 'balls', list: [word], again: 'yes' }), null);
+  assert.deepEqual(checkDown({ type: 'balls', list: [word], id: 'a1' }), { type: 'balls', id: 'a1', list: [word] });
+  assert.equal(checkDown({ type: 'balls', list: [word] }), null);
+});
+
+test('an allowance: a burst, then what is said again anyway is let go while the rest goes on, owed; deep in debt is a flood', () => {
+  const a = allowance(10, 5), passed = [];
+  for (let i = 0; i < 7; i++) passed.push(a.take(0, 'pos'));
+  assert.deepEqual(passed, [true, true, true, true, true, false, false]);
+  assert.equal(a.take(0, 'where'), true, 'not shed'); assert.equal(a.flooding, false);
+  assert.equal(a.take(1000, 'pos'), true, 'a second on: ten more');
+  for (let i = 0; i < 9; i++) a.take(1000, 'lights');
+  assert.equal(a.flooding, false, 'owing its burst'); a.take(1000, 'lights'); assert.equal(a.flooding, true, 'past it');
+  assert.ok(['pos', 'plane', 'snake', 'goose'].every(t => SHED.has(t)) && !SHED.has('balls') && !SHED.has('where'));
 });

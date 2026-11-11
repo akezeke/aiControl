@@ -9,12 +9,14 @@ import { dirname, join } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { clean, cleanName } from '../client/office/leaderboard.js';
 import { dayKey } from '../client/office/daily.js';
-import { checkUp, checkDown, meetingFloor, COLOURS, PROTOCOL } from '../client/office/meeting.js';
+import { allowance, checkUp, checkDown, meetingFloor, COLOURS, PROTOCOL, SHED } from '../client/office/meeting.js';
 import { identity } from '../client/office/status.js';
 import { fail } from './requests.mjs';
 
 const FRESH_MS = 10_000, PLAN_MS = 10_000, TIMEOUT_MS = 5000, MAX_BYTES = 64 * 1024, MAX_PLAYERS = 64;
-const RETRY_MAX_MS = 30_000, PER_SECOND = 20, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'snake', 'plane', 'lights', 'remove', 'goose', 'goosed', 'poke', 'shelf']);
+// RATE, BURST: a page's allowance (meeting.js), a little under the hub's for this link, which carries the server's own words too.
+// SLOW: what a page may have waiting before positions and the like skip it.
+const RETRY_MAX_MS = 30_000, RATE = 30, BURST = 90, SLOW = 64 * 1024, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'snake', 'plane', 'lights', 'balls', 'remove', 'goose', 'goosed', 'poke', 'shelf']);
 const object = v => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // `host.tailnet.ts.net/<key>`, or with its own http(s):// in front; the key is the last part of the path.
@@ -151,24 +153,31 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
   // a page may say (look, where, pos, throw); down, only what checkDown passes. The hello is the server's, from the file.
   // `link`: { who (what it's signed in as), hostKey, ws, retry, delay, me (welcome, kept current), roster, floor, asked
   // (where it last asked to be), floorText (the floor last sent), places (id → the last pos heard of each friend at the
-  // meeting, as sent on, for a page that opens later: the hub only relays), desks (meetingFloor's desk ids, new each
+  // meeting, as sent on, for a page that opens later: the hub only relays), room (the lights' and the shelf's last word, the
+  // same way), desks (meetingFloor's desk ids, new each
   // connection), outdated (the hub refused this protocol: no more tries until a page opens) }. `pages`: page socket →
   // { where, start, count }, in the order they last connected or said where they are. One page speaks for you (its where,
   // pos and throws): the newest at the meeting, else the newest to say where it is, so a tab coming back at home (live.js
   // says where on every connect) doesn't take you out of the meeting another is in. `spoke`: the page that spoke for you last.
   let link = null, linger = null, spoke = null;
   const pages = new Map();
-  const put = (socket, text) => {
-    if (socket.readyState !== WebSocket.OPEN) return;
+  const put = (socket, text, shed = false) => {
+    if (socket.readyState !== WebSocket.OPEN || (shed && socket.bufferedAmount > SLOW)) return; // a slow tab: a newer one will come
     if (socket.bufferedAmount > 1 << 20) return socket.terminate(); // a tab that stopped reading
     socket.send(text);
   };
-  const toPages = m => { const text = JSON.stringify(m); for (const socket of pages.keys()) put(socket, text); return text; };
+  const toPages = m => { const text = JSON.stringify(m), shed = SHED.has(m.type); for (const socket of pages.keys()) put(socket, text, shed); return text; };
   const up = m => { if (link?.ws?.readyState === WebSocket.OPEN) link.ws.send(JSON.stringify(m)); };
   const speaker = () => { const said = [...pages].filter(([, page]) => page.where); return (said.findLast(([, page]) => page.where === 'meeting') ?? said.at(-1))?.[0]; };
   // Pages hear the room's gone: nobody's there, and no floor (a visitor's page walks home). The board kept isn't fresh any
-  // more either, so the sync a page sends on hearing it (online.js) asks the hub, and can come back offline.
-  const gone = l => { if (!l.me) return; l.me = l.roster = l.floor = l.plan = null; l.floorText = ''; l.places.clear(); at = -Infinity; toPages({ type: 'roster', players: [] }); toPages({ type: 'floor', floor: null }); };
+  // more either, so the sync a page sends on hearing it (online.js) asks the hub, and can come back offline. `lost`: only the
+  // link dropped and it's coming back, so they hear that first and a visit waits for the floor (visit.js).
+  const gone = (l, lost = false) => {
+    if (!l.me) return;
+    l.me = l.roster = l.floor = l.plan = null; l.floorText = ''; l.places.clear(); l.room.clear(); at = -Infinity;
+    if (lost) toPages({ type: 'lost' });
+    toPages({ type: 'roster', players: [] }); toPages({ type: 'floor', floor: null });
+  };
   function shut() {
     const l = link; if (!l) return;
     link = null; clearTimeout(l.retry); gone(l);
@@ -202,7 +211,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     ws.on('close', code => {
       clearInterval(beat);
       if (l.ws !== ws) return;
-      l.ws = null; gone(l);
+      l.ws = null; gone(l, link === l && !l.outdated);
       if (link !== l || l.outdated) return;
       // Removed by the host, or refused at the door (away 2 days, or removed while the link was down): ask the hub (not the
       // cache) at once; signed out means the pages are told why and there's no reconnecting, anything else (the hub says
@@ -238,6 +247,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     if (m.type === 'goose') l.plan = { m, at: now() }; // kept for a page that opens mid-meeting
     const text = toPages(m);
     if (m.type === 'pos') l.places.set(m.id, text);
+    if (m.type === 'lights' || m.type === 'shelf') l.room.set(m.type, text);
   }
   // The link as it should be: signed in as the file says, open while a page is live (or lingering) or while hosting.
   // Only the server's tick (floor) or a page opens one: `npm run hub` signs the host in from its own process with the same
@@ -249,7 +259,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     if (link && link.who !== who) shut(); // signed out, or another meeting, name or host
     if (!who || !(pages.size || linger || key)) return shut();
     if (link) return;
-    link = { who, hostKey: key, url: saved.url, key: saved.key, token: saved.token, name: saved.name, ws: null, retry: null, delay: retryMs, me: null, roster: null, floor: null, asked: null, floorText: '', places: new Map() };
+    link = { who, hostKey: key, url: saved.url, key: saved.key, token: saved.token, name: saved.name, ws: null, retry: null, delay: retryMs, me: null, roster: null, floor: null, asked: null, floorText: '', places: new Map(), room: new Map() };
     connect(link);
   }
   // Where the hub should have you: a host is at their own meeting while a page of theirs is open (or lingering); anyone
@@ -262,7 +272,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
     const l = link; if (!l?.me) return;
     const at = l.hostKey ? (pages.size || linger ? 'meeting' : 'home') : (pages.get(voice)?.where ?? l.asked);
     if (at === l.asked) return;
-    l.asked = at; if (at === 'home') { l.floor = l.plan = null; l.places.clear(); }
+    l.asked = at; if (at === 'home') { l.floor = l.plan = null; l.places.clear(); l.room.clear(); }
     up({ type: 'where', at });
   }
 
@@ -350,16 +360,13 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       } catch (error) { console.error('[Office online]', error.message); }
     },
 
-    // A page's live socket (ws, from liveUpgrade). At most 20 messages a second; anything else is dropped.
+    // A page's live socket (ws, from liveUpgrade), on an allowance: past it, what's shed is dropped, and flooding, everything.
     live(socket) {
-      const page = { where: null, start: -Infinity, count: 0 };
+      const page = { where: null, allowance: allowance(RATE, BURST) };
       pages.set(socket, page); clearTimeout(linger); linger = null;
       socket.on('message', (data, binary) => {
-        const t = now();
-        if (t - page.start >= 1000) { page.start = t; page.count = 0; }
-        if (++page.count > PER_SECOND || binary) return;
-        let m; try { m = checkUp(JSON.parse(data.toString('utf8'))); } catch { return; }
-        if (!m || !FROM_PAGE.has(m.type)) return;
+        let m = null; if (!binary) try { m = checkUp(JSON.parse(data.toString('utf8'))); } catch { /* junk: it still costs */ }
+        if (!page.allowance.take(now(), m?.type) || page.allowance.flooding || !m || !FROM_PAGE.has(m.type)) return;
         if (m.type === 'look') { try { online.look(m); } catch (error) { console.error('[Office online]', error.message); } return; }
         if (m.type === 'where') {
           const already = link?.asked === 'meeting';
@@ -370,7 +377,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
         }
         // The board kept still has them in: the next sync (the slip asks for one) goes to the hub.
         if (m.type === 'remove') { if (link?.hostKey && link.me) { up(m); at = -Infinity; } return; }
-        if (socket === speaker() && link?.me) up(m);
+        if (socket === speaker() && link?.me) { up(m); if (m.type === 'lights' || m.type === 'shelf') link.room.set(m.type, JSON.stringify({ ...m, id: link.me.id })); }
       });
       socket.on('error', () => socket.terminate?.());
       socket.on('close', () => {
@@ -384,7 +391,7 @@ export function createOfficeOnline({ file, hubFile = join(dirname(file), 'hub.js
       place();
       if (link?.me) { put(socket, JSON.stringify({ type: 'welcome', ...link.me }));
         if (link.plan) { const age = Math.round(now() - link.plan.at); if (age < PLAN_MS) put(socket, JSON.stringify({ ...link.plan.m, age })); }
-        if (link.roster) put(socket, JSON.stringify(link.roster)); for (const text of link.places.values()) put(socket, text); }
+        if (link.roster) put(socket, JSON.stringify(link.roster)); for (const text of [...link.places.values(), ...link.room.values()]) put(socket, text); }
     },
 
     close() { clearTimeout(linger); linger = null; pages.clear(); spoke = null; shut(); },

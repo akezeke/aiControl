@@ -9,10 +9,12 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { writeFile, rename } from 'node:fs/promises';
 import { clean, cleanName, merge } from '../client/office/leaderboard.js';
 import { dayKey } from '../client/office/daily.js';
-import { checkUp, COLOURS, PROTOCOL } from '../client/office/meeting.js';
+import { allowance, checkUp, COLOURS, PROTOCOL, SHED } from '../client/office/meeting.js';
 
 export const AWAY = 2 * 24 * 60 * 60 * 1000;
-const BODY = 4096, PLAYERS = 32, PER_SECOND = 20, SAVE_MS = 1000, SEATS = 8, LIVE_BYTES = 64 * 1024;
+// PER_SECOND: requests to /scores. RATE, BURST: each live link's allowance (meeting.js); SLOW: what a reader may have waiting
+// before positions and the like skip it.
+const BODY = 4096, PLAYERS = 32, PER_SECOND = 20, SAVE_MS = 1000, SEATS = 8, LIVE_BYTES = 64 * 1024, RATE = 40, BURST = 120, SLOW = 64 * 1024;
 const sha = value => createHash('sha256').update(value).digest();
 const fail = (status, error, extra = {}) => Object.assign(new Error(error), { status, ...extra });
 
@@ -45,7 +47,8 @@ async function readBody(req) {
 }
 
 // `hostToken()`: the token of whoever hosts (this machine's AI Control, read by scripts/hub.mjs), marked on the board.
-export async function startHub({ file, port = 47843, host = '127.0.0.1', now = Date.now, helloMs = 5000, heartbeatMs = 30_000, hostToken = () => null }) {
+// `graceMs`: how long the floor outlives the host's link, for it to come back (a restart, a blip) before the visitors walk home.
+export async function startHub({ file, port = 47843, host = '127.0.0.1', now = Date.now, helloMs = 5000, heartbeatMs = 15_000, graceMs = 10_000, hostToken = () => null }) {
   const state = hubState(file), key = sha(state.key), hostKey = sha(state.hostKey);
   // ponytail: one window for everyone. Per-player limits if a hub ever has more than a handful of friends.
   let second = -1, count = 0, timer = null, writing = Promise.resolve();
@@ -93,9 +96,16 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
   // The live room, in memory only: one connection per token. Each joined connection carries `p`: its look, where it is
   // ('home' or 'meeting') and its message window. What a peer says is cleaned by checkUp before anything is relayed.
   const wss = new WebSocketServer({ noServer: true, maxPayload: LIVE_BYTES });
-  let floor = null, hostSocket = null, arrivals = 0;
-  // A reader that lets a megabyte pile up is cut off rather than buffered for. `put` takes a message or, sent to many, its text.
-  const put = (ws, m) => { if (ws.readyState !== 1) return; if (ws.bufferedAmount > 1 << 20) return ws.terminate(); ws.send(typeof m === 'string' ? m : JSON.stringify(m)); };
+  let floor = null, hostSocket = null, arrivals = 0, orphaned = null; // orphaned: the floor's timer while its host is gone
+  // Each player's id for as long as the hub runs, so coming back on a new link is the same player to the others.
+  const ids = new Map();
+  // A reader that lets a megabyte pile up is cut off rather than buffered for; one behind by SLOW skips what's `shed`able (a
+  // newer one will come). `put` takes a message or, sent to many, its text.
+  const put = (ws, m, shed = false) => {
+    if (ws.readyState !== 1 || (shed && ws.bufferedAmount > SLOW)) return;
+    if (ws.bufferedAmount > 1 << 20) return ws.terminate();
+    ws.send(typeof m === 'string' ? m : JSON.stringify(m));
+  };
   // The goose has one keeper, the page that runs it: the host while at the meeting, else whoever has been there longest (`since`).
   const keeper = () => hostSocket && joined.has(hostSocket) && hostSocket.p.at === 'meeting' ? hostSocket : [...joined].filter(ws => ws.p.at === 'meeting').sort((x, y) => x.p.since - y.p.since)[0] ?? null;
   const roster = () => { const k = keeper(), text = JSON.stringify({ type: 'roster', players: [...joined].map(ws => ({ id: ws.p.id, name: ws.p.name, fruit: ws.p.fruit, colour: ws.p.colour, at: ws.p.at, ...ws === k && { goose: true } })) }); for (const ws of joined) put(ws, text); };
@@ -104,13 +114,16 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
     if (byToken.get(ws.p.token) === ws) byToken.delete(ws.p.token);
     const was = joined.delete(ws), entry = state.players[ws.p.token];
     if (ws.p.id && entry) { entry.seen = now(); later(); }
-    if (ws === hostSocket) { hostSocket = null; floor = null; const text = JSON.stringify({ type: 'floor', floor: null }); for (const v of at('meeting')) put(v, text); }
+    if (ws === hostSocket) {
+      hostSocket = null; clearTimeout(orphaned);
+      orphaned = setTimeout(() => { if (hostSocket) return; floor = null; const text = JSON.stringify({ type: 'floor', floor: null }); for (const v of at('meeting')) put(v, text); }, graceMs); orphaned.unref();
+    }
     if (was) roster();
   };
   const relay = (ws, m) => {
     if (!ws.p.id || (ws.p.at !== 'meeting' && ws !== hostSocket)) return;
     const text = JSON.stringify({ ...m, id: ws.p.id });
-    for (const other of joined) if (other !== ws && (other.p.at === 'meeting' || other === hostSocket)) put(other, text);
+    for (const other of joined) if (other !== ws && (other.p.at === 'meeting' || other === hostSocket)) put(other, text, SHED.has(m.type));
   };
   function heard(ws, m) {
     const p = ws.p;
@@ -123,7 +136,7 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
       const colour = [m.colour, player.colour].find(free) ?? (player.colour ? null : COLOURS.find(free));
       if (!colour) return put(ws, { type: 'refused', why: 'colour' });
       player.colour = colour; player.seen = now(); later();
-      p.id = Array.from(randomBytes(8), b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
+      p.id = ids.get(p.token) ?? Array.from(randomBytes(8), b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join(''); ids.set(p.token, p.id);
       Object.assign(p, { name: player.name, fruit: m.fruit, colour, at: 'home' }); joined.add(ws);
       put(ws, { type: 'welcome', id: p.id, colour: p.colour, at: p.at }); roster(); return;
     }
@@ -144,26 +157,24 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
       if (m.at === 'meeting' && at('meeting').length >= SEATS) return put(ws, { type: 'refused', why: 'full' });
       p.at = m.at; if (m.at === 'meeting') p.since = ++arrivals; else delete p.since; roster(); if (m.at === 'meeting' && floor) put(ws, { type: 'floor', floor });
     }
-    else if (m.type === 'pos' || m.type === 'throw' || m.type === 'snake' || m.type === 'plane' || m.type === 'shelf' || m.type === 'lights') relay(ws, m);
+    else if (m.type === 'pos' || m.type === 'throw' || m.type === 'snake' || m.type === 'plane' || m.type === 'shelf' || m.type === 'lights' || m.type === 'balls') relay(ws, m);
     else if (m.type === 'goose' || m.type === 'goosed') { if (ws === keeper()) relay(ws, m); }
     else if (m.type === 'poke') { const k = keeper(); if (k && k !== ws && p.at === 'meeting') put(k, { ...m, id: p.id }); }
-    else if (m.type === 'floor' && ws === hostSocket) { floor = m.floor; const text = JSON.stringify(m); for (const v of at('meeting')) put(v, text); }
+    else if (m.type === 'floor' && ws === hostSocket) { floor = m.floor; const text = JSON.stringify(m); for (const v of at('meeting')) if (v !== ws) put(v, text); }
   }
   wss.on('connection', (ws, _req, mine) => {
-    ws.p = { token: mine.token, windowStart: -Infinity, count: 0, alive: true };
+    ws.p = { token: mine.token, allowance: allowance(RATE, BURST), alive: true };
     ws.on('pong', () => { ws.p.alive = true; });
     const late = setTimeout(() => { if (!ws.p.id) ws.terminate(); }, helloMs); late.unref(); ws.on('close', () => clearTimeout(late));
     const old = byToken.get(mine.token); byToken.set(mine.token, ws);
-    if (mine.host) hostSocket = ws;
+    if (mine.host) { hostSocket = ws; clearTimeout(orphaned); }
     if (old) { drop(old); old.close(4000); if (mine.host) hostSocket = ws; }
     ws.on('message', (data, binary) => {
       if (ws.readyState !== 1) return; // closing (replaced, refused): it says nothing more to anyone
-      const t = now();
-      if (t - ws.p.windowStart >= 1000) { ws.p.windowStart = t; ws.p.count = 0; }
-      if (++ws.p.count > 2 * PER_SECOND) return ws.terminate(); // not close(): a flooder needn't answer it, and would keep sending
-      if (ws.p.count > PER_SECOND || binary) return;
-      let m; try { m = checkUp(JSON.parse(data.toString('utf8'))); } catch { return; }
-      if (m) heard(ws, m);
+      let m = null; if (!binary) try { m = checkUp(JSON.parse(data.toString('utf8'))); } catch { /* junk: it still costs */ }
+      const pass = ws.p.allowance.take(now(), m?.type);
+      if (ws.p.allowance.flooding) return ws.terminate(); // not close(): a flooder needn't answer it, and would keep sending
+      if (pass && m) heard(ws, m);
     });
     ws.on('close', () => drop(ws)); ws.on('error', () => ws.terminate());
   });
@@ -199,6 +210,6 @@ export async function startHub({ file, port = 47843, host = '127.0.0.1', now = D
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   return {
     server, flush,
-    async close() { await flush(); clearInterval(beat); for (const ws of wss.clients) ws.terminate(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); },
+    async close() { await flush(); clearInterval(beat); clearTimeout(orphaned); for (const ws of wss.clients) ws.terminate(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); },
   };
 }

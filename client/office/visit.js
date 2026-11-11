@@ -5,13 +5,14 @@
 //   then: ask, fadeOut, build (draw the host's floor, again on each new one), place (inside the door), fadeIn,
 //         goHome (say you're home, draw your own office), nobody (the door's card says so), wait (a timeout after WAIT_MS).
 // A hidden tab or a locked phone closes the page's link (live.js), which then says there's no floor: that's the page, not the
-// host, so away you stay. Shown again the link comes back and asks for the floor; none by the timeout, and you go home.
-export const FADE_MS = 350, WAIT_MS = 3000;
+// host, so away you stay. Shown again the link comes back and asks for the floor; none by the timeout, and you go home. A link
+// lost (the page's, or its AI Control's to the hub: `lost`) is waited for the same way, LOST_MS (`patient`), as it comes back by itself.
+export const FADE_MS = 350, WAIT_MS = 3000, LOST_MS = 10_000;
 
 const to = (at, then, extra = {}) => ({ at, ...extra, then });
 // `state`: { at: home | leaving | away | returning, fading (leaving: the fade out's begun), hidden, waiting (away: shown again,
-// the floor not back yet) }.
-// `event`: { type: door | floor | floorGone | left | faded | hidden | shown | timeout, reduced }.
+// or the link lost, the floor not back yet), patient (waiting LOST_MS) }.
+// `event`: { type: door | floor | floorGone | left | faded | hidden | shown | lost | timeout, reduced }.
 export function visitStep(state, { type, reduced = false }) {
   const gone = type === 'floorGone' || type === 'left';
   switch (state.at) {
@@ -27,6 +28,7 @@ export function visitStep(state, { type, reduced = false }) {
       if (type === 'floor') return to('away', ['build']);
       if (type === 'hidden') return to('away', [], { hidden: true });
       if (type === 'shown' && state.hidden) return to('away', ['wait'], { waiting: true });
+      if (type === 'lost' && !state.hidden && !state.waiting) return to('away', ['wait'], { waiting: true, patient: true });
       if (type === 'floorGone' && (state.hidden || state.waiting)) break;
       if (type === 'door' || gone || type === 'timeout' && state.waiting) return reduced ? to('home', ['goHome', 'place']) : to('returning', ['fadeOut']);
       break;

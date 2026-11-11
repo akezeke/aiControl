@@ -106,7 +106,7 @@ test("snakes go to the others at the meeting, with the sender's id", async t => 
   c.send(snake); assert.equal((await b.quiet('snake')).length, 0);
 });
 
-test("paper planes and the lights go to the others at the meeting, with the sender's id", async t => {
+test("paper planes, the lights and the balls go to the others at the meeting, with the sender's id", async t => {
   const h = await setup(t);
   const [a, b, c] = [await h.join('a'), await h.join('b'), await h.join('c')];
   for (const p of [a, b]) p.send({ type: 'where', at: 'meeting' });
@@ -116,6 +116,8 @@ test("paper planes and the lights go to the others at the meeting, with the send
   a.send({ type: 'plane', mode: 'off' }); assert.deepEqual(await b.next('plane'), { type: 'plane', mode: 'off', id: a.welcome.id });
   assert.equal((await c.quiet('plane')).length, 0);
   a.send({ type: 'lights', on: false }); assert.deepEqual(await b.next('lights'), { type: 'lights', on: false, id: a.welcome.id });
+  const balls = { type: 'balls', list: [['football', 0, 2, 1, 5, 0.11, 5, 2, 0, 0]] };
+  a.send(balls); assert.deepEqual(await b.next('balls'), { ...balls, id: a.welcome.id });
   assert.equal((await c.quiet('lights')).length, 0);
 });
 
@@ -153,7 +155,7 @@ test('goose plans and events go out from the keeper only; pokes go to the keeper
 });
 
 test('only the host sets the floor; visitors get it when they arrive; it goes null when the host leaves', async t => {
-  const h = await setup(t);
+  const h = await setup(t, { graceMs: 0 });
   const host = await h.join('h', { host: true }), a = await h.join('a'), b = await h.join('b');
   a.send({ type: 'where', at: 'meeting' }); a.send({ type: 'floor', floor: FLOOR });
   assert.equal((await a.quiet('floor')).length, 0);
@@ -165,17 +167,30 @@ test('only the host sets the floor; visitors get it when they arrive; it goes nu
   const c = await h.join('c'); c.send({ type: 'where', at: 'meeting' }); assert.equal((await c.quiet('floor')).length, 0);
 });
 
-test('the hub drops a flood and keeps the rest', async t => {
+// The clock stands still in these, so nothing refills: a link has its burst (120, less its hello and where) and no more.
+test('a burst goes through; past it positions are let go but the rest still goes; a flood is cut', async t => {
   const h = await setup(t, { now: () => 5000 });
   const a = await h.join('a'), b = await h.join('b');
   a.send({ type: 'where', at: 'meeting' }); b.send({ type: 'where', at: 'meeting' }); await lastRoster(a);
-  for (let i = 0; i < 30; i++) a.send({ type: 'pos', x: i, y: 0, z: 0, yaw: 0, pose: 'walking' });
-  await new Promise(r => setTimeout(r, 200));
-  const got = b.inbox.filter(m => m.type === 'pos').length; assert.ok(got >= 15 && got <= 20, `got ${got}`);
+  for (let i = 0; i < 130; i++) a.send({ type: 'pos', x: i, y: 0, z: 0, yaw: 0, pose: 'walking' });
+  a.send({ type: 'lights', on: false });
+  assert.deepEqual(await b.next('lights'), { type: 'lights', on: false, id: a.welcome.id }, 'not a position: it goes');
+  const got = b.inbox.filter(m => m.type === 'pos').length; assert.ok(got >= 110 && got <= 118, `got ${got}`);
   assert.equal(a.closed, null); assert.equal((await lastRoster(b)).length, 2);
-  for (let i = 0; i < 30; i++) a.send({ type: 'pos', x: i, y: 0, z: 0, yaw: 0, pose: 'walking' });
+  for (let i = 0; i < 120; i++) a.send({ type: 'lights', on: true });
   assert.equal(await a.closes(), 1006);
   await new Promise(r => setTimeout(r, 100)); assert.equal((await lastRoster(b)).length, 1);
+});
+
+test("the host's floor waits for its link to come back: a blip isn't the end of the meeting, and the host's the same player", async t => {
+  const h = await setup(t, { graceMs: 400 });
+  const host = await h.join('h', { host: true }), a = await h.join('a');
+  a.send({ type: 'where', at: 'meeting' }); host.send({ type: 'floor', floor: FLOOR }); await a.next('floor');
+  host.ws.terminate(); await new Promise(r => setTimeout(r, 100));
+  const back = await h.join('h', { host: true });
+  assert.equal(back.welcome.id, host.welcome.id);
+  assert.equal((await a.quiet('floor', 500)).length, 0, 'no floor gone');
+  const b = await h.join('b'); b.send({ type: 'where', at: 'meeting' }); assert.equal((await b.next('floor')).floor.room.width, 10, 'kept for whoever comes');
 });
 
 test("a flooder cut off relays nothing more, even one that never reads the hub's close", async t => {
@@ -184,7 +199,7 @@ test("a flooder cut off relays nothing more, even one that never reads the hub's
   const a = await h.join('a'), b = await h.join('b');
   a.send({ type: 'where', at: 'meeting' }); b.send({ type: 'where', at: 'meeting' }); await lastRoster(a);
   a.ws._socket.pause(); // it keeps writing, and never reads (or answers) a close
-  for (let i = 0; i < 45; i++) a.send({ type: 'pos', x: i, y: 0, z: 0, yaw: 0, pose: 'walking' });
+  for (let i = 0; i < 300; i++) a.send({ type: 'pos', x: i, y: 0, z: 0, yaw: 0, pose: 'walking' });
   await new Promise(r => setTimeout(r, 200));
   assert.equal((await lastRoster(b)).length, 1, 'dropped from the room at once');
   clock += 1000; b.inbox.length = 0;
@@ -212,7 +227,7 @@ test('the same token twice keeps one player', async t => {
   const again = await h.join('a2', { tok: token('a') });
   assert.equal(await a.closes(), 4000);
   const roster = await lastRoster(watcher); assert.equal(roster.length, 2);
-  assert.ok(roster.some(p => p.id === again.welcome.id) && !roster.some(p => p.id === a.welcome.id));
+  assert.equal(again.welcome.id, a.welcome.id, 'the same player to the others'); assert.ok(roster.some(p => p.id === a.welcome.id));
 });
 
 test("a connection replaced by the same player's newer one says nothing more, even one that never reads its close", async t => {
@@ -256,7 +271,7 @@ test('a socket that never says hello is closed', async t => {
 });
 
 test('a peer that stops answering pings is dropped, and a vanished host takes the floor with it', async t => {
-  const h = await setup(t, { heartbeatMs: 100 });
+  const h = await setup(t, { heartbeatMs: 100, graceMs: 0 });
   const host = await h.join('h', { host: true }), a = await h.join('a'), b = await h.join('b');
   a.send({ type: 'where', at: 'meeting' }); host.send({ type: 'floor', floor: FLOOR }); await a.next('floor');
   host.ws._socket.pause(); b.ws._socket.pause();

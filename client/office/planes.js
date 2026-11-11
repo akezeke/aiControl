@@ -15,6 +15,7 @@ import { toonMaterial, withOutline } from './toon.js';
 import { nearestOpen } from './path.js';
 import { dayKey, fnv1a } from './daily.js';
 import { createTrack, atMeeting, tag } from './friends.js';
+import { mm } from './live.js';
 import { WALL_H } from './furniture.js';
 import { newFlight, launch, fly, makeCourse, endless as endlessRings, holds, better, gap, medal, medalTime, MEDALS, HOLE, LAUNCH, AHEAD as LAID } from './planes-course.js';
 
@@ -87,7 +88,7 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
   let bests = {}; try { bests = JSON.parse(localStorage.getItem(store)) || {}; } catch { /* no storage here */ }
   let f = null, course = null, key = '', sig = '', looked = 0, active = false, linger = 0, shake = 0, since = 0, fresh = true, shown = '', record = false, said = null, held = null;
   let told = -Infinity, out = false; // when the meeting last heard; whether it has a plane of yours up
-  const tell = force => { const now = performance.now(); if (!force && now - told < TELL_MS) return; told = now; out = true; send({ type: 'plane', mode: 'fly', x: f.x, y: f.y, z: f.z, yaw: f.yaw, pitch: f.pitch, roll: f.roll, t: Math.round(now) }); };
+  const tell = force => { const now = performance.now(); if (!force && now - told < TELL_MS) return; told = now; out = true; send({ type: 'plane', mode: 'fly', x: mm(f.x), y: mm(f.y), z: mm(f.z), yaw: mm(f.yaw), pitch: mm(f.pitch), roll: mm(f.roll), t: Math.round(now) }); };
   const recall = () => { if (out) { send({ type: 'plane', mode: 'off' }); out = false; } };
   const keys = new Set(), stick = { id: null, x: 0, y: 0, dx: 0, dy: 0 }, from = new THREE.Vector3(), look = new THREE.Vector3(), wobble = new THREE.Vector3();
   const root = new THREE.Group(); root.visible = false;

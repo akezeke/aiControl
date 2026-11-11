@@ -41,7 +41,9 @@ test('it does not connect unless joined, and relays the server', () => {
   const me = { id: 'a', name: 'Anna', fruit: 'kiwi', colour: '#3a86ff', at: 'home' };
   s.say({ type: 'welcome', id: 'a', colour: '#3a86ff', at: 'home' }); s.say({ type: 'roster', players: [me] });
   assert.deepEqual(r.live.roster(), [me]); assert.equal(r.live.id(), 'a'); assert.equal(got.length, 1);
+  const order = []; for (const type of ['lost', 'roster', 'floor']) r.live.on(type, () => order.push(type));
   r.joined = false; r.live.refresh(); assert.ok(s.closed); assert.deepEqual(r.live.roster(), []); assert.equal(r.live.floor(), null);
+  assert.deepEqual(order, ['lost', 'roster', 'floor'], 'lost first, so a visit waits rather than walking home');
 });
 
 test('reconnects back off to 30 s', () => {

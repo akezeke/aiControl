@@ -174,3 +174,14 @@ test('talking to someone: walk over at home; visiting, only your own open, strai
   assert.equal(talkHow(undefined, { away: true, own }), null);
   assert.equal(talkHow(undefined, { away: false, own }), null);
 });
+
+test("a link lost (the page's, or its AI Control's) keeps a visitor there a while for it to come back; hidden, it's the tab's", () => {
+  const away = run(HOME, 'door', 'floor', 'faded').state;
+  const back = run(away, 'lost', 'floorGone', 'floor');
+  assert.deepEqual(back.steps, [['wait'], [], ['build']]); assert.equal(back.state.at, 'away'); assert.ok(!back.state.waiting, 'back');
+  assert.equal(run(away, 'lost').state.patient, true, 'the longer wait');
+  const gone = run(away, 'lost', 'floorGone', 'timeout');
+  assert.deepEqual(gone.steps.at(-1), ['fadeOut'], 'none came: home'); assert.equal(gone.state.at, 'returning');
+  assert.deepEqual(run(away, 'hidden', 'lost').steps, [[], []], 'hidden: no wait till shown');
+  assert.deepEqual(run(HOME, 'lost').steps, [[]], 'at home: nothing');
+});

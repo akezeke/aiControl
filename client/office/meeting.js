@@ -12,8 +12,27 @@ export const POSES = ['standing', 'walking', 'running', 'holding', 'playing'];
 // The meeting's protocol: in every hello, and the hub refuses a link speaking another (refused { why: 'version' }). Raise it when
 // a message changes so that the other end would misread it.
 export const PROTOCOL = 1;
+// What's said again soon anyway, a newer word replacing it, so it may be let go when a link is busy or slow (hub.mjs and
+// office-online.mjs shed these first). Everything else (where, look, the floor, a throw, the lights, the balls...) always goes.
+export const SHED = new Set(['pos', 'plane', 'snake', 'goose']);
+// A sender's allowance: `rate` messages a second on average, up to `burst` at once (a stalled network's backlog lands all
+// together). Each message costs one; past the allowance what's SHED is let go and the rest still goes, owed. A sender owing
+// more than `burst` is flooding. `take(t ms, type)`: true to pass it on.
+export function allowance(rate, burst) {
+  let tokens = burst, last = null;
+  return {
+    take(t, type) { tokens = Math.min(burst, tokens + (last === null ? 0 : Math.max(0, t - last) * rate / 1000)) - 1; last = t; return tokens >= 0 || !SHED.has(type); },
+    get flooding() { return tokens < -burst; },
+  };
+}
 // Everything props.js (BALLS, LOOSE) and levels.js (ITEMS) can throw; a test keeps this in step with them.
 export const KINDS = ['football', 'paper', 'rubber', 'roll', 'mug', 'plate', 'teabag', 'cup', 'duck', 'books', 'plant', 'cactus', 'frame'];
+// The balls props.js shares at a meeting (its BALLS' keys, in step by a test), and how many of a kind there are at most.
+export const BALL_KINDS = ['football', 'paper'];
+const BALL_MOST = 8;
+// One ball's word (props.js): [kind, i, n (its claims), state (0 at rest, 1 on the move, 2 in a hand), x, y, z, vx, vy, vz].
+const ball = e => Array.isArray(e) && e.length === 10 && BALL_KINDS.includes(e[0]) && Number.isInteger(e[1]) && e[1] >= 0 && e[1] < BALL_MOST
+  && Number.isInteger(e[2]) && e[2] >= 0 && e[2] < 1e9 && [0, 1, 2].includes(e[3]) && num(e[4], -12, 200) && num(e[5], -1, 6) && num(e[6], -12, 200) && e.slice(7).every(v => num(v, -40, 40));
 // Everything status.js's styles put in the head slot.
 const HEAD = ['bow', 'flower', 'beanie', 'cap', 'headphones'], SCREENS = ['off', 'dark', 'green', 'amber', 'blue', 'red'];
 const MAX_PODS = 64, MAX_DESKS = 256, MAX_PLAYERS = 32;
@@ -75,6 +94,9 @@ const checks = {
   plane: m => m.mode === 'off' ? { type: 'plane', mode: 'off' }
     : m.mode === 'fly' && num(m.x, -12, 200) && num(m.y, -1, 6) && num(m.z, -12, 200) && num(m.yaw) && num(m.pitch, -Math.PI, Math.PI) && num(m.roll, -Math.PI, Math.PI) && num(m.t, 0)
       ? { type: 'plane', mode: 'fly', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pitch: m.pitch, roll: m.roll, t: m.t } : null,
+  // Balls moved by the sender, or (`again`) what it knows of them, said for someone arriving.
+  balls: m => Array.isArray(m.list) && m.list.length >= 1 && m.list.length <= BALL_MOST * BALL_KINDS.length && m.list.every(ball) && (m.again === undefined || m.again === true)
+    ? { type: 'balls', list: m.list.map(e => [...e]), ...m.again && { again: true } } : null,
   // The room's lights, switched on or off by whoever did it.
   lights: m => typeof m.on === 'boolean' ? { type: 'lights', on: m.on } : null,
   // The secret room's shelf, slid open or shut by whoever did it.
@@ -100,11 +122,14 @@ const down = {
   poke: withId('poke', ['why']),
   shelf: withId('shelf', ['open']),
   lights: withId('lights', ['on']),
+  balls: withId('balls', ['list', 'again']),
   plane: withId('plane', ['mode', 'x', 'y', 'z', 'yaw', 'pitch', 'roll', 't']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,
   // The hub's answer to hello: your id in the roster, the colour you got and where you are.
   welcome: m => id(m.id) && colour(m.colour) && (m.at === 'home' || m.at === 'meeting') ? { type: 'welcome', id: m.id, colour: m.colour, at: m.at } : null,
+  // Your AI Control's link to the hub dropped (office-online.mjs): it's coming back, so a visit waits for the floor (visit.js).
+  lost: () => ({ type: 'lost' }),
 };
 export const checkDown = msg => run(down, msg);
 

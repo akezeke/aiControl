@@ -243,7 +243,7 @@ test('a body rests where its home is, and an escaped one goes back there still',
 const blank = () => new Proxy({}, { get: (t, k) => k in t ? t[k] : () => ({ addColorStop() {} }), set: (t, k, v) => { t[k] = v; return true; } });
 const box3 = (x0, y0, z0, x1, y1, z1, extra) => Object.assign(box(x0, y0, z0, x1, y1, z1), extra);
 const WEST = -(WALL_T + KITCHEN.width); // how far the building goes that way
-function office({ colliders = [], still = false, people = [] } = {}) {
+function office({ colliders = [], still = false, people = [], net = {} } = {}) {
   const heard = [], scene = new THREE.Scene(), player = { position: V(1, 1.6, 1), forward: V(0, 0, -1), yaw: 0, flight: null }, size = { width: 10, depth: 10 };
   const room = { flightColliders: colliders, kitchen: { shown: true, within: [], inside: p => { const z = p.z - kitchenDoor(size.depth); return p.x < -WALL_T / 2 && p.x > WEST && z > KITCHEN.back && z < KITCHEN.front; } }, secret: { shown: true, bounds: r => ({ left: WEST, width: r.width + 3 - WEST, depth: r.depth }), inside: p => p.x > 10.1 && p.z > size.depth - 7.9 && p.z < size.depth - 0.7, get spot() { return V(9.1, 0, size.depth - 3.8); } } };
   const characters = new Map(people.map(p => [p.id, { scale: 1, root: { visible: true } }]));
@@ -251,7 +251,7 @@ function office({ colliders = [], still = false, people = [] } = {}) {
   const camera = new THREE.PerspectiveCamera(); camera.position.set(1, 1.6, 1);
   const view = { amount: 0, drunk: 0 };
   globalThis.document = { createElement: () => ({ getContext: blank }) };
-  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => size, reducedMotion: () => still, onHit: (id, line) => heard.push([id, line]), hand: createHand(camera) });
+  const props = createProps(scene, { room, cast, camera, player, view, bounds: () => size, reducedMotion: () => still, onHit: (id, line) => heard.push([id, line]), hand: createHand(camera), ...net });
   delete globalThis.document;
   const ball = scene.children[0].children[0].userData.prop(0); // the football
   const run = (seconds, rate = 60) => { for (let i = 0; i < seconds * rate; i++) props.update(1 / rate); };
@@ -601,4 +601,55 @@ test('the room grows: what lies in the kitchen goes along with it, and what lies
   assert.deepEqual(other.pos.toArray(), stays.toArray());
   size.depth += 2; room.flightColliders = [...room.flightColliders]; run(1);
   assert.ok(room.kitchen.inside(ball.pos) && Math.abs(ball.pos.z - inKitchen.z - 2) < 1e-9, 'it stays where it was put');
+});
+
+// Two offices at a meeting, each told what the other's balls do (as the hub would, with the sender's id), a frame at a time.
+function meeting() {
+  const words = [], link = (id, other) => ({ me: () => id, send: m => words.push([other, m, id]) });
+  const offices = {}; offices.a = office({ net: link('a', 'b') }); offices.b = office({ net: link('b', 'a') });
+  const both = seconds => { for (let i = 0; i < seconds * 60; i++) { offices.a.props.update(1 / 60); offices.b.props.update(1 / 60); for (const [to, m, from] of words.splice(0)) offices[to].props.heard(m.list, from, m.again); } };
+  return { ...offices, words, both };
+}
+const pickUp = ({ props, ball, player, camera, run }) => { player.position.set(1, 1.6, 5); camera.position.copy(player.position); run(0.05); ball.pos.set(1.3, 1.2, 5); props.grab(ball); };
+
+test('a ball at a meeting: in your hand it is in your hand for the others, thrown it flies there and lands where it landed for you', () => {
+  const m = meeting(), told = [];
+  pickUp(m.a); m.both(0.8); // the hand's reached for it
+  assert.equal(m.a.ball.mine, true); assert.equal(m.b.ball.away, true, 'in a hand');
+  assert.equal(m.b.scene.children[0].children[0].userData.prop(0), null, 'not to be picked up');
+  assert.ok(m.b.ball.pos.distanceTo(m.a.ball.pos) < 0.05, `${m.b.ball.pos.toArray()} by ${m.a.ball.pos.toArray()}`);
+  m.a.props.throw(V(1, 0.3, 0).normalize(), false, 1);
+  for (let i = 0; i < 12; i++) { m.both(0.25); told.push(m.b.ball.pos.distanceTo(m.a.ball.pos)); }
+  assert.ok(Math.max(...told.slice(0, 4)) < 0.6, `close behind in flight: ${told}`);
+  assert.equal(m.a.ball.rest, true); assert.equal(m.b.ball.rest, true);
+  assert.deepEqual(m.b.ball.pos.toArray(), m.a.ball.pos.toArray(), 'where it came to rest');
+  const quiet = m.words.length; m.both(1); assert.equal(m.words.length, quiet, 'nothing more to say');
+  pickUp(m.a); m.both(0.3); assert.equal(m.b.ball.away, true);
+  m.b.props.gone(new Set(['a'])); assert.equal(m.b.ball.away, true, 'still here');
+  m.b.props.gone(new Set()); m.b.run(2); assert.equal(m.b.ball.away, false); assert.ok(m.b.ball.rest && m.b.ball.pos.y < 0.12, 'gone: it falls');
+});
+
+test('a ball at a meeting: the newer claim wins, two at once go to the higher id, and someone arriving hears where it lies', () => {
+  const m = meeting();
+  m.a.send([5, 1, 5], [2, 0, 0]); m.a.ball.mine = false; m.a.props.heard([['football', 0, 3, 1, 5, 1, 5, 2, 0, 0]], 'b'); m.both(2);
+  assert.equal(m.a.ball.n, 3); assert.equal(m.a.ball.mine, false);
+  m.a.props.heard([['football', 0, 2, 0, 1, 0.11, 1, 0, 0, 0]], 'b'); assert.notDeepEqual(m.a.ball.pos.toArray(), [1, 0.11, 1], 'an older claim is stale');
+  // Both claim it from 3 at once: b's the higher id, so b has it on both.
+  m.a.ball.n = m.b.ball.n = 4; m.a.ball.mine = m.b.ball.mine = true;
+  m.a.props.heard([['football', 0, 4, 0, 2, 0.11, 2, 0, 0, 0]], 'b'); m.b.props.heard([['football', 0, 4, 0, 3, 0.11, 3, 0, 0, 0]], 'a');
+  assert.equal(m.a.ball.mine, false); assert.equal(m.b.ball.mine, true); assert.deepEqual(m.a.ball.pos.toArray(), [2, 0.11, 2]);
+  // Arriving: c's balls are on their spots with no claims; what a says again puts its football where a has it, and a minds no repeat.
+  const c = office({ net: { me: () => 'c', send: () => {} } }), known = m.a.props.known();
+  assert.deepEqual(known.map(w => w.slice(0, 4)), [['football', 0, 4, 0]]);
+  c.props.heard(known, 'a', true); assert.deepEqual(c.ball.pos.toArray(), [2, 0.11, 2]);
+  m.a.ball.pos.set(2.5, 0.11, 2); m.a.props.heard(m.b.props.known(), 'b', true); assert.equal(m.a.ball.pos.x, 2.5, 'said again, not news');
+  // Through the door to another office: back on its spot, no claims.
+  c.props.reset(); c.run(0.1); assert.equal(c.ball.n, 0); assert.ok(Math.abs(c.ball.pos.x - 6.8) < 0.01 && Math.abs(c.ball.pos.z - 7.4) < 0.01, `${c.ball.pos.toArray()}`);
+});
+
+test('a ball you kick is yours to tell of, and one it knocks too', () => {
+  const words = [], a = office({ net: { me: () => 'a', send: m => words.push(m) } }), paper = a.scene.children[0].children[1].userData.prop(0);
+  a.send([3, 0.11, 5], [3, 0, 0]); paper.pos.set(4, 0.045, 5); paper.rest = false; a.ball.mine = true; a.ball.n = 1; a.run(4);
+  assert.equal(paper.mine, true); assert.equal(paper.n, 1);
+  assert.ok(words.some(w => w.list.some(e => e[0] === 'paper' && e[3] === 0)), 'and where it came to rest');
 });

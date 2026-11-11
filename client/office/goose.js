@@ -255,7 +255,7 @@ export function createGoose(scene, { props, player, walkable, bounds, busy, redu
     } else if (mode === 'reach') {
       face(loot.pos, dt);
       if (!loot.carried && !reach(at, loot.pos)) { loot = null; loiter(); } // it moved
-      else if (!loot.carried) { if (t > until - 0.4 && (mine = props.carry(loot, bill))) tell({ type: 'goosed', what: 'take', kind: loot.kind.key, spot: round2(loot.pos.toArray()) }); }
+      else if (!loot.carried) { if (t > until - 0.4 && (mine = props.carry(loot, bill, true))) tell({ type: 'goosed', what: 'take', kind: loot.kind.key, spot: round2(loot.pos.toArray()) }); }
       else if (t > until && !go(spot(3), 'haul')) { mode = 'drop'; until = t + 0.6; } // nowhere to take it: down it goes here
     } else if (mode === 'haul') { if (follow(dt)) { mode = 'drop'; until = t + 0.6; } }
     else if (mode === 'drop') { if (t > until) { drop(); honk(); loiter(); } }
