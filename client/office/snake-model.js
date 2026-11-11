@@ -12,6 +12,8 @@ import { DIRS, SPAN } from './snake.js'; // only used inside functions: snake.js
 // The body: its radius (m); rings along it at most, points round each, rings a segment (4 cm apart); how many segments either
 // side of a corner it's rounded off; how long the tail tapers, at most (m). How fast the head swings round to a new heading.
 const R = 0.1, RINGS = 1200, AROUND = 12, PER = 6, ROUND = 0.36, TAIL = 1.2, HEAD_TURN = 22;
+// Round each ring, the same angles every time: worked out once (bend runs them for every ring, every frame).
+const SIN = Array.from({ length: AROUND + 1 }, (_, a) => Math.sin(a / AROUND * Math.PI * 2)), COS = SIN.map((_, a) => Math.cos(a / AROUND * Math.PI * 2));
 const INK = '#1b1a1f', CREAM = new THREE.Color('#fff4d6');
 const ball = (r, x, y, z, sx = 1, sy = 1, sz = 1) => new THREE.SphereGeometry(r, 16, 12).scale(sx, sy, sz).translate(x, y, z);
 export const spin = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
@@ -32,9 +34,9 @@ export function snakeColours(look) {
 // its bit of the snake while a corner's cut short mid-step (spaced by length, the rings slid as it came and went, the more so
 // the further down the body: the tail shook).
 const p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
+const along = (points, x, o) => { const i = Math.min(Math.max(Math.floor(x), 0), points.length - 2); return o.lerpVectors(points[i], points[i + 1], Math.min(Math.max(x - i, 0), 1)); };
 export function spine(points, m, out, tangent) {
-  const at = (x, o) => { const i = Math.min(Math.max(Math.floor(x), 0), points.length - 2); return o.lerpVectors(points[i], points[i + 1], Math.min(Math.max(x - i, 0), 1)); };
-  at(m - ROUND, p1); at(m + ROUND, p2); tangent?.subVectors(p2, p1);
+  along(points, m - ROUND, p1); along(points, m + ROUND, p2); tangent?.subVectors(p2, p1);
   return out.addVectors(p1, p2).multiplyScalar(0.5);
 }
 
@@ -85,7 +87,7 @@ export function createSnakeModel(look) {
       mid.addScaledVector(side, sway * Math.sin(d * 14 - time * 9) * Math.min(1, d * 3));
       const radius = R * (0.15 + 0.85 * smooth(0, tail, long - d)) * (1 + 0.45 * Math.exp(-(((d - bulge) / 0.1) ** 2)));
       for (let a = 0; a <= AROUND; a++) {
-        const th = a / AROUND * Math.PI * 2, sx = Math.sin(th), cy = Math.cos(th), k = (r * (AROUND + 1) + a) * 3;
+        const sx = SIN[a], cy = COS[a], k = (r * (AROUND + 1) + a) * 3;
         const nx = side.x * sx, ny = cy, nz = side.z * sx; // round it: side × sin, up × cos (side × up runs along the body, as the cylinder's rows do)
         pos[k] = mid.x + nx * radius; pos[k + 1] = radius * 0.85 * (1 + cy); pos[k + 2] = mid.z + nz * radius;
         nor[k] = nx; nor[k + 1] = ny; nor[k + 2] = nz;
