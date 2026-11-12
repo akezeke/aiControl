@@ -95,7 +95,7 @@ export function createDesktop(container, {
   const installed = pid => store.desktop().icons.some(i => i.kind === 'cart' && i.pid === pid);
 
   const ui = { dialog: spec => openDialog(spec).promise, menu: (items, at, opts) => openMenu(items, at, opts) };
-  const player = createPlayer({ online });
+  const player = createPlayer({ online, canFocus: () => seated && shownIn(ws, 'pico8') && W.frontmost(ws) === 'pico8' });
   player.onPlay(cart => play(cart));
   const notepad = createNotepad({ ui });
   notepad.onClose(() => closeWindow('notepad'));

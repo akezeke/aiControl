@@ -6,7 +6,7 @@ import { thumbName, widgetUrl } from './carts.js';
 export const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox';
 const W = 526, H = 522;
 
-export function createPlayer({ doc = document, online = () => navigator.onLine, thumbUrl = name => '/api/office/bbs/thumb/' + name } = {}) {
+export function createPlayer({ doc = document, online = () => navigator.onLine, thumbUrl = name => '/api/office/bbs/thumb/' + name, canFocus = () => true } = {}) {
   const make = (tag, className, text) => { const n = doc.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
   const node = make('div', 'pc-client pc-player');
   Object.assign(node.style, { width: `${W}px`, height: `${H}px`, position: 'relative', overflow: 'hidden', background: '#000', color: '#fff' });
@@ -30,7 +30,8 @@ export function createPlayer({ doc = document, online = () => navigator.onLine, 
     const f = frame = make('iframe');
     for (const [name, value] of Object.entries({ src: widgetUrl(next.pid), title: next.title, width: String(W), height: String(H), scrolling: 'no', referrerpolicy: 'no-referrer', allow: 'fullscreen; gamepad; autoplay', sandbox: SANDBOX })) f.setAttribute(name, value);
     f.style.position = 'absolute'; f.style.left = f.style.top = '0'; f.style.border = '0';
-    f.addEventListener('load', () => f.focus());
+    // Only while its window is still in front: the user may have moved on during the 1-3 s load.
+    f.addEventListener('load', () => { if (canFocus()) f.focus(); });
     // Behind the frame till the widget paints over it.
     fill(note('Needs internet'), f);
   }

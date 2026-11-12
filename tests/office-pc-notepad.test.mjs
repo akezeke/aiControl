@@ -75,3 +75,7 @@ test('draw: white, the first lines that fit, in Courier Prime', t => {
   const texts = g.calls.filter(c => c.name === 'fillText').map(c => c.args[0]); assert.deepEqual(texts, ['a', 'b', 'c']);
   assert.equal(g.calls[0].state.fillStyle, '#fff'); assert.match(g.calls.find(c => c.name === 'fillText').state.font, /Courier Prime/);
 });
+
+test('the textarea has Word Wrap off, so salaries.txt keeps its columns', t => {
+  useDom(t); assert.equal(createNotepad().node.attributes.wrap, 'off');
+});

@@ -47,7 +47,7 @@ export function salariesText(sessions, now) {
 
 export function createNotepad({ doc = document, ui } = {}) {
   const node = doc.createElement('textarea');
-  node.className = 'pc-notepad'; node.setAttribute('spellcheck', 'false');
+  node.className = 'pc-notepad'; node.setAttribute('spellcheck', 'false'); node.setAttribute('wrap', 'off'); // wide rows scroll, as with Word Wrap off
   let dirty = false, closeHandler = null;
   node.addEventListener('input', () => { dirty = true; });
   const set = text => { node.value = text; };

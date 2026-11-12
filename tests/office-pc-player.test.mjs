@@ -109,3 +109,9 @@ test('fixture: capture listeners on ancestors run first, top down; bubble ones a
   b.dispatch('x'); assert.deepEqual(seen, ['doc-capture', 'a-capture', 'b', 'a-bubble']);
   seen.length = 0; doc.addEventListener('y', e => e.stopPropagation(), true); b.addEventListener('y', () => seen.push('b')); b.dispatch('y'); assert.deepEqual(seen, []);
 });
+
+test('on load the frame focuses itself only while canFocus() is true', t => {
+  const doc = useDom(t); let ok = false; const p = createPlayer({ online: () => true, canFocus: () => ok });
+  p.play({ pid: 'a-1', title: 'A' }); p.frame().dispatch('load'); assert.notEqual(doc.activeElement, p.frame());
+  ok = true; p.frame().dispatch('load'); assert.equal(doc.activeElement, p.frame());
+});

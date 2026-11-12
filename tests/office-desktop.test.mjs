@@ -785,3 +785,9 @@ test('a page that loads late leaves a playing game its focus', async t => {
   await tick(); await tick();
   assert.ok(find(d.root, n => n.tag === 'button' && n.textContent === '▶ Play'), 'the page is in'); assert.ok(doc.activeElement === frame);
 });
+
+test('a loading cart takes focus only while its window is in front', async t => {
+  const { d, doc } = await sat(t); const frame = playing(d, { pid: 'a-1', title: 'A' }); await openBrowser(d);
+  frame.dispatch('load'); assert.notEqual(doc.activeElement, frame, 'Info Highway is in front');
+  click(task(d.root, 'A - PICO-8')); frame.dispatch('load'); assert.equal(doc.activeElement, frame, 'PICO-8 is in front');
+});
