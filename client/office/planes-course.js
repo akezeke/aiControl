@@ -23,7 +23,7 @@ export const SLOW = 1.6, CLIMBS = 3.2;
 const LEAST = 0.15;
 // A ring's lift: LIFT m/s up, dying away (about a third of that in metres all told).
 const LIFT = 0.6;
-export const SIZE = 0.06, HOLE = 0.42; // what the plane touches things from (m); a ring's opening
+export const SIZE = 0.06, HOLE = 0.42, TUBE = 0.033; // what the plane touches things from (m); a ring's opening, its hoop's thickness
 // Come at slantwise, a ring's opening counts a little wider the way it's slanted (halfway to as wide as head on), to SIDE holes.
 // A plane half over the rim still takes it: its middle may cross up to RIM (m) past the opening, the hoop and a bit of wing.
 const SIDE = 1.5;
@@ -32,12 +32,14 @@ export const RIM = 0.11;
 const NARROW = 0.005, SMALLEST = 0.3;
 
 // The course: up to RINGS rings, NEAR to FAR metres on from the last and turning at most BEND (radians) from the way it was going,
-// LOW to HIGH up and up to SWING up or down from the last, a little toward the middle. A ring's middle keeps CLEAR of things, the way to it PATH, other
-// rings APART. Anything lower than SEATED from the floor up is somewhere people sit or stand: rings keep above that, or out in the open.
-// So do the people at the desks (`people`: { x, z, r, top }, in the chair and stood up behind it), whichever they're doing now.
+// LOW (its hoop a hand off the floor) to HIGH up and up to SWING up or down from the last, a little toward MID. A ring's middle
+// keeps CLEAR of things, the way to it PATH, other rings APART. Anything lower than SEATED from the floor up is somewhere people
+// sit or stand: rings keep above that, or out in the open. So do the people at the desks (`people`: { x, z, r, top }, in the
+// chair and stood up behind it), whichever they're doing now. Rings and the way to them keep out of `keepOut` (boxes: the
+// boss's office), though the plane can fly in.
 export const RINGS = 10;
-const NEAR = 2.4, FAR = 4, BEND = 1.1, LOW = 0.75, HIGH = 2.45, SWING = 0.8;
-const height = rand => p => p.y + (rand() * 2 - 1) * SWING + ((LOW + HIGH) / 2 - p.y) * 0.25;
+const NEAR = 2.4, FAR = 4, BEND = 1.1, LOW = HOLE + TUBE + 0.1, MID = 1.6, HIGH = 2.45, SWING = 0.8;
+const height = rand => p => p.y + (rand() * 2 - 1) * SWING + (MID - p.y) * 0.25;
 const CLEAR = 0.6, PATH = 0.3, APART = 1.4, SEATED = 1.45, TRIES = 80, BACKS = 40, ATTEMPTS = 8;
 // The autopilot that tries each course flies with a smaller hole than you do, slower and as fast (a faster plane turns wider),
 // so what it gets round you can too.
@@ -186,8 +188,8 @@ function lay(start, boxes, office, count, rand) {
 // A course from `start` round the office's `boxes`, the same for the same `seed` and boxes: the attempt the autopilot got
 // furthest round, up to the last ring it made. { rings: [{ x, y, z, nx, ny, nz }], par }; may be empty if nothing fits.
 // `par`: the autopilot's time round it, the rings as anyone flies them (null if it doesn't get round), for the medals.
-export function makeCourse({ start, boxes, people, width, depth, ceiling = 3, seed = '', count = RINGS }) {
-  const { tall, world } = office(boxes, people, width, depth, ceiling), room = { width, depth, ceiling };
+export function makeCourse({ start, boxes, people, keepOut, width, depth, ceiling = 3, seed = '', count = RINGS }) {
+  const { tall, world } = office(boxes, people, keepOut, width, depth, ceiling), room = { width, depth, ceiling };
   let best = [];
   for (let attempt = 0; attempt < ATTEMPTS && best.length < count; attempt++) {
     const rings = lay(start, tall, room, count, mulberry32(fnv1a(`planes:${seed}:${attempt}`))), made = trial(start, rings, world);
@@ -211,8 +213,8 @@ export const medal = (time, par) => time == null || !par ? null : MEDALS.find(([
 // narrower, heights wandering about the middle of the room. With nowhere to go on it bends further. Random unless `seed`.
 export const AHEAD = 3;
 const SPARE = 3, REACH = 4;
-export function endless({ start, boxes, people, width, depth, ceiling = 3, seed = null }) {
-  const { tall, world } = office(boxes, people, width, depth, ceiling), room = field(tall, { width, depth, ceiling });
+export function endless({ start, boxes, people, keepOut, width, depth, ceiling = 3, seed = null }) {
+  const { tall, world } = office(boxes, people, keepOut, width, depth, ceiling), room = field(tall, { width, depth, ceiling });
   const rand = seed == null ? Math.random : mulberry32(fnv1a(`planes-endless:${seed}`));
   const thrown = newFlight(start); launch(thrown);
   // How the autopilot's come through each ring, slower and as fast (TRIAL.drags), to fly on from.
@@ -249,19 +251,20 @@ export function endless({ start, boxes, people, width, depth, ceiling = 3, seed 
   return course;
 }
 
-// The office's boxes (those in it, or about it), the low ones as tall as anyone sitting or standing there, and people's columns
-// as boxes too; and it to fly in, people and all.
-function office(boxes, people = [], width, depth, ceiling) {
+// The office's boxes (those in it, or about it), the low ones as tall as anyone sitting or standing there, people's columns as
+// boxes too, and where rings keep out; and it to fly in, people and all.
+function office(boxes, people = [], keepOut = [], width, depth, ceiling) {
   const near = boxes.filter(b => b.max.x > -1 && b.min.x < width + 1 && b.max.z > -1 && b.min.z < depth + 1);
   const tall = near.map(b => b.max.y < SEATED && b.min.y < 0.5 ? { min: b.min, max: { x: b.max.x, y: SEATED, z: b.max.z } } : b);
   for (const p of people) tall.push({ min: { x: p.x - p.r, y: 0, z: p.z - p.r }, max: { x: p.x + p.r, y: p.top, z: p.z + p.r } });
+  tall.push(...keepOut);
   return { tall, world: { boxes: near, near: index(near, SIZE * 2), columns: people, ceiling, width, depth } };
 }
 
 // Whether `course` still does in the office as it is now (things moved, desks came and went): every ring clear and the
 // autopilot round it. So a course only changes when it has to.
-export function holds({ rings }, { start, boxes, people, width, depth, ceiling = 3 }) {
-  const { tall, world } = office(boxes, people, width, depth, ceiling);
+export function holds({ rings }, { start, boxes, people, keepOut, width, depth, ceiling = 3 }) {
+  const { tall, world } = office(boxes, people, keepOut, width, depth, ceiling);
   return rings.length > 0 && rings.every(r => r.x > CLEAR && r.z > CLEAR && r.x < width - CLEAR && r.z < depth - CLEAR && tall.every(b => gap(b, r.x, r.y, r.z) >= CLEAR * 0.9))
     && trial(start, rings, world) === rings.length;
 }

@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutOffice, DESK_W, DESK_D } from '../client/office/layout.js';
-import { touch, gap, newFlight, launch, fly, stepFlight, autopilot, makeCourse, endless, better, medal, medalTime, STEP, HOLE, RIM, RINGS, LAUNCH, AHEAD } from '../client/office/planes-course.js';
+import { touch, gap, newFlight, launch, fly, stepFlight, autopilot, makeCourse, endless, holds, better, medal, medalTime, STEP, HOLE, TUBE, RIM, RINGS, LAUNCH, AHEAD } from '../client/office/planes-course.js';
 
 const box = (x0, y0, z0, x1, y1, z1) => ({ min: { x: x0, y: y0, z: z0 }, max: { x: x1, y: y1, z: z1 } });
 const room = (boxes = []) => ({ boxes, columns: [], ceiling: 3, width: 10, depth: 10 });
 const ahead = (f, steps, input = {}, world = room(), course = { rings: [] }) => { const events = []; for (let i = 0; i < steps && f.mode === 'fly'; i++) stepFlight(f, input, world, course, events); return events; };
 
-// A rough office from layout.js: walls, desks (top, screen, chair), the signs over pods, the printer corner; thrown from by the
-// cabinet. Someone at every desk, where they sit and where they stand up behind the chair.
+// The boss's office behind its glass in the back-left corner (boss-plan.js): the plane can fly in, rings keep out.
+const BOSS_ROOM = box(0, 0, 0, 4.1, 3, 4);
+// A rough office from layout.js: walls, desks (top, screen, chair), the signs over pods, the printer corner, the boss's office;
+// thrown from by the cabinet. Someone at every desk, where they sit and where they stand up behind the chair.
 function office(projects, perProject) {
   const sessions = [];
   for (let p = 0; p < projects; p++) for (let k = 0; k < perProject; k++) sessions.push({ id: `s${p}-${k}`, cwd: `/p${p}`, project: `P${p}` });
@@ -23,12 +25,13 @@ function office(projects, perProject) {
   }
   for (const pod of layout.pods) boxes.push(box(pod.x - 0.82, 2.13, pod.z - 0.05, pod.x + 0.82, 3, pod.z + 0.05));
   boxes.push(box(width - 0.62, 0, 0.94, width - 0.1, 1, 1.56), box(width - 0.6, 0, 1.77, width - 0.04, 1.02, 2.33), box(0, 0, 0.95, 0.4, 2.1, 1.95));
-  return { width, depth, boxes, people, start: { x: width - 1.47, y: 1.4, z: 2.05, yaw: -Math.PI / 2 } };
+  return { width, depth, boxes, people, keepOut: [BOSS_ROOM], start: { x: width - 1.47, y: 1.4, z: 2.05, yaw: -Math.PI / 2 } };
 }
 const around = o => ({ ...room(o.boxes), columns: o.people.map((p, i) => ({ ...p, id: `p${i}` })), width: o.width, depth: o.depth });
 const person = p => box(p.x - p.r, 0, p.z - p.r, p.x + p.r, p.top, p.z + p.r);
 function inside(o, r, i) {
-  assert.ok(r.x > 0.5 && r.z > 0.5 && r.x < o.width - 0.5 && r.z < o.depth - 0.5 && r.y > 0.7 && r.y < 2.5, `ring ${i} in the room`);
+  assert.ok(r.x > 0.5 && r.z > 0.5 && r.x < o.width - 0.5 && r.z < o.depth - 0.5 && r.y - (r.hole ?? HOLE) - TUBE > 0.05 && r.y < 2.5, `ring ${i} in the room, its hoop off the floor`);
+  assert.ok(gap(BOSS_ROOM, r.x, r.y, r.z) > 0.5, `ring ${i} out of the boss's office`);
   assert.ok(o.boxes.every(b => gap(b, r.x, r.y, r.z) > 0.5), `ring ${i} clear`);
   assert.ok(o.people.every(p => gap(person(p), r.x, r.y, r.z) > 0.5), `ring ${i} clear of people`);
 }
@@ -131,6 +134,40 @@ test('courses keep inside the office, clear of everything and everyone, rings ap
       }
     }
   }
+});
+
+test("rings keep out of the boss's office, and so does the way to each", () => {
+  let wouldGo = 0;
+  for (const [p, k] of [[1, 2], [3, 4], [9, 6]]) {
+    const o = office(p, k);
+    for (const seed of ['x', 'y', 'z']) {
+      wouldGo += makeCourse({ ...o, keepOut: [], seed }).rings.filter(r => gap(BOSS_ROOM, r.x, r.y, r.z) < 0.5).length;
+      for (const rings of [makeCourse({ ...o, seed }).rings, endless({ ...o, seed }).rings]) for (const [i, r] of rings.entries()) {
+        assert.ok(gap(BOSS_ROOM, r.x, r.y, r.z) > 0.5, `${p}x${k} ${seed}: ring ${i}`);
+        const a = rings[i - 1] || o.start;
+        for (let t = 0.1; t < 1; t += 0.1) assert.ok(gap(BOSS_ROOM, a.x + (r.x - a.x) * t, a.y + (r.y - a.y) * t, a.z + (r.z - a.z) * t) > 0.25, `${p}x${k} ${seed}: the way to ring ${i}`);
+      }
+    }
+  }
+  assert.ok(wouldGo > 0, 'left to it, some would be in there');
+});
+
+test("a course with a ring where rings keep out doesn't hold", () => {
+  const o = office(3, 4), course = makeCourse({ ...o, seed: 'held' }), r = course.rings[3];
+  assert.ok(holds(course, o));
+  assert.ok(!holds(course, { ...o, keepOut: [box(r.x - 0.2, 0, r.z - 0.2, r.x + 0.2, 3, r.z + 0.2)] }));
+});
+
+test('rings come down low out in the open, the hoop never down on the floor', () => {
+  let lowest = Infinity, floor = Infinity;
+  for (const [p, k] of [[1, 2], [3, 4], [9, 6]]) {
+    const o = office(p, k);
+    for (const seed of ['x', 'y', 'z', 'w']) for (const r of [...makeCourse({ ...o, seed }).rings, ...endless({ ...o, seed }).rings]) {
+      lowest = Math.min(lowest, r.y); floor = Math.min(floor, r.y - (r.hole ?? HOLE) - TUBE);
+    }
+  }
+  assert.ok(lowest < 0.7, `the lowest at ${lowest.toFixed(2)}`);
+  assert.ok(floor > 0.05, `a hoop ${floor.toFixed(2)} off the floor`);
 });
 
 test('offices big and small get a whole course the autopilot flies round, its time the par', () => {

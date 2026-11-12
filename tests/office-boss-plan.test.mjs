@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { BOSS, CHAIR, DESK, DOOR_X, STAND, bossBoxes, bossInside, seatedAtBoss, seatedFriend } from '../client/office/boss-plan.js';
+import { BOSS, CHAIR, DESK, DOOR_X, STAND, behindGlass, bossBoxes, bossInside, bossRoom, seatedAtBoss, seatedFriend } from '../client/office/boss-plan.js';
+import { WALL_H } from '../client/office/furniture.js';
 import { AISLE, BOSS_FRONT, layoutOffice } from '../client/office/layout.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -60,6 +61,13 @@ test('a project arriving when every cell is taken opens a column, and nobody mov
     const newcomer = page.pods.find(pod => !cells.has(pod.key));
     if ([2, 6, 12].includes(count)) assert.deepEqual([newcomer.col, newcomer.row, page.grid.cols], [before.grid.cols, 0, before.grid.cols + 1], `${count} projects`);
   }
+});
+
+test("the boss's room, glass and all, floor to ceiling: what's behind the glass", () => {
+  const room = bossRoom();
+  assert.deepEqual([room.min.x, room.min.y, room.min.z, room.max.x, room.max.y, room.max.z], [0, 0, 0, BOSS.w + BOSS.glass, WALL_H, BOSS.d + BOSS.glass]);
+  for (const b of Object.values(bossBoxes()).flat()) assert.ok(room.containsBox(b), 'the glass, the door and the lintel inside it');
+  for (const p of [{ x: 0.1, z: 0.1 }, { x: BOSS.w + BOSS.glass, z: BOSS.d + BOSS.glass }, { x: BOSS.w + 0.2, z: 1 }, { x: 1, z: BOSS.d + 0.2 }]) assert.equal(room.containsPoint(V(p.x, 1, p.z)), behindGlass(p), JSON.stringify(p));
 });
 
 test('seatedFriend: the first by id of those playing at the boss stand spot, else null', () => {

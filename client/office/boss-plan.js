@@ -42,6 +42,8 @@ export function seatedFriend(others) {
 
 const box = (xa, ya, za, xb, yb, zb) => new THREE.Box3(new THREE.Vector3(xa, ya, za), new THREE.Vector3(xb, yb, zb));
 
+// All of it, glass and all, floor to ceiling: what behindGlass is, as a box (paper planes' rings keep out of it, planes-course.js).
+export const bossRoom = () => box(0, 0, 0, BOSS.w + BOSS.glass, WALL_H, BOSS.d + BOSS.glass);
 // The side glass from the windows wall to the front; the front glass from the left wall to the doorway, then the post.
 export function bossBoxes() {
   const { w, d, glass } = BOSS, hinge = w - BOSS.post, open = hinge - BOSS.door;

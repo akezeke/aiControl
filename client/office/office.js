@@ -34,7 +34,7 @@ import { createPlanes, createFlyers } from './planes.js';
 import { setSkyPlace } from './windows.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
-import { START, behindGlass, seatedFriend, shutOffice } from './boss-plan.js';
+import { START, behindGlass, bossRoom, seatedFriend, shutOffice } from './boss-plan.js';
 import { createBossDesk } from './boss.js';
 import { createDesktop } from './desktop.js';
 import { inSlices, shaders, textures } from './ready.js';
@@ -201,12 +201,13 @@ export function mountOffice(container, hooks) {
   // At a meeting, a plant someone's snake is out from says whose it is instead of starting yours.
   scene.add(snake.root); room.onSnake = i => { const who = atMeeting() && snakes.taken(i); if (who) bubbles.say(plantBubble(i), '🐍', who); else { snake.use(i); onPlay(snake); } };
   // Paper planes: from the stack of paper on the filing cabinet by the printer, round the office through the day's rings; from
-  // the yellow plane on the printer, through endless ones. At a meeting the others see yours fly (createFlyers, below).
-  let flown = { of: null, by: null, boxes: [] };
+  // the yellow plane on the printer, through endless ones, the rings never in the boss's office. At a meeting the others see
+  // yours fly (createFlyers, below).
+  let flown = { of: null, by: null, boxes: [] }; const keepOut = [bossRoom()];
   const flyable = () => { if (flown.of !== room.flightColliders || flown.by !== room.hanging) flown = { of: room.flightColliders, by: room.hanging, boxes: [...room.flightColliders, ...room.hanging] }; return flown.boxes; };
   const plane = (home, endless) => createPlanes({ canvas: renderer.domElement, home, endless, grid: () => layout && walkable(), hit: onHit, send: m => tell(m),
     score: (goal, verdict) => overlays.setScore(goal && endless ? leaderLine(goal, online.top('planesEndless')[0]) : goal, verdict, false),
-    world: () => ({ boxes: flyable(), columns: props.aimWorld().columns, get people() { return cast.spots(); }, width: layout?.room.width || 0, depth: layout?.room.depth || 0 }) });
+    world: () => ({ boxes: flyable(), keepOut, columns: props.aimWorld().columns, get people() { return cast.spots(); }, width: layout?.room.width || 0, depth: layout?.room.depth || 0 }) });
   const planes = plane(() => room.paperStack, false), endlessPlanes = plane(() => room.paperPlane, true);
   scene.add(planes.root, endlessPlanes.root); room.onPlanes = () => onPlay(planes); room.onEndless = () => onPlay(endlessPlanes);
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });

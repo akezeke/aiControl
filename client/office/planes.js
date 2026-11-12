@@ -17,7 +17,7 @@ import { dayKey, fnv1a } from './daily.js';
 import { createTrack, atMeeting, tag } from './friends.js';
 import { mm } from './live.js';
 import { WALL_H } from './furniture.js';
-import { newFlight, launch, fly, makeCourse, endless as endlessRings, holds, better, gap, medal, medalTime, MEDALS, HOLE, LAUNCH, AHEAD as LAID } from './planes-course.js';
+import { newFlight, launch, fly, makeCourse, endless as endlessRings, holds, better, gap, medal, medalTime, MEDALS, HOLE, TUBE, LAUNCH, AHEAD as LAID } from './planes-course.js';
 
 const BEST = 'ai-control-planes-best', ENDLESS = 'ai-control-planes-endless', KEEP = 12; // bests for this many courses
 const THROW = 1.15, HAND = 1.4, STAND = 0.85; // metres out from the stack it's thrown from, and how high; where you stand
@@ -79,8 +79,8 @@ function dartGeometry() {
 }
 
 // `canvas`: where presses come; `home()`: the paper stack (an Object3D, facing into the room); `grid()`: the walk grid;
-// `world()`: what it flies through ({ boxes, columns (people now), people (where they sit and stand at their desks: the rings
-// keep clear of those), width, depth }); `score(goal, verdict)`: the score bar (null clears it); `send(message)`: tells the
+// `world()`: what it flies through ({ boxes, keepOut? (boxes the rings keep out of, though it can fly in), columns (people
+// now), people (where they sit and stand at their desks: the rings keep clear of those), width, depth }); `score(goal, verdict)`: the score bar (null clears it); `send(message)`: tells the
 // meeting where it is while it flies, and 'off' once it's put away (another thrown, or the game left);
 // `hit(id, line)`: someone was hit; `endless`: endless rings rather than the day's course.
 export function createPlanes({ canvas, home, grid, world, score, hit = () => {}, send = () => {}, endless = false }) {
@@ -92,13 +92,13 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
   const recall = () => { if (out) { send({ type: 'plane', mode: 'off' }); out = false; } };
   const keys = new Set(), stick = { id: null, x: 0, y: 0, dx: 0, dy: 0 }, from = new THREE.Vector3(), look = new THREE.Vector3(), wobble = new THREE.Vector3();
   const root = new THREE.Group(); root.visible = false;
-  const space = { boxes: [], columns: [], ceiling: WALL_H, width: 0, depth: 0 };
+  const space = { boxes: [], keepOut: [], columns: [], ceiling: WALL_H, width: 0, depth: 0 };
 
   const plane = withOutline(new THREE.Mesh(dartGeometry(), toonMaterial('#fbfaf6', { side: THREE.DoubleSide })), 0.005);
   plane.rotation.order = 'YXZ'; plane.scale.setScalar(LOOKS); root.add(plane);
   // The rings: flat glass-like hoops, unlit; the next one clearest, with a faint film across it; the one after paler, the rest
   // fainter still; the last green. Ring i is drawn by rings[i % rings.length]: endless, a few go round.
-  const torus = new THREE.TorusGeometry(HOLE, 0.033, 8, 40), film = new THREE.CircleGeometry(HOLE, 32), rings = [];
+  const torus = new THREE.TorusGeometry(HOLE, TUBE, 8, 40), film = new THREE.CircleGeometry(HOLE, 32), rings = [];
   const meshOf = i => rings[i % rings.length];
   const ring = () => {
     const mesh = new THREE.Mesh(torus, new THREE.MeshBasicMaterial({ color: NEXT, transparent: true, depthWrite: false })), disc = new THREE.Mesh(film, new THREE.MeshBasicMaterial({ color: NEXT, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }));
@@ -126,14 +126,14 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
   const best = () => bests[key] || null;
   // What there is to fly through now; and the course: the day's, kept while it still fits (looked at again only when
   // something's moved), else laid again. Endless: new rings `anew` (each plane), or when something's moved.
-  const gather = () => { const w = world(); space.boxes = w.boxes; space.columns = w.columns; space.width = w.width; space.depth = w.depth; return w; };
+  const gather = () => { const w = world(); space.boxes = w.boxes; space.keepOut = w.keepOut || []; space.columns = w.columns; space.width = w.width; space.depth = w.depth; return w; };
   const signature = (boxes, people) => `${boxes.length}:${people.length}:${(boxes.reduce((sum, b) => sum + b.min.x * 3 + b.min.y * 5 + b.min.z * 7 + b.max.x * 11 + b.max.y * 13 + b.max.z * 17, 0)
     + people.reduce((sum, p) => sum + p.x * 19 + p.z * 23 + p.r * 29 + p.top * 31, 0)).toFixed(3)}`;
   const lay = (anew = false) => {
     const people = gather().people || [], at = start(); if (!at || !space.width) { course = null; return; }
     const today = dayKey(new Date()), now = `${endless ? '' : today}:${signature(space.boxes, people)}`;
     if (course && now === sig && !(endless && anew)) return; sig = now;
-    const office = { start: at, boxes: space.boxes, people, width: space.width, depth: space.depth, ceiling: WALL_H };
+    const office = { start: at, boxes: space.boxes, keepOut: space.keepOut, people, width: space.width, depth: space.depth, ceiling: WALL_H };
     if (endless) { course = endlessRings(office); key = 'endless'; drawCourse(); return; }
     if (course?.rings.length && course.day === today && holds(course, office)) return;
     course = { ...makeCourse({ ...office, seed: `${today}:${space.width}x${space.depth}` }), day: today };
