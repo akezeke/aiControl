@@ -80,8 +80,9 @@ function dartGeometry() {
 
 // `canvas`: where presses come; `home()`: the paper stack (an Object3D, facing into the room); `grid()`: the walk grid;
 // `world()`: what it flies through ({ boxes, keepOut? (boxes the rings keep out of, though it can fly in), columns (people
-// now), people (where they sit and stand at their desks: the rings keep clear of those), width, depth }); `score(goal, verdict)`: the score bar (null clears it); `send(message)`: tells the
-// meeting where it is while it flies, and 'off' once it's put away (another thrown, or the game left);
+// now), people (where they sit and stand at their desks: the rings keep clear of those), width, depth });
+// `score(goal, verdict)`: the score bar (null clears it); `send(message)`: tells the meeting where it is while it flies, and
+// 'off' once it's put away (another thrown, or the game left);
 // `hit(id, line)`: someone was hit; `endless`: endless rings rather than the day's course.
 export function createPlanes({ canvas, home, grid, world, score, hit = () => {}, send = () => {}, endless = false }) {
   const store = endless ? ENDLESS : BEST;
@@ -97,21 +98,24 @@ export function createPlanes({ canvas, home, grid, world, score, hit = () => {},
   const plane = withOutline(new THREE.Mesh(dartGeometry(), toonMaterial('#fbfaf6', { side: THREE.DoubleSide })), 0.005);
   plane.rotation.order = 'YXZ'; plane.scale.setScalar(LOOKS); root.add(plane);
   // The rings: flat glass-like hoops, unlit; the next one clearest, with a faint film across it; the one after paler, the rest
-  // fainter still; the last green. Ring i is drawn by rings[i % rings.length]: endless, a few go round.
+  // fainter still; the last green. Ring i is drawn by rings[i % rings.length]: endless, a few go round. They, the way round
+  // and the trail draw AFTER the room's see-through things: its walls and ceiling are see-through to fade for the overview and
+  // write depth, and see-through things draw farthest middle first, so a wall whose middle is nearer would paint over a ring.
+  const AFTER = 1;
   const torus = new THREE.TorusGeometry(HOLE, TUBE, 8, 40), film = new THREE.CircleGeometry(HOLE, 32), rings = [];
   const meshOf = i => rings[i % rings.length];
   const ring = () => {
     const mesh = new THREE.Mesh(torus, new THREE.MeshBasicMaterial({ color: NEXT, transparent: true, depthWrite: false })), disc = new THREE.Mesh(film, new THREE.MeshBasicMaterial({ color: NEXT, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }));
-    mesh.add(disc); mesh.userData = { disc, pop: 0 }; root.add(mesh); return mesh;
+    mesh.renderOrder = disc.renderOrder = AFTER; mesh.add(disc); mesh.userData = { disc, pop: 0 }; root.add(mesh); return mesh;
   };
   // The way round, dotted, while the plane's in hand.
   const guide = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: '#ffffff', dashSize: 0.12, gapSize: 0.1, transparent: true, opacity: 0.6 }));
-  root.add(guide);
+  guide.renderOrder = AFTER; root.add(guide);
   // An arrow off the plane's nose to the next ring, when that's off to the side or behind.
   const arrow = withOutline(new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.11, 10).rotateX(Math.PI / 2), toonMaterial(NEXT)), 0.004); root.add(arrow);
   // A thin trail behind it.
   const TRAIL = 48, trailPoints = new Float32Array(TRAIL * 3), trail = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.35 }));
-  trail.geometry.setAttribute('position', new THREE.BufferAttribute(trailPoints, 3)); trail.frustumCulled = false; root.add(trail);
+  trail.geometry.setAttribute('position', new THREE.BufferAttribute(trailPoints, 3)); trail.frustumCulled = false; trail.renderOrder = AFTER; root.add(trail);
   root.traverse(node => { node.raycast = () => {}; });
 
   // The stick drawn where a finger (or the mouse) went down: a ring and a knob.
