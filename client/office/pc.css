@@ -64,9 +64,9 @@
 .pc-status > * { flex: 1; padding: 1px 4px; box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Tooltips: CSS only, no timers */
-[data-tip] { position: relative; }
-.pc-tip, [data-tip]:hover::after { padding: 1px 4px; border: 1px solid #000; background: #ffffe1; color: #000; white-space: nowrap; }
-[data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 0; top: 100%; margin-top: 2px; z-index: 9; pointer-events: none; font-weight: 400; }
+.office-desktop [data-tip]:not(.pc-icon, .pc-window, .pc-start-menu, .pc-dialog) { position: relative; }
+.pc-tip, .office-desktop [data-tip]:hover::after { padding: 1px 4px; border: 1px solid #000; background: #ffffe1; color: #000; white-space: nowrap; }
+.office-desktop [data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 0; top: 100%; margin-top: 2px; z-index: 9; pointer-events: none; font-weight: 400; }
 
 /* Minimize and restore: three dotted outlines zooming */
 .pc-zoom { position: absolute; border: 1px dotted #fff; mix-blend-mode: difference; pointer-events: none; animation: pc-zoom .15s steps(3) both; }
@@ -86,7 +86,9 @@
 .pc-notepad { flex: 1; min-height: 0; resize: none; border: 0; padding: 2px 4px; background: white; color: #000; font-family: 'Courier Prime', ui-monospace, monospace; font-size: 13px; user-select: text; -webkit-user-select: text; }
 
 /* Scrollbars: 16 px, checkered track; Firefox only recolours */
-.office-desktop * { scrollbar-color: #c0c0c0 #e0e0e0; }
+@supports not selector(::-webkit-scrollbar) {
+  .office-desktop * { scrollbar-color: #c0c0c0 #e0e0e0; }
+}
 .office-desktop ::-webkit-scrollbar { width: 16px; height: 16px; }
 .office-desktop ::-webkit-scrollbar-track { background: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px; }
 .office-desktop ::-webkit-scrollbar-thumb, .office-desktop ::-webkit-scrollbar-button { background: #c0c0c0; box-shadow: inset -1px -1px 0 #000, inset 1px 1px 0 #fff, inset -2px -2px 0 #808080, inset 2px 2px 0 #dfdfdf; }
@@ -97,7 +99,6 @@
 }
 
 /* v1 desktop rules, removed with the v1 desktop */
-.office-desktop :focus-visible { outline: 2px dotted #1d2b53; outline-offset: -4px; }
 .office-desktop-bevel { border: 0; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
 .office-desktop-bevel:active { box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; }
 .office-desktop-icon { position: absolute; left: 24px; top: 24px; width: 104px; height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; padding: 8px 0 0; border: 0; background: none; color: #ffffff; }

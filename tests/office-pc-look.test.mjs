@@ -15,3 +15,19 @@ test('Courier Prime is declared once, globally', () => {
   assert.match(readFileSync('client/office/office.js', 'utf8'), /import '\.\/pc\.css'/);
   assert.doesNotMatch(readFileSync('client/office/office.css', 'utf8'), /\.office-desktop \{/);
 });
+test('tooltips, focus and scrollbars stay inside the desktop', () => {
+  const selectors = css.replace(/\/\*[\s\S]*?\*\//g, '').split('}').map((r) => r.split('{')[0].trim()).filter(Boolean);
+  for (const s of selectors) for (const part of s.split(',')) assert.doesNotMatch(part.trim(), /^\[data-tip\]/, part);
+  const focus = css.match(/^\.office-desktop :focus-visible \{[^}]*\}/gm);
+  assert.deepEqual(focus, ['.office-desktop :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }']);
+  const at = css.indexOf('@supports not selector(::-webkit-scrollbar)');
+  assert.ok(at >= 0);
+  const block = css.slice(at, css.indexOf('\n}', at));
+  assert.equal(css.split('scrollbar-color').length, 2);
+  assert.ok(block.includes('scrollbar-color'));
+});
+test('title, throbber and taskbar values', () => {
+  assert.match(css, /\.pc-window\.front \.pc-title[^}]*#1084d0/);
+  assert.match(css, /\.pc-throbber\.loading[^}]*steps\(8\)/);
+  assert.match(css, /\.pc-taskbar \{[^}]*height: 44px/);
+});
