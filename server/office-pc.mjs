@@ -73,7 +73,9 @@ export function createOfficePc({ dir, fetch = globalThis.fetch, now = Date.now }
     if (hit && now() - hit.at < LIST_MS) return hit.reply;
     try {
       const path = `/bbs/lister.php?use_hurl=1&cat=7&sub=2&mode=carts&page=${page}${q ? `&search=${encodeURIComponent(q)}` : tab === 'featured' ? '&orderby=featured' : ''}`;
-      const rows = parseList((await get(path, MAX_BYTES)).toString('utf8'));
+      const html = (await get(path, MAX_BYTES)).toString('utf8');
+      if (!html.includes('pdat=[')) throw new Error('not a list'); // a captcha or a changed layout is no empty list
+      const rows = parseList(html);
       const reply = { carts: rows, page, more: rows.length >= 30 };
       keep(lists, key, { at: now(), reply }, LISTS);
       return reply;
@@ -90,9 +92,10 @@ export function createOfficePc({ dir, fetch = globalThis.fetch, now = Date.now }
     if (hit && now() - hit.at < DAY) return hit.reply;
     let parsed;
     try { parsed = parseCart((await get(`/bbs/?${pid !== null ? `pid=${pid}` : `tid=${tid}`}`, MAX_BYTES)).toString('utf8')); } catch { throw down(); }
-    const id = parsed.pid ?? pid;
+    // Ids and names read off a page are checked: Task 4 installs this pid.
+    const id = isPid(parsed.pid) ? parsed.pid : pid;
     if (!id) throw down();
-    const reply = { pid: id, title: parsed.title, author: parsed.author, thumb: parsed.thumb ?? thumbName(id), embed: parsed.embed };
+    const reply = { pid: id, title: parsed.title, author: parsed.author, thumb: THUMB.test(parsed.thumb ?? '') && pidOf(parsed.thumb) === id ? parsed.thumb : thumbName(id), embed: parsed.embed };
     keep(carts, key, { at: now(), reply }, CARTS);
     return reply;
   }

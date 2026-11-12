@@ -24,8 +24,8 @@ function setup(pages = {}) {
     calls.push([url, init]);
     const page = serve[url];
     if (page === undefined || page instanceof Error) throw page ?? new Error('offline');
-    const { status = 200, body = '' } = typeof page === 'object' && !Buffer.isBuffer(page) ? page : { body: page };
-    return new Response(body, { status });
+    const { status = 200, body = '', headers } = typeof page === 'object' && !Buffer.isBuffer(page) ? page : { body: page };
+    return new Response(body, { status, headers });
   };
   const clock = { t: 1_000_000 }, dir = fs.mkdtempSync(path.join(os.tmpdir(), 'office-pc-'));
   const pc = createOfficePc({ dir, fetch, now: () => clock.t });
@@ -121,4 +121,66 @@ test('thumbnails', async () => {
   assert.equal(e.calls.length, 301);
   await e.pc.thumb(name(1)); assert.equal(e.calls.length, 301);
   await e.pc.thumb(name(0)); assert.equal(e.calls.length, 302);
+
+  // an LRU: a hit keeps its entry, the least recently used one goes
+  const l = setup();
+  for (let i = 0; i < 300; i++) l.serve[`${HOST}/bbs/thumbs/${name(i)}`] = PNGBYTES();
+  l.serve[`${HOST}/bbs/thumbs/${name(300)}`] = PNGBYTES();
+  for (let i = 0; i < 300; i++) await l.pc.thumb(name(i));
+  await l.pc.thumb(name(0)); await l.pc.thumb(name(300));
+  assert.equal(l.calls.length, 301);
+  await l.pc.thumb(name(0)); assert.equal(l.calls.length, 301);
+  await l.pc.thumb(name(1)); assert.equal(l.calls.length, 302);
+});
+
+const LIST1 = `${HOST}/bbs/lister.php?use_hurl=1&cat=7&sub=2&mode=carts&page=1&orderby=featured`;
+const MOLE = '<title>Mole Mole</title> cart_id=molemole-1';
+
+test('a non-ok status is a failure even with a valid body', async () => {
+  const s = setup({ [LIST1]: { status: 404, body: lister([ROWS[0]]) }, [`${HOST}/bbs/?pid=molemole-1`]: { status: 404, body: MOLE }, [`${HOST}/bbs/thumbs/pico8_a-1.png`]: { status: 404, body: PNGBYTES() } });
+  await assert.rejects(s.pc.list(q('')), status(502));
+  await assert.rejects(s.pc.cart(q('pid=molemole-1')), status(502));
+  await assert.rejects(s.pc.thumb('pico8_a-1.png'), status(502));
+});
+
+test('a declared oversize body fails; exactly 1 MB passes', async () => {
+  const body = 'pdat=[' + ' '.repeat((1 << 20) - 6);
+  const s = setup({ [LIST1]: { body: lister([]), headers: { 'content-length': String((1 << 20) + 1) } } });
+  await assert.rejects(s.pc.list(q('')), status(502));
+  s.serve[LIST1] = body; assert.equal(body.length, 1 << 20);
+  assert.deepEqual((await s.pc.list(q(''))).carts, []);
+});
+
+test('a list page without pdat is a failure, an empty pdat is an empty list', async () => {
+  const s = setup({ [LIST1]: lister([ROWS[0]]) });
+  assert.equal((await s.pc.list(q(''))).carts.length, 1);
+  s.serve[LIST1] = '<html>captcha</html>'; s.clock.t += 600_001;
+  const stale = await s.pc.list(q(''));
+  assert.equal(stale.stale, true); assert.equal(stale.carts.length, 1);
+  const n = setup({ [LIST1]: '<html>maintenance</html>' });
+  await assert.rejects(n.pc.list(q('')), status(502));
+  n.serve[LIST1] = lister([]);
+  assert.deepEqual(await n.pc.list(q('')), { carts: [], page: 1, more: false });
+});
+
+test('entities decode once', () => {
+  const t = html => parseCart(`<title>${html}</title>`).title;
+  assert.equal(t('a &gt; b &quot;c&quot; &#39;d&#39; &#65;&#x41;'), 'a > b "c" \'d\' AA');
+  assert.equal(t('&amp;lt;'), '&lt;');
+  const row = "['1', 2, `&amp;lt; &#x41;`,\"/bbs/thumbs/pico8_x-1.png\",1,1,\"x\",5,\"&#65;&amp;gt;\",\"u\",0,\"\",7,1,";
+  assert.deepEqual([parseList(lister([row]))[0].title, parseList(lister([row]))[0].author], ['&lt; A', 'A&gt;']);
+});
+
+test('a pid or thumb read from a page is checked', async () => {
+  const s = setup({
+    [`${HOST}/bbs/?pid=real-1`]: '<title>T</title> cart_id=Evil_X',
+    [`${HOST}/bbs/?tid=9`]: '<title>T</title> cart_id=Evil_X',
+    [`${HOST}/bbs/?pid=ok-2`]: '<title>T</title> cart_id=ok-2 pico8_ok-2.png',
+    [`${HOST}/bbs/?tid=8`]: '<title>T</title> cart_id=tid-1 pico8_nodash.png',
+  });
+  assert.equal((await s.pc.cart(q('pid=real-1'))).pid, 'real-1');
+  assert.equal((await s.pc.cart(q('pid=real-1'))).thumb, 'pico8_real-1.png');
+  await assert.rejects(s.pc.cart(q('tid=9')), status(502));
+  const odd = await s.pc.cart(q('tid=8'));
+  assert.deepEqual([odd.pid, odd.thumb], ['tid-1', 'pico8_tid-1.png']);
 });
