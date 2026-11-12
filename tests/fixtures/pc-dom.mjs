@@ -1,11 +1,32 @@
-// A small fake DOM for the boss PC's tests (no jsdom): elements with a tree, classList, bubbling events, focus and a recording
-// 2d canvas. Only what the desktop's modules touch; add here rather than in a test file.
+// A small fake DOM for the boss PC's tests (no jsdom): elements with a tree, classList, capture/bubble events (once, dedupe),
+// focus and a recording 2d canvas. Only what the desktop's modules touch; add here rather than in a test file.
+// NOT modelled:
+// - attribute/property links: setAttribute('class') vs classList/className, node.src vs attributes.src, value vs attribute;
+// - textContent neither clears nor aggregates children (it is a plain field);
+// - style is a plain object (no cssText, no shorthand expansion);
+// - focus() works on removed or hidden nodes, and blur() fires no events;
+// - no stopImmediatePropagation, no passive/signal options, no event.bubbles = false;
+// - canvas: save()/restore() don't restore recorded state, and there is no measureText.
 const mixin = (node) => {
-  const listeners = new Map();
-  node.addEventListener = (type, fn) => { if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(fn); };
-  node.removeEventListener = (type, fn) => { const list = listeners.get(type), i = list ? list.indexOf(fn) : -1; if (i >= 0) list.splice(i, 1); };
+  const listeners = new Map(); // type -> [{ fn, capture, once }]
+  const capture = options => typeof options === 'boolean' ? options : !!options?.capture;
+  node.addEventListener = (type, fn, options) => {
+    const list = listeners.get(type) ?? listeners.set(type, []).get(type), cap = capture(options);
+    if (!list.some(l => l.fn === fn && l.capture === cap)) list.push({ fn, capture: cap, once: !!options?.once });
+  };
+  node.removeEventListener = (type, fn, options) => {
+    const list = listeners.get(type), i = list ? list.findIndex(l => l.fn === fn && l.capture === capture(options)) : -1;
+    if (i >= 0) list.splice(i, 1);
+  };
   node.listenerCount = () => [...listeners.values()].reduce((n, list) => n + list.length, 0);
-  node.fire = (event) => { for (const fn of [...(listeners.get(event.type) ?? [])]) fn.call(node, event); };
+  // phase: 'capture' (capturing listeners only), 'bubble' (the others) or 'target' (all).
+  node.fire = (event, phase = 'target') => {
+    for (const l of [...(listeners.get(event.type) ?? [])]) {
+      if (phase !== 'target' && l.capture !== (phase === 'capture')) continue;
+      if (l.once) node.removeEventListener(event.type, l.fn, l.capture);
+      l.fn.call(node, event);
+    }
+  };
 };
 
 // Records every call with a snapshot of the settable properties at that moment (fillStyle, imageSmoothingEnabled, ...).
@@ -46,7 +67,11 @@ export function useDom(t) {
           type, target: node, currentTarget: null, defaultPrevented: false, propagationStopped: false, ...init,
           preventDefault() { event.defaultPrevented = true; }, stopPropagation() { event.propagationStopped = true; },
         };
-        for (let at = node; at && !event.propagationStopped; at = at.parent) { event.currentTarget = at; at.fire(event); }
+        const path = []; for (let at = node.parent; at; at = at.parent) path.push(at);
+        const visit = (at, phase) => { if (!event.propagationStopped) { event.currentTarget = at; at.fire(event, phase); } };
+        for (const at of [...path].reverse()) visit(at, 'capture');
+        visit(node, 'target');
+        for (const at of path) visit(at, 'bubble');
         return event;
       },
       focus() { doc.activeElement = node; },
