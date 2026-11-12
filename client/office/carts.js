@@ -1,6 +1,6 @@
-// PICO-8 carts for the boss desk: Lexaloffle's own BBS widget plays them, in the viewer's browser only (nothing is fetched
-// or kept here but the pids someone pasted). Lexaloffle has no cart browser to embed, so browsing is their BBS in a new tab.
-export const BROWSE_URL = 'https://www.lexaloffle.com/bbs/?cat=7&carts_tab=1&#sub=2&mode=carts', CARTS_KEY = 'ai-control-office-carts';
+// PICO-8 carts for the boss desk: Lexaloffle's own BBS widget plays them, in the viewer's browser. The pids pasted in v1 are
+// only read now, for the one-time import into the server desktop (pc-store.js).
+export const CARTS_KEY = 'ai-control-office-carts';
 const KEEP = 8, PID = /^[\w-]{1,64}$/, BBS = /https?:\/\/(?:www\.)?lexaloffle\.com\/bbs\/[^\s"'<>]*/i;
 
 // Only carts checked by hand: an author can turn embedding off (Celeste, Porklike and Dank Tomb have), and the widget then
@@ -59,8 +59,4 @@ export function recentCarts(storage) {
     const list = JSON.parse(storage?.getItem(CARTS_KEY) ?? '[]');
     return Array.isArray(list) ? list.filter(pid => typeof pid === 'string' && cartPid(pid) === pid).slice(0, KEEP) : [];
   } catch { return []; }
-}
-
-export function rememberCart(storage, pid) {
-  try { storage?.setItem(CARTS_KEY, JSON.stringify([pid, ...recentCarts(storage).filter(p => p !== pid)].slice(0, KEEP))); } catch { /* not kept */ }
 }

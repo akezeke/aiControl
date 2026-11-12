@@ -8,9 +8,11 @@
 .office-desktop :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
 
 /* Icons */
+.pc-icons { position: absolute; left: 0; top: 0; right: 0; bottom: 44px; }
 .pc-icon { position: absolute; width: 76px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0; border: 0; background: none; color: #fff; text-align: center; }
 .pc-icon-art { position: relative; width: 32px; height: 32px; image-rendering: pixelated; }
-.pc-icon-arrow { position: absolute; left: 0; bottom: 0; width: 10px; height: 10px; background: #fff; border: 1px solid #000; box-sizing: border-box; }
+.pc-icon-art > * { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.pc-icon-art .pc-icon-arrow { position: absolute; left: 0; bottom: 0; width: 10px; height: 10px; }
 .pc-icon-label { max-width: 72px; padding: 1px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-icon.selected .pc-icon-label { background: #000080; color: #fff; outline: 1px dotted #ff0; outline-offset: -1px; }
 .pc-icon:focus-visible { outline: 0; }
@@ -18,11 +20,13 @@
 
 /* Windows */
 .pc-window { position: absolute; display: flex; flex-direction: column; box-sizing: border-box; padding: 3px; background: #c0c0c0; box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #000, inset 2px 2px 0 #fff, inset -2px -2px 0 #808080; }
-.pc-title { flex: 0 0 18px; display: flex; align-items: center; justify-content: space-between; padding: 0 2px; background: #808080; color: #c0c0c0; font-weight: 700; }
+.pc-title { flex: 0 0 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 2px; background: #808080; color: #c0c0c0; font-weight: 700; }
 .pc-window.front .pc-title { background: linear-gradient(90deg, #000080, #1084d0); color: #fff; }
 .pc-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-title-buttons { display: flex; gap: 2px; }
-.pc-title-buttons .pc-button { min-width: 16px; height: 14px; padding: 0; line-height: 1; }
+.pc-title-buttons .pc-button { min-width: 20px; width: 20px; height: 20px; padding: 0; line-height: 1; }
+.pc-title-text > canvas, .pc-task > canvas { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; image-rendering: pixelated; }
+.pc-title, .pc-icon { touch-action: none; }
 .pc-client { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* Buttons, fields, lists */
@@ -35,7 +39,7 @@
 .pc-list .selected { background: #000080; color: #fff; }
 
 /* Taskbar */
-.pc-taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 4px; background: #c0c0c0; box-shadow: inset 0 1px 0 #dfdfdf, inset 0 2px 0 #fff; }
+.pc-taskbar { position: absolute; z-index: 20; left: 0; right: 0; bottom: 0; height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 4px; background: #c0c0c0; box-shadow: inset 0 1px 0 #dfdfdf, inset 0 2px 0 #fff; }
 .pc-start { height: 32px; padding: 0 10px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
 .pc-task { flex: 0 1 160px; min-width: 0; height: 32px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .pc-task.pressed { background: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px; font-weight: 700; }
@@ -44,9 +48,12 @@
 
 /* Menus */
 .pc-start-menu, .pc-menu { position: absolute; display: flex; background: #c0c0c0; box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #000, inset 2px 2px 0 #fff, inset -2px -2px 0 #808080; padding: 3px; }
-.pc-start-menu { left: 4px; bottom: 44px; min-width: 190px; animation: pc-start .15s ease-out; }
+.pc-start-menu { z-index: 30; left: 4px; bottom: 44px; min-width: 190px; }
+.pc-start-menu.pc-slide { animation: pc-start .15s ease-out; }
 .pc-banner { flex: 0 0 22px; margin-right: 3px; background: linear-gradient(0deg, #000080, #1084d0); color: #c0c0c0; font-weight: 700; writing-mode: vertical-rl; transform: rotate(180deg); padding: 4px 0; text-align: left; }
 .pc-menu { flex-direction: column; }
+.pc-menu.pc-popup { position: absolute; z-index: 40; min-width: 140px; }
+.pc-menu-sep { height: 0; margin: 3px 2px; border-top: 1px solid #808080; border-bottom: 1px solid #fff; }
 .pc-start-menu .pc-menu { position: static; padding: 0; box-shadow: none; flex: 1; }
 .pc-menu-item { display: block; width: 100%; padding: 4px 14px; border: 0; background: none; text-align: left; white-space: nowrap; }
 .pc-menu-item:hover, .pc-menu-item:focus-visible { background: #000080; color: #fff; }
@@ -56,10 +63,18 @@
 .pc-menubar .pc-menu-item { width: auto; padding: 2px 6px; }
 
 /* Dialogs, progress, status */
-.pc-dialog-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .15); }
+.pc-dialog-backdrop { position: absolute; z-index: 50; inset: 0; background: rgba(0, 0, 0, .15); }
 .pc-dialog { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: 280px; }
+.pc-dialog-body { display: flex; gap: 12px; align-items: center; padding: 12px; }
+.pc-dialog-body > canvas { flex: none; image-rendering: pixelated; }
+.pc-dialog-text { margin: 0; }
+.pc-dialog-buttons { display: flex; justify-content: center; gap: 6px; padding: 0 12px 10px; }
+.pc-dialog > .pc-progress { margin: 0 12px 12px; }
 .pc-progress { height: 18px; box-sizing: border-box; padding: 2px; display: flex; gap: 2px; box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #fff; }
 .pc-progress-block { flex: 0 0 10px; background: #000080; }
+/* Setup's bar fills over its one second; an animation, so no timer drives it */
+.pc-setup-fill { height: 100%; width: 0; background: #000080; animation: pc-fill 1s linear forwards; }
+@keyframes pc-fill { to { width: 100%; } }
 .pc-status { display: flex; gap: 2px; padding: 2px 0 0; }
 .pc-status > * { flex: 1; padding: 1px 4px; box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -67,10 +82,11 @@
 .office-desktop [data-tip]:not(.pc-icon, .pc-window, .pc-start-menu, .pc-dialog) { position: relative; }
 .pc-tip, .office-desktop [data-tip]:hover::after { padding: 1px 4px; border: 1px solid #000; background: #ffffe1; color: #000; white-space: nowrap; }
 .office-desktop [data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 0; top: 100%; margin-top: 2px; z-index: 9; pointer-events: none; font-weight: 400; }
+.pc-taskbar [data-tip]:hover::after { top: auto; bottom: 100%; margin: 0 0 2px; }
 
-/* Minimize and restore: three dotted outlines zooming */
-.pc-zoom { position: absolute; border: 1px dotted #fff; mix-blend-mode: difference; pointer-events: none; animation: pc-zoom .15s steps(3) both; }
-@keyframes pc-zoom { from { transform: scale(.2); opacity: 1; } to { transform: scale(1); opacity: 0; } }
+/* Minimize and restore: three dotted outlines between window and task, each shown 50 ms in turn (desktop.js staggers them) */
+.pc-zoom { position: absolute; box-sizing: border-box; border: 2px dotted #fff; mix-blend-mode: difference; pointer-events: none; visibility: hidden; z-index: 60; animation: pc-zoom 50ms steps(1) forwards; }
+@keyframes pc-zoom { from { visibility: visible; } to { visibility: hidden; } }
 @keyframes pc-start { from { clip-path: inset(100% 0 0 0); } to { clip-path: inset(0); } }
 
 /* Info Highway */
@@ -95,41 +111,6 @@
 .office-desktop ::-webkit-scrollbar-button:single-button { display: block; width: 16px; height: 16px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .pc-zoom, .pc-start-menu, .pc-throbber.loading { animation: none; transition: none; }
+  .pc-zoom, .pc-start-menu, .pc-start-menu.pc-slide, .pc-throbber.loading, .pc-setup-fill { animation: none; transition: none; }
+  .pc-setup-fill { width: 100%; }
 }
-
-/* v1 desktop rules, removed with the v1 desktop */
-.office-desktop-bevel { border: 0; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
-.office-desktop-bevel:active { box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; }
-.office-desktop-icon { position: absolute; left: 24px; top: 24px; width: 104px; height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; padding: 8px 0 0; border: 0; background: none; color: #ffffff; }
-.office-desktop-icon:focus-visible { outline-color: #ffffff; }
-.office-desktop-icon:focus .office-desktop-label { background: #1d2b53; }
-.office-desktop-console { position: relative; width: 64px; height: 48px; box-sizing: border-box; border: 2px solid #000; background: #c2c3c7; }
-.office-desktop-console::before { content: ''; position: absolute; left: 4px; top: 4px; width: 32px; height: 24px; border: 2px solid #000; background: #1d2b53; }
-.office-desktop-console::after { content: ''; position: absolute; left: 46px; top: 8px; width: 8px; height: 8px; background: #ff004d; box-shadow: 0 12px 0 #29adff; }
-.office-desktop-label { padding: 2px 4px; }
-.office-desktop-taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 6px; background: #c3c3c3; box-shadow: inset 0 2px 0 #ffffff; }
-.office-desktop-start { width: 88px; height: 32px; }
-.office-desktop-clock { width: 88px; height: 32px; display: flex; align-items: center; justify-content: center; box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; }
-.office-desktop-menu { position: absolute; left: 6px; bottom: 44px; width: 200px; height: 44px; box-sizing: border-box; padding: 4px; }
-.office-desktop-item { width: 100%; height: 100%; padding: 0 8px; border: 0; background: none; text-align: left; }
-.office-desktop-item:hover, .office-desktop-item:focus-visible { background: #1d2b53; color: #fff1e8; }
-.office-desktop-window { position: absolute; left: 220px; top: 8px; width: 640px; height: 580px; box-sizing: border-box; display: flex; flex-direction: column; padding: 2px; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
-.office-desktop-title { flex: 0 0 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 3px 0 8px; background: #1d2b53; color: #fff1e8; }
-.office-desktop-close { width: 20px; height: 20px; padding: 0; border: 0; background: #ff004d; color: #fff1e8; font-size: 14px; line-height: 20px; }
-.office-desktop-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.office-desktop-bar { flex: 0 0 28px; display: flex; align-items: center; gap: 4px; padding: 0 2px; box-sizing: border-box; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
-.office-desktop-bar > button { height: 22px; padding: 0 10px; }
-.office-desktop-paste { flex: 1; height: 22px; box-sizing: border-box; padding: 0 6px; border: 0; background: #ffffff; box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; user-select: text; -webkit-user-select: text; }
-.office-desktop-note { margin: 0; padding: 4px 8px; background: #fff1e8; color: #ff004d; }
-.office-desktop-list { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 4px; list-style: none; background: #fff1e8; color: #1d2b53; }
-.office-desktop-list li { display: flex; align-items: center; gap: 8px; padding-right: 8px; }
-.office-desktop-cart { flex: 1; display: flex; align-items: baseline; gap: 12px; padding: 6px 8px; border: 0; background: none; text-align: left; }
-.office-desktop-cart small { color: #5f574f; font-size: 12px; }
-.office-desktop-cart:hover, .office-desktop-cart:focus-visible { background: #1d2b53; color: #fff1e8; }
-.office-desktop-cart:hover small, .office-desktop-cart:focus-visible small { color: #c2c3c7; }
-.office-desktop-link { color: #7e2553; font-size: 12px; white-space: nowrap; }
-.office-desktop-list li:last-child .office-desktop-link { padding: 8px; font-size: 16px; }
-.office-desktop-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; color: #c2c3c7; }
-.office-desktop-stage > p { position: absolute; margin: 0; }
-.office-desktop-stage > iframe { position: relative; display: block; border: 0; }

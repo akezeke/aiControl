@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BROWSE_URL, STARTERS, cartPid, isPid, threadId, listLink, thumbName, listUrl, widgetUrl, bbsUrl, recentCarts, rememberCart, CARTS_KEY } from '../client/office/carts.js';
+import { STARTERS, cartPid, isPid, threadId, listLink, thumbName, listUrl, widgetUrl, bbsUrl, recentCarts, CARTS_KEY } from '../client/office/carts.js';
 
 const memory = (init = {}) => { const data = { ...init }; return { getItem: k => data[k] ?? null, setItem: (k, v) => { data[k] = String(v); }, data }; };
 
@@ -21,21 +21,18 @@ test('cartPid refuses threads, other hosts and junk', () => {
 test('urls', () => {
   assert.equal(widgetUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/widget.php?pid=porklike-2');
   assert.equal(bbsUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/?pid=porklike-2');
-  assert.equal(BROWSE_URL, 'https://www.lexaloffle.com/bbs/?cat=7&carts_tab=1&#sub=2&mode=carts');
 });
 
-test('pasted carts are kept newest first, without repeats, at most 8', () => {
-  const s = memory();
-  for (let i = 1; i <= 10; i++) rememberCart(s, String(i));
-  rememberCart(s, '5');
-  assert.deepEqual(recentCarts(s), ['5', '10', '9', '8', '7', '6', '4', '3']);
+test('pasted carts are read as kept, at most 8', () => {
+  const s = memory({ [CARTS_KEY]: JSON.stringify(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']) });
+  assert.deepEqual(recentCarts(s), ['1', '2', '3', '4', '5', '6', '7', '8']);
 });
 
 test('the kept list survives broken JSON, wrong shapes, no storage and a storage that throws', () => {
   assert.deepEqual(recentCarts(memory({ [CARTS_KEY]: '{nope' })), []);
   assert.deepEqual(recentCarts(memory({ [CARTS_KEY]: '[1,"x/y","12"]' })), ['12']);
   const broken = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); } };
-  assert.deepEqual(recentCarts(broken), []); assert.doesNotThrow(() => rememberCart(broken, '12'));
+  assert.deepEqual(recentCarts(broken), []);
   assert.deepEqual(recentCarts(null), []);
 });
 

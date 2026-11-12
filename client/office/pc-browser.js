@@ -275,7 +275,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
 
   render();
   return {
-    node, home, go, back: back_, forward: forward_, refresh, close, legend, status, key,
+    node, home, go, back: back_, forward: forward_, refresh, close, legend, status, key, page,
     title: () => `${titleOf(page())} - Info Highway`,
     selection: () => { const p = page(); return p?.kind === 'game' ? p : p?.kind === 'list' && sel >= 0 ? cards[sel]?.row ?? null : null; },
     refreshInstalled() { cards.forEach(mark); if (installBtn) setDisabled(installBtn, installed(page().pid)); },

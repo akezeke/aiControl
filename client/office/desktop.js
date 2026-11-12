@@ -1,9 +1,17 @@
-// The boss desk's computer: a 90s desktop with a PICO-8 cart player (Lexaloffle's own BBS widget in a frame). Laid out once at
-// LAYOUT and transformed onto the monitor's rectangle on screen; drawDesktop draws the same desktop, from the same numbers, on
-// the monitor's canvas, so stepping in and out doesn't jump.
-import { PICO_PALETTE } from './pc-icons.js';
-import { BROWSE_URL, STARTERS, bbsUrl, cartPid, recentCarts, rememberCart, widgetUrl } from './carts.js';
-import { clockOf } from './pc-windows.js';
+// The boss desk's computer, "Boss 98": a 90s desktop laid out once at LAYOUT and transformed onto the monitor's rectangle on
+// screen. Icons come from the server desktop (pc-store.js); three windows (PICO-8, Info Highway, Notepad) sit over them, with a
+// taskbar and Start. drawDesktop draws the monitor's picture from the same numbers, so stepping in and out doesn't jump.
+// While seated only these run on their own: the clock's one timeout to the next minute, an install's one-second timer, and a cart
+// while its frame can be seen. hide() (standing up) stops all of it: the cart, a drag, menus and dialogs, both timers.
+// The pausing rule: every render pauses the player unless seated and some of its frame is uncovered (W.gameHidden), so a
+// minimised, covered or closed game never runs.
+import { PICO_PALETTE, ICONS, iconCanvas } from './pc-icons.js';
+import { STARTERS, thumbName } from './carts.js';
+import * as W from './pc-windows.js';
+import { createPcStore } from './pc-store.js';
+import { createPlayer } from './pc-player.js';
+import { createBrowser } from './pc-browser.js';
+import { createNotepad } from './pc-notepad.js';
 
 export const LAYOUT = { w: 1080, h: 640 }; // the monitor canvas's 432 × 256, 2.5 times over
 export const TASKBAR = 44, TITLE = 26, BAR = 28, BEVEL = 2;
@@ -15,7 +23,6 @@ export const FRAME = { w: 526, h: 522 };
 export { PICO_PALETTE };
 const FACE = '#c3c3c3', LIGHT = '#ffffff', SHADE = '#5a5a5a', DESK = '#4a5a78', INK = '#1d2b53', RED = '#ff004d', CREAM = '#fff1e8';
 const FONT = 'Silkscreen, monospace';
-const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox';
 
 // The CSS matrix() taking the layout's top-left, top-right and bottom-left corners onto the screen's (transform-origin 0 0).
 export function fitTransform([tl, tr, , bl], w, h) {
@@ -23,103 +30,541 @@ export function fitTransform([tl, tr, , bl], w, h) {
 }
 export { clockOf } from './pc-windows.js';
 
-export function createDesktop(container, { onShutDown, storage, online = () => navigator.onLine, now = () => new Date() }) {
-  const make = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };
-  const button = (className, text, onClick) => { const node = make('button', className, text); node.type = 'button'; node.addEventListener('click', onClick); return node; };
-  const link = (text, href) => { const node = make('a', 'office-desktop-link', text); node.setAttribute('href', href); node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener noreferrer'); return node; };
-  const state = { window: null, cart: null, start: false };
-  let frame = null, refused = false, offline = false, clock = '';
+const GLYPHS = { pico8: ICONS.console, browser: ICONS.globe, notepad: ICONS.notepad };
+const TASKS = ['browser', 'notepad', 'pico8']; // the taskbar's fixed order
+const BUILTINS = [{ id: 'browser', kind: 'browser', name: 'Info Highway' }, { id: 'salaries', kind: 'salaries', name: 'salaries.txt' }];
+const ROOM = W.GRID.cols * W.GRID.rows - BUILTINS.length; // icons the grid holds besides the built-ins
+const TAP = 400, SLOP = 4; // ms between two taps that maximise; px a pointer moves before an icon drags
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+const shownIn = (s, n) => s.windows[n].open && s.windows[n].mode !== 'min';
+
+export function createDesktop(container, {
+  onShutDown, api, storage, online = () => navigator.onLine, now = () => new Date(),
+  reduced = () => !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+  open: openTab = url => { globalThis.open?.(url, '_blank', 'noopener,noreferrer'); },
+} = {}) {
+  const make = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
+  const button = (className, text, onClick) => { const n = make('button', className, text); n.type = 'button'; if (onClick) n.addEventListener('click', onClick); return n; };
+  const focus = n => n?.focus({ preventScroll: true }); // the layer is transformed; a scroll into view would shift it
+  const capture = (n, id) => { try { n.setPointerCapture?.(id); } catch { /* the pointer is gone */ } };
+  const release = (n, id) => { try { n.releasePointerCapture?.(id); } catch { /* already released */ } };
+  // '&' marks the letter a key picks; it is underlined.
+  const mnemonic = (n, label) => {
+    const at = label.indexOf('&');
+    if (at < 0 || at === label.length - 1) { n.append(label); return; }
+    const before = label.slice(0, at), after = label.slice(at + 2);
+    if (before) n.append(before);
+    n.append(make('u', null, label[at + 1]));
+    if (after) n.append(after);
+  };
+
+  let ws = W.defaults(), seated = false, restored = false, sessions = [], version = 0, start = false, selected = 'browser';
+  let drag = null, menu = null, dialog = null, lastTap = null, titleKind = 'mouse', iconKind = 'mouse', padSeen = false;
+  let clockTimer = null, lastError = 'Desktop unavailable.', matrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }, transform = '';
+  const dialogs = [], jobs = new Set(), zooms = new Set(), iconNodes = new Map();
+  const bump = () => { version++; };
+
+  const store = createPcStore({
+    api, storage,
+    onChange: () => { renderIcons(); browser.refreshInstalled(); bump(); },
+    onError: m => { lastError = m; },
+  });
+  // Every op goes through here: a failure says why in a dialog, unless the caller handles it.
+  const send = (op, onFail) => store.apply(op).then(v => { if (v === null) (onFail ?? showError)(lastError); return v; });
+  const showError = text => ui.dialog({ icon: 'error', text, buttons: ['OK'] });
+  const save = () => { restored = true; send({ op: 'windows', windows: ws.windows, order: ws.order }); };
+  const installed = pid => store.desktop().icons.some(i => i.kind === 'cart' && i.pid === pid);
+
+  const ui = { dialog: spec => openDialog(spec).promise, menu: (items, at, opts) => openMenu(items, at, opts) };
+  const player = createPlayer({ online });
+  player.onPlay(cart => play(cart));
+  const notepad = createNotepad({ ui });
+  notepad.onClose(() => closeWindow('notepad'));
+  // The browser's fetches re-render once it has shown the reply, so its title and task follow the page.
+  const browserApi = (path, body) => {
+    const p = new Promise(resolve => resolve(api(path, body))), later = () => queueMicrotask(render);
+    p.then(later, later);
+    return p;
+  };
+  const browser = createBrowser({ api: browserApi, ui, installed, onPlay: cart => play(cart), onInstall: cart => install(cart), open: url => openTab(url) });
+  browser.onClose(() => closeWindow('browser'));
+  const MODS = { pico8: player, browser, notepad };
 
   const root = make('div', 'office-desktop'); root.hidden = true;
-  // A mouse double-clicks it open, as on any desktop; a finger or a pen taps once (a double tap often sends no dblclick).
-  let tapped = false;
-  const icon = button('office-desktop-icon', null, () => { if (tapped) openPico(); }), label = make('span', 'office-desktop-label', 'PICO-8');
-  icon.append(make('span', 'office-desktop-console'), label);
-  icon.addEventListener('pointerdown', event => { tapped = event.pointerType !== 'mouse'; });
-  icon.addEventListener('dblclick', () => openPico());
-  icon.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); openPico(); } });
-  const pico = make('div', 'office-desktop-window'), body = make('div', 'office-desktop-body'), title = make('div', 'office-desktop-title');
-  title.append(make('span', null, 'PICO-8'), button('office-desktop-close', '✕', () => closePico()));
-  pico.append(title, body);
-  const start = button('office-desktop-start office-desktop-bevel', 'Start', () => (state.start ? closeStart() : openStart()));
-  const time = make('span', 'office-desktop-clock'), taskbar = make('div', 'office-desktop-taskbar'), menu = make('div', 'office-desktop-menu office-desktop-bevel');
-  taskbar.append(start, time);
-  menu.append(button('office-desktop-item', 'Shut down', () => { closeStart(); onShutDown(); }));
-  root.append(icon, pico, menu, taskbar);
-  // Keys stay in here, so its buttons and the paste box work and don't walk you about; Esc stands you up unless it closes Start.
-  root.addEventListener('keydown', event => {
-    if (event.key !== 'Escape') event.stopPropagation();
-    else if (state.start) { closeStart(); event.stopPropagation(); }
+  const iconLayer = make('div', 'pc-icons');
+  const boxOf = () => container.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+  // A pointer on screen, back into layout px through the inverse of the screen transform.
+  const toLayout = (e, box) => {
+    const { a, b, c, d, e: tx, f: ty } = matrix, det = a * d - b * c || 1;
+    const x = (e.clientX ?? 0) - box.left - tx, y = (e.clientY ?? 0) - box.top - ty;
+    return { x: (d * x - c * y) / det, y: (-b * x + a * y) / det };
+  };
+
+  // Windows: made once and never moved in the page (a moved frame reloads its cart); fronting changes only z-index.
+  const wins = {};
+  for (const name of W.NAMES) wins[name] = buildWindow(name);
+  function buildWindow(name) {
+    const mod = MODS[name], node = make('div', 'pc-window'), title = make('div', 'pc-title'), text = make('div', 'pc-title-text'), label = make('span');
+    text.append(iconCanvas(GLYPHS[name], 1), label);
+    const min = button('pc-button', '_', () => change(W.minimize(ws, name)));
+    const max = button('pc-button', '□', () => change(W.toggleMax(ws, name)));
+    const shut = button('pc-button', '×', () => closeWindow(name));
+    min.setAttribute('aria-label', 'Minimize'); shut.setAttribute('aria-label', 'Close');
+    if (W.FIXED.has(name)) { max.disabled = true; max.setAttribute('disabled', ''); }
+    const buttons = make('div', 'pc-title-buttons'); buttons.append(min, max, shut);
+    title.append(text, buttons);
+    node.append(title);
+    if (mod.menus) node.append(menubar(name, mod));
+    node.append(mod.node);
+    node.addEventListener('pointerdown', () => { if (W.frontmost(ws) !== name) change(W.front(ws, name)); });
+
+    title.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || buttons.contains(e.target)) return;
+      titleKind = e.pointerType;
+      const fronted = W.frontmost(ws) !== name;
+      if (fronted) change(W.front(ws, name), false);
+      const box = boxOf(), w = ws.windows[name];
+      drag = { type: 'window', name, node: title, pointer: e.pointerId, box, from: toLayout(e, box), at: { x: w.x, y: w.y }, start: ws, moved: false, fronted, movable: w.mode !== 'max', kind: e.pointerType };
+      capture(title, e.pointerId);
+    });
+    const mine = e => drag?.node === title && drag.pointer === e.pointerId;
+    title.addEventListener('pointermove', e => {
+      if (!mine(e) || !drag.movable) return;
+      const p = toLayout(e, drag.box);
+      change(W.moveTo(ws, name, { x: drag.at.x + p.x - drag.from.x, y: drag.at.y + p.y - drag.from.y }), false);
+      drag.moved = true;
+    });
+    title.addEventListener('pointerup', e => {
+      if (!mine(e)) return;
+      const d = drag; drag = null; release(title, d.pointer);
+      if (d.moved || d.fronted) save();
+      // A finger or a pen maximises with two taps; a double tap often sends no dblclick.
+      if (d.moved || d.kind === 'mouse') return;
+      const at = +now();
+      if (lastTap?.name === name && at - lastTap.at < TAP) { lastTap = null; change(W.toggleMax(ws, name)); } else lastTap = { name, at };
+    });
+    title.addEventListener('pointercancel', e => { if (mine(e)) cancelDrag(); });
+    title.addEventListener('dblclick', e => { if (titleKind === 'mouse' && !buttons.contains(e.target)) change(W.toggleMax(ws, name)); });
+    return { node, label, max };
+  }
+  function menubar(name, mod) {
+    const bar = make('div', 'pc-menubar'), items = [];
+    const openAt = i => {
+      const item = items[i], r = W.rectOf(ws, name), n = items.length;
+      openMenu(mod.menus()[i].items, { x: r.x + (item.offsetLeft || 0), y: r.y + (item.offsetTop || 0) + (item.offsetHeight || 0) },
+        { onLeft: () => openAt((i + n - 1) % n), onRight: () => openAt((i + 1) % n) }, item);
+    };
+    mod.menus().forEach((m, i) => {
+      const item = button('pc-menu-item', null, () => (menu?.owner === item ? closeMenu() : openAt(i)));
+      item.setAttribute('aria-haspopup', 'menu'); mnemonic(item, m.label);
+      items.push(item); bar.append(item);
+    });
+    return bar;
+  }
+
+  // Taskbar: Start, a button per open window, the key legend and the clock.
+  const startButton = button('pc-button pc-start', 'Start', () => (start ? closeStart() : openStart()));
+  startButton.setAttribute('aria-haspopup', 'menu');
+  const tasks = {};
+  for (const name of TASKS) {
+    const label = make('span'), node = button('pc-button pc-task', null, () => taskClick(name));
+    node.append(iconCanvas(GLYPHS[name], 1), label);
+    tasks[name] = { node, label };
+  }
+  const legend = make('span', 'pc-legend'), clock = make('div', 'pc-clock');
+  const taskbar = make('div', 'pc-taskbar');
+  taskbar.append(startButton, ...TASKS.map(n => tasks[n].node), legend, clock);
+
+  // Start: Programs and Documents open beside it; Shut down… stands you up.
+  const startMenu = make('div', 'pc-start-menu'), startList = make('div', 'pc-menu'), startItems = [], opens = new Map();
+  startMenu.hidden = true; startList.setAttribute('role', 'menu');
+  const startItem = (label, run, sub) => {
+    const item = button('pc-menu-item', null, () => run(item)); item.setAttribute('role', 'menuitem'); mnemonic(item, label);
+    if (sub) { item.setAttribute('aria-haspopup', 'menu'); opens.set(item, () => run(item)); }
+    startItems.push(item); return item;
+  };
+  const submenu = items => item => {
+    if (menu?.owner === item) { closeMenu(); return; }
+    openMenu(items, { x: (startMenu.offsetLeft || 0) + (startMenu.offsetWidth || 0) - 3, y: (startMenu.offsetTop || 0) + (item.offsetTop || 0) }, { onLeft: () => closeMenu(true) }, item);
+  };
+  startList.append(
+    startItem('&Programs ▸', submenu([{ label: '&Info Highway', run: () => openWindow('browser') }, { label: '&Notepad', run: () => openWindow('notepad') }]), true),
+    startItem('&Documents ▸', submenu([{ label: '&salaries.txt', run: () => openWindow('notepad') }]), true),
+    make('div', 'pc-menu-sep'),
+    startItem('Sh&ut down…', () => { closeStart(); onShutDown?.(); }),
+  );
+  startList.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') walk(startItems, e);
+    else if (e.key === 'ArrowRight' && opens.has(document.activeElement)) { e.preventDefault(); opens.get(document.activeElement)(); }
   });
+  startMenu.append(make('div', 'pc-banner', 'Boss 98'), startList);
+
+  root.append(iconLayer, ...W.NAMES.map(n => wins[n].node), startMenu, taskbar);
+  // A press outside an open menu or Start closes it; on the bare desktop it also clears the selection.
+  root.addEventListener('pointerdown', e => {
+    const t = e.target;
+    if (menu && !menu.node.contains(t) && !menu.owner?.contains(t)) closeMenu();
+    if (start && !startMenu.contains(t) && !startButton.contains(t) && !menu?.node.contains(t)) closeStart();
+    if (t === iconLayer) select(null);
+  }, true);
+  // Keys stay in here, so the desktop's own controls work and don't walk you about. Esc closes the top menu, dialog or Start;
+  // with none open it goes on and stands you up.
+  root.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (menu) closeMenu(true);
+      else if (dialog) { if (dialog.buttons.length) finish(dialog, null); }
+      else if (start) { closeStart(); focus(startButton); }
+      else return;
+      e.stopPropagation(); return;
+    }
+    e.stopPropagation();
+    if (e.key === 'Enter' && dialog) {
+      e.preventDefault();
+      const at = dialog.buttons.indexOf(document.activeElement), pick = at >= 0 ? at : dialog.initial;
+      if (dialog.buttons[pick]) finish(dialog, dialog.labels[pick]);
+    }
+  });
+  // The browser changes its page on its own clicks; the titles follow.
+  root.addEventListener('click', () => render());
   container.append(root);
 
-  function list() {
-    const bar = make('div', 'office-desktop-bar'), input = make('input', 'office-desktop-paste');
-    input.type = 'text'; input.setAttribute('placeholder', 'Cart link'); input.setAttribute('aria-label', 'Cart link'); input.setAttribute('spellcheck', 'false');
-    input.addEventListener('keydown', event => { if (event.key === 'Enter') paste(input.value); });
-    bar.append(input, button('office-desktop-bevel', 'Open', () => paste(input.value)));
-    const rows = make('ul', 'office-desktop-list'), row = (text, sub, pid) => {
-      const item = make('li'), play = button('office-desktop-cart', text, () => openCart(pid));
-      if (sub) play.append(make('small', null, sub));
-      item.append(play, link('BBS ↗', bbsUrl(pid))); rows.append(item);
-    };
-    for (const cart of STARTERS) row(cart.title, cart.author, cart.pid);
-    for (const pid of recentCarts(storage)) row(`Cart #${pid}`, null, pid);
-    const browse = make('li'); browse.append(link('Browse BBS ↗', BROWSE_URL)); rows.append(browse);
-    return [bar, ...(refused ? [make('p', 'office-desktop-note', "Paste the cart's Embed link")] : []), rows];
-  }
-  function cartView() {
-    const bar = make('div', 'office-desktop-bar'), stage = make('div', 'office-desktop-stage');
-    bar.append(button('office-desktop-bevel', '← Back', () => back()));
-    if (offline) stage.append(make('p', null, 'Offline: carts load from lexaloffle.com'));
-    // Shows till the widget paints over it. A failed load paints the browser's own error page over it instead.
-    else stage.append(make('p', null, 'Loading…'), frame);
-    return [bar, stage];
-  }
   function render() {
-    pico.hidden = state.window !== 'pico'; menu.hidden = !state.start;
-    if (!pico.hidden) body.replaceChildren(...(frame || offline ? cartView() : list()));
-    else body.replaceChildren();
-  }
-  // Taking the frame out of the page stops the cart and its sound.
-  const drop = () => { frame?.remove(); frame = null; state.cart = null; offline = false; };
-
-  // Only the menu: building the window again would move a playing cart's frame, and a moved frame loads again.
-  function openStart() { state.start = true; menu.hidden = false; }
-  function closeStart() { state.start = false; menu.hidden = true; }
-  function openPico() { state.window = 'pico'; state.start = false; refused = false; render(); }
-  function closePico() { drop(); state.window = null; render(); icon.focus({ preventScroll: true }); }
-  function back() { drop(); refused = false; render(); }
-  function openCart(pid) {
-    drop(); state.window = 'pico'; state.start = false; refused = false;
-    if (!online()) offline = true;
-    else {
-      frame = make('iframe');
-      for (const [name, value] of Object.entries({ src: widgetUrl(pid), title: `Cart #${pid}`, width: String(FRAME.w), height: String(FRAME.h), scrolling: 'no', referrerpolicy: 'no-referrer', allow: 'fullscreen; gamepad; autoplay', sandbox: SANDBOX })) frame.setAttribute(name, value);
-      const loaded = frame; frame.addEventListener('load', () => loaded.focus());
-      state.cart = pid;
+    const top = W.frontmost(ws);
+    for (const name of W.NAMES) {
+      const w = ws.windows[name], win = wins[name], r = W.rectOf(ws, name), title = MODS[name].title();
+      win.node.hidden = !shownIn(ws, name);
+      Object.assign(win.node.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, zIndex: String(10 + ws.order.indexOf(name)) });
+      win.node.classList.toggle('front', name === top);
+      win.label.textContent = title;
+      win.max.textContent = w.mode === 'max' ? '❐' : '□';
+      win.max.setAttribute('aria-label', w.mode === 'max' ? 'Restore' : 'Maximize');
+      const task = tasks[name];
+      task.node.hidden = !w.open; task.node.classList.toggle('pressed', name === top); task.label.textContent = title;
+      task.node.setAttribute('data-tip', title);
     }
+    startButton.classList.toggle('pressed', start); startMenu.hidden = !start;
+    player.pause(!seated || W.gameHidden(ws));
+    // salaries.txt is rebuilt when it comes into view, and on agents() only while it's in view.
+    const pad = seated && visible('notepad');
+    if (pad && !padSeen) notepad.update(sessions, now(), true);
+    padSeen = pad;
+    bump();
+  }
+  const visible = n => {
+    if (!shownIn(ws, n)) return false;
+    const above = ws.order.slice(ws.order.indexOf(n) + 1).filter(m => shownIn(ws, m)).map(m => W.rectOf(ws, m));
+    return W.uncovered(W.rectOf(ws, n), above).length > 0;
+  };
+  const same = (a, b) => JSON.stringify([a.windows, a.order]) === JSON.stringify([b.windows, b.order]);
+  // The one way windows change: renders, zooms what was minimised or restored, and saves unless a drag is still going.
+  function change(next, keep = true) {
+    if (next === ws || same(next, ws)) return;
+    const was = ws; ws = next;
+    if (!reduced()) for (const n of W.NAMES) if (was.windows[n].open && ws.windows[n].open && shownIn(was, n) !== shownIn(ws, n)) zoom(n, was);
+    render();
+    if (keep) save();
+  }
+  // Three dotted outlines between the window and its task button, one after another (pc.css times them).
+  function zoom(name, was) {
+    const toTask = shownIn(was, name), b = tasks[name].node, win = W.rectOf(toTask ? was : ws, name);
+    const task = { x: b.offsetLeft || 0, y: W.WORK.h + (b.offsetTop || 0), w: b.offsetWidth || 0, h: b.offsetHeight || 0 };
+    const [from, to] = toTask ? [win, task] : [task, win], mix = (k, f) => Math.round(from[k] + (to[k] - from[k]) * f);
+    [0.25, 0.5, 0.75].forEach((f, i) => {
+      const z = make('div', 'pc-zoom');
+      Object.assign(z.style, { left: `${mix('x', f)}px`, top: `${mix('y', f)}px`, width: `${mix('w', f)}px`, height: `${mix('h', f)}px`, animationDelay: `${i * 50}ms` });
+      z.addEventListener('animationend', () => { z.remove(); zooms.delete(z); }, { once: true });
+      zooms.add(z); root.append(z);
+    });
+  }
+  function taskClick(name) {
+    const w = ws.windows[name];
+    change(w.mode === 'min' ? W.restore(ws, name) : W.frontmost(ws) === name ? W.minimize(ws, name) : W.front(ws, name));
+  }
+  function openWindow(name, { home = true } = {}) {
+    closeStart();
+    if (name === 'notepad' && !ws.windows.notepad.open) notepad.open(sessions, now());
+    change(W.open(ws, name));
+    if (name === 'browser' && home && !browser.page()) { browser.home(); render(); }
+  }
+  function closeWindow(name) {
+    if (name === 'pico8') player.stop(); else if (name === 'browser') browser.close();
+    change(W.close(ws, name));
+  }
+  // Opens PICO-8 in front with the cart; the same cart already running isn't loaded again.
+  function play(cart) {
+    closeMenu(); closeStart();
+    if (!(player.playing() && player.cart()?.pid === cart.pid)) player.play(cart);
+    change(W.loadCart(ws, cart));
+  }
+  function browse(page) { openWindow('browser', { home: false }); browser.go(page); render(); }
+
+  // Icons: the built-ins, then the server's, each at its grid cell. A drag snaps to a free cell; a taken one puts it back.
+  const iconList = () => { const d = store.desktop(); return [...BUILTINS, ...d.icons].map(i => ({ ...i, spot: d.spots[i.id] ?? null })); };
+  const cellXY = ([col, row]) => ({ x: W.GRID.x + col * W.GRID.size, y: W.GRID.y + row * W.GRID.size });
+  const centre = (W.GRID.size - 76) / 2; // .pc-icon is 76 px wide
+  function position(node, spot) {
+    node.hidden = !spot;
+    if (!spot) return;
+    const { x, y } = cellXY(spot); node.style.left = `${x + centre}px`; node.style.top = `${y}px`;
+  }
+  function renderIcons() {
+    const list = iconList(), ids = new Set(list.map(i => i.id)), order = [];
+    for (const [id, n] of iconNodes) if (!ids.has(id)) { n.node.remove(); iconNodes.delete(id); }
+    for (const icon of list) {
+      const sig = JSON.stringify([icon.kind, icon.name, icon.pid, icon.url, icon.author]);
+      let n = iconNodes.get(icon.id);
+      if (!n || n.sig !== sig) { n?.node.remove(); n = { node: buildIcon(icon), sig }; iconNodes.set(icon.id, n); }
+      n.icon = icon;
+      if (!(drag?.type === 'icon' && drag.id === icon.id)) position(n.node, icon.spot);
+      n.node.classList.toggle('selected', selected === icon.id);
+      order.push(n.node);
+    }
+    const kids = iconLayer.children;
+    if (kids.length !== order.length || order.some((n, i) => kids[i] !== n)) iconLayer.append(...order);
+  }
+  function buildIcon(icon) {
+    const id = icon.id, node = button('pc-icon'), art = make('div', 'pc-icon-art');
+    const arrow = () => { const a = iconCanvas(ICONS.arrow, 1); a.classList.add('pc-icon-arrow'); return a; };
+    if (icon.kind === 'cart') {
+      const img = make('img'), shortcut = arrow();
+      img.setAttribute('src', '/api/office/bbs/thumb/' + thumbName(icon.pid)); img.setAttribute('alt', '');
+      img.addEventListener('load', bump, { once: true });
+      img.addEventListener('error', () => { art.replaceChildren(iconCanvas(ICONS.cart, 1), shortcut); bump(); }, { once: true });
+      art.append(img, shortcut);
+    } else if (icon.kind === 'link') art.append(iconCanvas(ICONS.globe, 1), arrow());
+    else art.append(iconCanvas(icon.kind === 'browser' ? ICONS.globe : ICONS.notepad, 1));
+    const tip = icon.kind === 'cart' ? icon.author : icon.kind === 'link' ? icon.url : '';
+    if (tip) node.setAttribute('data-tip', tip);
+    node.append(art, make('span', 'pc-icon-label', icon.name));
+
+    const mine = e => drag?.type === 'icon' && drag.node === node && drag.pointer === e.pointerId;
+    node.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      iconKind = e.pointerType; select(id);
+      const box = boxOf(), spot = iconNodes.get(id)?.icon.spot ?? [0, 0];
+      drag = { type: 'icon', id, node, pointer: e.pointerId, box, from: toLayout(e, box), base: cellXY(spot), moved: false, kind: e.pointerType };
+      capture(node, e.pointerId);
+    });
+    node.addEventListener('pointermove', e => {
+      if (!mine(e)) return;
+      const p = toLayout(e, drag.box), dx = p.x - drag.from.x, dy = p.y - drag.from.y;
+      if (!drag.moved && Math.hypot(dx, dy) <= SLOP) return;
+      drag.moved = true; node.style.left = `${drag.base.x + centre + dx}px`; node.style.top = `${drag.base.y + dy}px`;
+    });
+    node.addEventListener('pointerup', e => {
+      if (!mine(e)) return;
+      const d = drag; drag = null; release(node, d.pointer);
+      if (d.moved) dropIcon(d, toLayout(e, d.box));
+      else if (d.kind !== 'mouse') openIcon(id); // a finger or a pen opens with one tap
+    });
+    node.addEventListener('pointercancel', e => { if (mine(e)) cancelDrag(); });
+    node.addEventListener('dblclick', () => { if (iconKind === 'mouse') openIcon(id); });
+    return node;
+  }
+  function dropIcon(d, p) {
+    const { size, cols, rows } = W.GRID, spots = store.desktop().spots, was = spots[d.id];
+    const col = clamp(Math.round((d.base.x - W.GRID.x + p.x - d.from.x) / size), 0, cols - 1);
+    const row = clamp(Math.round((d.base.y - W.GRID.y + p.y - d.from.y) / size), 0, rows - 1);
+    const taken = Object.entries(spots).some(([other, s]) => other !== d.id && s[0] === col && s[1] === row);
+    if (taken || (was?.[0] === col && was?.[1] === row)) position(d.node, was);
+    else send({ op: 'move', id: d.id, spot: [col, row] });
+  }
+  function openIcon(id) {
+    const icon = iconNodes.get(id)?.icon;
+    if (!icon) return;
+    if (icon.kind === 'browser') openWindow('browser');
+    else if (icon.kind === 'salaries') openWindow('notepad');
+    else if (icon.kind === 'cart') { if (icon.embed) play({ pid: icon.pid, title: icon.name }); else browse({ kind: 'game', pid: icon.pid }); }
+    else if (icon.kind === 'link') browse({ kind: 'away', url: icon.url });
+  }
+  function select(id) {
+    if (selected === id) return;
+    selected = id;
+    for (const [other, n] of iconNodes) n.node.classList.toggle('selected', other === id);
+    bump();
+  }
+  // A window drag goes back where it started (it was never saved); an icon goes back to its cell.
+  function cancelDrag() {
+    const d = drag; if (!d) return;
+    drag = null; release(d.node, d.pointer);
+    if (d.type === 'window') { change(d.start, false); if (d.fronted) save(); } else position(d.node, store.desktop().spots[d.id]);
+  }
+
+  // Menus: one popup at a time, in layout px. Items are { label, run, disabled } or '-' for a line.
+  function openMenu(items, at, { onLeft, onRight } = {}, owner = null) {
+    closeMenu();
+    const node = make('div', 'pc-menu pc-popup'), entries = [];
+    node.setAttribute('role', 'menu');
+    for (const item of items) {
+      if (item === '-') { node.append(make('div', 'pc-menu-sep')); continue; }
+      const b = button('pc-menu-item', null, () => {
+        if (item.disabled) return;
+        closeMenu(); closeStart(); item.run(); render();
+      });
+      b.setAttribute('role', 'menuitem'); mnemonic(b, item.label);
+      if (item.disabled) b.setAttribute('aria-disabled', 'true');
+      entries.push(b); node.append(b);
+    }
+    node.addEventListener('keydown', e => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') walk(entries, e);
+      else if (e.key === 'ArrowLeft' && onLeft) { e.preventDefault(); onLeft(); }
+      else if (e.key === 'ArrowRight' && onRight) { e.preventDefault(); onRight(); }
+    });
+    root.append(node);
+    const w = node.offsetWidth || 0, h = node.offsetHeight || 0;
+    node.style.left = `${clamp(at.x, 0, Math.max(0, LAYOUT.w - w))}px`; node.style.top = `${clamp(at.y, 0, Math.max(0, LAYOUT.h - h))}px`;
+    menu = { node, owner };
+    focus(entries.find(b => !b.hasAttribute('aria-disabled')));
+    bump();
+  }
+  function closeMenu(toOwner = false) {
+    if (!menu) return;
+    const m = menu; menu = null; m.node.remove();
+    if (toOwner) focus(m.owner);
+    bump();
+  }
+  // ↑ and ↓ walk a menu's enabled items, wrapping.
+  function walk(items, e) {
+    const list = items.filter(b => !b.hasAttribute('aria-disabled')), n = list.length;
+    e.preventDefault();
+    if (!n) return;
+    const at = list.indexOf(document.activeElement), down = e.key === 'ArrowDown';
+    focus(list[at < 0 ? (down ? 0 : n - 1) : (at + (down ? 1 : n - 1)) % n]);
+  }
+  function openStart() { closeMenu(); start = true; startMenu.classList.toggle('pc-slide', !reduced()); render(); focus(startItems[0]); }
+  function closeStart() {
+    if (!start) return;
+    start = false;
+    if (menu?.owner && startMenu.contains(menu.owner)) closeMenu();
     render();
   }
-  function paste(text) {
-    const pid = cartPid(text);
-    if (!pid) { refused = true; render(); return; }
-    rememberCart(storage, pid); openCart(pid);
+
+  // Dialogs: one at a time over everything; the rest wait their turn. Not seated, a dialog answers null at once.
+  function openDialog({ icon = 'info', text, buttons: labels = ['OK'], initial = 0, extra = null }) {
+    const d = { icon, text, labels, initial, extra, buttons: [], node: null, done: false };
+    d.promise = new Promise(resolve => { d.resolve = resolve; });
+    d.close = value => finish(d, value);
+    if (!seated) { d.done = true; d.resolve(null); return d; }
+    dialogs.push(d);
+    if (!dialog) nextDialog();
+    return d;
+  }
+  function nextDialog() {
+    const d = dialog = dialogs.shift() ?? null;
+    if (d) {
+      const backdrop = make('div', 'pc-dialog-backdrop'), box = make('div', 'pc-window pc-dialog front');
+      box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-modal', 'true');
+      const title = make('div', 'pc-title'), text = make('div', 'pc-title-text'), body = make('div', 'pc-dialog-body'), row = make('div', 'pc-dialog-buttons');
+      text.append(make('span', null, 'Boss 98')); title.append(text);
+      body.append(iconCanvas(ICONS[d.icon] ?? ICONS.info, 1), make('p', 'pc-dialog-text', d.text));
+      d.buttons = d.labels.map(label => button('pc-button', label, () => finish(d, label)));
+      row.append(...d.buttons);
+      box.append(title, body, ...(d.extra ? [d.extra] : []), row);
+      backdrop.append(box); root.append(backdrop); d.node = backdrop;
+      focus(d.buttons[d.initial] ?? d.buttons[0]);
+    }
+    bump();
+  }
+  function finish(d, value) {
+    if (d.done) return;
+    d.done = true;
+    const at = dialogs.indexOf(d); if (at >= 0) dialogs.splice(at, 1);
+    d.resolve(value);
+    if (dialog === d) { d.node.remove(); dialog = null; nextDialog(); }
   }
 
-  render();
+  // Install: "setup" takes at least a second and ends only once the server has added the icon (or said why not).
+  function install(cart) {
+    if (!seated) return;
+    if (store.desktop().icons.length >= ROOM) { ui.dialog({ icon: 'warn', text: 'Not enough desktop space. Delete some icons first.', buttons: ['OK'] }); return; }
+    const bar = make('div', 'pc-progress'); bar.append(make('div', 'pc-setup-fill'));
+    const setup = openDialog({ icon: 'info', text: `Installing ${cart.title}…`, buttons: [], extra: bar });
+    const job = { left: 2, reason: null, cancelled: false, timer: null };
+    const done = () => {
+      if (--job.left > 0 || job.cancelled) return;
+      jobs.delete(job); setup.close(null);
+      ui.dialog(job.reason === null ? { icon: 'info', text: 'Setup is complete.', buttons: ['OK'] }
+        : { icon: 'error', text: `Setup failed: ${job.reason.replace(/\.$/, '')}.`, buttons: ['OK'] });
+    };
+    job.timer = setTimeout(() => { job.timer = null; done(); }, 1000);
+    jobs.add(job);
+    send({ op: 'add', kind: 'cart', pid: cart.pid }, m => { job.reason = m; }).then(done);
+  }
+
+  function tickClock() {
+    const t = now();
+    clock.textContent = W.clockOf(t);
+    clearTimeout(clockTimer);
+    clockTimer = setTimeout(tickClock, 60_000 - (t.getSeconds() * 1000 + t.getMilliseconds()));
+    bump();
+  }
+  // The saved windows, once, at the first sit-down after the desktop loads (unless the windows were changed meanwhile).
+  function restoreSaved() {
+    restored = true;
+    ws = W.normalizeWindows(store.desktop());
+    player.show(ws.windows.pico8.cart);
+    if (ws.windows.notepad.open) notepad.open(sessions, now());
+    if (ws.windows.browser.open && !browser.page()) browser.home();
+    render();
+  }
+  // Each frame while seated: onto the monitor's four corners on screen (top-left, top-right, bottom-right, bottom-left).
+  function place(corners) {
+    matrix = fitTransform(corners, LAYOUT.w, LAYOUT.h);
+    const { a, b, c, d, e, f } = matrix, next = `matrix(${a}, ${b}, ${c}, ${d}, ${e}, ${f})`;
+    if (next !== transform) root.style.transform = transform = next;
+    if (seated) return;
+    seated = true; root.hidden = false;
+    tickClock();
+    select('browser'); focus(iconNodes.get('browser')?.node);
+    if (!restored) {
+      if (store.loaded()) restoreSaved();
+      else store.load().then(ok => { if (ok && seated && !restored) restoreSaved(); });
+    }
+    // ▶ Play, never autoplay.
+    player.show(ws.windows.pico8.cart);
+    render();
+  }
+  function hide() {
+    if (!seated) return;
+    seated = false;
+    cancelDrag(); closeMenu(); closeStart();
+    for (const d of [...dialogs]) finish(d, null); // the waiting ones first, so none is shown on the way out
+    if (dialog) finish(dialog, null);
+    clearTimeout(clockTimer); clockTimer = null;
+    for (const job of jobs) { job.cancelled = true; clearTimeout(job.timer); }
+    jobs.clear();
+    for (const z of zooms) z.remove();
+    zooms.clear();
+    player.stop();
+    root.hidden = true; padSeen = false;
+    render();
+  }
+  const stateOf = n => n === 'pico8' ? { cart: ws.windows.pico8.cart } : n === 'browser' ? { page: browser.page() } : { text: notepad.node.value };
+
+  renderIcons(); render();
   return {
-    root, openStart, openPico, openCart, paste,
-    state: () => ({ ...state }),
-    // Each frame while it's shown: onto the monitor's four corners on screen (top-left, top-right, bottom-right, bottom-left).
-    place(corners) {
-      const { a, b, c, d, e, f } = fitTransform(corners, LAYOUT.w, LAYOUT.h);
-      root.style.transform = `matrix(${a}, ${b}, ${c}, ${d}, ${e}, ${f})`;
-      const minute = clockOf(now()); if (minute !== clock) time.textContent = clock = minute;
-      if (root.hidden) { root.hidden = false; icon.focus({ preventScroll: true }); }
+    root, ui, place, hide, install, play,
+    arrange: () => send({ op: 'arrange' }),
+    agents(list) {
+      sessions = list;
+      const shown = seated && visible('notepad');
+      notepad.update(list, now(), shown);
+      if (shown) bump();
     },
-    hide() { drop(); state.window = null; state.start = false; refused = false; render(); root.hidden = true; },
-    dispose() { drop(); root.remove(); },
+    // What the monitor draws while seated; version() changes whenever it would draw something else.
+    view() {
+      const top = W.frontmost(ws);
+      return {
+        icons: iconList().map(i => ({ id: i.id, name: i.name, kind: i.kind, spot: i.spot && [...i.spot], thumb: i.kind === 'cart' ? thumbName(i.pid) : null, selected: selected === i.id })),
+        windows: ws.order.filter(n => shownIn(ws, n)).map(n => ({ name: n, title: MODS[n].title(), rect: W.rectOf(ws, n), front: n === top, mode: ws.windows[n].mode, state: stateOf(n) })),
+        tasks: TASKS.filter(n => ws.windows[n].open).map(n => ({ name: n, title: MODS[n].title(), pressed: n === top })),
+        start,
+      };
+    },
+    version: () => version,
+    // boss.js draws the idle monitor from this until Task 13 draws view().
+    state: () => ({ window: null, cart: null, start }),
+    dispose() { hide(); root.remove(); },
   };
 }
 

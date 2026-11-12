@@ -1,5 +1,4 @@
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { createPlayer, draw, SANDBOX } from '../client/office/pc-player.js';
 import { useDom, find, findAll } from './fixtures/pc-dom.mjs';
@@ -10,8 +9,6 @@ test('playing loads the widget at full size, titled for the cart', t => {
   const f = p.frame(); assert.equal(f.attributes.src, 'https://www.lexaloffle.com/bbs/widget.php?pid=molemole-1');
   assert.deepEqual([f.attributes.width, f.attributes.height, f.attributes.sandbox], ['526', '522', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox']);
   assert.equal(SANDBOX, f.attributes.sandbox);
-  // Task 11 deletes desktop.js's private copy, and this assertion with it.
-  assert.ok(readFileSync(new URL('../client/office/desktop.js', import.meta.url), 'utf8').includes("const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox'"));
   assert.equal(p.title(), 'Mole Mole - PICO-8');
 });
 test('another cart replaces the frame; stop removes it and shows ▶ Play, never autoplaying', t => {

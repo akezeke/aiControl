@@ -54,6 +54,7 @@ test('opens on Featured page 1 and says so', async t => {
   const p = s.b.home(); assert.equal(s.b.status(), 'Opening page…');
   assert.ok(find(s.b.node, n => n.classList.contains('pc-throbber')).classList.contains('loading'));
   await p; assert.deepEqual(s.calls, ['office/bbs/list?tab=featured&page=1']);
+  assert.equal(s.b.page().kind, 'list');
   assert.equal(s.b.status(), 'Done'); assert.equal(s.b.title(), 'Featured - Info Highway');
   assert.equal(find(s.b.node, n => n.classList.contains('pc-throbber')).classList.contains('loading'), false);
   assert.equal(s.cards().length, 30);
