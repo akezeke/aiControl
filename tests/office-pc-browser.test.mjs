@@ -241,3 +241,96 @@ test('draw: thumbnails of the list, a missing one grey', async t => {
   draw(ctx, { x: 0, y: 0, w: 300, h: 200 }, { page: s.b.selection() ?? { kind: 'list', carts: rows(3) }, image: name => name === 'pico8_c0-1.png' ? 'IMG' : null });
   assert.ok(g.some(([k, a]) => k === 'drawImage' && a[0] === 'IMG')); assert.ok(g.some(([k]) => k === 'fillRect'));
 });
+
+// Real elements have an upper-case tagName and no `tag`; these focus cases fail if key() reads anything else.
+test('text fields keep their keys; Enter goes; controls keep Enter for the native click', async t => {
+  const s = await loaded(t), field = find(s.b.node, n => n.classList.contains('address')), box = find(s.b.node, n => n.classList.contains('search'));
+  const n = s.calls.length, title = s.b.title();
+  for (const input of [field, box]) for (const k of ['Backspace', 'x', 'X', 's', 'S']) {
+    s.doc.activeElement = input; assert.equal(s.key(k), false, k); assert.equal(s.doc.activeElement, input); assert.equal(s.calls.length, n); assert.equal(s.b.title(), title);
+  }
+  s.doc.activeElement = field; field.value = 'porklike-2'; assert.equal(s.key('Enter'), true); await tick();
+  assert.equal(s.b.selection().pid, 'porklike-2'); assert.equal(s.played.length, 0);
+  await s.b.home(); const next = s.button('Next »'); s.doc.activeElement = next; assert.equal(s.key('Enter'), false); assert.equal(s.played.length, 0);
+  s.doc.activeElement = s.button('Featured'); assert.equal(s.key('Enter'), false);
+  await s.b.go('good-1'); const open = find(s.b.node, n => n.textContent === 'Open at lexaloffle ↗'); s.doc.activeElement = open;
+  assert.equal(s.key('Enter'), false); assert.deepEqual(s.played, []);
+  s.doc.activeElement = null; assert.equal(s.key('Enter'), true); assert.equal(s.played.length, 1);
+});
+
+// A hand-resolved api: every call waits for resolve(i) or reject(i).
+function lazy(t) {
+  const doc = useDom(t), calls = [], played = [], opened = [];
+  const api = path => new Promise((resolve, reject) => calls.push({ path, resolve, reject }));
+  const b = createBrowser({ doc, api, ui: {}, installed: () => false, onPlay: c => played.push(c), onInstall() {}, open: u => opened.push(u) });
+  const list = (tag, n = 3) => ({ carts: rows(n).map(r => ({ ...r, title: `${tag} ${r.title}` })), more: false });
+  const info = pid => ({ pid, title: `Info ${pid}`, author: 'a', thumb: `pico8_${pid}.png`, embed: true });
+  const titles = () => findAll(b.node, n => n.classList.contains('pc-card')).map(c => find(c, x => x.tag === 'a').textContent);
+  return { doc, b, calls, played, opened, list, info, titles };
+}
+const flush = async () => { for (let i = 0; i < 4; i++) await tick(); };
+
+test('stale: the list reply landing after a newer game page is dropped', async t => {
+  const s = lazy(t); s.b.home(); s.b.go('good-1');
+  s.calls[1].resolve(s.info('good-1')); await flush();
+  s.calls[0].resolve(s.list('old')); await flush();
+  assert.equal(s.b.page().kind, 'game'); assert.equal(s.b.status(), 'Done'); assert.deepEqual(s.titles(), []); assert.equal(s.b.title(), 'Info good-1 - Info Highway');
+});
+test('stale: two searches, the first reply last', async t => {
+  const s = lazy(t); s.b.go('snake'); s.b.go('zelda');
+  s.calls[1].resolve(s.list('zelda')); await flush(); s.calls[0].resolve(s.list('snake')); await flush();
+  assert.equal(s.b.title(), 'Search: zelda - Info Highway'); assert.deepEqual(s.titles(), ['zelda Cart 0', 'zelda Cart 1', 'zelda Cart 2']); assert.equal(s.b.status(), 'Done');
+  assert.equal(s.b.page().carts[0].title, 'zelda Cart 0');
+});
+test('stale: Back during a fetch', async t => {
+  const s = lazy(t); const first = s.b.home(); s.calls[0].resolve(s.list('home')); await first;
+  s.b.go('good-1'); assert.equal(s.b.status(), 'Opening page…'); s.b.back();
+  assert.equal(s.b.status(), 'Done'); assert.deepEqual(s.titles(), ['home Cart 0', 'home Cart 1', 'home Cart 2']);
+  s.calls[1].resolve(s.info('good-1')); await flush();
+  assert.equal(s.b.page().kind, 'list'); assert.equal(s.b.status(), 'Done'); assert.equal(s.b.title(), 'Featured - Info Highway'); assert.equal(s.b.menus()[1].items[1].disabled, false);
+  assert.equal(s.doc.activeElement?.textContent, undefined, 'no focus pulled to the stale game page');
+});
+test('stale: a failure of an old fetch does not turn the current entry into an error page', async t => {
+  const s = lazy(t); s.b.home(); s.b.go('good-1');
+  s.calls[1].resolve(s.info('good-1')); await flush(); s.calls[0].reject(new Error('down')); await flush();
+  assert.equal(s.b.page().kind, 'game'); assert.equal(s.b.title(), 'Info good-1 - Info Highway'); assert.equal(s.b.status(), 'Done');
+  assert.equal(findAll(s.b.node, n => n.tag === 'button' && n.textContent === 'Retry').length, 0);
+});
+test('stale: an old cart-info reply on a game page', async t => {
+  const s = lazy(t); s.b.go('first-1'); s.b.go('second-1');
+  s.calls[1].resolve(s.info('second-1')); await flush(); s.calls[0].resolve({ ...s.info('first-1'), embed: false }); await flush();
+  assert.equal(s.b.page().pid, 'second-1'); assert.equal(s.b.page().cart.embed, true); assert.equal(s.b.title(), 'Info second-1 - Info Highway');
+  assert.equal(s.doc.activeElement.textContent, '▶ Play'); assert.equal(s.b.status(), 'Done');
+});
+test('stale: Enter on a card, navigate away, then the cart info arrives', async t => {
+  const s = lazy(t); const home = s.b.home(); s.calls[0].resolve(s.list('home')); await home;
+  s.b.key({ key: 'ArrowRight' }); s.b.key({ key: 'Enter' }); assert.equal(s.calls[1].path, 'office/bbs/cart?pid=c0-1'); assert.equal(s.b.status(), 'Opening page…');
+  s.b.go('https://example.com/'); s.b.node.dispatch('click'); assert.equal(s.b.status(), 'Done');
+  s.calls[1].resolve({ ...s.info('c0-1'), embed: true }); await flush();
+  assert.deepEqual(s.played, []); assert.equal(s.b.page().kind, 'away'); assert.equal(s.b.status(), 'Done');
+  // and a blocked cart or a failure must not navigate either
+  const u = lazy(t); const h = u.b.home(); u.calls[0].resolve(u.list('home')); await h;
+  u.b.key({ key: 'ArrowRight' }); u.b.key({ key: 'Enter' }); u.b.go('https://example.com/');
+  u.calls[1].resolve({ ...u.info('c0-1'), embed: false }); await flush(); assert.equal(u.b.page().kind, 'away');
+  const v = lazy(t); const h2 = v.b.home(); v.calls[0].resolve(v.list('home')); await h2;
+  v.b.key({ key: 'ArrowRight' }); v.b.key({ key: 'Enter' }); v.b.go('https://example.com/');
+  v.calls[1].reject(new Error('down')); await flush(); assert.equal(v.b.page().kind, 'away');
+});
+
+test('draw: a real loaded list page and a game page', async t => {
+  const s = await loaded(t), calls = [], ctx = new Proxy({}, { get: (_, k) => (...a) => calls.push([k, a]), set() { return true; } });
+  const seen = []; draw(ctx, { x: 0, y: 0, w: 300, h: 200 }, { page: s.b.page(), image: name => { seen.push(name); return name === 'pico8_c0-1.png' ? 'IMG0' : null; } });
+  assert.ok(seen.includes('pico8_c0-1.png')); assert.ok(calls.some(([k, a]) => k === 'drawImage' && a[0] === 'IMG0')); assert.ok(calls.some(([k]) => k === 'fillRect'));
+  await s.b.go('good-1'); calls.length = 0; seen.length = 0;
+  draw(ctx, { x: 0, y: 0, w: 300, h: 200 }, { page: s.b.page(), image: name => { seen.push(name); return 'BIG'; } });
+  assert.deepEqual(seen, ['pico8_good-1.png']); assert.equal(calls.filter(([k]) => k === 'drawImage').length, 1);
+});
+
+test('stale: an old reply landing while the newest fetch is still pending changes nothing', async t => {
+  const s = lazy(t); s.b.home(); s.b.go('good-1'); s.calls[0].resolve(s.list('old')); await flush();
+  assert.equal(s.b.status(), 'Opening page…'); assert.deepEqual(s.titles(), []); assert.equal(s.b.page().kind, 'game');
+  const u = lazy(t); u.b.go('snake'); u.b.go('zelda'); u.calls[0].resolve(u.list('snake')); await flush();
+  assert.equal(u.b.status(), 'Opening page…'); assert.equal(u.b.page().carts, undefined); assert.deepEqual(u.titles(), []);
+  const v = lazy(t); v.b.go('first-1'); v.b.go('second-1'); v.calls[0].resolve(v.info('first-1')); await flush();
+  assert.equal(v.b.status(), 'Opening page…'); assert.equal(v.b.page().loaded, undefined); assert.equal(v.doc.activeElement, null);
+});

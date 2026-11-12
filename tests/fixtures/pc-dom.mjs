@@ -1,5 +1,6 @@
 // A small fake DOM for the boss PC's tests (no jsdom): elements with a tree, classList, capture/bubble events (once, dedupe),
 // focus and a recording 2d canvas. Only what the desktop's modules touch; add here rather than in a test file.
+// `tag` is the fixture's own lowercase convenience for finders; production code reads the real `tagName` (upper case, also set here).
 // NOT modelled:
 // - attribute/property links: setAttribute('class') vs classList/className, node.src vs attributes.src, value vs attribute;
 // - textContent neither clears nor aggregates children (it is a plain field);
@@ -49,7 +50,7 @@ export function useDom(t) {
   function element(tag) {
     const classes = new Set();
     const node = {
-      tag, parent: null, children: [], attributes: {}, style: {}, dataset: {}, hidden: false, textContent: '', value: '', type: '',
+      tag, tagName: String(tag).toUpperCase(), parent: null, children: [], attributes: {}, style: {}, dataset: {}, hidden: false, textContent: '', value: '', type: '',
       classList: {
         add: (...names) => { for (const n of names) classes.add(n); },
         remove: (...names) => { for (const n of names) classes.delete(n); },

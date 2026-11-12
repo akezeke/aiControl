@@ -233,7 +233,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
     if (e.ctrlKey || e.metaKey) { if (k.toLowerCase() !== 'f') return false; find(); return true; }
     if (e.altKey) return false;
     // Text fields keep their letters; only Enter submits.
-    if (active?.tag === 'input') {
+    if (active?.tagName === 'INPUT') {
       if (k !== 'Enter') return false;
       if (active === field) go(field.value); else if (active === searchBox) search(); else return false;
       return true;
@@ -249,7 +249,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
         return true;
       }
       case 'Enter': case 'z': case 'Z': {
-        const control = active && (active.tag === 'button' || active.tag === 'a');
+        const control = active && (active.tagName === 'BUTTON' || active.tagName === 'A');
         if (p?.kind === 'list' && cards.length) {
           const at = cards.findIndex(c => c.link === active);
           if (at < 0 && control) return false;
