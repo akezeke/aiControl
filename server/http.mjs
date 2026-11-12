@@ -18,7 +18,7 @@ async function body(req, limit = 64 * 1024) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push, workflow, online }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push, workflow, online, pc }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -120,6 +120,20 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
           const result = data?.leave ? await online.leave() : await online.join(data ?? {});
           auth.touch(session); json(res, 200, result); return;
         }
+      }
+      // Office boss PC (office-pc.mjs): the saved desktop (one op per POST, which is activity), and the PICO-8 BBS as read by the
+      // server: a list, a cart's page info and thumbnail PNGs. Lexaloffle is only ever asked what the player opened.
+      const bbs = /^\/api\/office\/bbs\/(?:(list|cart)|thumb\/([^/]+))$/.exec(path);
+      if (req.method === 'GET' && bbs || path === '/api/office/pc') {
+        if (!pc) throw fail('The boss PC is not available.', 503);
+        if (bbs && req.method === 'GET') {
+          if (bbs[2] === undefined) { json(res, 200, await pc[bbs[1]](new URL(req.url, origins[0]).searchParams)); return; }
+          let name; try { name = decodeURIComponent(bbs[2]); } catch { throw fail('Bad thumbnail name.', 400); }
+          const png = await pc.thumb(name);
+          res.statusCode = 200; res.setHeader('Content-Type', 'image/png'); res.setHeader('Cache-Control', 'private, max-age=86400'); res.setHeader('Content-Length', png.length); res.end(png); return;
+        }
+        if (req.method === 'GET') { json(res, 200, pc.desktop()); return; }
+        const result = await pc.apply(await body(req, 4096)); auth.touch(session); json(res, 200, result); return;
       }
       // Lost sessions (recovery.mjs): resumed in tmux, or let go.
       const lostAction = /^\/api\/lost\/(resume|dismiss)$/.exec(path);

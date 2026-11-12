@@ -4,7 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseList, parseCart, createOfficePc } from '../server/office-pc.mjs';
-import { thumbName } from '../client/office/carts.js';
+import { Readable } from 'node:stream';
+import { thumbName, STARTERS } from '../client/office/carts.js';
+import { createHandler } from '../server/http.mjs';
 
 const ROWS = [
   "['165759', 148484, `Mole Mole`,\"/bbs/thumbs/pico8_molemole-1.png\",256,170.66666666667,\"2025-04-18 00:41:13\",13953,\"Adam Atomic\",\"2026-11-01 04:30:19\",0,\"\",100,25,0,7,2,'0',[],2,276,7,`Mole Mole`,``],",
@@ -183,4 +185,149 @@ test('a pid or thumb read from a page is checked', async () => {
   await assert.rejects(s.pc.cart(q('tid=9')), status(502));
   const odd = await s.pc.cart(q('tid=8'));
   assert.deepEqual([odd.pid, odd.thumb], ['tid-1', 'pico8_tid-1.png']);
+});
+
+// ---- the saved desktop ----
+const refuse = async () => { throw new Error('no network'); };
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pc-'));
+const page = (pid, title = 'T', author = 'Au', extra = '') => `<title>${title}</title> <a href="/bbs/?uid=1">${author}</a> cart_id=${pid} pico8_${pid}.png ${extra}`;
+const fresh = () => createOfficePc({ dir: tmp(), fetch: refuse });
+const mine = pc => pc.desktop().icons.filter(i => i.id !== 'browser' && i.id !== 'salaries');
+
+test('a new desktop has the built-ins and the four starters', () => {
+  const d = fresh().desktop();
+  assert.deepEqual(d.icons.map(i => i.pid), STARTERS.map(s => s.pid));
+  assert.deepEqual([d.spots.browser, d.spots.salaries, d.spots.i4], [[0, 0], [0, 1], [1, 0]]);
+  assert.equal(d.imported, false); assert.deepEqual(d.order, ['notepad', 'browser', 'pico8']);
+  assert.deepEqual(d.icons[0], { id: 'i1', kind: 'cart', pid: STARTERS[0].pid, name: STARTERS[0].title, author: STARTERS[0].author, embed: true });
+});
+test('a damaged desktop file is repaired on load', () => {
+  const at = tmp(); fs.writeFileSync(path.join(at, 'office-pc.json'), JSON.stringify({ version: 1, icons: [
+    { id: 'i1', kind: 'cart', pid: 'a-1', name: 'A', author: '', embed: true }, { id: 'i2', kind: 'cart', pid: 'b-1', name: 'B', author: '', embed: true },
+    { id: 'i3', kind: 'virus', name: 'X' }, { id: 'i4', kind: 'link', url: 'http://x.test', name: 'Y' }, { id: 'i1', kind: 'link', url: 'https://x.test', name: 'dup' }],
+    spots: { browser: [0, 0], salaries: [0, 1], i1: [3, 3], i2: [3, 3] }, windows: { notepad: { open: true, x: -9999, y: 0 } }, order: [] }));
+  const d = createOfficePc({ dir: at, fetch: refuse }).desktop();
+  assert.deepEqual(d.icons.map(i => i.id), ['i1', 'i2']);
+  assert.deepEqual([d.spots.i1, d.spots.i2], [[3, 3], [0, 2]]);
+  assert.equal(d.windows.notepad.x, -440);
+});
+test('a file that is not a version 1 object gives a new desktop', () => {
+  for (const text of ['[]', 'null', '{ "version": 2 }', 'not json']) {
+    const at = tmp(); fs.writeFileSync(path.join(at, 'office-pc.json'), text);
+    assert.equal(createOfficePc({ dir: at, fetch: refuse }).desktop().icons.length, 4, text);
+  }
+});
+
+test('add a cart: author and embed from the page, first free spot, no refetch of an installed pid', async () => {
+  const s = setup({ [`${HOST}/bbs/?pid=new-1`]: page('new-1', 'New One', 'Zed', 'do not allow embedded playback') });
+  const d = await s.pc.apply({ op: 'add', kind: 'cart', pid: 'new-1' });
+  assert.deepEqual(d.icons.at(-1), { id: 'i5', kind: 'cart', pid: 'new-1', name: 'New One', author: 'Zed', embed: false });
+  assert.deepEqual(d.spots.i5, [1, 1]);
+  const n = s.calls.length;
+  await assert.rejects(s.pc.apply({ op: 'add', kind: 'cart', pid: 'new-1' }), status(409));
+  assert.equal(s.calls.length, n);
+});
+test('add by a pid whose page names an installed cart is a 409; a 502 passes through', async () => {
+  const s = setup({ [`${HOST}/bbs/?pid=molemole-1`]: page('molemole-1'), [`${HOST}/bbs/?pid=165759`]: page('molemole-1') });
+  await s.pc.apply({ op: 'add', kind: 'cart', pid: 'molemole-1' });
+  await assert.rejects(s.pc.apply({ op: 'add', kind: 'cart', pid: '165759' }), status(409));
+  await assert.rejects(s.pc.apply({ op: 'add', kind: 'cart', pid: 'gone-1' }), status(502));
+});
+test('add a link, remove, rename, move, arrange and windows', async () => {
+  const s = setup(); const { pc } = s;
+  let d = await pc.apply({ op: 'add', kind: 'link', url: 'https://example.test/a', name: '  Ex  ' });
+  assert.deepEqual(d.icons.at(-1), { id: 'i5', kind: 'link', url: 'https://example.test/a', name: 'Ex' });
+  d = await pc.apply({ op: 'rename', id: 'i5', name: 'a\u0007b' }); assert.equal(d.icons.at(-1).name, 'ab');
+  for (const name of ['', 'x'.repeat(41), '   ']) await assert.rejects(pc.apply({ op: 'rename', id: 'i5', name }), status(400));
+  await assert.rejects(pc.apply({ op: 'move', id: 'i5', spot: [0, 0] }), status(409));
+  await assert.rejects(pc.apply({ op: 'move', id: 'i5', spot: [10, 0] }), status(400));
+  await assert.rejects(pc.apply({ op: 'move', id: 'i5', spot: [0, -1] }), status(400));
+  d = await pc.apply({ op: 'move', id: 'i5', spot: [9, 4] }); assert.deepEqual(d.spots.i5, [9, 4]);
+  d = await pc.apply({ op: 'remove', id: 'i2' }); assert.equal(d.spots.i2, undefined); assert.equal(d.icons.some(i => i.id === 'i2'), false);
+  d = await pc.apply({ op: 'arrange' });
+  assert.deepEqual(['browser', 'salaries', 'i1', 'i3', 'i4', 'i5'].map(id => d.spots[id]), [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [1, 0]]);
+  d = await pc.apply({ op: 'windows', windows: { notepad: { open: true, x: -9999, y: 3 } }, order: ['browser', 'pico8', 'notepad'] });
+  assert.deepEqual([d.windows.notepad.open, d.windows.notepad.x, d.order], [true, -440, ['browser', 'pico8', 'notepad']]);
+  for (const id of ['browser', 'salaries']) { await assert.rejects(pc.apply({ op: 'remove', id }), status(400)); await assert.rejects(pc.apply({ op: 'rename', id, name: 'x' }), status(400)); }
+  for (const op of [{ op: 'remove', id: 'i99' }, { op: 'rename', id: 'i99', name: 'x' }, { op: 'move', id: 'i99', spot: [1, 1] }, { op: 'nope' }, null])
+    await assert.rejects(pc.apply(op), status(400), JSON.stringify(op));
+});
+test('limits: 48 own icons, https links of 500 characters, real pids', async () => {
+  const { pc } = setup();
+  for (let i = 0; i < 44; i++) await pc.apply({ op: 'add', kind: 'link', url: `https://e.test/${i}`, name: `L${i}` });
+  assert.equal(mine(pc).length, 48);
+  await assert.rejects(pc.apply({ op: 'add', kind: 'link', url: 'https://e.test/x', name: 'x' }), e => e.status === 400 && /Not enough desktop space/.test(e.message));
+  await pc.apply({ op: 'remove', id: 'i5' });
+  await assert.rejects(pc.apply({ op: 'add', kind: 'link', url: 'ftp://e.test/x', name: 'x' }), status(400));
+  await assert.rejects(pc.apply({ op: 'add', kind: 'link', url: 'https://e.test/' + 'x'.repeat(490), name: 'x' }), status(400));
+  await assert.rejects(pc.apply({ op: 'add', kind: 'link', url: 'nonsense', name: 'x' }), status(400));
+  for (const pid of ['../x', 'https://www.lexaloffle.com/bbs/?pid=1', 7, undefined]) await assert.rejects(pc.apply({ op: 'add', kind: 'cart', pid }), status(400), String(pid));
+});
+test('import: oldest first, installed skipped, once, info failures fall back, stops at 48', async () => {
+  const s = setup({ [`${HOST}/bbs/?pid=p-1`]: page('p-1', 'P One', 'Q'), [`${HOST}/bbs/?pid=r-1`]: page('r-1', 'R One') });
+  let d = await s.pc.apply({ op: 'import', pids: ['p-1', STARTERS[1].pid, 'r-1'] });
+  assert.deepEqual(d.icons.slice(4).map(i => [i.pid, i.name]), [['p-1', 'P One'], ['r-1', 'R One']]);
+  assert.equal(d.imported, true);
+  const n = s.calls.length; d = await s.pc.apply({ op: 'import', pids: ['zz-1'] });
+  assert.equal(d.icons.length, 6); assert.equal(s.calls.length, n);
+  const f = setup(); d = await f.pc.apply({ op: 'import', pids: ['off-1'] });
+  assert.deepEqual(d.icons.at(-1), { id: 'i5', kind: 'cart', pid: 'off-1', name: 'off-1', author: '', embed: true });
+  const full = setup(); for (let i = 0; i < 44; i++) await full.pc.apply({ op: 'add', kind: 'link', url: `https://e.test/${i}`, name: `L${i}` });
+  d = await full.pc.apply({ op: 'import', pids: ['x-1', 'x-2'] }); assert.equal(mine(full.pc).length, 48); assert.equal(d.imported, true);
+  for (const pids of ['x', ['../x'], Array.from({ length: 9 }, (_, i) => `a-${i}`), [3]]) await assert.rejects(setup().pc.apply({ op: 'import', pids }), status(400));
+});
+test('writes are 0600, atomic and read back by a new instance', async () => {
+  const s = setup(); await s.pc.apply({ op: 'add', kind: 'link', url: 'https://e.test/', name: 'E' });
+  const file = path.join(s.pc.dir, 'office-pc.json');
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.deepEqual(fs.readdirSync(s.pc.dir).filter(f => f.endsWith('.tmp')), []);
+  assert.deepEqual(createOfficePc({ dir: s.pc.dir, fetch: refuse }).desktop(), s.pc.desktop());
+});
+test('thumbnails of installed carts are kept on disk and go with the last icon', async () => {
+  const name = thumbName(STARTERS[0].pid), url = `${HOST}/bbs/thumbs/${name}`, other = `${HOST}/bbs/thumbs/pico8_stranger-1.png`;
+  const s = setup({ [url]: PNGBYTES(4), [other]: PNGBYTES(4) });
+  const file = path.join(s.pc.dir, 'office-pc-thumbs', name);
+  await s.pc.thumb('pico8_stranger-1.png'); assert.equal(fs.existsSync(path.join(s.pc.dir, 'office-pc-thumbs', 'pico8_stranger-1.png')), false);
+  await s.pc.thumb(name); assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.deepEqual(fs.readdirSync(path.dirname(file)).filter(f => f.endsWith('.tmp')), []);
+  const again = createOfficePc({ dir: s.pc.dir, fetch: refuse });
+  assert.ok((await again.thumb(name)).equals(PNGBYTES(4)));
+  await s.pc.apply({ op: 'remove', id: 'i1' }); assert.equal(fs.existsSync(file), false);
+});
+test('a thumbnail file stays while another icon has the pid', async () => {
+  const pid = STARTERS[0].pid, name = thumbName(pid);
+  // A second icon with the same pid can only come from a hand-edited file.
+  const at = tmp(); fs.mkdirSync(path.join(at, 'office-pc-thumbs')); fs.writeFileSync(path.join(at, 'office-pc-thumbs', name), PNGBYTES(2));
+  fs.writeFileSync(path.join(at, 'office-pc.json'), JSON.stringify({ version: 1, icons: [{ id: 'i1', kind: 'cart', pid, name: 'A', author: '', embed: true }, { id: 'i2', kind: 'cart', pid, name: 'B', author: '', embed: true }], spots: {} }));
+  const pc = createOfficePc({ dir: at, fetch: refuse });
+  await pc.apply({ op: 'remove', id: 'i1' }); assert.equal(fs.existsSync(path.join(at, 'office-pc-thumbs', name)), true);
+  await pc.apply({ op: 'remove', id: 'i2' }); assert.equal(fs.existsSync(path.join(at, 'office-pc-thumbs', name)), false);
+});
+
+test('routes: login, size, activity, thumbnail headers and 503 without pc', async () => {
+  const touched = [], pc = setup({ [`${HOST}/bbs/thumbs/pico8_x-1.png`]: PNGBYTES(3) }).pc;
+  let session = { key: 'k', csrf: 'c' };
+  const make = pcArg => createHandler({ auth: { get: async () => session, touch: s => touched.push(s) }, origin: 'https://control.test', pc: pcArg, snapshot: () => ({}), vite: () => {} });
+  const call = async (handler, method, url, body) => {
+    const req = Object.assign(Readable.from(body === undefined ? [] : [JSON.stringify(body)]), { url, method, socket: {},
+      headers: { host: 'control.test', origin: 'https://control.test', 'content-type': 'application/json', 'x-csrf-token': 'c' } });
+    const res = { statusCode: 200, headers: {}, headersSent: false, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(raw) { this.raw = raw; this.headersSent = true; } };
+    await handler(req, res); return res;
+  };
+  const h = make(pc);
+  session = null; assert.equal((await call(h, 'GET', '/api/office/pc')).statusCode, 401); session = { key: 'k', csrf: 'c' };
+  const got = await call(h, 'GET', '/api/office/pc'); assert.equal(got.statusCode, 200); assert.equal(JSON.parse(got.raw).icons.length, 4); assert.equal(touched.length, 0);
+  assert.equal((await call(h, 'POST', '/api/office/pc', { op: 'arrange', pad: 'x'.repeat(5000) })).statusCode, 413);
+  const ok = await call(h, 'POST', '/api/office/pc', { op: 'add', kind: 'link', url: 'https://e.test/', name: 'E' });
+  assert.equal(ok.statusCode, 200); assert.equal(JSON.parse(ok.raw).icons.length, 5); assert.equal(touched.length, 1);
+  assert.equal((await call(h, 'POST', '/api/office/pc', { op: 'nope' })).statusCode, 400);
+  const png = await call(h, 'GET', '/api/office/bbs/thumb/pico8_x-1.png');
+  assert.deepEqual([png.statusCode, png.headers['content-type'], png.headers['cache-control'], png.headers['content-length']], [200, 'image/png', 'private, max-age=86400', 11]);
+  assert.equal((await call(h, 'GET', '/api/office/bbs/thumb/%E0%A4%A')).statusCode, 400);
+  assert.equal((await call(h, 'GET', '/api/office/bbs/thumb/bad.png')).statusCode, 400);
+  assert.equal((await call(h, 'GET', '/api/office/bbs/list?page=99')).statusCode, 400);
+  assert.equal((await call(h, 'GET', '/api/office/bbs/cart?pid=..')).statusCode, 400);
+  const none = make(undefined);
+  for (const [m, u] of [['GET', '/api/office/pc'], ['POST', '/api/office/pc'], ['GET', '/api/office/bbs/list'], ['GET', '/api/office/bbs/cart?pid=a-1'], ['GET', '/api/office/bbs/thumb/pico8_x-1.png']])
+    assert.equal((await call(none, m, u, m === 'POST' ? {} : undefined)).statusCode, 503, u);
 });
