@@ -1,6 +1,7 @@
 // The boss desk's computer: a 90s desktop with a PICO-8 cart player (Lexaloffle's own BBS widget in a frame). Laid out once at
 // LAYOUT and transformed onto the monitor's rectangle on screen; drawDesktop draws the same desktop, from the same numbers, on
 // the monitor's canvas, so stepping in and out doesn't jump.
+import { PICO_PALETTE } from './pc-icons.js';
 import { BROWSE_URL, STARTERS, bbsUrl, cartPid, recentCarts, rememberCart, widgetUrl } from './carts.js';
 
 export const LAYOUT = { w: 1080, h: 640 }; // the monitor canvas's 432 × 256, 2.5 times over
@@ -10,7 +11,7 @@ export const ICON = { x: 24, y: 24, w: 104, h: 104 }, CONSOLE = { w: 64, h: 48 }
 // frame scrolls; at 526 × 522 its game is at its largest (496 px) and it fits, scrolling off in case a font runs taller.
 export const WINDOW = { x: 220, y: 8, w: 640, h: 580 };
 export const FRAME = { w: 526, h: 522 };
-export const PICO_PALETTE = ['#000000', '#1d2b53', '#7e2553', '#008751', '#ab5236', '#5f574f', '#c2c3c7', '#fff1e8', '#ff004d', '#ffa300', '#ffec27', '#00e436', '#29adff', '#83769c', '#ff77a8', '#ffccaa'];
+export { PICO_PALETTE };
 const FACE = '#c3c3c3', LIGHT = '#ffffff', SHADE = '#5a5a5a', DESK = '#4a5a78', INK = '#1d2b53', RED = '#ff004d', CREAM = '#fff1e8';
 const FONT = 'Silkscreen, monospace';
 const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox';
