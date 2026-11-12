@@ -33,11 +33,22 @@ test('pods saved from an earlier page keep their cells, not lined up by name', (
   assert.notDeepEqual(spot(layoutOffice(['alpha', 'beta', 'delta', 'gamma', 'zeta'].map(p => s(p, p))), 'zeta'), spot(page, 'zeta')); // without them it would shuffle
 });
 test('a reload closes up the columns and rows pods have left, keeping their order', () => {
-  const saved = { saved: true, desks: new Map(), pods: [{ key: '/p/a', col: 0, row: 0 }, { key: '/p/gone', col: 1, row: 0 }, { key: '/p/c', col: 2, row: 0 }, { key: '/p/d', col: 2, row: 2 }], room: { width: 0, depth: 0 } };
+  const saved = { saved: true, desks: new Map(), pods: [{ key: '/p/a', col: 1, row: 0 }, { key: '/p/gone', col: 2, row: 0 }, { key: '/p/c', col: 3, row: 0 }, { key: '/p/d', col: 3, row: 2 }], room: { width: 0, depth: 0 } };
   const l = layoutOffice([s('a1', 'a'), s('c1', 'c'), s('d1', 'd')], saved), cell = key => { const pod = l.pods.find(p => p.key === key); return [pod.col, pod.row]; };
-  assert.deepEqual([cell('/p/a'), cell('/p/c'), cell('/p/d')], [[0, 0], [1, 0], [1, 1]]);
-  assert.equal(l.grid.cols, 2);
-  assert.ok(l.room.width < layoutOffice([s('a1', 'a'), s('c1', 'c'), s('d1', 'd')], { ...saved, saved: false, grid: { cols: 3, cellW: 0 } }).room.width);
+  assert.deepEqual([cell('/p/a'), cell('/p/c'), cell('/p/d')], [[1, 0], [2, 0], [2, 1]]);
+  assert.equal(l.grid.cols, 3);
+  assert.ok(l.room.width < layoutOffice([s('a1', 'a'), s('c1', 'c'), s('d1', 'd')], { ...saved, saved: false, grid: { cols: 4, cellW: 0 } }).room.width);
+});
+// The boss's office holds the first column's first cell (layout.js), so that column and that row stay.
+test("a reload closes up around the boss's corner, never into it", () => {
+  const saved = { saved: true, desks: new Map(), pods: [{ key: '/p/a', col: 0, row: 1 }, { key: '/p/b', col: 2, row: 1 }], room: { width: 0, depth: 0 } };
+  const l = layoutOffice([s('a1', 'a'), s('b1', 'b')], saved);
+  assert.deepEqual(l.pods.map(pod => [pod.key, pod.col, pod.row]), [['/p/a', 0, 1], ['/p/b', 1, 1]]);
+});
+test("a pod an older page left in the boss's corner moves out of it", () => {
+  const saved = { saved: true, desks: new Map(), pods: [{ key: '/p/a', col: 0, row: 0 }, { key: '/p/b', col: 1, row: 0 }], room: { width: 0, depth: 0 } };
+  const pod = layoutOffice([s('a1', 'a'), s('b1', 'b')], saved).pods.find(p => p.key === '/p/a');
+  assert.notDeepEqual([pod.col, pod.row], [0, 0]);
 });
 test('missing project goes to Unknown', () => {
   const l = layoutOffice([{ id: 'a', status: 'idle' }]);

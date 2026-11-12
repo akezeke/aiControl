@@ -8,6 +8,7 @@ import { TiltedBox } from './flight.js';
 import { LIMB, outline } from './fruit.js';
 import { canvasTexture } from './furniture.js';
 import { cutout } from './kitchen-plan.js';
+import { MIN_DEPTH } from './layout.js';
 import { toonMaterial } from './toon.js';
 
 // Every word the company has printed. Its name goes everywhere from here.
@@ -142,9 +143,9 @@ const pearX = (width, cellW) => {
 const spots = (width, depth, cellW) => [
   { look: 0, wall: 'windows', x: pearX(width, cellW), z: 0.45, yaw: -15, lean: 7 },
   { look: 1, wall: 'windows', x: width - 1.21, z: 0.48, yaw: -22, lean: 9 },
-  { look: 2, wall: 'right', x: width - 0.54, z: depth > 11.3 ? 4.7 : 3.32, yaw: -72, lean: 12 },
+  { look: 2, wall: 'right', x: width - 0.54, z: depth >= MIN_DEPTH ? 4.7 : 3.32, yaw: -72, lean: 12 },
 ];
-// ponytail: real rooms are at least 10 deep (layout.js); any shallower and the third would stand in the secret shelf's way.
+// ponytail: real rooms are at least MIN_DEPTH deep (layout.js); any shallower and the third would stand by a picture or in the secret shelf's way.
 // Each with its card and strut as thrown things meet them (named for its fruit, so surfaceTier knows them) and the one box that's walked round.
 export const officeCutouts = ({ width, depth, cellW }) => spots(width, depth, cellW).map(spot => {
   const { fruit } = COPY.cutouts[spot.look], surface = `cutout-${fruit}`, [card, strut] = cutout(surface, spot.x, spot.z, spot.yaw, spot.lean).map(part => new TiltedBox(part));

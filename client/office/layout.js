@@ -7,10 +7,9 @@ export const DESK_W = 1.6, DESK_D = 0.9, AISLE = 1.9, MAX_SUBAGENTS = 3, VACANT_
 // The first column sits a little nearer the left wall (bookshelf and the kitchen doorway) than AISLE, leaving more room by the lounge.
 const CHAIR = 0.9, START = 2.6, MIN_ROOM = 8, CELL_PAIRS = 3, LEFT = 1.5;
 // The boss's glass office takes the back-left corner (boss-plan.js): its front glass's outer face is this far from the windows
-// wall. The first column's pods start an aisle in front of it, the rest an aisle from the windows; the first column fills last
-// in each row, so it's a pod short and the room no deeper for the office until every column's full.
+// wall. It has the first column's first cell, so no pod sits there; every row starts an aisle further on in every column.
 export const BOSS_FRONT = 4.0;
-const back = col => AISLE + (col === 0 ? BOSS_FRONT : 0);
+const BOSS_CELL = '0,0';
 
 // The left wall in front of the boss's glass (room.js): the bookshelf's middle (it's 0.9 long), then the whiteboard's (3.1 with
 // its frame), in the middle of the wall unless that's on the shelf, as it is in the shallowest rooms.
@@ -19,6 +18,9 @@ export const SHELF_Z = BOSS_FRONT + 1.25, whiteboardZ = depth => Math.max(depth 
 // Where the coffee counter stands along the door wall (world x), and the kitchen doorway in the left wall (world z).
 export const KITCHEN_DOOR_W = 1.5, COFFEE_X = 1.05;
 export const kitchenDoor = depth => depth - 1.5;
+// The shallowest room, in tenths like the rest: the left wall's boss's glass, bookshelf and whiteboard, then the kitchen doorway,
+// 1.5 from the door wall. 11.3: deep enough too for the banana between the right wall's first picture and the secret shelf (cutouts.js).
+export const MIN_DEPTH = Math.ceil((whiteboardZ(0) + 1.55 + 0.1 + KITCHEN_DOOR_W / 2 + 1.5) * 10) / 10;
 // How far the kitchen, and whoever's in it, moves when the room's depth changes.
 export const kitchenShift = (before, after) => kitchenDoor(after) - kitchenDoor(before);
 
@@ -49,10 +51,10 @@ export function layoutOffice(sessions, previous, now = Date.now(), reserved = ne
   }
   const pods = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key));
   // Seats saved from an earlier page (`saved`): the columns and rows nobody here now uses close up, everyone keeping their
-  // order, so a project that's gone doesn't leave an empty stretch of floor behind for good.
+  // order, so a project that's gone doesn't leave an empty stretch of floor behind for good. The boss holds the first of each.
   if (previous?.saved) {
     const here = new Set(pods.map(pod => pod.key)), kept = previous.pods.filter(pod => here.has(pod.key));
-    const used = axis => [...new Set(kept.map(pod => pod[axis]))].sort((a, b) => a - b), cols = used('col'), rows = used('row');
+    const used = axis => [...new Set([0, ...kept.map(pod => pod[axis])])].sort((a, b) => a - b), cols = used('col'), rows = used('row');
     previous = { ...previous, pods: kept.map(pod => ({ ...pod, col: cols.indexOf(pod.col), row: rows.indexOf(pod.row) })), grid: { cols: Math.max(1, cols.length), cellW: 0 } };
   }
 
@@ -82,21 +84,22 @@ export function layoutOffice(sessions, previous, now = Date.now(), reserved = ne
     pod.depth = 2 * DESK_D + 2 * CHAIR;
   }
 
-  // Grid: columns and cell size only ever grow; each pod keeps the cell it was first given.
-  const grid = previous?.grid || { cols: 1, cellW: 0 };
-  const cols = Math.max(grid.cols, Math.ceil(Math.sqrt(pods.length)));
+  // Grid: columns and cell size only ever grow; each pod keeps the cell it was first given. As many rows as the pods would
+  // take without the boss's corner: a column more when they and it don't fit.
+  const grid = previous?.grid || { cols: 1, cellW: 0 }, square = Math.ceil(Math.sqrt(pods.length)), rows = Math.max(1, Math.ceil(pods.length / square));
+  let cols = Math.max(grid.cols, square);
+  while (cols * rows < pods.length + 1) cols++;
   const cellW = Math.max(grid.cellW, CELL_PAIRS * DESK_W + AISLE, ...pods.map(p => p.width + AISLE)), cellD = 2 * DESK_D + 2 * CHAIR + AISLE;
-  const before = new Map((previous?.pods || []).map(pod => [pod.key, pod])), taken = new Set();
+  const before = new Map((previous?.pods || []).map(pod => [pod.key, pod])), taken = new Set([BOSS_CELL]);
   for (const pod of pods) { const old = before.get(pod.key); if (old && old.col < cols && !taken.has(`${old.col},${old.row}`)) { pod.col = old.col; pod.row = old.row; taken.add(`${pod.col},${pod.row}`); } }
   for (const pod of pods) {
     if (pod.col !== undefined) continue;
-    const at = cell => [(cell + 1) % cols, Math.floor(cell / cols)];
+    const at = cell => [cell % cols, Math.floor(cell / cols)];
     let cell = 0; while (taken.has(at(cell).join())) cell++;
     [pod.col, pod.row] = at(cell); taken.add(at(cell).join());
   }
-  // As deep as the first column's first pod needs, at least, so the boss's office has its aisle and the left wall its shelf and whiteboard.
-  const reach = ({ col, row }) => back(col) + (row + 1) * cellD + START;
-  const width = Math.max(MIN_ROOM, previous?.room.width || 0, cols * cellW + AISLE), depth = Math.max(MIN_ROOM, previous?.room.depth || 0, reach({ col: 0, row: 0 }), ...pods.map(reach));
+  const reach = ({ row }) => AISLE + (row + 1) * cellD + START;
+  const width = Math.max(MIN_ROOM, previous?.room.width || 0, cols * cellW + AISLE), depth = Math.max(MIN_DEPTH, previous?.room.depth || 0, ...pods.map(reach));
 
   const vacant = new Map(top.filter(s => s.vacantSince !== undefined).map(s => [s.id, s.vacantSince]));
   // A helper that's finished (idle since it last wrote) sits DONE_MS, then walks out (`leaving`) and is gone VACANT_MS later.
@@ -111,7 +114,7 @@ export function layoutOffice(sessions, previous, now = Date.now(), reserved = ne
   pods.forEach(pod => {
     pod.left = LEFT + pod.col * cellW;
     pod.x = pod.left + pod.width / 2;
-    pod.z = back(pod.col) + pod.row * cellD + pod.depth / 2;
+    pod.z = AISLE + pod.row * cellD + pod.depth / 2;
     pod.slots.forEach((id, slot) => {
       if (id === undefined) return;
       // Helpers keep the seats they had, newcomers after them in the order they came.

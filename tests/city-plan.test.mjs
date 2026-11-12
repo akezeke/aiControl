@@ -42,9 +42,10 @@ test('parcels are stable for a project name, whoever else is around', () => {
   assert.deepEqual(kinds([s('a', 'x')]), kinds([s('zzz', 'x')]));
   assert.ok(plan([s('a', 'x')]).parcels.every(c => ['park', 'pond', 'plaza', 'court', 'parking', 'market'].includes(c.kind)));
 });
-test('a vacant grid position is a park until a project replaces it', () => {
-  const three = plan([s('a', 'x'), s('b', 'y'), s('c', 'z')]); assert.equal(three.parks.length, 1);
-  assert.equal(plan([s('a', 'x'), s('b', 'y'), s('c', 'z'), s('d', 'w')]).parks.length, 0);
+test('a vacant grid position is a park until a project replaces it; the boss corner is always one', () => {
+  const four = plan([s('a', 'x'), s('b', 'y'), s('c', 'z'), s('d', 'w')]); assert.equal(four.parks.length, 2);
+  assert.ok(four.parks.some(park => park.seed === 'park:0:0'));
+  assert.deepEqual(plan([s('a', 'x'), s('b', 'y'), s('c', 'z'), s('d', 'w'), s('e', 'v')]).parks.map(park => park.seed), ['park:0:0']);
 });
 test('missing data still draws: no towers entry, no towers at all, an ended session', () => {
   const l1 = layoutOffice([s('a', 'x')], null, 1), ended = layoutOffice([], l1, 2);

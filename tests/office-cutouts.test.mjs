@@ -24,9 +24,9 @@ const full = (pods, seats = 6, helpers = () => 3) => { const sessions = []; for 
 const BIG = [7, 8, 10, 12];
 const measured = (pods, seats) => { const { room: { width, depth }, grid: { cols, cellW } } = full(pods, seats, () => 0); return { width, depth, cols, cellW }; };
 // The real rooms: as many projects as it takes for each size, then the widest with the shallowest and the other way round, then the ones with bigger projects,
-// then two with the boss's column a pod short, so the room's no deeper for the boss's office.
+// then the empty office and two the boss's corner makes a column wider than they'd be without it.
 const REAL = [1, 4, 9, 16, 25].map(pods => measured(pods, 6));
-const ROOMS = [...REAL, { ...REAL[0], depth: REAL[4].depth }, { ...REAL[4], depth: REAL[0].depth }, ...[1, 2, 3, 4, 9, 16].flatMap(pods => BIG.map(seats => measured(pods, seats))), ...[3, 5].map(pods => measured(pods, 6))];
+const ROOMS = [...REAL, { ...REAL[0], depth: REAL[4].depth }, { ...REAL[4], depth: REAL[0].depth }, ...[1, 2, 3, 4, 9, 16].flatMap(pods => BIG.map(seats => measured(pods, seats))), ...[0, 2, 6].map(pods => measured(pods, 6))];
 const clear = ([a0, a1], [b0, b1]) => a1 <= b0 || b1 <= a0;
 const stands = c => new THREE.Box3().union(c.card).union(c.strut);
 
@@ -45,9 +45,9 @@ const rightWall = (room, depth) => { const door = depth - DOOR.back; return [[do
 const across = b => { const out = []; for (const x of [-1, -0.5, 0, 0.5, 1]) for (const y of [-1, -0.5, 0, 0.5, 1]) out.push(V(x * b.half.x, y * b.half.y, 0).applyQuaternion(b.quaternion).add(b.centre)); return out; };
 const within = (b, p) => { const q = p.clone().sub(b.centre).applyQuaternion(b.quaternion.clone().invert()); return Math.abs(q.x) <= b.half.x && Math.abs(q.y) <= b.half.y && Math.abs(q.z) <= b.half.z; };
 
-test("the real rooms run from 8.6 by 14 to 35.4 by 36 (a full grid: the boss's office pushes its column 4 m forward)", () => {
+test("the real rooms run from 15.3 by 11.3 to 42.1 by 32 (a full grid: the boss's corner costs a column)", () => {
   const near = ({ width, depth }, [x, z]) => assert.ok(Math.abs(width - x) < 1e-6 && Math.abs(depth - z) < 1e-6, `${width} by ${depth}`);
-  near(REAL[0], [8.6, 14]); near(REAL[4], [35.4, 36]);
+  near(REAL[0], [15.3, 11.3]); near(REAL[4], [42.1, 32]);
 });
 
 // A window's sill reaches 0.88 either side of it, a poster 0.37 and the scoreboard SCOREBOARD / 2.

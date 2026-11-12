@@ -30,18 +30,36 @@ test('the glass leaves the doorway; the door and the lintel fill it', () => {
 });
 
 const projects = count => Array.from({ length: count * 6 }, (_, i) => ({ id: `s${String(i).padStart(3, '0')}`, cwd: `/p${i % count}`, project: `p${String(i % count).padStart(2, '0')}`, status: 'working' }));
-// Only the boss's column is pushed forward; the rest start an aisle from the windows, beside the glass.
-test("the boss's column of pods starts an aisle in front of its glass, the others an aisle from the windows", () => {
-  for (const count of [1, 2, 3, 4, 5, 9, 10]) for (const pod of layoutOffice(projects(count), null).pods) {
+// The boss's office takes the first column's first cell; every row starts where it does in every column.
+test("nobody sits in the boss's corner, and every row of pods lines up across the floor", () => {
+  for (const count of [0, 1, 2, 3, 4, 5, 6, 9, 10, 13, 25]) for (const pod of layoutOffice(projects(count), null).pods) {
     const start = pod.z - pod.depth / 2, at = `${count} projects: ${pod.name} (${pod.col}, ${pod.row}) starts at ${start}`;
-    if (pod.col === 0) assert.ok(start >= BOSS_FRONT + AISLE - 1e-9, at);
-    else if (pod.row === 0) assert.ok(Math.abs(start - AISLE) < 1e-9, at);
+    assert.ok(pod.col > 0 || pod.row > 0, at);
+    assert.ok(Math.abs(start - (AISLE + pod.row * (pod.depth + AISLE))) < 1e-9, at);
+    if (pod.col === 0) assert.ok(start >= BOSS_FRONT + AISLE - 1e-9, `${at}: an aisle in front of the glass`);
   }
 });
-// It holds a pod fewer than the others until every column's full: only then is the room deeper for the boss, and by less than a row.
-test("the room's only deeper for the boss's office when every column's full", () => {
-  const deep = { 0: 14, 1: 14, 2: 14, 3: 15.5, 4: 19.5, 5: 15.5, 6: 19.5, 7: 21, 8: 21, 9: 25, 10: 21, 11: 21, 12: 25, 24: 32, 25: 36 };
-  for (const [count, want] of Object.entries(deep)) { const { depth } = layoutOffice(projects(+count), null).room; assert.ok(Math.abs(depth - want) < 1e-9, `${count} projects: ${depth} deep, not ${want}`); }
+// As many rows as the projects would take without it: a column more when that's what it takes, and the left wall's shelf,
+// whiteboard and kitchen doorway set how shallow a room can be.
+test("the boss's corner makes the room a column wider when it has to, never a row deeper", () => {
+  const rooms = { 0: [8.6, 11.3], 1: [15.3, 11.3], 2: [22, 11.3], 3: [15.3, 15.5], 4: [22, 15.5], 5: [22, 15.5], 6: [28.7, 15.5], 7: [22, 21], 9: [28.7, 21], 12: [35.4, 21], 13: [28.7, 26.5] };
+  for (const [count, [w, d]] of Object.entries(rooms)) {
+    const { width, depth } = layoutOffice(projects(+count), null).room;
+    assert.ok(Math.abs(width - w) < 1e-9 && Math.abs(depth - d) < 1e-9, `${count} projects: ${width} x ${depth}, not ${w} x ${d}`);
+  }
+});
+// Arriving one at a time: each takes the first free cell, row by row, and when there's none a column opens.
+test('a project arriving when every cell is taken opens a column, and nobody moves', () => {
+  const arrived = count => Array.from({ length: count * 6 }, (_, i) => ({ id: `p${Math.floor(i / 6)}s${i % 6}`, cwd: `/p${Math.floor(i / 6)}`, project: `p${String(Math.floor(i / 6)).padStart(2, '0')}`, status: 'working' }));
+  let page = null;
+  for (let count = 1; count <= 13; count++) {
+    const before = page, cells = new Map(before?.pods.map(pod => [pod.key, [pod.col, pod.row]]));
+    page = layoutOffice(arrived(count), before, count);
+    for (const pod of page.pods) if (cells.has(pod.key)) assert.deepEqual([pod.col, pod.row], cells.get(pod.key), `${count} projects: ${pod.name} moved`);
+    assert.ok(Math.max(...page.pods.map(pod => pod.row)) < Math.ceil(count / Math.ceil(Math.sqrt(count))), `${count} projects: a row too many`);
+    const newcomer = page.pods.find(pod => !cells.has(pod.key));
+    if ([2, 6, 12].includes(count)) assert.deepEqual([newcomer.col, newcomer.row, page.grid.cols], [before.grid.cols, 0, before.grid.cols + 1], `${count} projects`);
+  }
 });
 
 test('seatedFriend: the first by id of those playing at the boss stand spot, else null', () => {
