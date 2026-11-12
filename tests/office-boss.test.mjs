@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
-import { BOSS, CHAIR, DESK, DOOR_X, STAND, behindGlass, shutOffice } from '../client/office/boss-plan.js';
+import { BOSS, CHAIR, DESK, DOOR_X, STAND, START, behindGlass, bossInside, shutOffice } from '../client/office/boss-plan.js';
 import { AISLE, layoutOffice } from '../client/office/layout.js';
-import { CELL, findPath, nearestOpen, walkGrid } from '../client/office/path.js';
+import { CELL, findPath, index, nearestOpen, walkGrid } from '../client/office/path.js';
 import { createRoom } from '../client/office/room.js';
 import { createBossDesk, fitFov } from '../client/office/boss.js';
 import { drawDesktop, drawGeneric, fakeCart } from '../client/office/desktop.js';
@@ -43,6 +43,13 @@ for (const pods of [1, 4]) test(`with ${pods} projects, the boss's desk can be w
     assert.ok(nearestOpen(grid, p).distanceTo(p) < 0.3, `room to stand ${side} of the desk`);
     assert.ok(findPath(grid, door, p), `${side} of the desk, from the door`);
   }
+});
+// You start in the boss's office (office.js) beside the desk, in line with its door and facing it: straight ahead walks you out.
+for (const pods of [1, 4]) test(`with ${pods} projects, you start in line with the boss's door and walk straight out`, t => {
+  noDocument(t);
+  const layout = full(pods, 6, () => 2), room = build(layout), grid = wide(room, layout);
+  assert.ok(bossInside(START)); assert.equal(START.x, DOOR_X); assert.equal(START.yaw, 0, 'facing the door, +z');
+  for (let z = START.z; z <= BOSS.d + 0.6; z += CELL / 3) assert.equal(grid.open[index(grid, V(START.x, 0, z))], 1, `open at z ${z.toFixed(2)}`);
 });
 // The snake and the goose roam a copy of the walk grid with the office shut (office.js); you walk in through its door.
 for (const pods of [1, 4]) test(`with ${pods} projects, the snake and the goose can't get into the boss's office, though you can`, t => {

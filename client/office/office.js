@@ -34,7 +34,7 @@ import { createPlanes, createFlyers } from './planes.js';
 import { setSkyPlace } from './windows.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
-import { STAND, behindGlass, seatedFriend, shutOffice } from './boss-plan.js';
+import { START, behindGlass, seatedFriend, shutOffice } from './boss-plan.js';
 import { createBossDesk } from './boss.js';
 import { createDesktop } from './desktop.js';
 import { inSlices, shaders, textures } from './ready.js';
@@ -526,7 +526,7 @@ export function mountOffice(container, hooks) {
     office.layout = layout;
     // First snapshot: in the boss's office, by its chair, looking out over the floor (coming to or from a meeting is by the door).
     // Not from inside a free game: you're out of it first. A seated one puts you back where it says when you leave it.
-    if (!office.placed) { office.placed = true; if (playing?.free) play(null); player.place(STAND.x, STAND.z, STAND.yaw); }
+    if (!office.placed) { office.placed = true; if (playing?.free) play(null); player.place(START.x, START.z, START.yaw); }
   }
   const doorSpot = () => { const { width, depth } = layout.room; return [layout.door.x, depth - 1.2, Math.atan2(width / 2 - layout.door.x, -(depth / 2))]; };
 

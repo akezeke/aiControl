@@ -15,6 +15,8 @@ export const DOOR_X = BOSS.w - BOSS.post - BOSS.door / 2; // the doorway's middl
 export const DESK = { x: 2.0, z: 2.4, rotation: 0, width: 1.8, monitor: 1.25 };
 export const CHAIR = { x: DESK.x, z: DESK.z - 0.87 }; // DESK.z + CHAIR_Z (room.js)
 export const STAND = { x: DESK.x + 0.75, z: CHAIR.z, yaw: 0 }; // beside the chair (behind it is the wall): where you're walked to and stand up
+// Where the Office theme puts you first: beside the desk, in line with the doorway and facing it, so straight ahead walks you out.
+export const START = { x: DOOR_X, z: CHAIR.z, yaw: 0 };
 
 export const bossInside = p => p.x >= 0 && p.x <= BOSS.w && p.z >= 0 && p.z <= BOSS.d;
 // Inside or in the glass, the doorway too: where the snake and the goose don't go, nor the goose after anyone or anything.
