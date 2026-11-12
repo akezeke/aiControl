@@ -49,7 +49,7 @@ const TAP = 400, SLOP = 4; // ms between two taps that maximise; px a pointer mo
 const missedUp = e => e.pointerType === 'mouse' && e.buttons === 0;
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const shownIn = (s, n) => s.windows[n].open && s.windows[n].mode !== 'min';
-const THUMBS = 128; // the monitor's thumbnails kept: more than one draw asks for (50 icons, a page of 18 and a game)
+export const THUMBS = 128; // the monitor's thumbnails kept: more than one draw asks for (50 icons, a page of 18 and a game)
 
 export function createDesktop(container, {
   onShutDown, api, storage, online = () => navigator.onLine, now = () => new Date(),
@@ -932,7 +932,9 @@ const SYSTEM = "Tahoma, 'MS Sans Serif', Arial, sans-serif", GRAY = '#c0c0c0', D
 const CHECKER = '#e0e0e0'; // a pressed task's 1 px checker of gray and white, averaged
 // The box-shadow bevels as [top-left, bottom-right] rings, outermost first.
 const RAISED = [['#dfdfdf', '#000'], ['#fff', DARK]], BUTTON = [['#fff', '#000'], ['#dfdfdf', DARK]], PRESSED = [['#000', '#fff'], [DARK, '#dfdfdf']], SUNK = [[DARK, '#fff']];
-const MENUS = { browser: ['File', 'Go', 'Help'], notepad: ['File'] }, MENUBAR = 20; // the modules' menus(), and their bar's height
+// The windows' menus() labels (a test holds them to it: menus() needs a module made), and their bar's height.
+export const MENUS = { browser: ['File', 'Go', 'Help'], notepad: ['File'] };
+const MENUBAR = 20;
 const DRAWS = { pico8: drawPlayer, browser: drawBrowser, notepad: drawNotepad };
 export function drawDesktop(g, view, { clock, image }) {
   const width = s => g.measureText?.(s)?.width ?? 0;

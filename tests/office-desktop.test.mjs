@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDesktop, drawDesktop, fakeCart, fitTransform, legendFor } from '../client/office/desktop.js';
+import { MENUS, THUMBS, createDesktop, drawDesktop, fakeCart, fitTransform, legendFor } from '../client/office/desktop.js';
 import { STARTERS, thumbName } from '../client/office/carts.js';
-import { defaults } from '../client/office/pc-windows.js';
+import { GRID, NAMES, defaults, rectOf } from '../client/office/pc-windows.js';
+import { createPlayer } from '../client/office/pc-player.js';
+import { createBrowser } from '../client/office/pc-browser.js';
+import { createNotepad } from '../client/office/pc-notepad.js';
 import { useDom, find, findAll } from './fixtures/pc-dom.mjs';
 
 const tick = () => new Promise(r => setImmediate(r));
@@ -489,6 +492,32 @@ test('images are only asked for by a draw: none while seated, each once standing
   first.on.load(); second.on.load(); assert.equal(d.version(), v + 2, 'each load is a change');
   assert.equal(d.image(first.src.slice(url.length)), first, 'loaded: drawn');
   assert.equal(d.image(made.at(-1).src.slice(url.length)), null, 'not loaded yet: the icon instead');
+});
+// The monitor draws each window's menubar from MENUS: the window's own menus() without their & keys, and none without menus().
+test("the monitor's menubars are the windows' own menus", t => {
+  const doc = useDom(t), labels = mod => mod.menus?.().map(m => m.label.replace('&', ''));
+  const mods = {
+    pico8: createPlayer({ doc, online: () => true }),
+    browser: createBrowser({ doc, api: async () => ({}), ui: {}, installed: () => false, onPlay() {}, onInstall() {}, open() {} }),
+    notepad: createNotepad({ doc, ui: {} }),
+  };
+  assert.deepEqual(Object.keys(mods), NAMES, 'every window'); assert.ok(Object.keys(MENUS).every(n => NAMES.includes(n)));
+  for (const n of NAMES) assert.deepEqual(MENUS[n], labels(mods[n]), n);
+  assert.equal(MENUS.pico8, undefined, 'PICO-8 has no menus()');
+});
+// One draw's asks all fit in the thumbnail cache, so none puts out another the same draw needs: a cart in every grid cell, the
+// most Info Highway shows of a long list (as it is and maximised) and the stopped game.
+test('the thumbnail cache holds more than one draw can ask for', () => {
+  const icons = [], carts = Array.from({ length: 500 }, (_, i) => ({ pid: `b-${i}` }));
+  for (let col = 0; col < GRID.cols; col++) for (let row = 0; row < GRID.rows; row++) icons.push({ id: `${col}-${row}`, name: 'Cart', kind: 'cart', spot: [col, row], thumb: thumbName(`c-${col}${row}`), selected: false });
+  for (const mode of ['normal', 'max']) {
+    const s = defaults(), asked = new Set(); s.windows.browser.mode = mode;
+    const win = (name, state) => ({ name, title: name, rect: rectOf(s, name), front: name === 'browser', mode: s.windows[name].mode, state });
+    const view = { icons, windows: [win('pico8', { cart: { pid: 'g-1', title: 'G' } }), win('browser', { page: { kind: 'list', carts } })], tasks: [], start: false };
+    drawDesktop(canvas(), view, { clock: '14:32', image: n => { asked.add(n); return null; } });
+    assert.ok(asked.size > GRID.cols * GRID.rows + 1, `${mode}: every icon, the game and a page`);
+    assert.ok(THUMBS > asked.size, `${mode}: ${asked.size} asked, ${THUMBS} kept`);
+  }
 });
 
 // Keys, menus and the legend (Task 12).

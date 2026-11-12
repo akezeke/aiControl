@@ -121,14 +121,13 @@ const seedOf = id => { let h = 0x811c9dc5; for (let i = 0; i < id.length; i++) h
 // desk's but Esc; no blur, for the cart's frame taking focus blurs the window. The rest of the time the monitor shows the same
 // desktop drawn (desktop.view()) as you left it, or v1's generic one with a friend's made-up game (fakeCart) while they sit there.
 // It's drawn only when it can be seen: never under the laid-over desktop, once as that's taken down or you stand up, and
-// otherwise on a change (version()) or the minute's turn while it's in view. `now`: Date.now, for the clock.
+// otherwise on a change (version(), or a font loading) or the minute's turn while it's in view. `now`: Date.now, for the clock.
 export function createBossDesk({ annex, desktop, camera, fonts = document.fonts, now = () => Date.now() }) {
   const g = annex.texture.image.getContext('2d'), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: camera.fov, hands: false };
   const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([x, y]) => ({ local: new THREE.Vector3(x * GLASS_W / 2, y * GLASS_H / 2, 0), at: new THREE.Vector3(), css: { x: 0, y: 0 } }));
-  let seated = false, shown = false, t = 0, look = 0, mode = null, minute = -1, last = null;
-  // `paint(clock)` draws one picture; the last is drawn again once Silkscreen (the generic desktop's font) has loaded.
+  let seated = false, shown = false, t = 0, look = 0, mode = null, minute = -1;
+  // `paint(clock)` draws one picture.
   const draw = paint => {
-    last = paint;
     g.save(); g.setTransform(SCREEN_W / LAYOUT.w, 0, 0, SCREEN_W / LAYOUT.w, 0, 0); paint(clockOf(new Date(now()))); g.restore();
     annex.texture.needsUpdate = true;
   };
@@ -136,7 +135,8 @@ export function createBossDesk({ annex, desktop, camera, fonts = document.fonts,
   const theirs = (friend, at) => clock => drawGeneric(g, { window: 'pico', cart: friend, start: false }, { clock, game: fakeCart(seedOf(friend), at) });
   // The desktop as it is now, and what it was drawn at.
   const drawMine = () => { draw(mine); mode = `mine ${desktop.version()}`; minute = Math.floor(now() / 60_000); };
-  fonts?.load('16px Silkscreen').then(() => { if (last && !shown) draw(last); }, () => {});
+  // Silkscreen (the generic desktop's font) loading only makes the picture stale: the next update that can see it draws it again.
+  fonts?.load('16px Silkscreen').then(() => { mode = null; }, () => {});
   const place = () => {
     const { clientWidth: w, clientHeight: h } = camera.userData.canvas;
     annex.screen.updateWorldMatrix(true, false); camera.updateMatrixWorld();

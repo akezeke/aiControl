@@ -90,12 +90,17 @@ const stubDesktop = (calls = [], placed = []) => ({ place: corners => { calls.pu
 const fonts = { load: () => Promise.resolve() };
 // The camera where sitting down puts it, square to the monitor.
 const atMonitor = (cam, game) => { const pose = game.pose(); cam.fov = pose.fov; cam.updateProjectionMatrix(); cam.position.copy(pose.from); cam.lookAt(pose.look); cam.updateMatrixWorld(); };
+// The camera turned from the boss's office, so the monitor's out of view.
+const lookAway = cam => { cam.position.set(2, 1.6, 8); cam.lookAt(2, 1.6, 12); cam.updateMatrixWorld(); };
+// Fonts whose Silkscreen loads when `loaded()` is called.
+const slowFonts = () => { const f = { load: () => new Promise(r => { f.loaded = r; }) }; return f; };
+const settle = () => new Promise(r => setImmediate(r));
 // Sat at the boss desk, the camera at the monitor: bump() changes the desktop (its version()), draws() counts the monitor's draws
 // since, and printed has the text they wrote.
-const seated = (t, view = EMPTY) => {
+const seated = (t, view = EMPTY, fonts = null) => {
   const printed = []; noDocument(t, printed);
   let version = 0; const annex = build(emptyRoom(14)).boss, cam = camera();
-  const game = createBossDesk({ annex, desktop: { ...stubDesktop(), version: () => version, view: () => view }, camera: cam, fonts: null, now: () => new Date(2026, 10, 12, 9, 0).getTime() });
+  const game = createBossDesk({ annex, desktop: { ...stubDesktop(), version: () => version, view: () => view }, camera: cam, fonts, now: () => new Date(2026, 10, 12, 9, 0).getTime() });
   atMonitor(cam, game); game.enter(); const from = annex.texture.version;
   return { annex, game, printed, bump: () => { version++; }, draws: () => annex.texture.version - from };
 };
@@ -155,14 +160,33 @@ test("seated, the desktop's laid over the monitor, centred and 92% of the view",
     assert.ok(fill > 0.91 && fill < 0.93, `fills ${fill}`);
   }
 });
-// A friend's generic desktop is drawn in Silkscreen; the real one's in system fonts, and nothing's drawn before it's seen.
+// A friend's generic desktop is drawn in Silkscreen; the real one's in system fonts. Its loading only makes the picture stale:
+// the next update that can see the monitor draws it again, never the load itself.
 test('the monitor is drawn again once Silkscreen has loaded', async t => {
   noDocument(t);
-  let loaded; const annex = build(emptyRoom(10)).boss, cam = camera(), slow = { load: () => new Promise(r => { loaded = r; }) };
+  const annex = build(emptyRoom(10)).boss, cam = camera(), slow = slowFonts();
   const game = createBossDesk({ annex, desktop: stubDesktop(), camera: cam, fonts: slow }); atMonitor(cam, game);
   game.update(0.2, { still: true, friend: 'f1', arrived: false }); const before = annex.texture.version;
-  loaded(); await new Promise(r => setImmediate(r));
-  assert.ok(annex.texture.version > before);
+  slow.loaded(); await settle(); assert.equal(annex.texture.version, before, 'not by the load');
+  game.update(0.2, { still: true, friend: 'f1', arrived: false }); assert.ok(annex.texture.version > before, 'by the next update in view');
+});
+test('Silkscreen loading with the monitor out of view draws nothing until it is back in view', async t => {
+  noDocument(t);
+  const annex = build(emptyRoom(14)).boss, cam = camera(), slow = slowFonts();
+  const game = createBossDesk({ annex, desktop: stubDesktop(), camera: cam, fonts: slow }), drawn = () => annex.texture.version;
+  const tick = () => game.update(0.2, { still: true, friend: 'f1', arrived: false });
+  atMonitor(cam, game); tick(); lookAway(cam); tick(); const v = drawn();
+  slow.loaded(); await settle(); assert.equal(drawn(), v, 'out of view: not drawn');
+  tick(); assert.equal(drawn(), v, 'still out of view');
+  atMonitor(cam, game); tick(); assert.ok(drawn() > v, 'back in view: drawn again');
+});
+for (const overlaid of [false, true]) test(`Silkscreen loading while seated (${overlaid ? 'the desktop over the monitor' : 'sitting down'}) draws nothing`, async t => {
+  const slow = slowFonts(), { game, draws } = seated(t, EMPTY, slow), sat = () => game.update(0.016, { still: false, friend: null, arrived: true });
+  game.leave(); game.enter(); const v = draws(); // drawn as you stood there, then sat back down
+  if (overlaid) sat();
+  slow.loaded(); await settle(); sat(); sat();
+  assert.equal(draws(), v);
+  game.update(0.016, { still: false, friend: null, arrived: false }); assert.equal(draws(), v + 1, 'drawn once the desktop comes off it');
 });
 test("the monitor's drawn when the minute turns or the desktop changes, only while it's in view", t => {
   noDocument(t);
