@@ -3,6 +3,7 @@
 // the monitor's canvas, so stepping in and out doesn't jump.
 import { PICO_PALETTE } from './pc-icons.js';
 import { BROWSE_URL, STARTERS, bbsUrl, cartPid, recentCarts, rememberCart, widgetUrl } from './carts.js';
+import { clockOf } from './pc-windows.js';
 
 export const LAYOUT = { w: 1080, h: 640 }; // the monitor canvas's 432 × 256, 2.5 times over
 export const TASKBAR = 44, TITLE = 26, BAR = 28, BEVEL = 2;
@@ -20,7 +21,7 @@ const SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-popups-to-es
 export function fitTransform([tl, tr, , bl], w, h) {
   return { a: (tr.x - tl.x) / w, b: (tr.y - tl.y) / w, c: (bl.x - tl.x) / h, d: (bl.y - tl.y) / h, e: tl.x, f: tl.y };
 }
-export const clockOf = date => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+export { clockOf } from './pc-windows.js';
 
 export function createDesktop(container, { onShutDown, storage, online = () => navigator.onLine, now = () => new Date() }) {
   const make = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; };

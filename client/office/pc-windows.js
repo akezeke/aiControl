@@ -93,3 +93,6 @@ export const gameHidden = s => {
   const above = s.order.slice(s.order.indexOf('pico8') + 1).filter(n => s.windows[n].open && s.windows[n].mode !== 'min').map(n => rectOf(s, n));
   return uncovered(frameRect(s), above).length === 0;
 };
+
+// HH:MM, as the taskbar clock and salaries.txt show it (desktop.js re-exports it).
+export const clockOf = date => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
