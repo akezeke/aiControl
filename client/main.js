@@ -31,7 +31,7 @@ import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects, sessionPriority, recentlyActive, activeSessionGroups } from './session-order.js';
 import { feedGroups, feedNow } from './feed.js';
 import { messagingUnavailableReason } from './messaging-status.js';
-import { ComposerInput, followKeyboard } from './composer-input.js';
+import { ComposerInput, followKeyboard, sizeComposer } from './composer-input.js';
 import { attachment, imageFiles, maxImages, releaseImages } from './composer-images.js';
 import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown, renderDocument } from './message-markdown.js';
@@ -948,6 +948,7 @@ function renderSessionRequests(requests, session) {
 function disposeComposer() {
   const region = document.querySelector('#message-composer');
   region?.draftInput?.destroy();
+  region?.inputSize?.destroy();
   if (region?.currentSession) workflow.drafts.flush(region.currentSession.id);
 }
 
@@ -958,9 +959,11 @@ function renderComposer(session) {
   if (!region.querySelector('form')) {
     const queue = el('div', 'message-queue');
     const form = el('form', 'message-form');
-    const input = el('textarea'); input.rows = 2; input.maxLength = 12_000; input.setAttribute('aria-label', `Message ${providerName(session.provider)}`); input.placeholder = `Message ${providerName(session.provider)}…`;
+    const input = el('textarea'); input.rows = 1; input.maxLength = 12_000; input.setAttribute('aria-label', `Message ${providerName(session.provider)}`); input.placeholder = `Message ${providerName(session.provider)}…`;
     const row = el('div', 'composer-row');
     const submit = el('button', 'primary', 'Send'); submit.type = 'submit';
+    // Sending must not blur the textarea and collapse the mobile keyboard.
+    submit.addEventListener('pointerdown', event => { if (document.activeElement === input && !submit.disabled) event.preventDefault(); });
     const attach = button('', 'quiet-button composer-attach', () => files.click(), 'image'); attach.title = 'Attach images'; attach.setAttribute('aria-label', 'Attach images');
     const files = el('input'); files.type = 'file'; files.accept = 'image/*'; files.multiple = true; files.hidden = true;
     const previews = el('div', 'composer-images');
@@ -986,7 +989,7 @@ function renderComposer(session) {
     const acceptSuggestion = () => {
       const text = region.currentSession.suggestion;
       if (suggestion.hidden || draft.busy || !draftInput.acceptSuggestion(text)) return false;
-      workflow.editDraft(session.id, input.value); draft.acceptedSuggestion = text; update(); input.focus(); return true;
+      workflow.editDraft(session.id, input.value); draft.acceptedSuggestion = text; update(); inputSize.schedule(); input.focus({ preventScroll: true }); return true;
     };
     suggestion.onclick = acceptSuggestion;
     input.onkeydown = event => {
@@ -1000,7 +1003,7 @@ function renderComposer(session) {
       const current = state.snapshot?.sessions.find(item => item.id === session.id);
       if (!current || draft.busy || !(draft.text.trim() || draft.images.length) || state.error) return;
       const mode = 'send';
-      if (!current.messaging?.send || messagingUnavailableReason(current, state.snapshot)) return;
+      if (!current.messaging?.send || current.requests?.length || messagingUnavailableReason(current, state.snapshot)) return;
       const images = draft.images.map(({ name, data }) => ({ name, data }));
       if (!draft.submission || draft.submission.text !== draft.text || draft.submission.mode !== mode || draft.submission.images.length !== images.length || draft.submission.images.some((image, i) => image.data !== images[i].data)) draft.submission = { text: draft.text, mode, clientMessageId: uuid(), images };
       draft.busy = true; draft.error = ''; update();
@@ -1017,17 +1020,21 @@ function renderComposer(session) {
       } catch (error) { draft.error = error.message; }
       finally { draft.busy = false; update(); if (state.selected === session.id) document.querySelector('#message-composer')?.updateComposer?.(); }
     };
-    form.append(previews, suggestion, row, files, feedback); region.append(queue, form);
-    const draftTools = workflow.composer(region, session, text => {
-      const next = `${input.value}${input.value ? '\n\n' : ''}${text}`;
-      if (next.length > 12000) { toast('Draft exceeds 12,000 characters. Shorten it before inserting.'); return false; }
-      input.value = next; input.dispatchEvent(new Event('input')); input.focus(); return true;
-    });
+    const extras = el('div', 'composer-extras'); extras.append(queue, previews, suggestion);
+    const draftError = button('', 'composer-feedback composer-draft-error form-error', () => workflow.resolveDraft(session)); draftError.hidden = true;
+    draftError.title = 'Review the local and saved drafts';
+    form.append(extras, row, files, feedback, draftError); region.append(form);
+    const inputSize = region.inputSize = sizeComposer(input);
+    let inputRevision = draft.revision;
     function update() {
       const current = region.currentSession;
       const unavailable = messagingUnavailableReason(current, state.snapshot);
-      const available = current.messaging?.send && !unavailable;
-      draftInput.syncReset(); draftTools.sync();
+      const available = current.messaging?.send && !unavailable && !current.requests?.length;
+      draftInput.syncReset();
+      if (inputRevision !== draft.revision) { inputRevision = draft.revision; inputSize.schedule(); }
+      region.toggleAttribute('data-drafting', draftInput.hasText || !!draft.images.length);
+      setProperty(draftError, 'hidden', !draft.saveError);
+      setProperty(draftError, 'textContent', draft.saveError || '');
       if (current.suggestion && current.suggestion !== draft.acceptedSuggestion) draft.acceptedSuggestion = '';
       const suggested = available && !draft.busy && !draftInput.hasText && !draft.images.length && current.suggestion && current.suggestion !== draft.acceptedSuggestion ? current.suggestion : '';
       setProperty(suggestion, 'hidden', !suggested);
@@ -1039,6 +1046,7 @@ function renderComposer(session) {
       // Connection changes affect Send, not the user's ability to keep drafting.
       setProperty(input, 'readOnly', draft.busy);
       setProperty(submit, 'disabled', draft.busy || !(draftInput.hasText || draft.images.length) || !available || !!state.error);
+      setProperty(submit, 'title', current.requests?.length ? 'Answer the pending request first' : 'Send · Ctrl/⌘ Enter');
       setProperty(attach, 'hidden', !current.messaging?.images);
       setProperty(attach, 'disabled', draft.busy || draft.images.length >= maxImages);
       const shown = draft.images.map(image => image.id).join();

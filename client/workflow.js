@@ -112,12 +112,6 @@ export class Workflow {
     if (overlaps.length) row.append(action(`Edits overlap · ${overlaps.length}`, () => this.overlaps(session), overlaps.map(o => o.path).join('\n')));
     container.append(row);
   }
-  composer(container, session, insert) {
-    const row = node('div', 'wf-composer-tools'); row.append(action('Snippets', () => this.snippets(text => insert(text))), action('Presets', () => this.presets(session)));
-    const state = node('span', 'wf-draft-state'), resolve = action('Resolve draft', () => this.resolveDraft(session)); row.append(state, resolve); container.prepend(row);
-    row.sync = () => { const draft = this.draft(session.id); state.textContent = draft.saveError || (draft.dirty || draft.saving ? 'Saving draft…' : ''); state.classList.toggle('form-error', !!draft.saveError); resolve.hidden = !draft.saveError; };
-    row.sync(); return row;
-  }
   async resolveDraft(session) {
     const { dialog, body } = this.dialog('Draft conflict'), draft = this.draft(session.id);
     await dialog.run(async () => {
