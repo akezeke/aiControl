@@ -25,7 +25,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Fantasy Battle, an RPG where each project is a fight, each session a party member and each subagent a minion, with context counting down to Compact, tools as spells, a closing blow when a session finishes, and a boot logo and title screen.
 - Nodes, every session a node round you on a 3D board, in five looks with their own lists: Clean (light or dark), Neurons, Synthetic circuits, a Steampunk plant and Mycelium. Status, activity, context, plans, screenshots and usage show on the board itself. Pan with the arrows, WASD or a flick, zoom with **+** and **-**, and **0** shows it all.
 - Trickshot in the Office's kitchen: land a paper ball or mug in its target or hit a fruit with a rubber ball or plate, with six levels, three daily shots and a score board.
-- A boss office with a 90s desktop and a PICO-8 cart player (Lexaloffle's BBS widget); the floor slacks off while you're in.
+- A boss office with a 90s PC: a PICO-8 BBS browser, installable carts and shortcuts, and a salaries.txt; the floor slacks off while you're in.
 - Office online: host a meeting with `npm run hub` and share its code; friends join at the meetings clipboard by their Office door, and their bests show on the scoreboard by the windows (every game's top three), the pinball backbox, the darts chalkboard, the golf board, the kitchen score board and snake's and endless planes' score lines. Through your door you go to the meeting at your friend's office, where you see each other walk about and each other's throws fly, snakes crawl and paper planes glide, and share the football, the paper balls and a goose. Only names, looks, moves, throws, snake games, paper planes in flight, where the balls are, the goose, the secret shelf's open or shut, the lights' on or off and scores leave your machine, and from the host the office's layout and its agents' poses, never what they're working on.
 - Local access or access from other devices over Tailscale, protected by a PIN or password.
 
@@ -138,7 +138,7 @@ The Fantasy Battle theme is an original design and is not affiliated with any fr
 
 ## Network and security
 
-Listens on localhost and optionally the Tailscale IP, never the LAN. Passwords are hashed; sessions lock after ten idle minutes. Settings and logs stay in `.local/`; credentials stay on the backend. Opening a cart at the boss desk loads Lexaloffle's player and the cart from lexaloffle.com in your browser.
+Listens on localhost and optionally the Tailscale IP, never the LAN. Passwords are hashed; sessions lock after ten idle minutes. Settings and logs stay in `.local/`; credentials stay on the backend. The boss PC's server fetches PICO-8 game lists, pages and thumbnails from lexaloffle.com; carts play from lexaloffle.com in your browser.
 
 For iPhone and iPad notifications, open the HTTPS URL in Safari, choose **Share → Add to Home Screen**, open AI Control from the Home Screen, and enable **Alerts → Notifications**. iOS/iPadOS 16.4 or later is required. Notifications continue while the app is closed and can show project and session names on the lock screen. Changing the PIN/password removes existing notification subscriptions; unlock each device again to restore them.
 
