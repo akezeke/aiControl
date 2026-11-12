@@ -58,3 +58,48 @@ test('preview: remove, arrange, windows', () => {
   assert.deepEqual(preview(d, { op: 'windows', windows: w, order }).order, order);
   assert.deepEqual(preview(d, { op: 'add', kind: 'link' }), d);
 });
+
+test('a throwing onChange or onError neither drops another preview nor wedges the chain', async () => {
+  const sent = [], gates = [];
+  let boom = true;
+  const api = (p, b) => b ? new Promise(done => { sent.push(b.op); gates.push(() => done(desk({ last: b.op }))); }) : Promise.resolve(desk());
+  const store = createPcStore({ api, storage: memory(), onChange() { if (boom && sent.length === 1 && gates.length === 1 && store.desktop().last === 'move') { boom = false; throw new Error('ui'); } }, onError() {} });
+  await store.load();
+  const a = store.apply({ op: 'move', id: 'i1', spot: [5, 0] }), b = store.apply({ op: 'rename', id: 'i1', name: 'Z' });
+  await tick(); gates[0]();
+  assert.ok(await a, 'a succeeded despite onChange throwing');
+  assert.equal(store.desktop().icons[0].name, 'Z', "b's preview survives"); await tick(); assert.deepEqual(sent, ['move', 'rename']);
+  gates[1](); assert.ok(await b);
+  const bad = createPcStore({ api: async (p, b) => { if (b) throw new Error('no'); return desk(); }, storage: memory(), onChange() {}, onError() { throw new Error('ui'); } });
+  await bad.load(); assert.equal(await bad.apply({ op: 'arrange' }), null); assert.equal(await bad.apply({ op: 'arrange' }), null);
+});
+test('an op waits for the import to settle', async () => {
+  const sent = []; let release;
+  const api = (p, b) => b ? new Promise(done => { sent.push(b.op); if (b.op === 'import') release = () => done(desk({ imported: true })); else done(desk({ last: b.op })); }) : Promise.resolve(desk({ imported: false }));
+  const store = createPcStore({ api, storage: memory({ [CARTS_KEY]: '["a-1"]' }), onChange() {}, onError() {} });
+  const l = store.load(); await tick(); assert.equal(store.loaded(), false);
+  const a = store.apply({ op: 'arrange' }); await tick(); assert.deepEqual(sent, ['import']);
+  release(); await l; await a; assert.deepEqual(sent, ['import', 'arrange']); assert.equal(store.loaded(), true);
+});
+test('preview never throws', () => {
+  assert.deepEqual(preview(desk(), { op: 'rename', id: 'nope', name: 'x' }), desk());
+  assert.doesNotThrow(() => preview({}, { op: 'move', id: 'x', spot: [1, 1] }));
+  assert.doesNotThrow(() => preview({}, { op: 'remove', id: 'x' }));
+  assert.doesNotThrow(() => preview(null, { op: 'arrange' }));
+});
+test('a failed import leaves the old list; a failed move leaves the rename; a failed pre-load apply leaves nothing; loads share a GET', async () => {
+  const st = memory({ [CARTS_KEY]: '["a-1"]' });
+  await createPcStore({ api: async (p, b) => { if (b) throw new Error('x'); return desk({ imported: false }); }, storage: st, onChange() {}, onError() {} }).load();
+  assert.equal(st.getItem(CARTS_KEY), '["a-1"]');
+  const gates = [], errors = [];
+  const s2 = createPcStore({ api: (p, b) => b ? new Promise((ok, no) => gates.push({ ok, no, op: b.op })) : Promise.resolve(desk()), storage: memory(), onChange() {}, onError: m => errors.push(m) });
+  await s2.load();
+  const m = s2.apply({ op: 'move', id: 'i1', spot: [0, 1] }), r = s2.apply({ op: 'rename', id: 'i1', name: 'Q' });
+  await tick(); gates[0].no(new Error('taken')); assert.equal(await m, null); await tick();
+  assert.equal(s2.desktop().icons[0].name, 'Q'); assert.deepEqual(s2.desktop().spots.i1, [0, 2]); assert.deepEqual(errors, ['taken']);
+  gates[1].ok(desk()); await r;
+  const s3 = createPcStore({ api: async () => { throw new Error('down'); }, storage: memory(), onChange() {}, onError() {} });
+  await s3.apply({ op: 'rename', id: 'i1', name: 'Q' }); assert.deepEqual(s3.desktop(), EMPTY_DESKTOP);
+  let gets = 0; const s4 = createPcStore({ api: async () => { gets++; return desk(); }, storage: memory(), onChange() {}, onError() {} });
+  await Promise.all([s4.load(), s4.load()]); assert.equal(gets, 1);
+});
