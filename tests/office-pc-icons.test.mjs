@@ -53,6 +53,12 @@ test('stripUrl is one canvas, 8 frames wide, as a data url', () => {
   assert.deepEqual([doc.canvases[0].width, doc.canvases[0].height], [24 * 8 * 2, 48]);
   assert.equal(url, `data:image/png;base64,${24 * 8 * 2}x48`);
 });
+test('stripUrl puts frame k inside its own slot', () => {
+  const doc = fakeDoc(); stripUrl(ICONS.throbber, 2, doc);
+  const w = 24 * 2, seen = new Set();
+  for (const [x, , rw] of doc.canvases[0].rects) { const k = Math.floor(x / w); assert.ok(x + rw <= (k + 1) * w); seen.add(k); }
+  assert.equal(seen.size, 8);
+});
 test('cursorUrl is a data url', () => {
   assert.match(cursorUrl(ICONS.hourglass, 2, fakeDoc()), /^data:/);
 });
