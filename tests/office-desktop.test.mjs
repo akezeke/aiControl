@@ -200,6 +200,7 @@ test('icons: the order, tips and arrows; a click selects; opening plays, browses
   assert.deepEqual(findAll(d.root, n => has(n, 'pc-icon-label')).map(n => n.textContent), ['Info Highway', 'salaries.txt', ...STARTERS.map(c => c.title), 'Blocked', 'Example']);
   const celeste = iconOf(d.root, STARTERS[0].title);
   assert.equal(celeste.attributes['data-tip'], STARTERS[0].author); assert.equal(iconOf(d.root, 'Example').attributes['data-tip'], 'https://example.com/');
+  assert.equal(iconOf(d.root, 'Blocked').attributes['data-tip'], 'zed · plays only at lexaloffle.com');
   assert.equal(find(celeste, n => n.tag === 'img').attributes.src, '/api/office/bbs/thumb/' + thumbName(STARTERS[0].pid));
   assert.ok(find(celeste, n => has(n, 'pc-icon-arrow'))); assert.ok(find(iconOf(d.root, 'Example'), n => has(n, 'pc-icon-arrow')));
   assert.equal(find(iconOf(d.root, 'Info Highway'), n => has(n, 'pc-icon-arrow')), undefined);

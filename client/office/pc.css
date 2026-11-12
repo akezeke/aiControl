@@ -90,11 +90,33 @@
 @keyframes pc-start { from { clip-path: inset(100% 0 0 0); } to { clip-path: inset(0); } }
 
 /* Info Highway */
-.pc-page { flex: 1; min-height: 0; overflow: auto; padding: 8px 12px; background: #fff; color: #000; font: 400 14px/1.4 'Times New Roman', Times, serif; user-select: text; -webkit-user-select: text; }
-.pc-page a { color: #0000ee; text-decoration: underline; cursor: pointer; }
-.pc-page a.visited { color: #551a8b; }
+/* A 1997 homepage: a tiled starfield (two tiles of odd sizes, each with a scatter of stars; pc-browser.js draw() paints the
+   same ground on the monitor), loud colours, ridged cards, and a rainbow border on the selected one. */
+.pc-page { flex: 1; min-height: 0; overflow: auto; padding: 8px 12px; color: #fff; font: 400 14px/1.4 'Times New Roman', Times, serif; user-select: text; -webkit-user-select: text;
+  background:
+    radial-gradient(circle at 17px 23px, #fff 0 1px, transparent 1.5px) 0 0 / 241px 199px,
+    radial-gradient(circle at 88px 141px, #fff 0 1px, transparent 1.5px) 0 0 / 241px 199px,
+    radial-gradient(circle at 152px 57px, #fff 0 1px, transparent 1.5px) 0 0 / 241px 199px,
+    radial-gradient(circle at 209px 170px, #fff 0 1px, transparent 1.5px) 0 0 / 241px 199px,
+    radial-gradient(circle at 63px 92px, #fff 0 1px, transparent 1.5px) 0 0 / 241px 199px,
+    radial-gradient(circle at 190px 12px, #fff 0 1px, transparent 1.5px) 0 0 / 241px 199px,
+    radial-gradient(circle at 120px 188px, #fff 0 1px, transparent 1.5px) 0 0 / 241px 199px,
+    radial-gradient(circle at 44px 250px, #ffffa0 0 1px, transparent 1.5px) 0 0 / 317px 283px,
+    radial-gradient(circle at 230px 90px, #a0c0ff 0 1px, transparent 1.5px) 0 0 / 317px 283px,
+    radial-gradient(circle at 281px 201px, #fff 0 1.5px, transparent 2.0px) 0 0 / 317px 283px,
+    radial-gradient(circle at 130px 30px, #fff 0 1.5px, transparent 2.0px) 0 0 / 317px 283px,
+    radial-gradient(circle at 12px 160px, #ffffa0 0 1px, transparent 1.5px) 0 0 / 317px 283px,
+    radial-gradient(circle at 178px 262px, #ffa0a0 0 1px, transparent 1.5px) 0 0 / 317px 283px,
+    #000018;
+  background-attachment: local; }
+/* The page's white text is for the page: its buttons and fields keep theirs (.office-desktop's inherit would take it). */
+.pc-page :is(button, input) { color: #000; }
+.pc-page a { color: #00ffff; text-decoration: underline; cursor: pointer; }
+.pc-page a.visited { color: #ff80ff; }
+.pc-page h2 { color: #ffff00; }
 .pc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.pc-card { display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid #808080; background: #fff; }
+.pc-card { display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 4px ridge #c0c0c0; background: #000; cursor: pointer; }
+.pc-card.selected { border-image: linear-gradient(135deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f) 1; background: #400040; }
 .pc-thumb { width: 100%; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; background: #000; }
 .pc-throbber { width: 24px; height: 24px; flex: none; background-repeat: no-repeat; background-size: 192px 24px; background-position: 0 0; }
 .pc-throbber.loading { animation: pc-throb .8s steps(8) infinite; }

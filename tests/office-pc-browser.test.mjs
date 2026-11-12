@@ -103,8 +103,11 @@ test('embed and blocked game pages, with no frame on either', async t => {
   assert.deepEqual(findAll(s.b.node, n => n.tag === 'iframe'), []);
   assert.equal(s.b.title(), 'Info good-1 - Info Highway'); assert.equal(s.calls.at(-1), 'office/bbs/cart?pid=good-1');
   s.doc.activeElement.dispatch('click'); assert.deepEqual(s.played, [{ pid: 'good-1', title: 'Info good-1' }]);
-  await s.b.go('blocked-1'); assert.equal(s.doc.activeElement.textContent, 'Play at lexaloffle ↗'); assert.ok(s.button('Install'));
-  assert.equal(find(s.b.node, n => n.textContent === '▶ Play'), undefined); assert.deepEqual(findAll(s.b.node, n => n.tag === 'iframe'), []);
+  // Blocked: Play is there but greyed, the page says why, and the way to play it there is a button, focused.
+  await s.b.go('blocked-1'); assert.equal(s.doc.activeElement, s.button('Play at lexaloffle ↗')); assert.ok(s.button('Install'));
+  assert.equal(s.button('▶ Play').disabled, true); assert.ok(find(s.b.node, n => n.textContent === 'The author only lets this cart play at lexaloffle.com.'));
+  assert.deepEqual(findAll(s.b.node, n => n.tag === 'iframe'), []);
+  s.button('▶ Play').dispatch('click'); assert.equal(s.played.length, 1);
   s.doc.activeElement.dispatch('click'); assert.deepEqual(s.opened, ['https://www.lexaloffle.com/bbs/?pid=blocked-1']);
 });
 test('a game page from a card shows the row at once and the 256 px thumbnail', async t => {
@@ -113,6 +116,13 @@ test('a game page from a card shows the row at once and the 256 px thumbnail', a
   await tick(); const img = find(s.b.node, n => n.tag === 'img');
   assert.deepEqual([img.width, img.height, img.style.imageRendering], ['256', '256', 'pixelated']);
   assert.ok(find(s.b.node, n => n.textContent === '♥ 2'));
+});
+// The whole card is the link (pc.css gives it the pointer): its thumbnail or author opens the page too, once.
+test('a click anywhere on a card opens its page', async t => {
+  const s = await loaded(t), n = s.calls.length; find(s.cards()[2], n => n.tag === 'img').dispatch('click');
+  assert.equal(s.b.title(), 'Cart 2 - Info Highway'); await tick(); assert.equal(s.calls.length, n + 1);
+  s.b.back(); find(s.cards()[1], n => n.textContent === 'by1').dispatch('click'); assert.equal(s.b.title(), 'Cart 1 - Info Highway');
+  s.b.back(); s.link(3).dispatch('click'); await tick(); s.b.back(); assert.equal(s.b.page().kind, 'list', 'the link and its card make one visit');
 });
 test('a thread link resolves through cart info', async t => {
   const s = setup(t); await s.b.go('https://www.lexaloffle.com/bbs/?tid=148484');
@@ -200,6 +210,16 @@ test('grid arrows follow the columns counted from offsetTop', async t => {
   s.key('ArrowLeft'); s.key('ArrowLeft'); assert.equal(s.doc.activeElement, s.link(0)); s.key('ArrowUp'); assert.equal(s.doc.activeElement, s.link(0));
   assert.equal(s.b.selection().pid, 'c0-1');
 });
+// The selected card wears a border (pc.css) as well as its link's focus: the one Enter plays.
+test('the selected card, and only it, is marked', async t => {
+  const s = await loaded(t), marked = () => s.cards().flatMap((c, i) => c.classList.contains('selected') ? [i] : []);
+  s.rowsOf(); assert.deepEqual(marked(), []);
+  s.key('ArrowRight'); assert.deepEqual(marked(), [0]); s.key('ArrowDown'); assert.deepEqual(marked(), [5]);
+  s.link(3).dispatch('focus'); assert.deepEqual(marked(), [3]);
+  assert.equal(s.b.pick(find(s.cards()[7], n => n.tag === 'img')), true); assert.deepEqual(marked(), [7]);
+  s.b.pick(s.b.node); assert.deepEqual(marked(), []);
+  s.key('ArrowRight'); s.b.go({ kind: 'list', tab: 'new', page: 1, q: '', carts: rows(3), more: false }); assert.deepEqual(marked(), []);
+});
 test('X and Backspace go back; not inside a field', async t => {
   const s = await loaded(t); await s.b.go('good-1'); assert.equal(s.key('x'), true); assert.equal(s.b.selection(), null);
   await s.b.go('good-1'); assert.equal(s.key('Backspace'), true); assert.equal(s.b.title(), 'Featured - Info Highway');
@@ -241,6 +261,18 @@ test('draw: thumbnails of the list, a missing one grey', async t => {
   const s = await loaded(t); const g = []; const ctx = new Proxy({}, { get: (_, k) => (...a) => g.push([k, a]), set() { return true; } });
   draw(ctx, { x: 0, y: 0, w: 300, h: 200 }, { page: s.b.selection() ?? { kind: 'list', carts: rows(3) }, image: name => name === 'pico8_c0-1.png' ? 'IMG' : null });
   assert.ok(g.some(([k, a]) => k === 'drawImage' && a[0] === 'IMG')); assert.ok(g.some(([k]) => k === 'fillRect'));
+});
+
+// The monitor's picture of a page is pc.css's starfield: the dark ground, then 1 px stars, the same each time.
+test('draw: the page is the starfield', async t => {
+  const s = await loaded(t), run = () => {
+    const rects = []; let fill = null;
+    const ctx = new Proxy({}, { get: (_, k) => k === 'fillRect' ? (...a) => rects.push([fill, ...a]) : () => {}, set: (_, k, v) => { if (k === 'fillStyle') fill = v; return true; } });
+    draw(ctx, { x: 10, y: 20, w: 300, h: 200 }, { page: s.b.page(), image: () => null }); return rects;
+  };
+  const rects = run(), stars = rects.filter(([f, , , w, h]) => f === '#fff' && w === 1 && h === 1);
+  assert.deepEqual(rects[0], ['#000018', 10, 20, 300, 200]); assert.ok(stars.length >= 50, `${stars.length} stars`);
+  assert.ok(stars.every(([, x, y]) => x >= 10 && x < 310 && y >= 20 && y < 220)); assert.deepEqual(run(), rects);
 });
 
 // Real elements have an upper-case tagName and no `tag`; these focus cases fail if key() reads anything else.

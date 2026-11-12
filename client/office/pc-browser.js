@@ -95,6 +95,8 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
     return c ? { pid: c.pid, title: c.title, card: c } : null;
   };
   const install = g => onInstall({ pid: g.pid, title: g.title });
+  // The selected card (-1 for none) wears pc.css's border as well as its link's focus: the one Enter plays.
+  const select = i => { sel = i; cards.forEach((c, j) => c.node.classList.toggle('selected', j === i)); };
 
   function buildList(p) {
     const tab = (label, name) => { const n = button(label, () => go({ kind: 'list', tab: name, page: 1, q: '' }), !p.q && p.tab === name ? ' pressed' : ''); return n; };
@@ -105,9 +107,9 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
       const img = make('img', 'pc-thumb'); attrs(img, { loading: 'lazy', width: 128, height: 128, alt: '', src: '/api/office/bbs/thumb/' + r.thumb });
       const a = make('a', '', r.title); a.setAttribute('tabindex', '0'); a.setAttribute('role', 'link');
       a.classList.toggle('visited', visited.has(bbsUrl(r.pid)));
-      // No href: Enter on a card plays it (key()), where a real link would open its page.
-      a.addEventListener('click', e => { e?.preventDefault?.(); sel = i; go({ kind: 'game', pid: r.pid, cart: r }); });
-      a.addEventListener('focus', () => { sel = i; });
+      // No href: Enter on a card plays it (key()), where a real link would open its page. A click anywhere on the card opens it.
+      card.addEventListener('click', e => { e?.preventDefault?.(); select(i); go({ kind: 'game', pid: r.pid, cart: r }); });
+      a.addEventListener('focus', () => select(i));
       const head = make('div'); head.append(a);
       card.append(img, head, make('div', '', r.author), make('div', '', `♥ ${r.likes}`));
       const c = { row: r, node: card, link: a, head, check: null }; mark(c); cards.push(c); grid.append(card);
@@ -132,8 +134,13 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
         a.addEventListener('click', e => { e?.preventDefault?.(); open(url); }); return a;
       };
       installBtn = button('Install', () => install({ pid: p.pid, title: c.title })); setDisabled(installBtn, installed(p.pid));
-      primaryEl = c.embed ? button('▶ Play', () => onPlay({ pid: p.pid, title: c.title })) : link('Play at lexaloffle ↗');
-      out.push(make('hr'), row(...(c.embed ? [primaryEl, installBtn, link('Open at lexaloffle ↗')] : [primaryEl, installBtn])));
+      const play = button('▶ Play', () => onPlay({ pid: p.pid, title: c.title }));
+      if (c.embed) { primaryEl = play; out.push(make('hr'), row(play, installBtn, link('Open at lexaloffle ↗'))); }
+      else {
+        // The author turned embedding off: Play stays, greyed, beside the reason and the way to play it there.
+        setDisabled(play, true); primaryEl = button('Play at lexaloffle ↗', () => open(url));
+        out.push(make('hr'), row(play, installBtn, primaryEl), make('p', '', 'The author only lets this cart play at lexaloffle.com.'));
+      }
     }
     return out;
   }
@@ -251,7 +258,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
         if (p?.kind !== 'list' || !cards.length) return false;
         const top = cards[0].node.offsetTop, cols = cards.filter(c => c.node.offsetTop === top).length;
         const to = sel < 0 ? 0 : sel + { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols }[k];
-        if (to >= 0 && to < cards.length) { sel = to; cards[to].link.focus(); cards[to].node.scrollIntoView?.({ block: 'nearest' }); }
+        if (to >= 0 && to < cards.length) { select(to); cards[to].link.focus(); cards[to].node.scrollIntoView?.({ block: 'nearest' }); }
         return true;
       }
       case 'Enter': case 'z': case 'Z': {
@@ -259,7 +266,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
         if (p?.kind === 'list' && cards.length) {
           const at = cards.findIndex(c => c.link === active);
           if (at < 0 && control) return false;
-          sel = at >= 0 ? at : Math.max(sel, 0); playCard(cards[sel].row); return true;
+          select(at >= 0 ? at : Math.max(sel, 0)); playCard(cards[sel].row); return true;
         }
         // On a control Enter is the browser's own click; Z has no such default.
         if (k === 'Enter' && control) return false;
@@ -289,7 +296,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
     endLegend() { if (legendOn) { legendOn = false; setStatus(); } },
     // A right-click: selects the card under `target` (and focuses its link), or none; true on a card.
     pick(target) {
-      sel = cards.findIndex(c => c.node.contains(target));
+      select(cards.findIndex(c => c.node.contains(target)));
       if (sel >= 0) cards[sel].link.focus({ preventScroll: true });
       return sel >= 0;
     },
@@ -320,7 +327,10 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
 // not loaded yet is grey. `image(name)` looks up a loaded thumbnail, as in every module's draw.
 export function draw(g, box, { page, image }) {
   const { x, y, w, h } = box;
-  g.fillStyle = '#fff'; g.fillRect(x, y, w, h);
+  // pc.css's starfield: its ground, then a fixed scatter of 1 px stars (a seeded LCG, so every redraw matches).
+  g.fillStyle = '#000018'; g.fillRect(x, y, w, h); g.fillStyle = '#fff';
+  let seed = 7; const rnd = n => (seed = seed * 16807 % 2147483647) % n;
+  for (let i = Math.floor(w * h / 600); i > 0; i--) g.fillRect(x + rnd(w), y + rnd(h), 1, 1);
   const thumb = (pid, tx, ty, size) => {
     const img = image(thumbName(pid));
     if (img) { g.imageSmoothingEnabled = false; g.drawImage(img, tx, ty, size, size); } else { g.fillStyle = '#808080'; g.fillRect(tx, ty, size, size); }

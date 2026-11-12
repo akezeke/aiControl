@@ -400,7 +400,8 @@ export function createDesktop(container, {
       art.append(img, shortcut);
     } else if (icon.kind === 'link') art.append(iconCanvas(ICONS.globe, 1), arrow());
     else art.append(iconCanvas(icon.kind === 'browser' ? ICONS.globe : ICONS.notepad, 1));
-    const tip = icon.kind === 'cart' ? icon.author : icon.kind === 'link' ? icon.url : '';
+    // A cart whose author turned embedding off opens its page (open()), which says so; the tip says it first.
+    const tip = icon.kind === 'cart' ? [icon.author, !icon.embed && 'plays only at lexaloffle.com'].filter(Boolean).join(' · ') : icon.kind === 'link' ? icon.url : '';
     if (tip) node.setAttribute('data-tip', tip);
     node.append(art, make('span', 'pc-icon-label', icon.name));
 
