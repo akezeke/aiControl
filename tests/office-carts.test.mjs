@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BROWSE_URL, STARTERS, cartPid, widgetUrl, bbsUrl, recentCarts, rememberCart, CARTS_KEY } from '../client/office/carts.js';
+import { BROWSE_URL, STARTERS, cartPid, isPid, threadId, listLink, thumbName, listUrl, widgetUrl, bbsUrl, recentCarts, rememberCart, CARTS_KEY } from '../client/office/carts.js';
 
 const memory = (init = {}) => { const data = { ...init }; return { getItem: k => data[k] ?? null, setItem: (k, v) => { data[k] = String(v); }, data }; };
 
@@ -20,7 +20,7 @@ test('cartPid refuses threads, other hosts and junk', () => {
 
 test('urls', () => {
   assert.equal(widgetUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/widget.php?pid=porklike-2');
-  assert.equal(bbsUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/?pid=porklike-2#p');
+  assert.equal(bbsUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/?pid=porklike-2');
   assert.equal(BROWSE_URL, 'https://www.lexaloffle.com/bbs/?cat=7&carts_tab=1&#sub=2&mode=carts');
 });
 
@@ -42,4 +42,34 @@ test('the kept list survives broken JSON, wrong shapes, no storage and a storage
 test('starter carts are well formed', () => {
   assert.ok(STARTERS.length >= 4 && STARTERS.length <= 8);
   for (const cart of STARTERS) { assert.equal(cartPid(cart.pid), cart.pid); assert.ok(cart.title && cart.author); }
+});
+
+test('cart ids may hold hyphens', () => {
+  assert.equal(cartPid('pico-man-3'), 'pico-man-3');
+  assert.equal(cartPid('-bad-3'), null);
+});
+test('isPid takes a bare pid only', () => {
+  assert.equal(isPid('a-1'), true); assert.equal(isPid('165759'), true);
+  assert.equal(isPid('https://www.lexaloffle.com/bbs/?pid=a-1'), false); assert.equal(isPid(' a-1'), false); assert.equal(isPid(5), false);
+});
+test('threadId', () => {
+  assert.equal(threadId('https://www.lexaloffle.com/bbs/?tid=148484'), '148484');
+  assert.equal(threadId('https://evil.test/bbs/?tid=1'), null);
+  assert.equal(threadId('148484'), null);
+});
+test('listLink', () => {
+  const at = 'https://www.lexaloffle.com/bbs/';
+  assert.deepEqual(listLink(`${at}?cat=7#sub=2&mode=carts&orderby=featured&page=3`), { tab: 'featured', page: 3, q: '' });
+  assert.deepEqual(listLink(`${at}?cat=7&carts_tab=1&#sub=2&mode=carts`), { tab: 'new', page: 1, q: '' });
+  assert.deepEqual(listLink(`${at}lister.php?cat=7&mode=carts&search=snake&page=99`), { tab: 'new', page: 50, q: 'snake' });
+  assert.equal(listLink(`${at}?cat=6#mode=carts`), null);
+  assert.equal(listLink(`${at}?pid=porklike-2`), null);
+});
+test('thumbName and listUrl', () => {
+  assert.equal(thumbName('molemole-1'), 'pico8_molemole-1.png');
+  assert.equal(thumbName('23208'), 'pico23208.png');
+  assert.equal(listUrl({ tab: 'featured', page: 2, q: '' }), 'https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts&orderby=featured&page=2');
+  assert.equal(listUrl({ tab: 'new', page: 1, q: '' }), 'https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts&page=1');
+  assert.equal(listUrl({ tab: 'featured', page: 1, q: 'sn ake' }), 'https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts&search=sn%20ake&page=1');
+  assert.equal(bbsUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/?pid=porklike-2');
 });

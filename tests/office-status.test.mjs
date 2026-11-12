@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { officeStatus, identity, isTypingTarget, monitorLines, tiredness, FRUITS } from '../client/office/status.js';
+import { officeStatus, identity, isTypingTarget, monitorLines, tiredness, FRUITS, hash } from '../client/office/status.js';
 
 test('every status maps to a pose', () => {
   const want = { working: 'typing', permission: 'waving', question: 'raising', idle: 'sleeping', error: 'slumped', offline: 'still', unknown: 'still' };
@@ -117,3 +117,5 @@ test('bypass and plan modes, the agent and the plan reach the office', () => {
   assert.equal(officeStatus({ status: 'offline', permissionMode: 'bypassPermissions', requests: [] }).mode, 'bypass', 'an offline one keeps its shades');
   assert.deepEqual(monitorLines({ title: 'x', plan: [{ step: 'a', status: 'done' }, { step: 'b', status: 'active' }] }).plan, ['done', 'active']);
 });
+
+test('hash is FNV-1a', () => assert.equal(hash('a'), 0xe40c292c));

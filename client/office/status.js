@@ -77,7 +77,7 @@ export function tiredness(session, now = Date.now()) {
 }
 
 // 32-bit FNV-1a; each trait salts the id so traits don't move together.
-function hash(text) {
+export function hash(text) {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193); }
   return h >>> 0;
