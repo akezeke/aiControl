@@ -7,6 +7,8 @@ import { AISLE, layoutOffice } from '../client/office/layout.js';
 import { CELL, findPath, nearestOpen, walkGrid } from '../client/office/path.js';
 import { createRoom } from '../client/office/room.js';
 import { createBossDesk, fitFov } from '../client/office/boss.js';
+import { drawDesktop, drawGeneric, fakeCart } from '../client/office/desktop.js';
+import { RECTS } from '../client/office/pc-windows.js';
 import { viewTest } from '../client/office/screens.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -83,8 +85,31 @@ test("the boss's office is all about the boss: your own fruit, drawn again only 
 
 // Seated at the boss desk (createBossDesk): a camera as office.js has it, its canvas 1600 × 900 CSS px.
 const camera = () => { const c = new THREE.PerspectiveCamera(50, 16 / 9); c.position.set(2, 1.6, 6); c.updateMatrixWorld(); c.userData.canvas = { clientWidth: 1600, clientHeight: 900 }; return c; };
-const stubDesktop = (calls = [], placed = []) => ({ place: corners => { calls.push('place'); placed.push(corners); }, hide: () => calls.push('hide'), state: () => ({ window: null, cart: null, start: false }), root: {} });
+const EMPTY = { icons: [], windows: [], tasks: [], start: false };
+const stubDesktop = (calls = [], placed = []) => ({ place: corners => { calls.push('place'); placed.push(corners); }, hide: () => calls.push('hide'), version: () => 0, view: () => EMPTY, image: () => null, root: {} });
 const fonts = { load: () => Promise.resolve() };
+// The camera where sitting down puts it, square to the monitor.
+const atMonitor = (cam, game) => { const pose = game.pose(); cam.fov = pose.fov; cam.updateProjectionMatrix(); cam.position.copy(pose.from); cam.lookAt(pose.look); cam.updateMatrixWorld(); };
+// Sat at the boss desk, the camera at the monitor: bump() changes the desktop (its version()), draws() counts the monitor's draws
+// since, and printed has the text they wrote.
+const seated = (t, view = EMPTY) => {
+  const printed = []; noDocument(t, printed);
+  let version = 0; const annex = build(emptyRoom(14)).boss, cam = camera();
+  const game = createBossDesk({ annex, desktop: { ...stubDesktop(), version: () => version, view: () => view }, camera: cam, fonts: null, now: () => new Date(2026, 10, 12, 9, 0).getTime() });
+  atMonitor(cam, game); game.enter(); const from = annex.texture.version;
+  return { annex, game, printed, bump: () => { version++; }, draws: () => annex.texture.version - from };
+};
+// A context that records each call as [name, ...args], with the font and fill it was made with; text is 5 px a letter.
+const recorder = () => {
+  const calls = [], props = {};
+  return new Proxy({ calls }, {
+    get: (t, k) => k in t ? t[k] : k in props ? props[k] : (...args) => { calls.push(Object.assign([k, ...args], { font: props.font, fill: props.fillStyle })); return k === 'measureText' ? { width: String(args[0]).length * 5 } : { addColorStop() {} }; },
+    set: (t, k, v) => { props[k] = v; return true; },
+  });
+};
+// A desktop view with these windows open, the last in front.
+const viewWith = (...windows) => ({ ...EMPTY, windows: windows.map((w, i) => ({ title: w.name, rect: RECTS[w.name], front: i === windows.length - 1, mode: 'normal', ...w })) });
+const said = g => g.calls.filter(c => c[0] === 'fillText').map(c => c[1]);
 
 test('the fov fits the screen inside 92% of the view at any window shape', () => {
   for (const aspect of [0.5, 1, 1.78, 2.5]) {
@@ -130,17 +155,19 @@ test("seated, the desktop's laid over the monitor, centred and 92% of the view",
     assert.ok(fill > 0.91 && fill < 0.93, `fills ${fill}`);
   }
 });
+// A friend's generic desktop is drawn in Silkscreen; the real one's in system fonts, and nothing's drawn before it's seen.
 test('the monitor is drawn again once Silkscreen has loaded', async t => {
   noDocument(t);
-  let loaded; const annex = build(emptyRoom(10)).boss, slow = { load: () => new Promise(r => { loaded = r; }) };
-  createBossDesk({ annex, desktop: stubDesktop(), camera: camera(), fonts: slow }); const before = annex.texture.version;
+  let loaded; const annex = build(emptyRoom(10)).boss, cam = camera(), slow = { load: () => new Promise(r => { loaded = r; }) };
+  const game = createBossDesk({ annex, desktop: stubDesktop(), camera: cam, fonts: slow }); atMonitor(cam, game);
+  game.update(0.2, { still: true, friend: 'f1', arrived: false }); const before = annex.texture.version;
   loaded(); await new Promise(r => setImmediate(r));
   assert.ok(annex.texture.version > before);
 });
-test("the monitor's drawn when the minute turns, only while it's in view, and the desktop's state when you're at it", t => {
+test("the monitor's drawn when the minute turns or the desktop changes, only while it's in view", t => {
   noDocument(t);
-  const annex = build(emptyRoom(14)).boss, cam = camera(), state = { window: null, cart: null, start: false };
-  let minute = 0; const desktop = { ...stubDesktop(), state: () => ({ ...state }) };
+  const annex = build(emptyRoom(14)).boss, cam = camera();
+  let minute = 0, version = 0; const desktop = { ...stubDesktop(), version: () => version };
   const game = createBossDesk({ annex, desktop, camera: cam, fonts, now: () => new Date(2026, 10, 11, 9, minute).getTime() });
   const look = game.pose(), facing = () => { cam.fov = 50; cam.updateProjectionMatrix(); cam.position.copy(look.from).add(V(0, 0.3, -1.2)); cam.lookAt(look.look); cam.updateMatrixWorld(); };
   const away = () => { cam.position.set(2, 1.6, 8); cam.lookAt(2, 1.6, 12); cam.updateMatrixWorld(); };
@@ -148,7 +175,69 @@ test("the monitor's drawn when the minute turns, only while it's in view, and th
   facing(); tick(); let v = drawn(); tick(); assert.equal(drawn(), v, 'the same minute: left as it is');
   minute = 1; away(); tick(); assert.equal(drawn(), v, 'out of view: not drawn');
   facing(); tick(); assert.ok(drawn() > v, 'back in view: drawn'); v = drawn();
-  game.enter(); tick(); v = drawn(); state.start = true; tick(); assert.ok(drawn() > v, "the desktop's Start menu opened");
+  version++; tick(); assert.ok(drawn() > v, 'the desktop changed (a thumbnail came in): drawn'); v = drawn();
+  version++; away(); tick(); facing(); tick(); assert.ok(drawn() > v, 'changed out of view: drawn once back in view');
+});
+test('never drawn while seated, drawn once at stand-up', t => {
+  const { game, draws, bump } = seated(t);
+  for (let i = 0; i < 5; i++) { bump(); game.update(0.016, { still: true, friend: null, arrived: true }); }
+  assert.equal(draws(), 0);
+  game.update(0.016, { still: false, friend: null, arrived: false }); assert.equal(draws(), 1);
+  game.update(0.2, { still: false, friend: null, arrived: false }); assert.equal(draws(), 1, 'nothing changed since');
+});
+test("standing up draws the desktop once, as it's left", t => {
+  const { game, draws, printed } = seated(t, { ...EMPTY, start: true });
+  game.update(0.016, { still: false, friend: null, arrived: true }); game.leave();
+  assert.equal(draws(), 1); assert.ok(printed.includes('Boss 98'), 'its Start menu, open');
+  game.update(0.2, { still: false, friend: null, arrived: false }); assert.equal(draws(), 1);
+});
+test('thumbnails that arrive together cause one redraw', t => {
+  const { game, draws, bump } = seated(t), stand = () => game.update(0.2, { still: false, friend: null, arrived: false });
+  game.leave(); const v = draws();
+  bump(); bump(); // two thumbnails loaded in one frame: each load bumps version() (desktop.js)
+  stand(); assert.equal(draws(), v + 1); stand(); assert.equal(draws(), v + 1);
+});
+test('friends still see the generic desktop, their made-up game moving ten times a second', t => {
+  const printed = []; noDocument(t, printed);
+  const annex = build(emptyRoom(14)).boss, cam = camera(), game = createBossDesk({ annex, desktop: stubDesktop(), camera: cam, fonts });
+  atMonitor(cam, game);
+  const at = (dt, still = false) => game.update(dt, { still, friend: 'f1', arrived: false }), drawn = () => annex.texture.version;
+  at(0.2); assert.ok(printed.includes('PICO-8'), "the generic desktop's window"); let v = drawn();
+  at(0.05); assert.equal(drawn(), v, 'the same tenth of a second');
+  at(0.1); assert.ok(drawn() > v, 'the game moved'); at(0.2, true); v = drawn();
+  at(0.2, true); assert.equal(drawn(), v, 'reduced motion: it stands still');
+  const g = recorder(); drawGeneric(g, { window: 'pico', cart: 'f1', start: false }, { clock: '09:00', game: fakeCart(1, 0) });
+  assert.ok(said(g).includes('PICO-8') && said(g).includes('09:00'));
+});
+test('a stopped game is drawn as its thumbnail', () => {
+  const g = recorder(), img = { width: 128, height: 128 };
+  drawDesktop(g, viewWith({ name: 'pico8', state: { cart: { pid: 'a-1', title: 'A' } } }), { clock: '14:32', image: n => n === 'pico8_a-1.png' ? img : null });
+  assert.ok(g.calls.some(c => c[0] === 'drawImage' && c[1] === img));
+});
+test('the real desktop: wallpaper, icons, windows back to front, the taskbar and clock, and Start', () => {
+  const g = recorder(), thumb = { width: 128, height: 128 }, asked = [];
+  const view = {
+    ...viewWith({ name: 'browser', title: 'Featured - Info Highway', state: { page: { kind: 'list', carts: [{ pid: 'b-1' }] } } }, { name: 'notepad', title: 'salaries.txt - Notepad', state: { text: 'ALICE  100\nBOB  90' } }),
+    icons: [
+      { id: 'browser', name: 'Info Highway', kind: 'browser', spot: [0, 0], thumb: null, selected: true },
+      { id: 'i1', name: 'Cart', kind: 'cart', spot: [0, 1], thumb: 'pico8_c-1.png', selected: false },
+      { id: 'i2', name: 'Off grid', kind: 'cart', spot: null, thumb: 'pico8_h-1.png', selected: false },
+    ],
+    tasks: [{ name: 'browser', title: 'Featured - Info Highway', pressed: false }, { name: 'notepad', title: 'salaries.txt - Notepad', pressed: true }],
+    start: true,
+  };
+  drawDesktop(g, view, { clock: '14:32', image: n => { asked.push(n); return n === 'pico8_c-1.png' ? thumb : null; } });
+  const wall = g.calls.find(c => c[0] === 'fillRect'), text = said(g), fill = s => g.calls.find(c => c[0] === 'fillText' && c[1] === s)?.fill;
+  assert.deepEqual([wall.fill, ...wall.slice(1)], ['#008080', 0, 0, 1080, 640], 'teal first');
+  assert.ok(g.calls.some(c => c[0] === 'drawImage' && c[1] === thumb), "the cart icon's thumbnail");
+  assert.ok(text.includes('Info Highway') && text.includes('Cart') && !text.includes('Off grid'), 'icons on the grid, with labels');
+  assert.ok(!asked.includes('pico8_h-1.png'), 'nothing asked for an icon off the grid');
+  assert.ok(text.indexOf('Featured - Info Highway') < text.indexOf('salaries.txt - Notepad'), 'back to front');
+  assert.equal(fill('salaries.txt - Notepad'), '#fff', "the front window's title"); assert.equal(fill('Featured - Info Highway'), '#c0c0c0', 'one behind');
+  assert.ok(asked.includes('pico8_b-1.png'), "the browser's page"); assert.ok(text.includes('ALICE  100'), "Notepad's text");
+  assert.ok(['File', 'Go', 'Help', 'Start', '14:32', 'Boss 98', 'Shut down…'].every(s => text.includes(s)), 'menus, taskbar, clock and Start');
+  const fonts = g.calls.filter(c => c[0] === 'fillText' && !/Courier/.test(c.font)).map(c => c.font);
+  assert.ok(fonts.every(f => f.endsWith("Tahoma, 'MS Sans Serif', Arial, sans-serif")), fonts.join(' | '));
 });
 test('sat at the boss\'s computer, no speech bubbles cover its desktop or take its clicks', () => {
   const source = readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8');

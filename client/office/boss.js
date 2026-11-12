@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BOSS, CHAIR, DESK, DOOR_X, STAND, bossBoxes, bossInside } from './boss-plan.js';
-import { LAYOUT, clockOf, drawDesktop, fakeCart } from './desktop.js';
+import { LAYOUT, clockOf, drawDesktop, drawGeneric, fakeCart } from './desktop.js';
 import { WALL_H, canvasTexture, piece, rounded, rug } from './furniture.js';
 import { DOOR_FAR, DOOR_NEAR } from './kitchen.js';
 import { dims } from './lights.js';
@@ -114,24 +114,29 @@ export function createBossOffice({ desk, onSit, onMove }) {
 const GLASS_W = 0.54, GLASS_H = 0.32, DISTANCE = 0.75, FILL = 0.92;
 // The vertical fov that shows a w × h screen from `distance` filling FILL of the view across or down, whichever's tighter.
 export const fitFov = (aspect, distance, w = GLASS_W * DESK.monitor, h = GLASS_H * DESK.monitor) => 2 * THREE.MathUtils.radToDeg(Math.atan(Math.max(h, w / aspect) / FILL / 2 / distance));
-const IDLE = { window: null, cart: null, start: false };
 const seedOf = id => { let h = 0x811c9dc5; for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193); return h >>> 0; };
 
 // Sitting at the boss desk (office.js): the camera comes in square to the monitor, and once it's there the desktop (desktop.js)
 // is laid over the monitor's glass on screen, so its buttons and the cart's frame take the clicks and keys. Every key's the
 // desk's but Esc; no blur, for the cart's frame taking focus blurs the window. The rest of the time the monitor shows the same
-// desktop drawn: idle with its clock, yours as you left it, or a friend's made-up game (fakeCart) while they sit there.
-// `now`: Date.now, for the clock.
+// desktop drawn (desktop.view()) as you left it, or v1's generic one with a friend's made-up game (fakeCart) while they sit there.
+// It's drawn only when it can be seen: never under the laid-over desktop, once as that's taken down or you stand up, and
+// otherwise on a change (version()) or the minute's turn while it's in view. `now`: Date.now, for the clock.
 export function createBossDesk({ annex, desktop, camera, fonts = document.fonts, now = () => Date.now() }) {
   const g = annex.texture.image.getContext('2d'), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: camera.fov, hands: false };
   const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([x, y]) => ({ local: new THREE.Vector3(x * GLASS_W / 2, y * GLASS_H / 2, 0), at: new THREE.Vector3(), css: { x: 0, y: 0 } }));
-  let seated = false, shown = false, t = 0, look = 0, mode = null, minute = -1, last = [IDLE, null];
-  const draw = (state, game = null) => {
-    last = [state, game];
-    g.save(); g.setTransform(SCREEN_W / LAYOUT.w, 0, 0, SCREEN_W / LAYOUT.w, 0, 0); drawDesktop(g, state, { clock: clockOf(new Date(now())), game }); g.restore();
+  let seated = false, shown = false, t = 0, look = 0, mode = null, minute = -1, last = null;
+  // `paint(clock)` draws one picture; the last is drawn again once Silkscreen (the generic desktop's font) has loaded.
+  const draw = paint => {
+    last = paint;
+    g.save(); g.setTransform(SCREEN_W / LAYOUT.w, 0, 0, SCREEN_W / LAYOUT.w, 0, 0); paint(clockOf(new Date(now()))); g.restore();
     annex.texture.needsUpdate = true;
   };
-  fonts?.load('16px Silkscreen').then(() => draw(...last), () => {});
+  const mine = clock => drawDesktop(g, desktop.view(), { clock, image: desktop.image });
+  const theirs = (friend, at) => clock => drawGeneric(g, { window: 'pico', cart: friend, start: false }, { clock, game: fakeCart(seedOf(friend), at) });
+  // The desktop as it is now, and what it was drawn at.
+  const drawMine = () => { draw(mine); mode = `mine ${desktop.version()}`; minute = Math.floor(now() / 60_000); };
+  fonts?.load('16px Silkscreen').then(() => { if (last && !shown) draw(last); }, () => {});
   const place = () => {
     const { clientWidth: w, clientHeight: h } = camera.userData.canvas;
     annex.screen.updateWorldMatrix(true, false); camera.updateMatrixWorld();
@@ -151,7 +156,7 @@ export function createBossDesk({ annex, desktop, camera, fonts = document.fonts,
     },
     enter() { seated = true; },
     // Taking the desktop down takes the cart's frame out of the page, which stops it and its sound.
-    leave() { seated = shown = false; desktop.hide(); mode = 'idle'; minute = Math.floor(now() / 60_000); draw(IDLE); },
+    leave() { seated = shown = false; desktop.hide(); drawMine(); },
     // The keys that would stand you up or click (player.js's gameKey) are kept, so they don't; Esc stands you up, and the browser's own keys are the browser's.
     key: code => /^(Key[WASDE]|Arrow\w+|Space)$/.test(code),
     click: () => false,
@@ -159,14 +164,17 @@ export function createBossDesk({ annex, desktop, camera, fonts = document.fonts,
     // `friend`: who's sitting here at a meeting, or null. `still`: reduced motion, so a friend's game stands still.
     update(dt, { still, friend, arrived }) {
       t += dt;
-      if (seated && arrived) { place(); shown = true; } else if (shown) { shown = false; desktop.hide(); }
-      const state = seated ? desktop.state() : friend ? { window: 'pico', cart: friend, start: false } : IDLE;
-      const next = seated ? `${state.window} ${state.cart} ${state.start}` : friend ? `${friend} ${still ? 0 : Math.floor(t * 10)}` : 'idle', turned = Math.floor(now() / 60_000);
+      // Seated with the camera in, the desktop's laid over the monitor: nothing's drawn under it. Taken down, it's drawn as left.
+      if (seated && arrived) { place(); shown = true; return; }
+      if (shown) { shown = false; desktop.hide(); drawMine(); return; }
+      const visitor = !seated && friend, turned = Math.floor(now() / 60_000);
+      const next = visitor ? `${friend} ${still ? 0 : Math.floor(t * 10)}` : `mine ${desktop.version()}`;
       if (next === mode && turned === minute) return;
-      // Only you sitting here draws it out of view (it's under the desktop); otherwise a look ten times a second at most.
-      if (!seated) { if (t < look) return; look = t + 0.1; camera.updateMatrixWorld(); if (!viewTest(camera)(annex.screen)) return; }
-      mode = next; minute = turned;
-      draw(state, friend && !seated ? fakeCart(seedOf(friend), still ? 0 : t) : null);
+      // A look ten times a second at most.
+      if (t < look) return;
+      look = t + 0.1; camera.updateMatrixWorld(); if (!viewTest(camera)(annex.screen)) return;
+      if (!visitor) { drawMine(); return; }
+      draw(theirs(friend, still ? 0 : t)); mode = next; minute = turned;
     },
   };
 }

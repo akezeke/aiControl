@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDesktop, fakeCart, fitTransform, legendFor } from '../client/office/desktop.js';
+import { createDesktop, drawDesktop, fakeCart, fitTransform, legendFor } from '../client/office/desktop.js';
 import { STARTERS, thumbName } from '../client/office/carts.js';
 import { defaults } from '../client/office/pc-windows.js';
 import { useDom, find, findAll } from './fixtures/pc-dom.mjs';
@@ -464,7 +464,30 @@ test('view and version: what the monitor draws', async t => {
   assert.deepEqual(d.view().tasks, [{ name: 'pico8', title: 'A - PICO-8', pressed: true }]);
   at = d.version(); await openBrowser(d); assert.ok(d.version() > at);
   const b = d.view().windows.at(-1); assert.equal(b.name, 'browser'); assert.equal(b.front, true); assert.equal(b.state.page.kind, 'list'); assert.equal(b.state.page.carts.length, 3);
-  assert.deepEqual(d.state(), { window: null, cart: null, start: false });
+  assert.equal(d.state, undefined, 'the monitor draws view()');
+});
+// A stand-in Image that lists what's made; on.load() is its load.
+function images(t) {
+  const made = [], was = globalThis.Image;
+  globalThis.Image = class { constructor() { made.push(this); this.on = {}; } addEventListener(type, fn) { this.on[type] = fn; } };
+  t.after(() => { if (was) globalThis.Image = was; else delete globalThis.Image; });
+  return made;
+}
+const canvas = () => new Proxy({}, { get: (o, k) => k in o ? o[k] : () => ({ addColorStop() {} }), set: (o, k, v) => { o[k] = v; return true; } });
+test('images are only asked for by a draw: none while seated, each once standing, and each load is a change', async t => {
+  const made = images(t), { d } = await sat(t), url = '/api/office/bbs/thumb/';
+  playing(d, { pid: 'a-1', title: 'A' }); await openBrowser(d); d.view();
+  assert.equal(d.image(thumbName('a-1')), null); assert.equal(made.length, 0, 'seated: the desktop shows its own');
+  d.hide();
+  const draw = () => drawDesktop(canvas(), d.view(), { clock: '14:32', image: d.image });
+  draw(); const asked = made.map(i => i.src);
+  assert.ok(asked.includes(url + thumbName('a-1')), "the stopped game's"); assert.ok(asked.includes(url + thumbName(STARTERS[0].pid)), "an icon's");
+  assert.equal(new Set(asked).size, asked.length, 'one each');
+  draw(); assert.equal(made.length, asked.length, 'drawn again: the same images');
+  const v = d.version(), [first, second] = made;
+  first.on.load(); second.on.load(); assert.equal(d.version(), v + 2, 'each load is a change');
+  assert.equal(d.image(first.src.slice(url.length)), first, 'loaded: drawn');
+  assert.equal(d.image(made.at(-1).src.slice(url.length)), null, 'not loaded yet: the icon instead');
 });
 
 // Keys, menus and the legend (Task 12).

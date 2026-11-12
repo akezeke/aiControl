@@ -1,18 +1,19 @@
 // The boss desk's computer, "Boss 98": a 90s desktop laid out once at LAYOUT and transformed onto the monitor's rectangle on
 // screen. Icons come from the server desktop (pc-store.js); three windows (PICO-8, Info Highway, Notepad) sit over them, with a
-// taskbar and Start. drawDesktop draws the monitor's picture from the same numbers, so stepping in and out doesn't jump.
+// taskbar and Start. drawDesktop draws the monitor's picture of view() from the same numbers, so stepping in and out doesn't
+// jump; drawGeneric is v1's picture, for a friend at the desk.
 // While seated only these run on their own: the clock's one timeout to the next minute, an install's one-second timer, a touch's
 // half-second long press, and a cart while its frame can be seen. hide() (standing up) stops all of it: the cart, a drag, menus,
 // dialogs, a rename and the timers.
 // The pausing rule: every render pauses the player unless seated and some of its frame is uncovered (W.gameHidden), so a
 // minimised, covered or closed game never runs.
-import { PICO_PALETTE, ICONS, iconCanvas } from './pc-icons.js';
+import { PICO_PALETTE, ICONS, iconCanvas, paint } from './pc-icons.js';
 import { STARTERS, thumbName, listUrl } from './carts.js';
 import * as W from './pc-windows.js';
 import { createPcStore } from './pc-store.js';
-import { createPlayer } from './pc-player.js';
-import { createBrowser, readAddress } from './pc-browser.js';
-import { createNotepad } from './pc-notepad.js';
+import { createPlayer, draw as drawPlayer } from './pc-player.js';
+import { createBrowser, readAddress, draw as drawBrowser } from './pc-browser.js';
+import { createNotepad, draw as drawNotepad } from './pc-notepad.js';
 
 export const LAYOUT = { w: 1080, h: 640 }; // the monitor canvas's 432 × 256, 2.5 times over
 export const TASKBAR = 44, TITLE = 26, BAR = 28, BEVEL = 2;
@@ -48,6 +49,7 @@ const TAP = 400, SLOP = 4; // ms between two taps that maximise; px a pointer mo
 const missedUp = e => e.pointerType === 'mouse' && e.buttons === 0;
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const shownIn = (s, n) => s.windows[n].open && s.windows[n].mode !== 'min';
+const THUMBS = 128; // the monitor's thumbnails kept: more than one draw asks for (50 icons, a page of 18 and a game)
 
 export function createDesktop(container, {
   onShutDown, api, storage, online = () => navigator.onLine, now = () => new Date(),
@@ -865,10 +867,27 @@ export function createDesktop(container, {
     render();
   }
   const stateOf = n => n === 'pico8' ? { cart: ws.windows.pico8.cart } : n === 'browser' ? { page: browser.page() } : { text: notepad.node.value };
+  // The monitor's thumbnails (drawDesktop's `image`): made on a draw's first ask, never while seated (the desktop's own <img>s
+  // show them then). Each load bumps version(), so loads in one frame make one redraw; one that fails stays null (the icon).
+  const thumbs = new Map(); // name -> { img, loaded }, the least recently asked first
+  function image(name) {
+    let entry = thumbs.get(name);
+    if (entry) thumbs.delete(name);
+    else if (seated) return null;
+    else {
+      const img = new Image(), made = { img, loaded: false };
+      img.addEventListener('load', () => { made.loaded = true; bump(); }, { once: true });
+      img.src = '/api/office/bbs/thumb/' + name;
+      if (thumbs.size >= THUMBS) thumbs.delete(thumbs.keys().next().value);
+      entry = made;
+    }
+    thumbs.set(name, entry);
+    return entry.loaded ? entry.img : null;
+  }
 
   renderIcons(); render();
   return {
-    root, ui, place, hide, install, play,
+    root, ui, place, hide, install, play, image,
     arrange: () => send({ op: 'arrange' }),
     agents(list) {
       sessions = list;
@@ -887,15 +906,106 @@ export function createDesktop(container, {
       };
     },
     version: () => version,
-    // boss.js draws the idle monitor from this until Task 13 draws view().
-    state: () => ({ window: null, cart: null, start }),
     dispose() { hide(); root.remove(); },
   };
 }
 
-// The monitor's picture of the same desktop, onto a context already scaled to LAYOUT. `game`: 128 × 128 palette indexes, played
-// in the PICO-8 window (a friend's made-up cart).
-export function drawDesktop(g, state, { clock, game = null }) {
+// The monitor's picture of view(), onto a context already scaled to LAYOUT, in pc.css's boxes and colours: the teal, the icons,
+// the windows back to front (each module draws its own client area), the taskbar and clock, and Start if it's open. The key
+// legend is left off: it's for whoever's seated. `image(name)`: a loaded thumbnail or null (createDesktop's image).
+const SYSTEM = "Tahoma, 'MS Sans Serif', Arial, sans-serif", GRAY = '#c0c0c0', DARK = '#808080', NAVY = '#000080', SKY = '#1084d0';
+const CHECKER = '#e0e0e0'; // a pressed task's 1 px checker of gray and white, averaged
+// The box-shadow bevels as [top-left, bottom-right] rings, outermost first.
+const RAISED = [['#dfdfdf', '#000'], ['#fff', DARK]], BUTTON = [['#fff', '#000'], ['#dfdfdf', DARK]], PRESSED = [['#000', '#fff'], [DARK, '#dfdfdf']], SUNK = [[DARK, '#fff']];
+const MENUS = { browser: ['File', 'Go', 'Help'], notepad: ['File'] }, MENUBAR = 20; // the modules' menus(), and their bar's height
+const DRAWS = { pico8: drawPlayer, browser: drawBrowser, notepad: drawNotepad };
+export function drawDesktop(g, view, { clock, image }) {
+  const width = s => g.measureText?.(s)?.width ?? 0;
+  // Cut to `max` px with an ellipsis, as text-overflow does.
+  const fit = (s, max) => {
+    if (width(s) <= max) return s;
+    let lo = 0, hi = s.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (width(s.slice(0, mid) + '…') <= max) lo = mid; else hi = mid - 1; }
+    return s.slice(0, lo) + '…';
+  };
+  const say = (s, x, y, color, { bold = false, align = 'left', max = Infinity } = {}) => {
+    g.font = `${bold ? 'bold ' : ''}12px ${SYSTEM}`; g.fillStyle = color; g.textAlign = align; g.textBaseline = 'middle';
+    g.fillText(fit(String(s), max), x, y);
+  };
+  const edges = (x, y, w, h, rings) => rings.forEach(([lt, rb], i) => {
+    g.fillStyle = lt; g.fillRect(x + i, y + i, w - 2 * i, 1); g.fillRect(x + i, y + i, 1, h - 2 * i);
+    g.fillStyle = rb; g.fillRect(x + i, y + h - 1 - i, w - 2 * i, 1); g.fillRect(x + w - 1 - i, y + i, 1, h - 2 * i);
+  });
+  const box = (x, y, w, h, rings, fill = GRAY) => { g.fillStyle = fill; g.fillRect(x, y, w, h); edges(x, y, w, h, rings); };
+  const fade = (x0, y0, x1, y1) => { const f = g.createLinearGradient(x0, y0, x1, y1); f.addColorStop(0, NAVY); f.addColorStop(1, SKY); return f; };
+  const glyph = (name, x, y) => paint(g, GLYPHS[name], x, y, 16 / GLYPHS[name].w);
+  g.fillStyle = '#008080'; g.fillRect(0, 0, LAYOUT.w, LAYOUT.h);
+  g.imageSmoothingEnabled = false;
+
+  // Icons, 76 px wide in their cell: the art (a cart's thumbnail once loaded) with a shortcut's arrow, and the label under it.
+  for (const icon of view.icons) {
+    if (!icon.spot) continue;
+    const left = W.GRID.x + icon.spot[0] * W.GRID.size + (W.GRID.size - 76) / 2, top = W.GRID.y + icon.spot[1] * W.GRID.size, ax = left + 22, ay = top + 4;
+    const img = icon.thumb ? image(icon.thumb) : null;
+    if (img) g.drawImage(img, ax, ay, 32, 32);
+    else paint(g, icon.kind === 'cart' ? ICONS.cart : icon.kind === 'salaries' ? ICONS.notepad : ICONS.globe, ax, ay);
+    if (icon.kind === 'cart' || icon.kind === 'link') paint(g, ICONS.arrow, ax, ay + 22);
+    g.font = `12px ${SYSTEM}`; const label = fit(icon.name, 66), w = width(label) + 6;
+    if (icon.selected) { g.fillStyle = NAVY; g.fillRect(left + 38 - w / 2, top + 40, w, 17); }
+    say(label, left + 38, top + 48.5, '#fff', { align: 'center' });
+  }
+
+  // Windows, back to front: the frame, the title bar (the front one's blue fades across), _ □ × and the menubar.
+  for (const win of view.windows) {
+    const { x, y, w, h } = win.rect, tx = x + 3, ty = y + 3, tw = w - 6, bar = MENUS[win.name] ? MENUBAR : 0;
+    box(x, y, w, h, RAISED);
+    g.fillStyle = win.front ? fade(tx, 0, tx + tw, 0) : DARK; g.fillRect(tx, ty, tw, TITLE);
+    glyph(win.name, tx + 2, ty + 5);
+    say(win.title, tx + 22, ty + TITLE / 2, win.front ? '#fff' : GRAY, { bold: true, max: tw - 92 });
+    [['_', false], [win.mode === 'max' ? '❐' : '□', W.FIXED.has(win.name)], ['×', false]].forEach(([mark, off], i) => {
+      const bx = tx + tw - 66 + i * 22, by = ty + 3;
+      box(bx, by, 20, 20, BUTTON);
+      if (off) say(mark, bx + 11, by + 11, '#fff', { align: 'center' });
+      say(mark, bx + 10, by + 10, off ? DARK : '#000', { align: 'center' });
+    });
+    let mx = tx + 2;
+    for (const label of MENUS[win.name] ?? []) { say(label, mx + 6, ty + TITLE + MENUBAR / 2, '#000'); mx += width(label) + 14; }
+    const client = { x: tx, y: ty + TITLE + bar, w: tw, h: h - 6 - TITLE - bar };
+    g.save(); g.beginPath(); g.rect(client.x, client.y, client.w, client.h); g.clip();
+    DRAWS[win.name](g, client, { ...win.state, image });
+    g.restore();
+  }
+
+  // The taskbar: Start, a button per open window (the front one's pressed) and the clock.
+  const top = LAYOUT.h - TASKBAR, by = top + 6;
+  g.fillStyle = GRAY; g.fillRect(0, top, LAYOUT.w, TASKBAR);
+  g.fillStyle = '#dfdfdf'; g.fillRect(0, top, LAYOUT.w, 1); g.fillStyle = '#fff'; g.fillRect(0, top + 1, LAYOUT.w, 1);
+  const down = view.start ? 1 : 0;
+  box(4, by, 64, 32, view.start ? PRESSED : BUTTON); say('Start', 36 + down, by + 16 + down, '#000', { bold: true, align: 'center' });
+  view.tasks.forEach((task, i) => {
+    const x = 72 + i * 164, d = task.pressed ? 1 : 0;
+    box(x, by, 160, 32, task.pressed ? PRESSED : BUTTON, task.pressed ? CHECKER : GRAY);
+    glyph(task.name, x + 8 + d, by + 8 + d);
+    say(task.title, x + 28 + d, by + 16 + d, '#000', { bold: task.pressed, max: 124 });
+  });
+  edges(LAYOUT.w - 68, top + 8, 64, 28, SUNK); say(clock, LAYOUT.w - 36, top + 22, '#000', { align: 'center' });
+
+  // Start: the banner up its left side, Programs and Documents, a rule and Shut down….
+  if (!view.start) return;
+  const mh = 3 + 3 * 22 + 8 + 3, my = top - mh;
+  box(4, my, 190, mh, RAISED);
+  g.fillStyle = fade(0, my + mh - 3, 0, my + 3); g.fillRect(7, my + 3, 22, mh - 6);
+  g.save(); g.translate(18, my + mh - 7); g.rotate(-Math.PI / 2); say('Boss 98', 0, 0, GRAY, { bold: true }); g.restore();
+  let iy = my + 3;
+  for (const item of ['Programs ▸', 'Documents ▸', null, 'Shut down…']) {
+    if (!item) { g.fillStyle = DARK; g.fillRect(34, iy + 3, 155, 1); g.fillStyle = '#fff'; g.fillRect(34, iy + 4, 155, 1); iy += 8; continue; }
+    say(item, 46, iy + 11, '#000'); iy += 22;
+  }
+}
+
+// v1's picture, for a friend at the boss desk (desktops are never shared), onto a context already scaled to LAYOUT. `game`:
+// 128 × 128 palette indexes, played in the PICO-8 window (their made-up cart).
+export function drawGeneric(g, state, { clock, game = null }) {
   const bevel = (x, y, w, h, sunk = false) => {
     g.fillStyle = FACE; g.fillRect(x, y, w, h);
     g.fillStyle = sunk ? SHADE : LIGHT; g.fillRect(x, y, w, BEVEL); g.fillRect(x, y, BEVEL, h);

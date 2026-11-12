@@ -186,7 +186,7 @@ export function mountOffice(container, hooks) {
   };
   // The boss desk's computer (desktop.js), laid over the canvas: only the desktop itself takes the pointer. Shut down stands you up.
   const screenLayer = document.createElement('div'); screenLayer.className = 'office-desktop-layer'; renderer.domElement.after(screenLayer);
-  const desktop = createDesktop(screenLayer, { onShutDown: () => play(null), storage: (() => { try { return window.localStorage; } catch { return null; } })() });
+  const desktop = createDesktop(screenLayer, { onShutDown: () => play(null), api: (path, body) => hooks.api(path, body), storage: (() => { try { return window.localStorage; } catch { return null; } })() });
   const bossDesk = createBossDesk({ annex: room.boss, desktop, camera });
   room.onBoss = () => onPlay(bossDesk);
   // Office online (online.js): friends' bests, for the games' own displays and the meetings clipboard.
@@ -513,6 +513,7 @@ export function mountOffice(container, hooks) {
       player.position.x += dx; player.position.z += dz; player.seated.x += dx; player.seated.z += dz;
     }
     if (!away) shots.sync(snapshot.sessions.filter(session => !session.parentId && layout.desks.has(session.id)));
+    if (!away) desktop.agents(snapshot.sessions); // salaries.txt, rebuilt only while it's open in front of you
     for (const face of Object.values(room.boards)) face.parent.userData.board = true; // clicking one takes you to it
     signs = []; scene.traverse(node => { if (node.geometry && node.geometry === shared.sign) signs.push(node); });
     cast.sync(layout, shown.sessions, room, office.statuses); mark();
