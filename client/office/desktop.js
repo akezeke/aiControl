@@ -34,7 +34,9 @@ const GLYPHS = { pico8: ICONS.console, browser: ICONS.globe, notepad: ICONS.note
 const TASKS = ['browser', 'notepad', 'pico8']; // the taskbar's fixed order
 const BUILTINS = [{ id: 'browser', kind: 'browser', name: 'Info Highway' }, { id: 'salaries', kind: 'salaries', name: 'salaries.txt' }];
 const ROOM = W.GRID.cols * W.GRID.rows - BUILTINS.length; // icons the grid holds besides the built-ins
-const TAP = 400, SLOP = 4; // ms between two taps that maximise; px a pointer moves before an icon drags
+const TAP = 400, SLOP = 4; // ms between two taps that maximise; px a pointer moves before a drag starts
+// A mouse that moves with no button down missed its pointerup (let go outside the page, say): its drag ends there.
+const missedUp = e => e.pointerType === 'mouse' && e.buttons === 0;
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const shownIn = (s, n) => s.windows[n].open && s.windows[n].mode !== 'min';
 
@@ -59,7 +61,7 @@ export function createDesktop(container, {
   };
 
   let ws = W.defaults(), seated = false, restored = false, sessions = [], version = 0, start = false, selected = 'browser';
-  let drag = null, menu = null, dialog = null, lastTap = null, titleKind = 'mouse', iconKind = 'mouse', padSeen = false;
+  let drag = null, menu = null, dialog = null, dialogPrev = null, lastTap = null, titleKind = 'mouse', iconKind = 'mouse', padSeen = false;
   let clockTimer = null, lastError = 'Desktop unavailable.', matrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }, transform = '';
   const dialogs = [], jobs = new Set(), zooms = new Set(), iconNodes = new Map();
   const bump = () => { version++; };
@@ -91,6 +93,7 @@ export function createDesktop(container, {
   const MODS = { pico8: player, browser, notepad };
 
   const root = make('div', 'office-desktop'); root.hidden = true;
+  root.tabIndex = -1; // focus falls back here, so keys stay in the desktop
   const iconLayer = make('div', 'pc-icons');
   const boxOf = () => container.getBoundingClientRect?.() ?? { left: 0, top: 0 };
   // A pointer on screen, back into layout px through the inverse of the screen transform.
@@ -107,7 +110,7 @@ export function createDesktop(container, {
     const mod = MODS[name], node = make('div', 'pc-window'), title = make('div', 'pc-title'), text = make('div', 'pc-title-text'), label = make('span');
     text.append(iconCanvas(GLYPHS[name], 1), label);
     const min = button('pc-button', '_', () => change(W.minimize(ws, name)));
-    const max = button('pc-button', '□', () => change(W.toggleMax(ws, name)));
+    const max = button('pc-button', '□', () => change(W.toggleMax(W.front(ws, name), name))); // fronts too, in the one op
     const shut = button('pc-button', '×', () => closeWindow(name));
     min.setAttribute('aria-label', 'Minimize'); shut.setAttribute('aria-label', 'Close');
     if (W.FIXED.has(name)) { max.disabled = true; max.setAttribute('disabled', ''); }
@@ -116,7 +119,11 @@ export function createDesktop(container, {
     node.append(title);
     if (mod.menus) node.append(menubar(name, mod));
     node.append(mod.node);
-    node.addEventListener('pointerdown', () => { if (W.frontmost(ws) !== name) change(W.front(ws, name)); });
+    // A press fronts the window, except on _ □ ×: those make their own change, so each sends one op.
+    node.addEventListener('pointerdown', e => {
+      if (buttons.contains(e.target) && !e.target.disabled) return;
+      if (W.frontmost(ws) !== name) change(W.front(ws, name));
+    });
 
     title.addEventListener('pointerdown', e => {
       if (e.button !== 0 || buttons.contains(e.target)) return;
@@ -129,20 +136,25 @@ export function createDesktop(container, {
     });
     const mine = e => drag?.node === title && drag.pointer === e.pointerId;
     title.addEventListener('pointermove', e => {
-      if (!mine(e) || !drag.movable) return;
-      const p = toLayout(e, drag.box);
-      change(W.moveTo(ws, name, { x: drag.at.x + p.x - drag.from.x, y: drag.at.y + p.y - drag.from.y }), false);
+      if (!mine(e)) return;
+      if (missedUp(e)) { endDrag(false); return; }
+      if (!drag.movable) return;
+      const p = toLayout(e, drag.box), dx = p.x - drag.from.x, dy = p.y - drag.from.y;
+      if (!drag.moved && Math.hypot(dx, dy) <= SLOP) return; // a tap that wobbles is still a tap
+      change(W.moveTo(ws, name, { x: drag.at.x + dx, y: drag.at.y + dy }), false);
       drag.moved = true;
     });
-    title.addEventListener('pointerup', e => {
-      if (!mine(e)) return;
+    // The window stays where the drag left it and is saved; only a real pointerup counts as a tap.
+    function endDrag(tapped) {
       const d = drag; drag = null; release(title, d.pointer);
       if (d.moved || d.fronted) save();
       // A finger or a pen maximises with two taps; a double tap often sends no dblclick.
-      if (d.moved || d.kind === 'mouse') return;
+      if (!tapped || d.moved || d.kind === 'mouse') return;
       const at = +now();
       if (lastTap?.name === name && at - lastTap.at < TAP) { lastTap = null; change(W.toggleMax(ws, name)); } else lastTap = { name, at };
-    });
+    }
+    title.addEventListener('pointerup', e => { if (mine(e)) endDrag(true); });
+    title.addEventListener('lostpointercapture', e => { if (mine(e)) endDrag(false); });
     title.addEventListener('pointercancel', e => { if (mine(e)) cancelDrag(); });
     title.addEventListener('dblclick', e => { if (titleKind === 'mouse' && !buttons.contains(e.target)) change(W.toggleMax(ws, name)); });
     return { node, label, max };
@@ -244,12 +256,21 @@ export function createDesktop(container, {
     }
     startButton.classList.toggle('pressed', start); startMenu.hidden = !start;
     player.pause(!seated || W.gameHidden(ws));
+    // Focus never stays on something hidden: it would drop out of the desktop, and keys would walk you about.
+    const active = document.activeElement;
+    if (seated && active !== root && root.contains(active) && !usable(active)) focus(root);
     // salaries.txt is rebuilt when it comes into view, and on agents() only while it's in view.
     const pad = seated && visible('notepad');
     if (pad && !padSeen) notepad.update(sessions, now(), true);
     padSeen = pad;
     bump();
   }
+  // Still on the desktop and nothing on the way up is hidden (a closed window, the shut Start menu).
+  function usable(n) {
+    for (let at = n; at; at = at.parentNode) { if (at === root) return !root.hidden; if (at.hidden) return false; }
+    return false;
+  }
+  function refocus(prev) { focus(usable(prev) ? prev : root); }
   const visible = n => {
     if (!shownIn(ws, n)) return false;
     const above = ws.order.slice(ws.order.indexOf(n) + 1).filter(m => shownIn(ws, m)).map(m => W.rectOf(ws, m));
@@ -342,21 +363,25 @@ export function createDesktop(container, {
       if (e.button !== 0) return;
       iconKind = e.pointerType; select(id);
       const box = boxOf(), spot = iconNodes.get(id)?.icon.spot ?? [0, 0];
-      drag = { type: 'icon', id, node, pointer: e.pointerId, box, from: toLayout(e, box), base: cellXY(spot), moved: false, kind: e.pointerType };
+      const from = toLayout(e, box);
+      drag = { type: 'icon', id, node, pointer: e.pointerId, box, from, last: from, base: cellXY(spot), moved: false, kind: e.pointerType };
       capture(node, e.pointerId);
     });
     node.addEventListener('pointermove', e => {
       if (!mine(e)) return;
+      if (missedUp(e)) { endDrag(false, drag.last); return; }
       const p = toLayout(e, drag.box), dx = p.x - drag.from.x, dy = p.y - drag.from.y;
       if (!drag.moved && Math.hypot(dx, dy) <= SLOP) return;
-      drag.moved = true; node.style.left = `${drag.base.x + centre + dx}px`; node.style.top = `${drag.base.y + dy}px`;
+      drag.moved = true; drag.last = p; node.style.left = `${drag.base.x + centre + dx}px`; node.style.top = `${drag.base.y + dy}px`;
     });
-    node.addEventListener('pointerup', e => {
-      if (!mine(e)) return;
+    // Dropped where the pointer last was; only a real pointerup counts as a tap.
+    function endDrag(tapped, at) {
       const d = drag; drag = null; release(node, d.pointer);
-      if (d.moved) dropIcon(d, toLayout(e, d.box));
-      else if (d.kind !== 'mouse') openIcon(id); // a finger or a pen opens with one tap
-    });
+      if (d.moved) dropIcon(d, at);
+      else if (tapped && d.kind !== 'mouse') openIcon(id); // a finger or a pen opens with one tap
+    }
+    node.addEventListener('pointerup', e => { if (mine(e)) endDrag(true, toLayout(e, drag.box)); });
+    node.addEventListener('lostpointercapture', e => { if (mine(e)) endDrag(false, drag.last); });
     node.addEventListener('pointercancel', e => { if (mine(e)) cancelDrag(); });
     node.addEventListener('dblclick', () => { if (iconKind === 'mouse') openIcon(id); });
     return node;
@@ -365,7 +390,7 @@ export function createDesktop(container, {
     const { size, cols, rows } = W.GRID, spots = store.desktop().spots, was = spots[d.id];
     const col = clamp(Math.round((d.base.x - W.GRID.x + p.x - d.from.x) / size), 0, cols - 1);
     const row = clamp(Math.round((d.base.y - W.GRID.y + p.y - d.from.y) / size), 0, rows - 1);
-    const taken = Object.entries(spots).some(([other, s]) => other !== d.id && s[0] === col && s[1] === row);
+    const taken = Object.entries(spots).some(([other, s]) => other !== d.id && s?.[0] === col && s?.[1] === row);
     if (taken || (was?.[0] === col && was?.[1] === row)) position(d.node, was);
     else send({ op: 'move', id: d.id, spot: [col, row] });
   }
@@ -392,6 +417,7 @@ export function createDesktop(container, {
 
   // Menus: one popup at a time, in layout px. Items are { label, run, disabled } or '-' for a line.
   function openMenu(items, at, { onLeft, onRight } = {}, owner = null) {
+    const prev = menu ? menu.prev : document.activeElement; // a menu that replaces another returns focus where the first found it
     closeMenu();
     const node = make('div', 'pc-menu pc-popup'), entries = [];
     node.setAttribute('role', 'menu');
@@ -413,14 +439,15 @@ export function createDesktop(container, {
     root.append(node);
     const w = node.offsetWidth || 0, h = node.offsetHeight || 0;
     node.style.left = `${clamp(at.x, 0, Math.max(0, LAYOUT.w - w))}px`; node.style.top = `${clamp(at.y, 0, Math.max(0, LAYOUT.h - h))}px`;
-    menu = { node, owner };
+    menu = { node, owner, prev };
     focus(entries.find(b => !b.hasAttribute('aria-disabled')));
     bump();
   }
+  // Focus in the menu goes back where it was before (or to the owner, on Esc); a press elsewhere has already moved it.
   function closeMenu(toOwner = false) {
     if (!menu) return;
-    const m = menu; menu = null; m.node.remove();
-    if (toOwner) focus(m.owner);
+    const m = menu, had = m.node.contains(document.activeElement); menu = null; m.node.remove();
+    if (toOwner && m.owner) focus(m.owner); else if (had && seated) refocus(m.prev);
     bump();
   }
   // ↑ and ↓ walk a menu's enabled items, wrapping.
@@ -444,9 +471,10 @@ export function createDesktop(container, {
     const d = { icon, text, labels, initial, extra, buttons: [], node: null, done: false };
     d.promise = new Promise(resolve => { d.resolve = resolve; });
     d.close = value => finish(d, value);
+    // Not seated: no dialog nobody sees, so an op that fails after you stand up stays dropped (the store is back on the server's desktop).
     if (!seated) { d.done = true; d.resolve(null); return d; }
     dialogs.push(d);
-    if (!dialog) nextDialog();
+    if (!dialog) { dialogPrev = document.activeElement; nextDialog(); }
     return d;
   }
   function nextDialog() {
@@ -462,7 +490,7 @@ export function createDesktop(container, {
       box.append(title, body, ...(d.extra ? [d.extra] : []), row);
       backdrop.append(box); root.append(backdrop); d.node = backdrop;
       focus(d.buttons[d.initial] ?? d.buttons[0]);
-    }
+    } else if (seated) refocus(dialogPrev); // the last one closed
     bump();
   }
   function finish(d, value) {
@@ -477,7 +505,9 @@ export function createDesktop(container, {
   function install(cart) {
     if (!seated) return;
     if (store.desktop().icons.length >= ROOM) { ui.dialog({ icon: 'warn', text: 'Not enough desktop space. Delete some icons first.', buttons: ['OK'] }); return; }
-    const bar = make('div', 'pc-progress'); bar.append(make('div', 'pc-setup-fill'));
+    const bar = make('div', 'pc-progress'), fill = make('div', 'pc-setup-fill');
+    if (reduced()) Object.assign(fill.style, { width: '100%', animation: 'none' }); // full at once
+    bar.append(fill);
     const setup = openDialog({ icon: 'info', text: `Installing ${cart.title}…`, buttons: [], extra: bar });
     const job = { left: 2, reason: null, cancelled: false, timer: null };
     const done = () => {
@@ -516,9 +546,14 @@ export function createDesktop(container, {
     seated = true; root.hidden = false;
     tickClock();
     select('browser'); focus(iconNodes.get('browser')?.node);
-    if (!restored) {
-      if (store.loaded()) restoreSaved();
-      else store.load().then(ok => { if (ok && seated && !restored) restoreSaved(); });
+    // A failed load says why once; only the built-ins show, and the next sit-down tries again.
+    if (store.loaded()) { if (!restored) restoreSaved(); }
+    else {
+      store.load().then(ok => {
+        if (!seated) return;
+        if (!ok) showError(store.error());
+        else if (!restored) restoreSaved();
+      });
     }
     // ▶ Play, never autoplay.
     player.show(ws.windows.pico8.cart);

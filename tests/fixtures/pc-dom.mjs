@@ -57,6 +57,7 @@ export function useDom(t) {
         toggle: (name, force) => { const on = force ?? !classes.has(name); if (on) classes.add(name); else classes.delete(name); return on; },
         contains: name => classes.has(name),
       },
+      get parentNode() { return node.parent; }, // the real API; `parent` is the fixture's own
       get className() { return [...classes].join(' '); },
       set className(value) { classes.clear(); for (const n of String(value).split(/\s+/)) if (n) classes.add(n); },
       setAttribute(name, value) { node.attributes[name] = String(value); },

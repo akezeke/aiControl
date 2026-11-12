@@ -14,6 +14,13 @@ test('GET only on the first sit-down, again only after a failure', async () => {
   assert.equal(await store.load(), true); await store.load();
   assert.deepEqual(calls.map(c => c[0]), ['office/pc', 'office/pc']);
 });
+test("error() gives the last failure's reason", async () => {
+  let fail = true;
+  const store = createPcStore({ api: async () => { if (fail) throw new Error('Server says no.'); return desk(); }, storage: memory(), onChange() {}, onError() {} });
+  assert.equal(store.error(), 'Desktop unavailable.');
+  assert.equal(await store.load(), false); assert.equal(store.error(), 'Server says no.');
+  fail = false; assert.equal(await store.load(), true);
+});
 test('ops go out one at a time, in order', async () => {
   const sent = [], gates = [];
   const api = (path, body) => body ? new Promise(done => { sent.push(body.op); gates.push(() => done(desk({ last: body.op }))); }) : Promise.resolve(desk());

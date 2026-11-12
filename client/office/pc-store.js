@@ -71,5 +71,5 @@ export function createPcStore({ api, storage, onChange, onError }) {
     return tail = tail.then(run);
   }
 
-  return { load, apply, desktop: view, loaded: () => ready };
+  return { load, apply, desktop: view, loaded: () => ready, error: () => lastError }; // error: why the last load failed
 }
