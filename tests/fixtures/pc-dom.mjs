@@ -1,6 +1,7 @@
 // A small fake DOM for the boss PC's tests (no jsdom): elements with a tree, classList, capture/bubble events (once, dedupe),
 // focus and a recording 2d canvas. Only what the desktop's modules touch; add here rather than in a test file.
 // `tag` is the fixture's own lowercase convenience for finders; production code reads the real `tagName` (upper case, also set here).
+// select() on a field records selectionStart/selectionEnd over its whole value.
 // NOT modelled:
 // - attribute/property links: setAttribute('class') vs classList/className, node.src vs attributes.src, value vs attribute;
 // - textContent neither clears nor aggregates children (it is a plain field);
@@ -78,6 +79,7 @@ export function useDom(t) {
       },
       focus() { doc.activeElement = node; },
       blur() { if (doc.activeElement === node) doc.activeElement = null; },
+      select() { node.selectionStart = 0; node.selectionEnd = String(node.value).length; },
       append(...kids) {
         for (const kid of kids) {
           const child = typeof kid === 'object' ? kid : Object.assign(element('#text'), { textContent: String(kid) });

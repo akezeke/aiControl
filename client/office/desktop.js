@@ -1,16 +1,17 @@
 // The boss desk's computer, "Boss 98": a 90s desktop laid out once at LAYOUT and transformed onto the monitor's rectangle on
 // screen. Icons come from the server desktop (pc-store.js); three windows (PICO-8, Info Highway, Notepad) sit over them, with a
 // taskbar and Start. drawDesktop draws the monitor's picture from the same numbers, so stepping in and out doesn't jump.
-// While seated only these run on their own: the clock's one timeout to the next minute, an install's one-second timer, and a cart
-// while its frame can be seen. hide() (standing up) stops all of it: the cart, a drag, menus and dialogs, both timers.
+// While seated only these run on their own: the clock's one timeout to the next minute, an install's one-second timer, a touch's
+// half-second long press, and a cart while its frame can be seen. hide() (standing up) stops all of it: the cart, a drag, menus,
+// dialogs, a rename and the timers.
 // The pausing rule: every render pauses the player unless seated and some of its frame is uncovered (W.gameHidden), so a
 // minimised, covered or closed game never runs.
 import { PICO_PALETTE, ICONS, iconCanvas } from './pc-icons.js';
-import { STARTERS, thumbName } from './carts.js';
+import { STARTERS, thumbName, listUrl } from './carts.js';
 import * as W from './pc-windows.js';
 import { createPcStore } from './pc-store.js';
 import { createPlayer } from './pc-player.js';
-import { createBrowser } from './pc-browser.js';
+import { createBrowser, readAddress } from './pc-browser.js';
 import { createNotepad } from './pc-notepad.js';
 
 export const LAYOUT = { w: 1080, h: 640 }; // the monitor canvas's 432 × 256, 2.5 times over
@@ -30,6 +31,14 @@ export function fitTransform([tl, tr, , bl], w, h) {
 }
 export { clockOf } from './pc-windows.js';
 
+// The taskbar's key legend for what has the keys; '' where a window shows its own (Info Highway's status bar) or a game has them.
+export function legendFor(context) {
+  return {
+    desktop: '←→↑↓ Move   Enter Open   M Menu   Esc Stand up', menu: '←→↑↓ Move   Enter Choose   Esc Close',
+    dialog: 'Enter OK   Esc Cancel', pico8: 'Enter/Z Play   Tab Next   Esc Stand up', notepad: 'Tab Next   Esc Stand up',
+  }[context] ?? '';
+}
+
 const GLYPHS = { pico8: ICONS.console, browser: ICONS.globe, notepad: ICONS.notepad };
 const TASKS = ['browser', 'notepad', 'pico8']; // the taskbar's fixed order
 const BUILTINS = [{ id: 'browser', kind: 'browser', name: 'Info Highway' }, { id: 'salaries', kind: 'salaries', name: 'salaries.txt' }];
@@ -47,7 +56,8 @@ export function createDesktop(container, {
 } = {}) {
   const make = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
   const button = (className, text, onClick) => { const n = make('button', className, text); n.type = 'button'; if (onClick) n.addEventListener('click', onClick); return n; };
-  const focus = n => n?.focus({ preventScroll: true }); // the layer is transformed; a scroll into view would shift it
+  // The layer is transformed; a scroll into view would shift it. lastFocus also follows focusin (keepFocus).
+  const focus = n => { if (n) { n.focus({ preventScroll: true }); lastFocus = n; } };
   const capture = (n, id) => { try { n.setPointerCapture?.(id); } catch { /* the pointer is gone */ } };
   const release = (n, id) => { try { n.releasePointerCapture?.(id); } catch { /* already released */ } };
   // '&' marks the letter a key picks; it is underlined.
@@ -59,11 +69,16 @@ export function createDesktop(container, {
     n.append(make('u', null, label[at + 1]));
     if (after) n.append(after);
   };
+  const letterOf = label => { const at = label.indexOf('&'); return at >= 0 && at < label.length - 1 ? label[at + 1].toLowerCase() : null; };
 
   let ws = W.defaults(), seated = false, restored = false, sessions = [], version = 0, start = false, selected = 'browser';
   let drag = null, menu = null, dialog = null, dialogPrev = null, lastTap = null, titleKind = 'mouse', iconKind = 'mouse', padSeen = false;
   let clockTimer = null, lastError = 'Desktop unavailable.', matrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }, transform = '';
   const dialogs = [], jobs = new Set(), zooms = new Set(), iconNodes = new Map();
+  // Keys: deskKeys gives them to the desktop though a window is in front; keyMode shows the legend until a press; press is a touch
+  // held for a context menu; rename is the field over an icon's label; titles are the menu bar titles, each opening its menu.
+  let deskKeys = false, keyMode = false, press = null, rename = null, lastFocus = null;
+  const titles = new Map();
   const bump = () => { version++; };
 
   const store = createPcStore({
@@ -169,7 +184,7 @@ export function createDesktop(container, {
     mod.menus().forEach((m, i) => {
       const item = button('pc-menu-item', null, () => (menu?.owner === item ? closeMenu() : openAt(i)));
       item.setAttribute('aria-haspopup', 'menu'); mnemonic(item, m.label);
-      items.push(item); bar.append(item);
+      items.push(item); bar.append(item); titles.set(item, () => openAt(i));
     });
     return bar;
   }
@@ -188,11 +203,12 @@ export function createDesktop(container, {
   taskbar.append(startButton, ...TASKS.map(n => tasks[n].node), legend, clock);
 
   // Start: Programs and Documents open beside it; Shut down… stands you up.
-  const startMenu = make('div', 'pc-start-menu'), startList = make('div', 'pc-menu'), startItems = [], opens = new Map();
+  const startMenu = make('div', 'pc-start-menu'), startList = make('div', 'pc-menu'), startItems = [], opens = new Map(), startRuns = new Map();
   startMenu.hidden = true; startList.setAttribute('role', 'menu');
   const startItem = (label, run, sub) => {
     const item = button('pc-menu-item', null, () => run(item)); item.setAttribute('role', 'menuitem'); mnemonic(item, label);
     if (sub) { item.setAttribute('aria-haspopup', 'menu'); opens.set(item, () => run(item)); }
+    startRuns.set(item, { key: letterOf(label), run: () => run(item) });
     startItems.push(item); return item;
   };
   const submenu = items => item => {
@@ -205,10 +221,6 @@ export function createDesktop(container, {
     make('div', 'pc-menu-sep'),
     startItem('Sh&ut down…', () => { closeStart(); onShutDown?.(); }),
   );
-  startList.addEventListener('keydown', e => {
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') walk(startItems, e);
-    else if (e.key === 'ArrowRight' && opens.has(document.activeElement)) { e.preventDefault(); opens.get(document.activeElement)(); }
-  });
   startMenu.append(make('div', 'pc-banner', 'Boss 98'), startList);
 
   root.append(iconLayer, ...W.NAMES.map(n => wins[n].node), startMenu, taskbar);
@@ -219,23 +231,36 @@ export function createDesktop(container, {
     if (start && !startMenu.contains(t) && !startButton.contains(t) && !menu?.node.contains(t)) closeStart();
     if (t === iconLayer) select(null);
   }, true);
-  // Keys stay in here, so the desktop's own controls work and don't walk you about. Esc closes the top menu, dialog or Start;
-  // with none open it goes on and stands you up.
-  root.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      if (menu) closeMenu(true);
-      else if (dialog) { if (dialog.buttons.length) finish(dialog, null); }
-      else if (start) { closeStart(); focus(startButton); }
-      else return;
-      e.stopPropagation(); return;
-    }
-    e.stopPropagation();
-    if (e.key === 'Enter' && dialog) {
-      e.preventDefault();
-      const at = dialog.buttons.indexOf(document.activeElement), pick = at >= 0 ? at : dialog.initial;
-      if (dialog.buttons[pick]) finish(dialog, dialog.labels[pick]);
-    }
+  // Keys stay in here, so the desktop's own controls work and don't walk you about (onKey). The one keydown listener.
+  root.addEventListener('keydown', e => { keyMode = true; onKey(e); showLegend(); });
+  // A press: the legend gives way to the status, a game lets go of the keys, a rename is kept, and the keys go where it landed.
+  // A touch held still for half a second is a right-click.
+  root.addEventListener('pointerdown', e => {
+    const t = e.target, onRename = !!rename && t === rename.input, inLayer = iconLayer.contains(t), id = inLayer ? iconAt(t) : null;
+    keyMode = false;
+    if (document.activeElement?.tagName === 'IFRAME') focus(root);
+    if (rename && !onRename) endRename(true);
+    if (inLayer) { deskKeys = true; if (!onRename) focus(id ? iconNodes.get(id)?.node : root); }
+    else if (W.NAMES.some(n => wins[n].node.contains(t))) deskKeys = false;
+    if (e.pointerType === 'touch') startPress(e);
+    showLegend();
+  }, true);
+  root.addEventListener('pointermove', e => {
+    if (press && !press.done && e.pointerId === press.id && Math.hypot((e.clientX ?? 0) - press.x, (e.clientY ?? 0) - press.y) > STILL) endPress();
+  }, true);
+  root.addEventListener('pointerup', endPress, true);
+  root.addEventListener('pointercancel', endPress, true);
+  // Right-click (or the browser's own long press): our menu, except in a text field.
+  root.addEventListener('contextmenu', e => {
+    const t = e.target;
+    if (isField(t)) return;
+    e.preventDefault();
+    if (press?.done || menu?.node.contains(t) || dialog?.node.contains(t)) return;
+    if (press) { clearTimeout(press.timer); press.timer = null; press.done = true; }
+    if (drag && !drag.moved) cancelDrag();
+    contextMenu(t, toLayout(e, boxOf()));
   });
+  root.addEventListener('focusin', e => { lastFocus = e.target; });
   // The browser changes its page on its own clicks; the titles follow.
   root.addEventListener('click', () => render());
   container.append(root);
@@ -259,10 +284,12 @@ export function createDesktop(container, {
     // Focus never stays on something hidden: it would drop out of the desktop, and keys would walk you about.
     const active = document.activeElement;
     if (seated && active !== root && root.contains(active) && !usable(active)) focus(root);
+    keepFocus();
     // salaries.txt is rebuilt when it comes into view, and on agents() only while it's in view.
     const pad = seated && visible('notepad');
     if (pad && !padSeen) notepad.update(sessions, now(), true);
     padSeen = pad;
+    showLegend();
     bump();
   }
   // Still on the desktop and nothing on the way up is hidden (a closed window, the shut Start menu).
@@ -281,6 +308,7 @@ export function createDesktop(container, {
   function change(next, keep = true) {
     if (next === ws || same(next, ws)) return;
     const was = ws; ws = next;
+    const top = W.frontmost(ws); if (top && top !== W.frontmost(was)) deskKeys = false; // a window come to the front has the keys
     if (!reduced()) for (const n of W.NAMES) if (was.windows[n].open && ws.windows[n].open && shownIn(was, n) !== shownIn(ws, n)) zoom(n, was);
     render();
     if (keep) save();
@@ -306,6 +334,7 @@ export function createDesktop(container, {
     if (name === 'notepad' && !ws.windows.notepad.open) notepad.open(sessions, now());
     change(W.open(ws, name));
     if (name === 'browser' && home && !browser.page()) { browser.home(); render(); }
+    keysTo(name);
   }
   function closeWindow(name) {
     if (name === 'pico8') player.stop(); else if (name === 'browser') browser.close();
@@ -316,6 +345,7 @@ export function createDesktop(container, {
     closeMenu(); closeStart();
     if (!(player.playing() && player.cart()?.pid === cart.pid)) player.play(cart);
     change(W.loadCart(ws, cart));
+    keysTo('pico8');
   }
   function browse(page) { openWindow('browser', { home: false }); browser.go(page); render(); }
 
@@ -328,20 +358,26 @@ export function createDesktop(container, {
     if (!spot) return;
     const { x, y } = cellXY(spot); node.style.left = `${x + centre}px`; node.style.top = `${y}px`;
   }
+  // Focus stays on an icon that is rebuilt (a rename) or moved in the page (an append blurs it); a rename whose icon went is dropped.
   function renderIcons() {
-    const list = iconList(), ids = new Set(list.map(i => i.id)), order = [];
+    const list = iconList(), ids = new Set(list.map(i => i.id)), order = [], active = document.activeElement;
+    let rebuilt = null;
     for (const [id, n] of iconNodes) if (!ids.has(id)) { n.node.remove(); iconNodes.delete(id); }
     for (const icon of list) {
       const sig = JSON.stringify([icon.kind, icon.name, icon.pid, icon.url, icon.author]);
       let n = iconNodes.get(icon.id);
-      if (!n || n.sig !== sig) { n?.node.remove(); n = { node: buildIcon(icon), sig }; iconNodes.set(icon.id, n); }
+      if (!n || n.sig !== sig) { if (n && n.node === active) rebuilt = icon.id; n?.node.remove(); n = { node: buildIcon(icon), sig }; iconNodes.set(icon.id, n); }
       n.icon = icon;
       if (!(drag?.type === 'icon' && drag.id === icon.id)) position(n.node, icon.spot);
       n.node.classList.toggle('selected', selected === icon.id);
       order.push(n.node);
     }
-    const kids = iconLayer.children;
+    const kids = [...iconLayer.children].filter(k => k !== rename?.input);
     if (kids.length !== order.length || order.some((n, i) => kids[i] !== n)) iconLayer.append(...order);
+    if (rename && iconNodes.get(rename.id)?.node !== rename.node) endRename(false);
+    if (rebuilt) focus(iconNodes.get(rebuilt)?.node);
+    else if (seated && active !== document.activeElement && iconLayer.contains(active)) focus(active);
+    keepFocus();
   }
   function buildIcon(icon) {
     const id = icon.id, node = button('pc-icon'), art = make('div', 'pc-icon-art');
@@ -360,7 +396,7 @@ export function createDesktop(container, {
 
     const mine = e => drag?.type === 'icon' && drag.node === node && drag.pointer === e.pointerId;
     node.addEventListener('pointerdown', e => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || !iconLayer.contains(node)) return; // gone: a rename the press committed rebuilt it
       iconKind = e.pointerType; select(id);
       const box = boxOf(), spot = iconNodes.get(id)?.icon.spot ?? [0, 0];
       const from = toLayout(e, box);
@@ -419,36 +455,32 @@ export function createDesktop(container, {
   function openMenu(items, at, { onLeft, onRight } = {}, owner = null) {
     const prev = menu ? menu.prev : document.activeElement; // a menu that replaces another returns focus where the first found it
     closeMenu();
-    const node = make('div', 'pc-menu pc-popup'), entries = [];
+    const node = make('div', 'pc-menu pc-popup'), entries = [], list = items.filter(item => item !== '-');
     node.setAttribute('role', 'menu');
     for (const item of items) {
       if (item === '-') { node.append(make('div', 'pc-menu-sep')); continue; }
-      const b = button('pc-menu-item', null, () => {
-        if (item.disabled) return;
-        closeMenu(); closeStart(); item.run(); render();
-      });
+      const b = button('pc-menu-item', null, () => choose(item));
       b.setAttribute('role', 'menuitem'); mnemonic(b, item.label);
       if (item.disabled) b.setAttribute('aria-disabled', 'true');
       entries.push(b); node.append(b);
     }
-    node.addEventListener('keydown', e => {
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') walk(entries, e);
-      else if (e.key === 'ArrowLeft' && onLeft) { e.preventDefault(); onLeft(); }
-      else if (e.key === 'ArrowRight' && onRight) { e.preventDefault(); onRight(); }
-    });
     root.append(node);
     const w = node.offsetWidth || 0, h = node.offsetHeight || 0;
     node.style.left = `${clamp(at.x, 0, Math.max(0, LAYOUT.w - w))}px`; node.style.top = `${clamp(at.y, 0, Math.max(0, LAYOUT.h - h))}px`;
-    menu = { node, owner, prev };
+    menu = { node, owner, prev, entries, items: list, onLeft, onRight }; // its keys: menuKey
     focus(entries.find(b => !b.hasAttribute('aria-disabled')));
-    bump();
+    showLegend(); bump();
+  }
+  function choose(item) {
+    if (item.disabled) return;
+    closeMenu(); closeStart(); item.run(); render();
   }
   // Focus in the menu goes back where it was before (or to the owner, on Esc); a press elsewhere has already moved it.
   function closeMenu(toOwner = false) {
     if (!menu) return;
     const m = menu, had = m.node.contains(document.activeElement); menu = null; m.node.remove();
     if (toOwner && m.owner) focus(m.owner); else if (had && seated) refocus(m.prev);
-    bump();
+    showLegend(); bump();
   }
   // ↑ and ↓ walk a menu's enabled items, wrapping.
   function walk(items, e) {
@@ -467,8 +499,9 @@ export function createDesktop(container, {
   }
 
   // Dialogs: one at a time over everything; the rest wait their turn. Not seated, a dialog answers null at once.
-  function openDialog({ icon = 'info', text, buttons: labels = ['OK'], initial = 0, extra = null }) {
-    const d = { icon, text, labels, initial, extra, buttons: [], node: null, done: false };
+  // `focus`: a field in `extra` to start on instead of the default button.
+  function openDialog({ icon = 'info', text, buttons: labels = ['OK'], initial = 0, extra = null, focus: first = null }) {
+    const d = { icon, text, labels, initial, extra, first, buttons: [], node: null, done: false };
     d.promise = new Promise(resolve => { d.resolve = resolve; });
     d.close = value => finish(d, value);
     // Not seated: no dialog nobody sees, so an op that fails after you stand up stays dropped (the store is back on the server's desktop).
@@ -489,9 +522,9 @@ export function createDesktop(container, {
       row.append(...d.buttons);
       box.append(title, body, ...(d.extra ? [d.extra] : []), row);
       backdrop.append(box); root.append(backdrop); d.node = backdrop;
-      focus(d.buttons[d.initial] ?? d.buttons[0]);
+      focus(d.first ?? d.buttons[d.initial] ?? d.buttons[0]);
     } else if (seated) refocus(dialogPrev); // the last one closed
-    bump();
+    showLegend(); bump();
   }
   function finish(d, value) {
     if (d.done) return;
@@ -502,9 +535,9 @@ export function createDesktop(container, {
   }
 
   // Install: "setup" takes at least a second and ends only once the server has added the icon (or said why not).
+  // `cart.name`: the icon's name, given in New shortcut (else the cart's title).
   function install(cart) {
-    if (!seated) return;
-    if (store.desktop().icons.length >= ROOM) { ui.dialog({ icon: 'warn', text: 'Not enough desktop space. Delete some icons first.', buttons: ['OK'] }); return; }
+    if (!seated || full()) return;
     const bar = make('div', 'pc-progress'), fill = make('div', 'pc-setup-fill');
     if (reduced()) Object.assign(fill.style, { width: '100%', animation: 'none' }); // full at once
     bar.append(fill);
@@ -518,7 +551,264 @@ export function createDesktop(container, {
     };
     job.timer = setTimeout(() => { job.timer = null; done(); }, 1000);
     jobs.add(job);
-    send({ op: 'add', kind: 'cart', pid: cart.pid }, m => { job.reason = m; }).then(done);
+    send({ op: 'add', kind: 'cart', pid: cart.pid, ...(cart.name ? { name: cart.name } : {}) }, m => { job.reason = m; }).then(done);
+  }
+  function full() {
+    if (store.desktop().icons.length < ROOM) return false;
+    ui.dialog({ icon: 'warn', text: 'Not enough desktop space. Delete some icons first.', buttons: ['OK'] });
+    return true;
+  }
+
+  // Keys: every shortcut is one key (Ctrl/Cmd+F is S). They go to the open menu, dialog, rename or Start, else to the window
+  // holding focus, else to the front window unless the desktop was pressed or sat down to last (deskKeys). Text fields keep their
+  // letters; a focused game gets every key; Esc closes the top menu, dialog, rename or Start, and with none open goes on and
+  // stands you up.
+  const isField = n => n?.tagName === 'INPUT' || n?.tagName === 'TEXTAREA';
+  const control = n => n?.tagName === 'BUTTON' || n?.tagName === 'A';
+  const plain = e => !(e.ctrlKey || e.metaKey || e.altKey);
+  const connected = n => { for (let at = n; at; at = at.parentNode) if (at === document) return true; return false; };
+  const iconAt = t => { for (const [id, n] of iconNodes) if (n.node.contains(t)) return id; return null; };
+  const byGrid = (a, b) => a.spot[0] - b.spot[0] || a.spot[1] - b.spot[1];
+  const STEP = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  const LONG = 500, STILL = 8; // ms a touch is held for a context menu; client px it may wobble meanwhile
+  // A re-render or close that took the focused node out of the page leaves focus nowhere (the body): it comes back to the desktop.
+  function keepFocus() {
+    if (!seated) return;
+    const a = document.activeElement;
+    if (!a || !connected(a) || (a === document.body && lastFocus && !root.contains(lastFocus))) focus(root);
+  }
+  function keysTo(name) {
+    deskKeys = false;
+    if (seated && !wins[name].node.contains(document.activeElement)) focus(root);
+  }
+  function keyOwner() {
+    const active = document.activeElement, top = W.frontmost(ws);
+    return W.NAMES.find(n => shownIn(ws, n) && wins[n].node.contains(active)) ?? (!top || deskKeys ? 'desktop' : top);
+  }
+  function keyContext() {
+    if (menu || start) return 'menu';
+    if (dialog) return dialog.buttons.length ? 'dialog' : null;
+    if (rename) return 'dialog';
+    const owner = keyOwner();
+    return owner === 'pico8' ? (player.playing() ? null : 'pico8') : owner === 'browser' ? null : owner;
+  }
+  function showLegend() {
+    const text = keyMode && seated ? legendFor(keyContext()) : '';
+    if (legend.textContent !== text) { legend.textContent = text; bump(); }
+  }
+  function onKey(e) {
+    const k = e.key;
+    if (document.activeElement?.tagName === 'IFRAME') { if (k !== 'Escape') e.stopPropagation(); return; }
+    if (k === 'Escape') {
+      if (menu) closeMenu(true);
+      else if (dialog) { if (dialog.buttons.length) finish(dialog, null); }
+      else if (rename) endRename(false);
+      else if (start) { closeStart(); focus(startButton); }
+      else return;
+      e.stopPropagation(); return;
+    }
+    e.stopPropagation();
+    keepFocus();
+    if (menu) { menuKey(e); return; }
+    if (dialog) {
+      if (k === 'Enter') {
+        e.preventDefault();
+        const at = dialog.buttons.indexOf(document.activeElement), pick = at >= 0 ? at : dialog.initial;
+        if (dialog.buttons[pick]) finish(dialog, dialog.labels[pick]);
+      } else if (k === 'Tab') { e.preventDefault(); cycle(tabStops(dialog.node), e.shiftKey); }
+      return;
+    }
+    if (rename) { if (k === 'Enter' || k === 'Tab') { e.preventDefault(); endRename(true); } return; }
+    if (start) { startKey(e); return; }
+    const owner = keyOwner();
+    if (owner === 'desktop') deskKey(e); else windowKey(e, owner);
+  }
+  // Space stays the browser's click on a focused item.
+  function menuKey(e) {
+    const k = e.key;
+    if (k === ' ') return;
+    e.preventDefault();
+    if (k === 'ArrowUp' || k === 'ArrowDown') walk(menu.entries, e);
+    else if (k === 'ArrowLeft') menu.onLeft?.();
+    else if (k === 'ArrowRight') menu.onRight?.();
+    else if (k === 'Enter') { const at = menu.entries.indexOf(document.activeElement); if (at >= 0) choose(menu.items[at]); }
+    else if (plain(e) && k.length === 1) { const item = menu.items.find(i => letterOf(i.label) === k.toLowerCase()); if (item) choose(item); }
+  }
+  function startKey(e) {
+    const k = e.key, active = document.activeElement;
+    if (k === ' ') return;
+    e.preventDefault();
+    if (k === 'ArrowUp' || k === 'ArrowDown') walk(startItems, e);
+    else if (k === 'ArrowRight') opens.get(active)?.();
+    else if (k === 'Enter') { if (active === startButton) closeStart(); else startRuns.get(active)?.run(); }
+    else if (plain(e) && k.length === 1) [...startRuns.values()].find(r => r.key === k.toLowerCase())?.run();
+  }
+  function deskKey(e) {
+    if (!plain(e)) return;
+    const k = e.key, active = document.activeElement;
+    if (STEP[k]) { e.preventDefault(); arrow(k); }
+    else if (k === 'Enter' || k === 'z' || k === 'Z') {
+      e.preventDefault();
+      const task = TASKS.find(n => tasks[n].node === active);
+      if (active === startButton) openStart(); else if (task) taskClick(task); else if (selected) openIcon(selected);
+    } else if (k === 'm' || k === 'M' || k === 'ContextMenu') { e.preventDefault(); deskMenu(); }
+    else if (k === 'Tab') { e.preventDefault(); deskTab(e.shiftKey); }
+  }
+  function windowKey(e, name) {
+    const win = wins[name].node, k = e.key;
+    if (!win.contains(document.activeElement)) focus(root);
+    const active = document.activeElement;
+    if (isField(active)) {
+      if (k === 'Tab' && plain(e)) { e.preventDefault(); cycle(tabStops(win), e.shiftKey); }
+      else if (name === 'browser' && (k === 'Enter' || ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'f')) && browser.key(e)) { e.preventDefault(); render(); }
+      return;
+    }
+    if (plain(e) && (k === 'Enter' || k === 'ArrowDown') && titles.has(active)) { e.preventDefault(); titles.get(active)(); return; }
+    if (name === 'browser' && browser.key(e)) { e.preventDefault(); render(); return; }
+    if (!plain(e)) return;
+    if (k === 'Tab') { e.preventDefault(); cycle(tabStops(win), e.shiftKey); }
+    else if (name === 'browser' && (k === 'm' || k === 'M' || k === 'ContextMenu')) {
+      e.preventDefault();
+      const items = browser.contextItems();
+      if (items.length) ui.menu(items, keyPoint(active, W.rectOf(ws, name)));
+    } else if (name === 'pico8' && (k === 'Enter' || k === 'z' || k === 'Z')) {
+      if (k === 'Enter' && control(active) && !player.node.contains(active)) return; // the button's own click
+      e.preventDefault();
+      if (player.playing()) focus(player.frame()); else if (player.cart()) play(player.cart());
+    }
+  }
+  // The nearest icon that way, straight on before aside (ties go in grid order); none that way stays put.
+  function arrow(k) {
+    const list = iconList().filter(i => i.spot).sort(byGrid), cur = list.find(i => i.id === selected), [dx, dy] = STEP[k];
+    let to = cur ?? list[0], best = Infinity;
+    if (cur) for (const i of list) {
+      const x = i.spot[0] - cur.spot[0], y = i.spot[1] - cur.spot[1], along = x * dx + y * dy, score = along + 2 * Math.abs(dx ? y : x);
+      if (along > 0 && score < best) { best = score; to = i; }
+    }
+    if (!to) return;
+    select(to.id); focus(iconNodes.get(to.id)?.node);
+  }
+  function deskMenu() {
+    const icon = iconNodes.get(selected)?.icon;
+    if (icon?.spot) { const c = cellXY(icon.spot); ui.menu(iconMenu(icon.id), { x: c.x + centre + 38, y: c.y + 40 }); }
+    else ui.menu(deskItems(), { x: W.GRID.x, y: W.GRID.y });
+  }
+  // The desktop's Tab: the icons in grid order, Start, then the task buttons.
+  function deskTab(back) {
+    const icons = iconList().filter(i => i.spot).sort(byGrid);
+    const stops = [...icons.map(i => iconNodes.get(i.id)?.node), startButton, ...TASKS.map(n => tasks[n].node).filter(n => !n.hidden)].filter(Boolean);
+    const to = cycle(stops, back), icon = icons.find(i => iconNodes.get(i.id)?.node === to);
+    if (icon) select(icon.id);
+  }
+  // What Tab reaches in a window or dialog, in page order: enabled controls not hidden (the title bar's _ □ × are left out).
+  function tabStops(scope) {
+    const out = [], TAGS = ['BUTTON', 'INPUT', 'TEXTAREA', 'IFRAME', 'SELECT'];
+    const stop = n => (TAGS.includes(n.tagName) || (n.tagName === 'A' && (n.hasAttribute('href') || n.hasAttribute('tabindex'))))
+      && !n.disabled && !n.hasAttribute('disabled') && n.getAttribute('aria-disabled') !== 'true' && n.getAttribute('tabindex') !== '-1';
+    (function visit(n) {
+      for (const k of [...n.children]) {
+        if (k.hidden || k.style?.display === 'none' || k.classList?.contains('pc-title')) continue;
+        if (stop(k)) out.push(k);
+        visit(k);
+      }
+    })(scope);
+    return out;
+  }
+  function cycle(list, back) {
+    const n = list.length; if (!n) return null;
+    const at = list.indexOf(document.activeElement), to = list[at < 0 ? (back ? n - 1 : 0) : (at + (back ? n - 1 : 1)) % n];
+    focus(to); return to;
+  }
+  // Where a menu opened by key goes: under the focused item, else mid-window.
+  function keyPoint(n, r) {
+    const b = n?.getBoundingClientRect?.();
+    return b && (b.width || b.height) ? toLayout({ clientX: b.left, clientY: b.bottom }, boxOf()) : { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+  }
+
+  // Context menus: an icon's, the bare desktop's, and Info Highway's on a cart.
+  function contextMenu(t, at) {
+    const id = iconAt(t);
+    if (id) { select(id); ui.menu(iconMenu(id), at); }
+    else if (t === iconLayer) ui.menu(deskItems(), at);
+    else if (shownIn(ws, 'browser') && browser.node.contains(t)) {
+      const a = cardLink(t); if (a) focus(a); // its focus selects the card
+      const items = browser.contextItems();
+      if (items.length) ui.menu(items, at);
+    }
+  }
+  function cardLink(t) {
+    let card = t; while (card && card !== browser.node && !card.classList?.contains('pc-card')) card = card.parentNode;
+    if (!card?.classList?.contains('pc-card')) return null;
+    const link = n => { for (const k of [...n.children]) { if (k.tagName === 'A') return k; const a = link(k); if (a) return a; } return null; };
+    return link(card);
+  }
+  function iconMenu(id) {
+    const icon = iconNodes.get(id)?.icon, own = !!icon && !BUILTINS.some(b => b.id === id);
+    const remove = () => ui.dialog({ icon: 'question', text: `Are you sure you want to delete '${icon.name}'?`, buttons: ['Yes', 'No'] })
+      .then(answer => { if (answer === 'Yes') send({ op: 'remove', id }); });
+    return [{ label: '&Open', run: () => openIcon(id) }, { label: '&Rename', disabled: !own, run: () => startRename(id) }, { label: '&Delete', disabled: !own, run: remove }];
+  }
+  const deskItems = () => [{ label: '&New shortcut…', run: newShortcut }, { label: '&Arrange icons', run: () => send({ op: 'arrange' }) }];
+  // A touch on an icon, the desktop or Info Highway (not a field) held still for LONG ms. The only timer keys and menus add.
+  function startPress(e) {
+    endPress();
+    const t = e.target;
+    if (isField(t) || !(iconLayer.contains(t) || (shownIn(ws, 'browser') && browser.node.contains(t)))) return;
+    press = { x: e.clientX ?? 0, y: e.clientY ?? 0, id: e.pointerId, target: t, done: false, timer: null };
+    press.timer = setTimeout(() => {
+      const p = press; p.done = true; p.timer = null;
+      if (drag) cancelDrag();
+      contextMenu(p.target, toLayout({ clientX: p.x, clientY: p.y }, boxOf()));
+    }, LONG);
+  }
+  function endPress() { if (press?.timer) clearTimeout(press.timer); press = null; }
+
+  // Rename: a field over the label. Enter, Tab or a press elsewhere keeps the name; Esc drops it.
+  function startRename(id) {
+    const n = iconNodes.get(id), spot = n?.icon.spot;
+    if (!seated || !spot) return;
+    endRename(false);
+    const input = make('input', 'pc-field pc-rename'), label = [...n.node.children].find(k => k.classList.contains('pc-icon-label')), c = cellXY(spot);
+    input.type = 'text'; input.setAttribute('maxlength', '40'); input.setAttribute('aria-label', 'Name'); input.value = n.icon.name;
+    Object.assign(input.style, { position: 'absolute', zIndex: '1', left: `${c.x + centre}px`, top: `${c.y + 40}px`, width: '76px', padding: '1px 2px', font: 'inherit', textAlign: 'center' });
+    label.style.visibility = 'hidden';
+    rename = { id, input, label, node: n.node };
+    iconLayer.append(input); focus(input); input.select?.();
+    showLegend(); bump();
+  }
+  function endRename(commit) {
+    const r = rename; if (!r) return;
+    rename = null; r.input.remove(); r.label.style.visibility = '';
+    const name = r.input.value.trim(), icon = iconNodes.get(r.id)?.icon;
+    if (commit && name && icon && name !== icon.name) send({ op: 'rename', id: r.id, name: name.slice(0, 40) });
+    if (seated) focus(iconNodes.get(r.id)?.node ?? root);
+    showLegend(); bump();
+  }
+
+  // New shortcut: a cart or thread link installs the cart; another https link (or a BBS list) is a link icon.
+  function newShortcut() {
+    if (full()) return;
+    const form = make('div'), link = make('input', 'pc-field'), name = make('input', 'pc-field');
+    Object.assign(form.style, { display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 6px', alignItems: 'center', padding: '0 12px 8px' });
+    link.type = name.type = 'text'; link.setAttribute('maxlength', '500'); name.setAttribute('maxlength', '40');
+    link.setAttribute('aria-label', 'Link'); name.setAttribute('aria-label', 'Name');
+    form.append(make('span', null, 'Link'), link, make('span', null, 'Name'), name);
+    ui.dialog({ icon: 'globe', text: 'New shortcut', buttons: ['OK', 'Cancel'], extra: form, focus: link })
+      .then(answer => { if (answer === 'OK') addShortcut(link.value, name.value); });
+  }
+  function addShortcut(text, label) {
+    text = String(text ?? '').trim();
+    const name = String(label ?? '').trim().slice(0, 40), r = readAddress(text);
+    if (!text) return;
+    if (r.kind === 'cart') install({ pid: r.pid, title: name || r.pid, name: name || undefined });
+    else if (r.kind === 'thread') {
+      api('office/bbs/cart?tid=' + encodeURIComponent(r.tid))
+        .then(info => { if (seated) install({ pid: info.pid, title: name || info.title || info.pid, name: name || undefined }); }, e => showError(e?.message || 'Desktop unavailable.'));
+    } else if (r.kind === 'away' || r.kind === 'list') {
+      if (full()) return;
+      const url = r.kind === 'list' ? listUrl(r) : r.url;
+      send({ op: 'add', kind: 'link', url, name: name || new URL(url).hostname.slice(0, 40) });
+    } else ui.dialog({ icon: 'warn', text: 'Only https:// links can be shortcuts.', buttons: ['OK'] });
   }
 
   function tickClock() {
@@ -543,7 +833,7 @@ export function createDesktop(container, {
     const { a, b, c, d, e, f } = matrix, next = `matrix(${a}, ${b}, ${c}, ${d}, ${e}, ${f})`;
     if (next !== transform) root.style.transform = transform = next;
     if (seated) return;
-    seated = true; root.hidden = false;
+    seated = true; root.hidden = false; deskKeys = true;
     tickClock();
     select('browser'); focus(iconNodes.get('browser')?.node);
     // A failed load says why once; only the built-ins show, and the next sit-down tries again.
@@ -561,8 +851,8 @@ export function createDesktop(container, {
   }
   function hide() {
     if (!seated) return;
-    seated = false;
-    cancelDrag(); closeMenu(); closeStart();
+    seated = false; keyMode = false;
+    cancelDrag(); closeMenu(); closeStart(); endPress(); endRename(false);
     for (const d of [...dialogs]) finish(d, null); // the waiting ones first, so none is shown on the way out
     if (dialog) finish(dialog, null);
     clearTimeout(clockTimer); clockTimer = null;

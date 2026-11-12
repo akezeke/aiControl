@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDesktop, fakeCart, fitTransform } from '../client/office/desktop.js';
+import { createDesktop, fakeCart, fitTransform, legendFor } from '../client/office/desktop.js';
 import { STARTERS, thumbName } from '../client/office/carts.js';
 import { defaults } from '../client/office/pc-windows.js';
 import { useDom, find, findAll } from './fixtures/pc-dom.mjs';
@@ -17,7 +17,7 @@ const shown = n => { for (let at = n; at?.tag; at = at.parent) if (at.hidden) re
 const pointer = (node, type, init = {}) => node.dispatch(type, { button: 0, pointerId: 1, pointerType: 'mouse', clientX: 0, clientY: 0, ...init });
 const click = (node, init) => { pointer(node, 'pointerdown', init); pointer(node, 'pointerup', init); node.dispatch('click', init); };
 const dblclick = (node, init) => { click(node, init); click(node, init); node.dispatch('dblclick', init); };
-const key = (node, k) => node.dispatch('keydown', { key: k });
+const key = (node, k, init = {}) => node.dispatch('keydown', { key: k, ...init });
 const titleOf = (root, title) => find(root, n => has(n, 'pc-title-text') && textOf(n) === title)?.parent;
 const windowOf = (root, title) => titleOf(root, title)?.parent;
 const button = (root, title, glyph) => find(titleOf(root, title), n => n.tag === 'button' && n.textContent === glyph);
@@ -36,6 +36,13 @@ const dialogButton = (root, label) => find(findAll(root, n => has(n, 'pc-dialog'
 const iconOf = (root, name) => find(root, n => has(n, 'pc-icon-label') && n.textContent === name)?.parent;
 const menuItem = (root, text) => find(root, n => has(n, 'pc-menu-item') && shown(n) && textOf(n) === text);
 const zoomsOf = root => findAll(root, n => has(n, 'pc-zoom'));
+const selectIcon = (d, id) => click(iconOf(d.root, d.view().icons.find(i => i.id === id).name));
+const selectedId = d => d.view().icons.find(i => i.selected)?.id;
+const searchBox = root => find(root, n => has(n, 'pc-field') && has(n, 'search'));
+const legendText = root => find(root, n => has(n, 'pc-legend')).textContent;
+const layerOf = root => find(root, n => has(n, 'pc-icons'));
+// The open popup's items, as [text, disabled].
+const menuItems = root => { const m = findAll(root, n => has(n, 'pc-popup')).at(-1); return m ? findAll(m, n => has(n, 'pc-menu-item')).map(n => [textOf(n), n.getAttribute('aria-disabled') === 'true']) : []; };
 const openBrowser = async d => { dblclick(iconOf(d.root, 'Info Highway')); await tick(); };
 const windowOps = api => api.posted.filter(b => b.op === 'windows');
 const SESSION = { id: 's-alpha', project: 'aiControl', status: 'working' }, OTHER = { id: 's-beta', project: 'aiControl', status: 'idle' };
@@ -51,7 +58,7 @@ const LIST = [1, 2, 3].map(i => ({ pid: `c${i}-1`, tid: i, title: `Cart ${i}`, a
 // failGet fails the first failGets (1) desktop GETs with that reason.
 function fakeApi(opts = {}) {
   const server = desk(opts), paths = [], posted = [];
-  let held = !!opts.slowAdd, release = null, getFails = opts.failGet ? opts.failGets ?? 1 : 0;
+  let held = !!opts.slowAdd, release = null, getFails = opts.failGet ? opts.failGets ?? 1 : 0, last = server.icons.length;
   const api = async (path, body) => {
     if (body === undefined) paths.push(path); else posted.push(structuredClone(body));
     if (path === 'office/pc') {
@@ -59,17 +66,20 @@ function fakeApi(opts = {}) {
       if (body?.op === 'add') {
         if (held) await new Promise(r => { release = r; });
         if (opts.failAdd) throw new Error(opts.failAdd);
-        const id = `i${server.icons.length + 1}`;
-        server.icons.push({ id, kind: 'cart', pid: body.pid, name: `Info ${body.pid}`, author: '', embed: true }); server.spots[id] = [9, 4];
+        const id = `i${++last}`;
+        server.icons.push(body.kind === 'link' ? { id, kind: 'link', url: body.url, name: body.name } : { id, kind: 'cart', pid: body.pid, name: body.name ?? `Info ${body.pid}`, author: '', embed: true });
+        server.spots[id] = [9, 4];
       }
+      if (body?.op === 'rename') { const icon = server.icons.find(i => i.id === body.id); if (icon) icon.name = body.name; }
+      if (body?.op === 'remove') { server.icons = server.icons.filter(i => i.id !== body.id); delete server.spots[body.id]; }
       if (body?.op === 'windows') { if (opts.failWindows) throw new Error(opts.failWindows); Object.assign(server, { windows: body.windows, order: body.order }); }
       if (body?.op === 'move') server.spots[body.id] = body.spot;
       return structuredClone(server);
     }
     if (path.startsWith('office/bbs/list')) return { carts: LIST, more: false };
     if (path.startsWith('office/bbs/cart')) {
-      const pid = new URLSearchParams(path.split('?')[1]).get('pid');
-      return { pid, title: `Info ${pid}`, author: 'someone', thumb: thumbName(pid), embed: !pid.startsWith('blocked') };
+      const q = new URLSearchParams(path.split('?')[1]), tid = q.get('tid'), pid = q.get('pid') ?? `t${tid}-1`;
+      return { pid, title: tid ? `Thread ${tid}` : `Info ${pid}`, author: 'someone', thumb: thumbName(pid), embed: !pid.startsWith('blocked') };
     }
     throw new Error('Not found.');
   };
@@ -455,4 +465,183 @@ test('view and version: what the monitor draws', async t => {
   at = d.version(); await openBrowser(d); assert.ok(d.version() > at);
   const b = d.view().windows.at(-1); assert.equal(b.name, 'browser'); assert.equal(b.front, true); assert.equal(b.state.page.kind, 'list'); assert.equal(b.state.page.carts.length, 3);
   assert.deepEqual(d.state(), { window: null, cart: null, start: false });
+});
+
+// Keys, menus and the legend (Task 12).
+test('legendFor: a line per context; the browser gives its own', () => {
+  assert.equal(legendFor('desktop'), '←→↑↓ Move   Enter Open   M Menu   Esc Stand up');
+  assert.equal(legendFor('menu'), '←→↑↓ Move   Enter Choose   Esc Close');
+  assert.equal(legendFor('dialog'), 'Enter OK   Esc Cancel');
+  assert.equal(legendFor('pico8'), 'Enter/Z Play   Tab Next   Esc Stand up');
+  assert.equal(legendFor('notepad'), 'Tab Next   Esc Stand up');
+  assert.equal(legendFor('browser'), '');
+});
+test('Esc closes the menu, then the dialog, then stands you up', async t => {
+  const { d } = await sat(t);
+  selectIcon(d, 'browser'); key(d.root, 'm'); assert.equal(openMenus(d.root), 1);
+  key(d.root, 'd'); assert.equal(openDialogs(d.root), 0, 'built-in: Delete is disabled');
+  assert.equal(key(d.root, 'Escape').propagationStopped, true); assert.equal(openMenus(d.root), 0);
+  selectIcon(d, 'i1'); key(d.root, 'm'); key(d.root, 'd');
+  assert.equal(openMenus(d.root), 0); assert.equal(dialogText(d.root), "Are you sure you want to delete 'Celeste Classic 2'?");
+  assert.equal(key(d.root, 'Escape').propagationStopped, true); assert.equal(openDialogs(d.root), 0);
+  assert.equal(key(d.root, 'Escape').propagationStopped, false, 'the office stands you up');
+});
+test('text fields keep letters; Tab, Enter and Esc still work', async t => {
+  const { d, api } = await sat(t); await openBrowser(d); const box = searchBox(d.root); box.focus();
+  for (const k of ['z', 'x', 'm', 's', 'Backspace']) assert.equal(key(box, k).defaultPrevented, false, k);
+  box.value = 'snake'; key(box, 'Enter'); await tick(); assert.ok(api.paths.includes('office/bbs/list?q=snake&page=1'));
+});
+test('the legend follows the selection and gives way to the status on a click', async t => {
+  const { d } = await sat(t); key(d.root, 'ArrowRight');
+  assert.equal(legendText(d.root), '←→↑↓ Move   Enter Open   M Menu   Esc Stand up');
+  d.root.dispatch('pointerdown', { pointerType: 'mouse' }); assert.equal(legendText(d.root), '');
+});
+test('desktop arrows and Enter', async t => {
+  const { d, doc } = await sat(t); assert.equal(selectedId(d), 'browser');
+  key(d.root, 'ArrowDown'); assert.equal(selectedId(d), 'salaries'); assert.ok(doc.activeElement === iconOf(d.root, 'salaries.txt'));
+  key(d.root, 'ArrowRight'); assert.equal(selectedId(d), 'i4', 'the nearest one that way');
+  key(d.root, 'ArrowLeft'); key(d.root, 'ArrowUp'); assert.equal(selectedId(d), 'browser', 'nothing above: it stays');
+  key(d.root, 'ArrowDown'); key(d.root, 'm'); assert.equal(legendText(d.root), legendFor('menu')); key(d.root, 'Escape');
+  assert.equal(key(d.root, 'Enter').defaultPrevented, true); assert.equal(windowOf(d.root, 'salaries.txt - Notepad').hidden, false);
+});
+test('desktop Tab: the icons, then Start, then the task buttons, round again', async t => {
+  const { d, doc } = await sat(t); playing(d, { pid: 'a-1', title: 'A' }); click(layerOf(d.root));
+  const on = n => doc.activeElement === n, tab = (shiftKey = false) => key(d.root, 'Tab', { shiftKey });
+  tab(); assert.ok(on(iconOf(d.root, 'Info Highway'))); assert.equal(selectedId(d), 'browser');
+  for (let i = 0; i < 5; i++) tab();
+  assert.ok(on(iconOf(d.root, STARTERS[3].title))); assert.equal(selectedId(d), 'i4');
+  tab(); assert.ok(on(startOf(d.root))); tab(); assert.ok(on(task(d.root, 'A - PICO-8')));
+  tab(); assert.ok(on(iconOf(d.root, 'Info Highway'))); tab(true); assert.ok(on(task(d.root, 'A - PICO-8')));
+  assert.equal(key(d.root, 'Enter').defaultPrevented, true); assert.equal(windowOf(d.root, 'A - PICO-8').hidden, true, 'its task minimizes it');
+});
+test('Start by keys: Enter opens it, → opens a submenu, ← shuts it, letters pick', async t => {
+  const { d, doc } = await sat(t);
+  startOf(d.root).focus(); key(d.root, 'Enter'); assert.equal(d.view().start, true); assert.equal(legendText(d.root), legendFor('menu'));
+  key(d.root, 'ArrowRight'); assert.deepEqual(menuItems(d.root).map(([text]) => text), ['Info Highway', 'Notepad']);
+  key(d.root, 'ArrowLeft'); assert.equal(openMenus(d.root), 0);
+  key(d.root, 'ArrowDown'); assert.ok(doc.activeElement === menuItem(d.root, 'Documents ▸'));
+  key(d.root, 'p'); key(d.root, 'n'); assert.equal(d.view().start, false); assert.equal(windowOf(d.root, 'salaries.txt - Notepad').hidden, false);
+  assert.equal(legendText(d.root), legendFor('notepad'));
+});
+test('menu bar by keyboard: Tab reaches File, Enter opens it, → moves to Go, Esc closes it', async t => {
+  const { d, doc } = await sat(t); await openBrowser(d);
+  const file = menuItem(d.root, 'File'), go = menuItem(d.root, 'Go'), texts = () => menuItems(d.root).map(([text]) => text);
+  key(d.root, 'Tab'); assert.ok(doc.activeElement === file);
+  assert.equal(key(d.root, 'Enter').defaultPrevented, true); assert.ok(texts().includes('Install'));
+  key(d.root, 'ArrowRight'); assert.equal(openMenus(d.root), 1); assert.ok(texts().includes('Back'));
+  key(d.root, 'Escape'); assert.equal(openMenus(d.root), 0); assert.ok(doc.activeElement === go);
+  key(d.root, 'ArrowDown'); assert.ok(texts().includes('Back'), '↓ opens it too');
+});
+test('Z plays, X goes back', async t => {
+  const { d } = await sat(t); await openBrowser(d);
+  key(d.root, 'ArrowRight'); key(d.root, 'z'); await tick(); await tick();
+  assert.equal(iframeOf(d.root).attributes.src, 'https://www.lexaloffle.com/bbs/widget.php?pid=c1-1'); assert.ok(titleOf(d.root, 'Cart 1 - PICO-8'));
+  click(task(d.root, 'Featured - Info Highway')); click(find(d.root, n => n.tag === 'a' && n.textContent === 'Cart 2')); await tick();
+  assert.ok(titleOf(d.root, 'Cart 2 - Info Highway'));
+  assert.equal(key(d.root, 'x').defaultPrevented, true); assert.ok(titleOf(d.root, 'Featured - Info Highway'));
+});
+test('M then I installs', async t => {
+  const { d, api } = await sat(t); await openBrowser(d);
+  key(d.root, 'ArrowRight'); assert.equal(legendText(d.root), '', 'the browser shows its own');
+  assert.match(textOf(find(d.root, n => has(n, 'pc-status'))), /Enter\/Z Play/);
+  key(d.root, 'm'); assert.equal(openMenus(d.root), 1);
+  key(d.root, 'i'); assert.equal(dialogText(d.root), 'Installing Cart 1…'); await tick();
+  assert.deepEqual(api.posted.filter(b => b.op === 'add'), [{ op: 'add', kind: 'cart', pid: 'c1-1' }]);
+});
+test('S and Ctrl+F search; on a game page S selects the address', async t => {
+  const { d, doc } = await sat(t); await openBrowser(d);
+  key(d.root, 's'); assert.ok(doc.activeElement === searchBox(d.root));
+  d.root.focus(); assert.equal(key(d.root, 'f', { ctrlKey: true }).defaultPrevented, true); assert.ok(doc.activeElement === searchBox(d.root));
+  click(find(d.root, n => n.tag === 'a' && n.textContent === 'Cart 2')); await tick();
+  key(d.root, 's'); const field = find(d.root, n => has(n, 'pc-field') && has(n, 'address'));
+  assert.ok(doc.activeElement === field); assert.ok(field.value.length > 0); assert.deepEqual([field.selectionStart, field.selectionEnd], [0, field.value.length]);
+});
+test('Tab wraps round the front window; Shift+Tab goes back; Tab leaves a field', async t => {
+  const { d, doc } = await sat(t); await openBrowser(d);
+  const cart3 = find(d.root, n => n.tag === 'a' && n.textContent === 'Cart 3'); cart3.focus();
+  assert.equal(key(d.root, 'Tab').defaultPrevented, true); assert.ok(doc.activeElement === menuItem(d.root, 'File'));
+  key(d.root, 'Tab', { shiftKey: true }); assert.ok(doc.activeElement === cart3);
+  const box = searchBox(d.root); box.focus(); key(box, 'Tab');
+  assert.ok(doc.activeElement === find(d.root, n => n.tag === 'button' && n.textContent === 'Search'));
+});
+test('context menus per target: an icon, the bare desktop, a browser card; right-click and a long press', async t => {
+  const { d, timers } = await sat(t), layer = layerOf(d.root), touch = { pointerType: 'touch' };
+  iconOf(d.root, 'Info Highway').dispatch('contextmenu', { clientX: 60, clientY: 60 });
+  assert.deepEqual(menuItems(d.root), [['Open', false], ['Rename', true], ['Delete', true]]);
+  iconOf(d.root, STARTERS[0].title).dispatch('contextmenu');
+  assert.deepEqual(menuItems(d.root), [['Open', false], ['Rename', false], ['Delete', false]]); assert.equal(selectedId(d), 'i1');
+  assert.equal(layer.dispatch('contextmenu', { clientX: 500, clientY: 300 }).defaultPrevented, true);
+  assert.deepEqual(menuItems(d.root), [['New shortcut…', false], ['Arrange icons', false]]); key(d.root, 'Escape');
+  await openBrowser(d); key(d.root, 'ArrowRight'); key(d.root, 'm');
+  const browserItems = [['Play', false], ['Install', false], ['Open in new tab ↗', false]];
+  assert.deepEqual(menuItems(d.root), browserItems); key(d.root, 'Escape');
+  find(d.root, n => has(n, 'pc-card')).dispatch('contextmenu'); assert.deepEqual(menuItems(d.root), browserItems); key(d.root, 'Escape');
+  assert.equal(openMenus(d.root), 0);
+  const i2 = iconOf(d.root, STARTERS[1].title);
+  pointer(i2, 'pointerdown', touch); timers.run(499); assert.equal(openMenus(d.root), 0);
+  timers.run(1); assert.deepEqual(menuItems(d.root).map(([text]) => text), ['Open', 'Rename', 'Delete']);
+  pointer(i2, 'pointerup', touch); assert.equal(iframeOf(d.root), undefined, 'letting go opens nothing'); key(d.root, 'Escape');
+  pointer(layer, 'pointerdown', touch); pointer(layer, 'pointermove', { ...touch, clientX: 6, clientY: 6 }); timers.run(500);
+  assert.equal(openMenus(d.root), 0, 'moved 8.5 px'); pointer(layer, 'pointerup', touch);
+  pointer(layer, 'pointerdown', touch); pointer(layer, 'pointerup', touch); timers.run(500); assert.equal(openMenus(d.root), 0, 'let go');
+  pointer(layer, 'pointerdown', touch); pointer(layer, 'pointercancel', touch); timers.run(500); assert.equal(openMenus(d.root), 0, 'cancelled');
+  pointer(layer, 'pointerdown', touch); pointer(layer, 'pointermove', { ...touch, clientX: 5 }); timers.run(500);
+  assert.equal(openMenus(d.root), 1, 'a 5 px wobble still holds'); key(d.root, 'Escape'); pointer(layer, 'pointerup', touch);
+  assert.equal(timers.pending(), 1, 'only the clock');
+  pointer(layer, 'pointerdown', touch); d.hide(); assert.equal(timers.pending(), 0, 'standing up clears it');
+});
+test('rename in place: Enter sends rename, Esc sends nothing, a press elsewhere commits', async t => {
+  const { d, doc, api } = await sat(t), field = () => find(d.root, n => has(n, 'pc-rename')), renames = () => api.posted.filter(b => b.op === 'rename');
+  selectIcon(d, 'i1'); key(d.root, 'm'); key(d.root, 'r');
+  assert.ok(doc.activeElement === field()); assert.equal(field().value, STARTERS[0].title);
+  assert.equal(find(iconOf(d.root, STARTERS[0].title), n => has(n, 'pc-icon-label')).style.visibility, 'hidden');
+  assert.equal(key(field(), 'a').defaultPrevented, false, 'letters go in');
+  field().value = 'Celeste'; assert.equal(key(field(), 'Enter').defaultPrevented, true); await tick();
+  assert.deepEqual(renames(), [{ op: 'rename', id: 'i1', name: 'Celeste' }]);
+  assert.equal(field(), undefined); assert.ok(doc.activeElement === iconOf(d.root, 'Celeste'));
+  key(d.root, 'm'); key(d.root, 'r'); field().value = 'Nope';
+  assert.equal(key(field(), 'Escape').propagationStopped, true); await tick();
+  assert.equal(renames().length, 1); assert.equal(field(), undefined); assert.ok(doc.activeElement === iconOf(d.root, 'Celeste'));
+  key(d.root, 'm'); key(d.root, 'r'); field().value = 'Celeste 3'; click(layerOf(d.root)); await tick();
+  assert.deepEqual(renames().at(-1), { op: 'rename', id: 'i1', name: 'Celeste 3' }); assert.ok(iconOf(d.root, 'Celeste 3'));
+});
+test('New shortcut: https adds a link named after its host, ftp:// is refused, a thread link installs', async t => {
+  const { d, doc, api } = await sat(t), layer = layerOf(d.root), adds = () => api.posted.filter(b => b.op === 'add');
+  const shortcut = (link, name = '') => {
+    layer.dispatch('contextmenu'); key(d.root, 'n');
+    const [l, n] = findAll(findAll(d.root, x => has(x, 'pc-dialog')).at(-1), x => x.tag === 'input');
+    assert.ok(doc.activeElement === l, 'Link has focus'); l.value = link; n.value = name; key(l, 'Enter');
+  };
+  shortcut('https://example.org/games'); await tick(); await tick();
+  assert.deepEqual(adds().at(-1), { op: 'add', kind: 'link', url: 'https://example.org/games', name: 'example.org' }); assert.ok(iconOf(d.root, 'example.org'));
+  shortcut('https://example.net/', 'Example'); await tick(); await tick(); assert.equal(adds().at(-1).name, 'Example');
+  shortcut('ftp://x'); await tick(); assert.equal(dialogText(d.root), 'Only https:// links can be shortcuts.'); assert.equal(adds().length, 2);
+  click(dialogButton(d.root, 'OK'));
+  shortcut('https://www.lexaloffle.com/bbs/?tid=12345'); await tick(); await tick();
+  assert.ok(api.paths.includes('office/bbs/cart?tid=12345')); assert.equal(dialogText(d.root), 'Installing Thread 12345…');
+});
+test('a focused game gets every key; a press outside it gives them back, and Enter goes back in', async t => {
+  const { d, doc } = await sat(t); const frame = playing(d, { pid: 'a-1', title: 'A' }); frame.focus();
+  for (const k of ['m', 'ArrowDown', 'Enter', 'Tab', 'z']) {
+    const e = key(d.root, k); assert.equal(e.defaultPrevented, false, k); assert.ok(doc.activeElement === frame, k);
+  }
+  assert.equal(openMenus(d.root), 0);
+  click(titleOf(d.root, 'A - PICO-8')); assert.ok(doc.activeElement === d.root);
+  key(d.root, 'Enter'); assert.ok(doc.activeElement === frame);
+});
+test('PICO-8 stopped: Tab reaches ▶ Play, the legend says so, and Z plays', async t => {
+  const { d } = await sat(t); playing(d, { pid: 'a-1', title: 'A' }); d.hide(); d.place(rect(0, 0, 1080, 640)); await tick();
+  assert.equal(iframeOf(d.root), undefined);
+  click(titleOf(d.root, 'A - PICO-8')); key(d.root, 'Tab'); assert.equal(legendText(d.root), legendFor('pico8'));
+  key(d.root, 'z'); assert.ok(iframeOf(d.root)); assert.equal(legendText(d.root), '', 'the game has the keys');
+});
+test('removed focus comes back inside the desktop', async t => {
+  const { d, doc } = await sat(t), gone = () => doc.createElement('button'), inside = () => d.root.contains(doc.activeElement);
+  gone().focus(); d.arrange(); await tick(); assert.ok(doc.activeElement === d.root, 'after a re-render');
+  gone().focus(); click(layerOf(d.root)); assert.ok(inside(), 'after a click');
+  gone().focus(); key(d.root, 'ArrowRight'); assert.ok(inside(), 'after a key');
+  await openBrowser(d); const link = find(d.root, n => n.tag === 'a' && n.textContent === 'Cart 1'); link.focus(); click(link);
+  assert.ok(inside(), 'its page replaced the card'); await tick(); assert.ok(inside());
+  selectIcon(d, 'i1'); key(d.root, 'm'); key(d.root, 'd'); key(d.root, 'Enter'); await tick(); await tick();
+  assert.equal(iconOf(d.root, STARTERS[0].title), undefined); assert.ok(doc.activeElement === d.root, 'the deleted icon had it');
 });
