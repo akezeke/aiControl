@@ -55,7 +55,7 @@ function desk({ own, extra = [], windows, spots: over = {} } = {}) {
 }
 const LIST = [1, 2, 3].map(i => ({ pid: `c${i}-1`, tid: i, title: `Cart ${i}`, author: `by${i}`, thumb: `pico8_c${i}-1.png`, likes: i, updated: '2026-01-01' }));
 // Records GET paths and POSTed bodies. slowAdd holds an add until finishAdd(); failAdd and failWindows make those ops fail;
-// failGet fails the first failGets (1) desktop GETs with that reason.
+// failGet fails the first failGets (1) desktop GETs with that reason; failCart fails every cart lookup with that message.
 function fakeApi(opts = {}) {
   const server = desk(opts), paths = [], posted = [];
   let held = !!opts.slowAdd, release = null, getFails = opts.failGet ? opts.failGets ?? 1 : 0, last = server.icons.length;
@@ -78,6 +78,7 @@ function fakeApi(opts = {}) {
     }
     if (path.startsWith('office/bbs/list')) return { carts: LIST, more: false };
     if (path.startsWith('office/bbs/cart')) {
+      if (opts.failCart !== undefined) throw new Error(opts.failCart);
       const q = new URLSearchParams(path.split('?')[1]), tid = q.get('tid'), pid = q.get('pid') ?? `t${tid}-1`;
       return { pid, title: tid ? `Thread ${tid}` : `Info ${pid}`, author: 'someone', thumb: thumbName(pid), embed: !pid.startsWith('blocked') };
     }
@@ -667,4 +668,91 @@ test('removed focus comes back inside the desktop', async t => {
   assert.ok(inside(), 'its page replaced the card'); await tick(); assert.ok(inside());
   selectIcon(d, 'i1'); key(d.root, 'm'); key(d.root, 'd'); key(d.root, 'Enter'); await tick(); await tick();
   assert.equal(iconOf(d.root, STARTERS[0].title), undefined); assert.ok(doc.activeElement === d.root, 'the deleted icon had it');
+});
+
+// Task 12 review fixes. Keys go to the focused node, as in a browser: key(doc.activeElement, ...).
+const statusText = root => textOf(find(root, n => has(n, 'pc-status')));
+const linkOf = (root, title) => find(root, n => n.tag === 'a' && n.textContent === title);
+test('Enter on Start or a task button acts on it, though a window is in front', async t => {
+  const { d, doc, api } = await sat(t), at = () => doc.activeElement, page = 'Featured - Info Highway'; await openBrowser(d);
+  click(startOf(d.root)); key(at(), 'Escape'); assert.ok(at() === startOf(d.root));
+  key(at(), 'Enter'); assert.equal(d.view().start, true, 'Start opens again');
+  assert.deepEqual(api.paths.filter(p => p.startsWith('office/bbs/cart')), [], 'no card played');
+  key(at(), 'Escape'); key(at(), 'Tab'); assert.ok(at() === task(d.root, page));
+  key(at(), 'Enter'); assert.equal(windowOf(d.root, page).hidden, true, 'its task minimizes it'); assert.ok(at() === task(d.root, page));
+  key(at(), 'Enter'); assert.equal(windowOf(d.root, page).hidden, false, 'and brings it back, with the keys');
+  key(at(), 'ArrowRight'); assert.ok(at() === linkOf(d.root, 'Cart 1'));
+  click(startOf(d.root)); key(at(), 'Escape'); key(at(), 'Tab'); assert.ok(at() === task(d.root, page));
+  pointer(titleOf(d.root, page), 'pointerdown'); pointer(titleOf(d.root, page), 'pointerup'); assert.ok(at() === d.root, 'a press on the window takes the keys there');
+  key(at(), 'ArrowRight'); assert.ok(at() === linkOf(d.root, 'Cart 2'));
+});
+test('sitting down to a window in front gives it the keys; with none, the desktop has them', async t => {
+  const windows = defaults(); windows.windows.browser = { open: true, mode: 'normal', x: 100, y: 12 }; windows.order = ['notepad', 'pico8', 'browser'];
+  const { d, doc } = await sat(t, { windows }), at = () => doc.activeElement; await tick();
+  key(at(), 'ArrowDown'); assert.ok(at() === linkOf(d.root, 'Cart 1')); assert.equal(selectedId(d), 'browser', 'the icons stay put');
+  assert.equal(legendText(d.root), ''); assert.match(statusText(d.root), /Enter\/Z Play/, 'the browser\'s legend');
+  d.hide(); d.place(rect(0, 0, 1080, 640)); key(at(), 'ArrowRight'); assert.ok(at() === linkOf(d.root, 'Cart 2'), 'again at the next sit-down');
+  click(task(d.root, 'Featured - Info Highway')); d.hide(); d.place(rect(0, 0, 1080, 640));
+  key(at(), 'ArrowDown'); assert.equal(selectedId(d), 'salaries', 'minimized: the desktop');
+});
+test('keys still reach the desktop after a re-render takes the focused icon away', async t => {
+  const { d, doc } = await sat(t), at = () => doc.activeElement;
+  key(at(), 'ArrowDown'); key(at(), 'ArrowDown'); assert.equal(selectedId(d), 'i1');
+  key(at(), 'm'); key(at(), 'd'); key(at(), 'Enter'); await tick(); await tick();
+  assert.equal(iconOf(d.root, STARTERS[0].title), undefined); assert.ok(at() === d.root, 'not left on the body');
+  key(at(), 'ArrowDown'); assert.equal(selectedId(d), 'browser', 'the desktop still has the keys');
+});
+test('a focused icon keeps focus when the icons are put back in the page', async t => {
+  const { d, doc } = await sat(t); key(doc.activeElement, 'ArrowDown'); const salaries = iconOf(d.root, 'salaries.txt');
+  assert.ok(doc.activeElement === salaries);
+  d.install({ pid: 'z-1', title: 'Z' }); await tick(); await tick();
+  assert.ok(iconOf(d.root, 'Info z-1'), 'the new icon is in'); assert.ok(doc.activeElement === salaries);
+});
+for (const [failCart, text] of [['Lexaloffle is not answering.', 'Lexaloffle is not answering.'], ['', 'Cannot find the cart in that thread.']]) {
+  test(`New shortcut: a thread whose cart can't be looked up says "${text}"`, async t => {
+    const { d, doc, api } = await sat(t, { failCart });
+    layerOf(d.root).dispatch('contextmenu'); key(doc.activeElement, 'n');
+    const link = doc.activeElement; link.value = 'https://www.lexaloffle.com/bbs/?tid=12345'; key(link, 'Enter'); await tick(); await tick();
+    assert.ok(api.paths.includes('office/bbs/cart?tid=12345')); assert.equal(dialogText(d.root), text);
+  });
+}
+test('a press on the title or menu bar ends Info Highway\'s key legend', async t => {
+  const { d, doc } = await sat(t), page = 'Featured - Info Highway'; await openBrowser(d);
+  for (const n of [titleOf(d.root, page), find(windowOf(d.root, page), x => has(x, 'pc-menubar'))]) {
+    key(doc.activeElement, 'ArrowRight'); assert.match(statusText(d.root), /Enter\/Z Play/);
+    pointer(n, 'pointerdown'); pointer(n, 'pointerup'); assert.equal(statusText(d.root), 'Done');
+  }
+});
+test('a right-click on the bare page shows no card menu, though a card was selected', async t => {
+  const { d, doc } = await sat(t); await openBrowser(d);
+  key(doc.activeElement, 'ArrowRight'); assert.ok(doc.activeElement === linkOf(d.root, 'Cart 1'));
+  const grid = find(d.root, n => has(n, 'pc-cards'));
+  assert.equal(grid.dispatch('contextmenu').defaultPrevented, true); assert.equal(openMenus(d.root), 0);
+});
+test('a right-click on a card picks that card', async t => {
+  const { d, doc } = await sat(t); await openBrowser(d);
+  const card = findAll(d.root, n => has(n, 'pc-card'))[2];
+  find(card, n => n.tag === 'img').dispatch('contextmenu');
+  assert.deepEqual(menuItems(d.root).map(([text]) => text), ['Play', 'Install', 'Open in new tab ↗']);
+  click(menuItem(d.root, 'Install')); assert.equal(dialogText(d.root), 'Installing Cart 3…');
+  assert.ok(doc.activeElement === linkOf(d.root, 'Cart 3'), 'its link has focus');
+});
+test('keys in an IME composition are the field\'s: Enter commits no rename, dialog or search', async t => {
+  const { d, doc, api } = await sat(t), ime = { isComposing: true }, field = () => find(d.root, n => has(n, 'pc-rename'));
+  selectIcon(d, 'i1'); key(doc.activeElement, 'm'); key(doc.activeElement, 'r'); field().value = 'Céleste';
+  const e = key(field(), 'Enter', ime); assert.equal(e.defaultPrevented, false); assert.equal(e.propagationStopped, true, 'not the office\'s either');
+  key(field(), 'Escape', ime); await tick();
+  assert.ok(field(), 'still renaming'); assert.deepEqual(api.posted.filter(b => b.op === 'rename'), []);
+  key(field(), 'Escape');
+  layerOf(d.root).dispatch('contextmenu'); key(doc.activeElement, 'n'); const link = doc.activeElement; link.value = 'https://example.org/';
+  key(link, 'Enter', ime); await tick(); assert.equal(openDialogs(d.root), 1, 'the dialog stays'); key(link, 'Escape');
+  await openBrowser(d); const box = searchBox(d.root); box.focus(); box.value = 'snake';
+  key(box, 'Enter', ime); await tick(); assert.equal(api.paths.some(p => p.includes('q=snake')), false, 'no search');
+  key(box, 'Enter'); await tick(); assert.ok(api.paths.includes('office/bbs/list?q=snake&page=1'));
+});
+test('a page that loads late leaves a playing game its focus', async t => {
+  const { d, doc } = await sat(t); await openBrowser(d);
+  click(linkOf(d.root, 'Cart 2')); const frame = playing(d, { pid: 'a-1', title: 'A' }); frame.focus();
+  await tick(); await tick();
+  assert.ok(find(d.root, n => n.tag === 'button' && n.textContent === '▶ Play'), 'the page is in'); assert.ok(doc.activeElement === frame);
 });

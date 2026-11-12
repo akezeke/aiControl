@@ -234,16 +234,22 @@ export function createDesktop(container, {
     if (t === iconLayer) select(null);
   }, true);
   // Keys stay in here, so the desktop's own controls work and don't walk you about (onKey). The one keydown listener.
-  root.addEventListener('keydown', e => { keyMode = true; onKey(e); showLegend(); });
-  // A press: the legend gives way to the status, a game lets go of the keys, a rename is kept, and the keys go where it landed.
+  // A key that is part of an IME composition is the field's (its Enter picks a word, its Esc drops it).
+  root.addEventListener('keydown', e => {
+    if (e.isComposing) { e.stopPropagation(); return; }
+    keyMode = true; onKey(e); showLegend();
+  });
+  // A press: the legends give way to the status (Info Highway's too), a game lets go of the keys, a rename is kept, and the keys
+  // go where it landed (in a window, focus outside it falls back to root, as a browser's press on a spot that takes no focus does).
   // A touch held still for half a second is a right-click.
   root.addEventListener('pointerdown', e => {
     const t = e.target, onRename = !!rename && t === rename.input, inLayer = iconLayer.contains(t), id = inLayer ? iconAt(t) : null;
-    keyMode = false;
+    const win = W.NAMES.find(n => wins[n].node.contains(t));
+    keyMode = false; browser.endLegend();
     if (document.activeElement?.tagName === 'IFRAME') focus(root);
     if (rename && !onRename) endRename(true);
     if (inLayer) { deskKeys = true; if (!onRename) focus(id ? iconNodes.get(id)?.node : root); }
-    else if (W.NAMES.some(n => wins[n].node.contains(t))) deskKeys = false;
+    else if (win) { deskKeys = false; if (!wins[win].node.contains(document.activeElement)) focus(root); }
     if (e.pointerType === 'touch') startPress(e);
     showLegend();
   }, true);
@@ -327,9 +333,11 @@ export function createDesktop(container, {
       zooms.add(z); root.append(z);
     });
   }
+  // A window brought up gets the keys; one minimised leaves them on its button.
   function taskClick(name) {
-    const w = ws.windows[name];
-    change(w.mode === 'min' ? W.restore(ws, name) : W.frontmost(ws) === name ? W.minimize(ws, name) : W.front(ws, name));
+    const w = ws.windows[name], down = w.mode !== 'min' && W.frontmost(ws) === name;
+    change(w.mode === 'min' ? W.restore(ws, name) : down ? W.minimize(ws, name) : W.front(ws, name));
+    if (!down) keysTo(name);
   }
   function openWindow(name, { home = true } = {}) {
     closeStart();
@@ -562,9 +570,9 @@ export function createDesktop(container, {
   }
 
   // Keys: every shortcut is one key (Ctrl/Cmd+F is S). They go to the open menu, dialog, rename or Start, else to the window
-  // holding focus, else to the front window unless the desktop was pressed or sat down to last (deskKeys). Text fields keep their
-  // letters; a focused game gets every key; Esc closes the top menu, dialog, rename or Start, and with none open goes on and
-  // stands you up.
+  // holding focus, else to the desktop when an icon or taskbar button holds it, else to the front window unless the desktop was
+  // pressed last or had no window in front at the sit-down (deskKeys). Text fields keep their letters (and an IME's keys); a
+  // focused game gets every key; Esc closes the top menu, dialog, rename or Start, and with none open goes on and stands you up.
   const isField = n => n?.tagName === 'INPUT' || n?.tagName === 'TEXTAREA';
   const control = n => n?.tagName === 'BUTTON' || n?.tagName === 'A';
   const plain = e => !(e.ctrlKey || e.metaKey || e.altKey);
@@ -583,9 +591,21 @@ export function createDesktop(container, {
     deskKeys = false;
     if (seated && !wins[name].node.contains(document.activeElement)) focus(root);
   }
+  // The window holding focus; an icon, Start or task button holding it is the desktop's (Enter acts on it); root, where focus
+  // falls back, goes to the front window unless the desktop has the keys.
   function keyOwner() {
     const active = document.activeElement, top = W.frontmost(ws);
-    return W.NAMES.find(n => shownIn(ws, n) && wins[n].node.contains(active)) ?? (!top || deskKeys ? 'desktop' : top);
+    const win = W.NAMES.find(n => shownIn(ws, n) && wins[n].node.contains(active));
+    if (win) return win;
+    if (active !== root && root.contains(active)) return 'desktop';
+    return !top || deskKeys ? 'desktop' : top;
+  }
+  // At a sit-down, and when the saved windows come back: the front window has the keys, else the desktop on its selected icon.
+  // An open menu, dialog, rename or Start keeps its focus.
+  function seatKeys() {
+    const top = W.frontmost(ws);
+    deskKeys = !top;
+    if (!menu && !dialog && !rename && !start) focus(top ? root : iconNodes.get(selected)?.node ?? root);
   }
   function keyContext() {
     if (menu || start) return 'menu';
@@ -733,16 +753,10 @@ export function createDesktop(container, {
     if (id) { select(id); ui.menu(iconMenu(id), at); }
     else if (t === iconLayer) ui.menu(deskItems(), at);
     else if (shownIn(ws, 'browser') && browser.node.contains(t)) {
-      const a = cardLink(t); if (a) focus(a); // its focus selects the card
+      browser.pick(t); // the card under it, or none
       const items = browser.contextItems();
       if (items.length) ui.menu(items, at);
     }
-  }
-  function cardLink(t) {
-    let card = t; while (card && card !== browser.node && !card.classList?.contains('pc-card')) card = card.parentNode;
-    if (!card?.classList?.contains('pc-card')) return null;
-    const link = n => { for (const k of [...n.children]) { if (k.tagName === 'A') return k; const a = link(k); if (a) return a; } return null; };
-    return link(card);
   }
   function iconMenu(id) {
     const icon = iconNodes.get(id)?.icon, own = !!icon && !BUILTINS.some(b => b.id === id);
@@ -805,7 +819,7 @@ export function createDesktop(container, {
     if (r.kind === 'cart') install({ pid: r.pid, title: name || r.pid, name: name || undefined });
     else if (r.kind === 'thread') {
       api('office/bbs/cart?tid=' + encodeURIComponent(r.tid))
-        .then(info => { if (seated) install({ pid: info.pid, title: name || info.title || info.pid, name: name || undefined }); }, e => showError(e?.message || 'Desktop unavailable.'));
+        .then(info => { if (seated) install({ pid: info.pid, title: name || info.title || info.pid, name: name || undefined }); }, e => showError(e?.message || 'Cannot find the cart in that thread.'));
     } else if (r.kind === 'away' || r.kind === 'list') {
       if (full()) return;
       const url = r.kind === 'list' ? listUrl(r) : r.url;
@@ -835,18 +849,19 @@ export function createDesktop(container, {
     const { a, b, c, d, e, f } = matrix, next = `matrix(${a}, ${b}, ${c}, ${d}, ${e}, ${f})`;
     if (next !== transform) root.style.transform = transform = next;
     if (seated) return;
-    seated = true; root.hidden = false; deskKeys = true;
+    seated = true; root.hidden = false;
     tickClock();
-    select('browser'); focus(iconNodes.get('browser')?.node);
+    select('browser');
     // A failed load says why once; only the built-ins show, and the next sit-down tries again.
     if (store.loaded()) { if (!restored) restoreSaved(); }
     else {
       store.load().then(ok => {
         if (!seated) return;
         if (!ok) showError(store.error());
-        else if (!restored) restoreSaved();
+        else if (!restored) { restoreSaved(); seatKeys(); }
       });
     }
+    seatKeys();
     // ▶ Play, never autoplay.
     player.show(ws.windows.pico8.cart);
     render();

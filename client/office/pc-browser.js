@@ -170,7 +170,13 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
       if (mine !== token) return;
       hist[idx] = { kind: 'error', address: addressOf(p) };
     }
-    busy = false; render(); primaryEl?.focus();
+    busy = false; render(); focusPrimary();
+  }
+  // A page that lands late doesn't take focus from elsewhere (a playing game): only from in here, an ancestor (the desktop's
+  // root, where focus falls back) or nowhere.
+  function focusPrimary() {
+    const a = doc.activeElement;
+    if (!a || a === doc.body || node.contains(a) || a.contains?.(node)) primaryEl?.focus();
   }
   // Shows the history entry; only a page without its data fetches.
   function show(p) {
@@ -178,7 +184,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
     busy = (p.kind === 'list' && !p.carts) || (p.kind === 'game' && !p.loaded);
     render();
     if (busy) return fetchPage(p, mine);
-    primaryEl?.focus(); return Promise.resolve();
+    focusPrimary(); return Promise.resolve();
   }
   function visit(p) {
     hist.length = idx + 1; hist.push(p); idx++;
@@ -279,6 +285,14 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
     title: () => `${titleOf(page())} - Info Highway`,
     selection: () => { const p = page(); return p?.kind === 'game' ? p : p?.kind === 'list' && sel >= 0 ? cards[sel]?.row ?? null : null; },
     refreshInstalled() { cards.forEach(mark); if (installBtn) setDisabled(installBtn, installed(page().pid)); },
+    // A press anywhere in the PC: the legend gives way to the status.
+    endLegend() { if (legendOn) { legendOn = false; setStatus(); } },
+    // A right-click: selects the card under `target` (and focuses its link), or none; true on a card.
+    pick(target) {
+      sel = cards.findIndex(c => c.node.contains(target));
+      if (sel >= 0) cards[sel].link.focus({ preventScroll: true });
+      return sel >= 0;
+    },
     onClose(fn) { closeHandler = fn; },
     menus() {
       const i = items();

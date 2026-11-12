@@ -2,12 +2,17 @@
 // focus and a recording 2d canvas. Only what the desktop's modules touch; add here rather than in a test file.
 // `tag` is the fixture's own lowercase convenience for finders; production code reads the real `tagName` (upper case, also set here).
 // select() on a field records selectionStart/selectionEnd over its whole value.
+// Focus moves as in a browser: focus() on a node in the page fires blur then focusout on the node it leaves, then focus then
+// focusin on the new one (none when it already has focus); removing the focused node or an ancestor (remove, an append that moves
+// it, replaceChildren) or blur() puts activeElement on the body, then fires blur and focusout on the node it left (as Chrome does).
+// blur and focus don't bubble (dispatch() takes bubbles: false: capture and target phases only); activeElement is set first.
 // NOT modelled:
 // - attribute/property links: setAttribute('class') vs classList/className, node.src vs attributes.src, value vs attribute;
 // - textContent neither clears nor aggregates children (it is a plain field);
 // - style is a plain object (no cssText, no shorthand expansion);
-// - focus() works on removed or hidden nodes, and blur() fires no events;
-// - no stopImmediatePropagation, no passive/signal options, no event.bubbles = false;
+// - a press focuses nothing (no default actions); focus() works on removed or hidden nodes (silently: no events), a node already
+//   out of the page keeps focus when moved, and activeElement starts null, not the body;
+// - no stopImmediatePropagation, no passive/signal options;
 // - canvas: save()/restore() don't restore recorded state, and there is no measureText.
 const mixin = (node) => {
   const listeners = new Map(); // type -> [{ fn, capture, once }]
@@ -48,6 +53,14 @@ export function useDom(t) {
   const was = globalThis.document;
   const doc = { activeElement: null, parent: null, children: [] };
   mixin(doc);
+  const inPage = n => { for (let at = n; at; at = at.parent) if (at === doc) return true; return false; };
+  // `gone` (focused or holding the focused node) leaves the page or loses focus: the body has it, then blur and focusout fire.
+  const unfocus = gone => {
+    const a = doc.activeElement;
+    if (!a || a === doc.body || !gone.contains(a) || !inPage(a)) return;
+    doc.activeElement = doc.body;
+    a.dispatch('blur', { bubbles: false, relatedTarget: null }); a.dispatch('focusout', { relatedTarget: null });
+  };
   function element(tag) {
     const classes = new Set();
     const node = {
@@ -74,11 +87,17 @@ export function useDom(t) {
         const visit = (at, phase) => { if (!event.propagationStopped) { event.currentTarget = at; at.fire(event, phase); } };
         for (const at of [...path].reverse()) visit(at, 'capture');
         visit(node, 'target');
-        for (const at of path) visit(at, 'bubble');
+        if (event.bubbles !== false) for (const at of path) visit(at, 'bubble');
         return event;
       },
-      focus() { doc.activeElement = node; },
-      blur() { if (doc.activeElement === node) doc.activeElement = null; },
+      focus() {
+        const was = doc.activeElement;
+        if (was === node) return;
+        doc.activeElement = node;
+        if (was && was !== doc.body && inPage(was)) { was.dispatch('blur', { bubbles: false, relatedTarget: node }); was.dispatch('focusout', { relatedTarget: node }); }
+        if (inPage(node)) { node.dispatch('focus', { bubbles: false, relatedTarget: was }); node.dispatch('focusin', { relatedTarget: was }); }
+      },
+      blur() { if (doc.activeElement !== node) return; if (inPage(node)) unfocus(node); else doc.activeElement = doc.body; },
       select() { node.selectionStart = 0; node.selectionEnd = String(node.value).length; },
       append(...kids) {
         for (const kid of kids) {
@@ -87,8 +106,8 @@ export function useDom(t) {
         }
       },
       appendChild(kid) { node.append(kid); return kid; },
-      remove() { if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1); node.parent = null; },
-      replaceChildren(...kids) { for (const kid of node.children) kid.parent = null; node.children = []; node.append(...kids); },
+      remove() { if (node.parent) { unfocus(node); node.parent.children.splice(node.parent.children.indexOf(node), 1); } node.parent = null; },
+      replaceChildren(...kids) { for (const kid of node.children) unfocus(kid); for (const kid of node.children) kid.parent = null; node.children = []; node.append(...kids); },
       contains: other => other === node || node.children.some(kid => kid.contains(other)),
       querySelectorAll: test => findAll(node, test).filter(n => n !== node),
       closest(test) { for (let at = node; at && at.tag; at = at.parent) if (test(at)) return at; return null; },

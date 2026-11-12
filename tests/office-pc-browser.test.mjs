@@ -39,6 +39,7 @@ function setup(t, { fail = false, more = true, stale = false, installed = () => 
     return { pid, title: `Info ${pid}`, author: 'someone', thumb: `pico8_${pid}.png`, embed: !pid.startsWith('blocked') };
   };
   const b = createBrowser({ doc, api, ui: { dialog: o => { dialogs.push(o); return Promise.resolve('OK'); } }, installed, onPlay: c => played.push(c), onInstall: c => installs.push(c), open: u => opened.push(u) });
+  doc.body.append(b.node); // in the page, as on the desktop: a page that replaces the focused node leaves focus on the body
   const button = text => find(b.node, n => n.tag === 'button' && n.textContent === text);
   const cards = () => findAll(b.node, n => n.classList.contains('pc-card'));
   const link = i => find(cards()[i], n => n.tag === 'a');
