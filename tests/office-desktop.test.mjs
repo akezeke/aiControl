@@ -79,7 +79,7 @@ function fakeApi(opts = {}) {
       if (body?.op === 'move') server.spots[body.id] = body.spot;
       return structuredClone(server);
     }
-    if (path.startsWith('office/bbs/list')) return { carts: LIST, more: false };
+    if (path.startsWith('office/bbs/list')) return { carts: LIST, more: !!opts.more };
     if (path.startsWith('office/bbs/cart')) {
       if (opts.failCart !== undefined) throw new Error(opts.failCart);
       const q = new URLSearchParams(path.split('?')[1]), tid = q.get('tid'), pid = q.get('pid') ?? `t${tid}-1`;
@@ -617,6 +617,23 @@ test('Tab wraps round the front window; Shift+Tab goes back; Tab leaves a field'
   key(d.root, 'Tab', { shiftKey: true }); assert.ok(doc.activeElement === cart3);
   const box = searchBox(d.root); box.focus(); key(box, 'Tab');
   assert.ok(doc.activeElement === find(d.root, n => n.tag === 'button' && n.textContent === 'Search'));
+});
+test('Tab walks the page down to Next and back, scrolling the page to show each (a whole card), and nothing outside the window', async t => {
+  const { d, doc } = await sat(t, { more: true }); await openBrowser(d);
+  const page = find(d.root, n => has(n, 'pc-page')), link = text => find(d.root, n => n.tag === 'a' && n.textContent === text);
+  const card = text => find(d.root, n => has(n, 'pc-card') && n.contains(link(text)));
+  const next = find(d.root, n => n.tag === 'button' && n.textContent === 'Next »');
+  // Layout as a browser has it: the page shows 400px of 2000, Cart 1's card at its top, Cart 2's midway, Cart 3's and Next
+  // far down. The links themselves aren't measured: what's shown is a link's card.
+  Object.assign(page, { offsetTop: 60, offsetParent: null, clientTop: 0, clientHeight: 400, scrollHeight: 2000, scrollTop: 0 });
+  [[card('Cart 1'), 100, 180], [card('Cart 2'), 800, 180], [card('Cart 3'), 1600, 180], [next, 1900, 20]].forEach(([n, y, h]) => Object.assign(n, { offsetParent: page, offsetTop: y, offsetHeight: h }));
+  Object.assign(d.root, { clientHeight: 640, scrollHeight: 4000, scrollTop: 0 });
+  link('Cart 3').focus(); key(d.root, 'Tab');
+  assert.ok(doc.activeElement === next); assert.equal(page.scrollTop, 1520);
+  key(d.root, 'Tab', { shiftKey: true }); assert.equal(page.scrollTop, 1520, "Cart 3's card is in view: nothing scrolls");
+  key(d.root, 'Tab', { shiftKey: true }); assert.ok(doc.activeElement === link('Cart 2')); assert.equal(page.scrollTop, 800);
+  key(d.root, 'Tab', { shiftKey: true }); assert.equal(page.scrollTop, 100);
+  assert.equal(d.root.scrollTop, 0);
 });
 test('context menus per target: an icon, the bare desktop, a browser card; right-click and a long press', async t => {
   const { d, timers } = await sat(t), layer = layerOf(d.root), touch = { pointerType: 'touch' };

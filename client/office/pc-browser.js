@@ -12,6 +12,19 @@ const LEGENDS = {
 };
 const dialogOf = text => ({ icon: 'info', text, buttons: ['OK'] });
 
+// Scrolls `n` just into view in the scrolling boxes between it and `scope` (a page below the fold), and nothing outside that:
+// focus() doesn't scroll here, and scrollIntoView would scroll the office too, where the desktop is placed onto the monitor. By
+// layout offsets, which the screen's 3D transform doesn't touch. For keys only: a click's own target doesn't move under it.
+export function reveal(n, scope) {
+  const top = el => { let y = 0; for (let e = el; e; e = e.offsetParent) y += e.offsetTop; return y; };
+  for (let box = n.parentNode; box && box !== scope; box = box.parentNode) {
+    if (!(box.scrollHeight > box.clientHeight)) continue;
+    const y = top(n) - top(box) - (box.clientTop || 0), end = y + n.offsetHeight;
+    if (y < box.scrollTop) box.scrollTop = y;
+    else if (end > box.scrollTop + box.clientHeight) box.scrollTop = Math.min(y, end - box.clientHeight);
+  }
+}
+
 // What the address bar was given: a cart, a thread, a list, another site (https: asks first, http: opens at once) or a search.
 export function readAddress(text) {
   text = String(text ?? '').trim();
@@ -258,7 +271,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
         if (p?.kind !== 'list' || !cards.length) return false;
         const top = cards[0].node.offsetTop, cols = cards.filter(c => c.node.offsetTop === top).length;
         const to = sel < 0 ? 0 : sel + { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols }[k];
-        if (to >= 0 && to < cards.length) { select(to); cards[to].link.focus(); cards[to].node.scrollIntoView?.({ block: 'nearest' }); }
+        if (to >= 0 && to < cards.length) { select(to); cards[to].link.focus({ preventScroll: true }); reveal(cards[to].node, node); }
         return true;
       }
       case 'Enter': case 'z': case 'Z': {
@@ -290,6 +303,8 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
   return {
     node, home, go, back: back_, forward: forward_, refresh, close, legend, status, key, page,
     title: () => `${titleOf(page())} - Info Highway`,
+    // What a focused control shows as, for scrolling into view: a card's link is its card.
+    shown: n => cards.find(c => c.link === n)?.node ?? n,
     selection: () => { const p = page(); return p?.kind === 'game' ? p : p?.kind === 'list' && sel >= 0 ? cards[sel]?.row ?? null : null; },
     refreshInstalled() { cards.forEach(mark); if (installBtn) setDisabled(installBtn, installed(page().pid)); },
     // A press anywhere in the PC: the legend gives way to the status.

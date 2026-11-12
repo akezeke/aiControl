@@ -210,6 +210,18 @@ test('grid arrows follow the columns counted from offsetTop', async t => {
   s.key('ArrowLeft'); s.key('ArrowLeft'); assert.equal(s.doc.activeElement, s.link(0)); s.key('ArrowUp'); assert.equal(s.doc.activeElement, s.link(0));
   assert.equal(s.b.selection().pid, 'c0-1');
 });
+test('the arrows scroll the page to show the whole card they reach, and nothing outside the browser', async t => {
+  const s = await loaded(t); s.rowsOf();
+  // The page shows 300px of 1400; the cards are 180px tall, a row every 200px.
+  const page = find(s.b.node, n => n.classList.contains('pc-page'));
+  Object.assign(page, { offsetTop: 0, offsetParent: null, clientTop: 0, clientHeight: 300, scrollHeight: 1400, scrollTop: 0 });
+  s.cards().forEach(c => Object.assign(c, { offsetParent: page, offsetHeight: 180 }));
+  Object.assign(s.b.node, { clientHeight: 600, scrollHeight: 5000, scrollTop: 0 });
+  s.key('ArrowRight'); assert.equal(page.scrollTop, 0);
+  s.key('ArrowDown'); assert.equal(page.scrollTop, 80); s.key('ArrowDown'); assert.equal(page.scrollTop, 280);
+  s.key('ArrowUp'); assert.equal(page.scrollTop, 200); s.key('ArrowUp'); assert.equal(page.scrollTop, 0);
+  assert.equal(s.b.node.scrollTop, 0);
+});
 // The selected card wears a border (pc.css) as well as its link's focus: the one Enter plays.
 test('the selected card, and only it, is marked', async t => {
   const s = await loaded(t), marked = () => s.cards().flatMap((c, i) => c.classList.contains('selected') ? [i] : []);

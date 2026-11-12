@@ -12,7 +12,7 @@ import { STARTERS, thumbName, listUrl } from './carts.js';
 import * as W from './pc-windows.js';
 import { createPcStore } from './pc-store.js';
 import { createPlayer, draw as drawPlayer } from './pc-player.js';
-import { createBrowser, readAddress, draw as drawBrowser } from './pc-browser.js';
+import { createBrowser, readAddress, reveal, draw as drawBrowser } from './pc-browser.js';
 import { createNotepad, draw as drawNotepad } from './pc-notepad.js';
 
 export const LAYOUT = { w: 1080, h: 640 }; // the monitor canvas's 432 × 256, 2.5 times over
@@ -638,7 +638,7 @@ export function createDesktop(container, {
         e.preventDefault();
         const at = dialog.buttons.indexOf(document.activeElement), pick = at >= 0 ? at : dialog.initial;
         if (dialog.buttons[pick]) finish(dialog, dialog.labels[pick]);
-      } else if (k === 'Tab') { e.preventDefault(); cycle(tabStops(dialog.node), e.shiftKey); }
+      } else if (k === 'Tab') { e.preventDefault(); cycle(tabStops(dialog.node), e.shiftKey, dialog.node); }
       return;
     }
     if (rename) { if (k === 'Enter' || k === 'Tab') { e.preventDefault(); endRename(true); } return; }
@@ -682,14 +682,14 @@ export function createDesktop(container, {
     if (!win.contains(document.activeElement)) focus(root);
     const active = document.activeElement;
     if (isField(active)) {
-      if (k === 'Tab' && plain(e)) { e.preventDefault(); cycle(tabStops(win), e.shiftKey); }
+      if (k === 'Tab' && plain(e)) { e.preventDefault(); cycle(tabStops(win), e.shiftKey, win); }
       else if (name === 'browser' && (k === 'Enter' || ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'f')) && browser.key(e)) { e.preventDefault(); render(); }
       return;
     }
     if (plain(e) && (k === 'Enter' || k === 'ArrowDown') && titles.has(active)) { e.preventDefault(); titles.get(active)(); return; }
     if (name === 'browser' && browser.key(e)) { e.preventDefault(); render(); return; }
     if (!plain(e)) return;
-    if (k === 'Tab') { e.preventDefault(); cycle(tabStops(win), e.shiftKey); }
+    if (k === 'Tab') { e.preventDefault(); cycle(tabStops(win), e.shiftKey, win); }
     else if (name === 'browser' && (k === 'm' || k === 'M' || k === 'ContextMenu')) {
       e.preventDefault();
       const items = browser.contextItems();
@@ -737,10 +737,12 @@ export function createDesktop(container, {
     })(scope);
     return out;
   }
-  function cycle(list, back) {
+  // Focus the next (or, back, the previous) of `list`, round; in a window or dialog (`scope`) what it shows as (a card, for its
+  // link) is then scrolled into view there.
+  function cycle(list, back, scope) {
     const n = list.length; if (!n) return null;
     const at = list.indexOf(document.activeElement), to = list[at < 0 ? (back ? n - 1 : 0) : (at + (back ? n - 1 : 1)) % n];
-    focus(to); return to;
+    focus(to); if (scope) reveal(browser.shown(to), scope); return to;
   }
   // Where a menu opened by key goes: under the focused item, else mid-window.
   function keyPoint(n, r) {
