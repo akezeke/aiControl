@@ -304,6 +304,37 @@ test('a thumbnail file stays while another icon has the pid', async () => {
   await pc.apply({ op: 'remove', id: 'i2' }); assert.equal(fs.existsSync(path.join(at, 'office-pc-thumbs', name)), false);
 });
 
+test('a failed save leaves no temp file and the desktop as it was', async () => {
+  const at = tmp(), pc = createOfficePc({ dir: at, fetch: refuse });
+  fs.mkdirSync(path.join(at, 'office-pc.json')); // a directory where the file goes: the rename fails
+  await assert.rejects(pc.apply({ op: 'add', kind: 'link', url: 'https://e.test/', name: 'E' }));
+  assert.deepEqual(fs.readdirSync(at).filter(f => f.endsWith('.tmp')), []);
+  assert.equal(pc.desktop().icons.length, 4);
+  const name = thumbName(STARTERS[0].pid), t = setup({ [`${HOST}/bbs/thumbs/${name}`]: PNGBYTES(1) });
+  fs.mkdirSync(path.join(t.pc.dir, 'office-pc-thumbs', name), { recursive: true });
+  await t.pc.thumb(name); // the answer stands; only the keeping failed
+  assert.deepEqual(fs.readdirSync(path.join(t.pc.dir, 'office-pc-thumbs')).filter(f => f.endsWith('.tmp')), []);
+});
+test('a thumbnail file stays when the desktop write behind its removal fails', async () => {
+  const name = thumbName(STARTERS[0].pid), s = setup({ [`${HOST}/bbs/thumbs/${name}`]: PNGBYTES(1) });
+  await s.pc.thumb(name);
+  const kept = path.join(s.pc.dir, 'office-pc-thumbs', name); assert.ok(fs.existsSync(kept));
+  fs.mkdirSync(path.join(s.pc.dir, 'office-pc.json'));
+  await assert.rejects(s.pc.apply({ op: 'remove', id: 'i1' }));
+  assert.ok(fs.existsSync(kept));
+});
+test('thumbnails: disk before memory, and memory is saved once the cart is installed', async () => {
+  const name = 'pico8_late-1.png', url = `${HOST}/bbs/thumbs/${name}`, s = setup({ [url]: PNGBYTES(2), [`${HOST}/bbs/?pid=late-1`]: page('late-1') });
+  const file = path.join(s.pc.dir, 'office-pc-thumbs', name);
+  await s.pc.thumb(name); assert.equal(fs.existsSync(file), false);
+  await s.pc.apply({ op: 'add', kind: 'cart', pid: 'late-1' });
+  const n = s.calls.length;
+  assert.ok((await s.pc.thumb(name)).equals(PNGBYTES(2)));
+  assert.ok(fs.existsSync(file)); assert.equal(s.calls.length, n);
+  fs.writeFileSync(file, PNGBYTES(5)); // disk wins over memory
+  assert.ok((await s.pc.thumb(name)).equals(PNGBYTES(5)));
+});
+
 test('routes: login, size, activity, thumbnail headers and 503 without pc', async () => {
   const touched = [], pc = setup({ [`${HOST}/bbs/thumbs/pico8_x-1.png`]: PNGBYTES(3) }).pc;
   let session = { key: 'k', csrf: 'c' };
@@ -320,7 +351,7 @@ test('routes: login, size, activity, thumbnail headers and 503 without pc', asyn
   assert.equal((await call(h, 'POST', '/api/office/pc', { op: 'arrange', pad: 'x'.repeat(5000) })).statusCode, 413);
   const ok = await call(h, 'POST', '/api/office/pc', { op: 'add', kind: 'link', url: 'https://e.test/', name: 'E' });
   assert.equal(ok.statusCode, 200); assert.equal(JSON.parse(ok.raw).icons.length, 5); assert.equal(touched.length, 1);
-  assert.equal((await call(h, 'POST', '/api/office/pc', { op: 'nope' })).statusCode, 400);
+  assert.equal((await call(h, 'POST', '/api/office/pc', { op: 'nope' })).statusCode, 400); assert.equal(touched.length, 1);
   const png = await call(h, 'GET', '/api/office/bbs/thumb/pico8_x-1.png');
   assert.deepEqual([png.statusCode, png.headers['content-type'], png.headers['cache-control'], png.headers['content-length']], [200, 'image/png', 'private, max-age=86400', 11]);
   assert.equal((await call(h, 'GET', '/api/office/bbs/thumb/%E0%A4%A')).statusCode, 400);

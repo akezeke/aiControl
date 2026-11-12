@@ -155,21 +155,22 @@ export function createOfficePc({ dir, fetch = globalThis.fetch, now = Date.now }
   const file = join(dir, 'office-pc.json'), thumbDir = join(dir, 'office-pc-thumbs');
   const isPng = png => png.length >= PNG.length && png.subarray(0, PNG.length).equals(PNG);
   // Temp file then rename, so a crash never leaves half a file.
-  const write = (to, data) => { mkdirSync(join(to, '..'), { recursive: true }); const tmp = `${to}.tmp`; writeFileSync(tmp, data, { mode: 0o600 }); renameSync(tmp, to); };
+  const write = (to, data) => { mkdirSync(join(to, '..'), { recursive: true }); const tmp = `${to}.tmp`; try { writeFileSync(tmp, data, { mode: 0o600 }); renameSync(tmp, to); } catch (error) { rmSync(tmp, { force: true }); throw error; } };
   let state;
   try { state = repair(JSON.parse(readFileSync(file, 'utf8'))); } catch { state = fresh(); }
 
   async function thumb(name) {
     if (typeof name !== 'string' || !THUMB.test(name)) throw fail('Bad thumbnail name.', 400);
-    const hit = thumbs.get(name);
-    if (hit && now() - hit.at < DAY) { keep(thumbs, name, hit, THUMBS); return hit.png; }
     try { const saved = readFileSync(join(thumbDir, name)); if (isPng(saved)) return saved; } catch {}
+    // Only an installed cart's thumbnail is kept on disk (lazily, never fetched for it); it goes when its last icon does.
+    const store = png => { if (state.icons.some(i => i.kind === 'cart' && thumbName(i.pid) === name)) try { write(join(thumbDir, name), png); } catch {} };
+    const hit = thumbs.get(name);
+    if (hit && now() - hit.at < DAY) { keep(thumbs, name, hit, THUMBS); store(hit.png); return hit.png; }
     let png;
     try { png = await get(`/bbs/thumbs/${name}`, THUMB_BYTES); } catch { throw down(); }
     if (!isPng(png)) throw down();
     keep(thumbs, name, { at: now(), png }, THUMBS);
-    // Only an installed cart's thumbnail is kept on disk; it goes when its last icon does.
-    if (state.icons.some(i => i.kind === 'cart' && thumbName(i.pid) === name)) try { write(join(thumbDir, name), png); } catch {}
+    store(png);
     return png;
   }
 
@@ -187,6 +188,7 @@ export function createOfficePc({ dir, fetch = globalThis.fetch, now = Date.now }
   }
   const cartIcon = (d, c, name) => ({ id: nextId(d.icons), kind: 'cart', pid: c.pid, name: name ?? (nameOf(c.title, true) || c.pid), author: tidy(c.author).slice(0, 80), embed: c.embed });
 
+  let gone = null; // a thumbnail to delete once the desktop that dropped its cart is saved
   const ops = {
     async add(d, { kind, pid, url, name }) {
       room(d);
@@ -199,7 +201,7 @@ export function createOfficePc({ dir, fetch = globalThis.fetch, now = Date.now }
       if (isBuiltin(id)) throw fail('Built-in icons stay.');
       const icon = find(d, id);
       d.icons = d.icons.filter(i => i !== icon); delete d.spots[id];
-      if (icon.kind === 'cart' && !installed(d, icon.pid)) rmSync(join(thumbDir, thumbName(icon.pid)), { force: true });
+      if (icon.kind === 'cart' && !installed(d, icon.pid)) gone = thumbName(icon.pid);
     },
     async rename(d, { id, name }) { if (isBuiltin(id)) throw fail('Built-in icons stay.'); const icon = find(d, id); icon.name = nameOf(name); },
     async move(d, { id, spot }) {
@@ -229,15 +231,17 @@ export function createOfficePc({ dir, fetch = globalThis.fetch, now = Date.now }
   // One op at a time (an add awaits the network), each on a copy that replaces the desktop only once it succeeded.
   let queue = Promise.resolve();
   const apply = op => {
-    const run = async () => {
-      const run = Object.hasOwn(ops, op?.op) ? ops[op.op] : null;
-      if (!run) throw fail('Unknown operation.');
+    const go = async () => {
+      const step = Object.hasOwn(ops, op?.op) ? ops[op.op] : null;
+      if (!step) throw fail('Unknown operation.');
       const next = structuredClone(state), before = JSON.stringify(state);
-      await run(next, op);
+      gone = null;
+      await step(next, op);
       if (JSON.stringify(next) !== before) { write(file, JSON.stringify(next)); state = next; }
+      if (gone) rmSync(join(thumbDir, gone), { force: true });
       return structuredClone(state);
     };
-    const result = queue.then(run);
+    const result = queue.then(go);
     queue = result.catch(() => {});
     return result;
   };
