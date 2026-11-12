@@ -3,7 +3,6 @@
    calls on ticker tape, a request as a warning plate, the composer an inset slate. Text sits on plain plate, paper or slate, never on rivets. */
 @font-face { font-family: 'Cinzel'; src: url('/fonts/cinzel-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
 @font-face { font-family: 'Spectral'; src: url('/fonts/spectral-500.woff2') format('woff2'); font-weight: 500; font-display: swap; }
-@font-face { font-family: 'Courier Prime'; src: url('/fonts/courier-prime-400.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 
 :root[data-theme-choice=nodes-steampunk] {
   color-scheme: dark;

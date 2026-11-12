@@ -2,6 +2,7 @@ import { reducedAtmosphere, atmosphereScale } from '../atmosphere.js';
 // The Office theme: a 3D office where each session is a fruit at a desk. main.js mounts it in place of the list.
 import * as THREE from 'three';
 import './office.css';
+import './pc.css';
 import { layoutOffice, sharedLayout, VACANT_MS, DESK_W } from './layout.js';
 import { officeStatus, identity, monitorLines } from './status.js';
 import { createRoom } from './room.js';

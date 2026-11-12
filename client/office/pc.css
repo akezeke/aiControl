@@ -1,0 +1,134 @@
+/* Boss PC: a 90s desktop, laid out at 1080 × 640 and transformed onto the boss's monitor. Gray bevels on teal, system fonts only. */
+.office-desktop-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.office-desktop-layer > .office-desktop { pointer-events: auto; }
+.office-desktop { position: absolute; left: 0; top: 0; width: 1080px; height: 640px; transform-origin: 0 0; overflow: hidden; background: #008080; color: #000; font: 400 12px/1.2 Tahoma, 'MS Sans Serif', Arial, sans-serif; user-select: none; -webkit-user-select: none; }
+.office-desktop[hidden], .office-desktop [hidden] { display: none; }
+.office-desktop button, .office-desktop input { margin: 0; font: inherit; color: inherit; }
+.office-desktop button { cursor: default; }
+.office-desktop :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+
+/* Icons */
+.pc-icon { position: absolute; width: 76px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0; border: 0; background: none; color: #fff; text-align: center; }
+.pc-icon-art { position: relative; width: 32px; height: 32px; image-rendering: pixelated; }
+.pc-icon-arrow { position: absolute; left: 0; bottom: 0; width: 10px; height: 10px; background: #fff; border: 1px solid #000; box-sizing: border-box; }
+.pc-icon-label { max-width: 72px; padding: 1px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-icon.selected .pc-icon-label { background: #000080; color: #fff; outline: 1px dotted #ff0; outline-offset: -1px; }
+.pc-icon:focus-visible { outline: 0; }
+.pc-icon:focus-visible .pc-icon-label { outline: 1px dotted #fff; outline-offset: -1px; }
+
+/* Windows */
+.pc-window { position: absolute; display: flex; flex-direction: column; box-sizing: border-box; padding: 3px; background: #c0c0c0; box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #000, inset 2px 2px 0 #fff, inset -2px -2px 0 #808080; }
+.pc-title { flex: 0 0 18px; display: flex; align-items: center; justify-content: space-between; padding: 0 2px; background: #808080; color: #c0c0c0; font-weight: 700; }
+.pc-window.front .pc-title { background: linear-gradient(90deg, #000080, #1084d0); color: #fff; }
+.pc-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-title-buttons { display: flex; gap: 2px; }
+.pc-title-buttons .pc-button { min-width: 16px; height: 14px; padding: 0; line-height: 1; }
+.pc-client { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* Buttons, fields, lists */
+.pc-button { min-width: 64px; padding: 3px 8px; border: 0; background: #c0c0c0; color: #000; box-shadow: inset -1px -1px 0 #000, inset 1px 1px 0 #fff, inset -2px -2px 0 #808080, inset 2px 2px 0 #dfdfdf; }
+.pc-button:active, .pc-button.pressed { box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #fff, inset 2px 2px 0 #808080, inset -2px -2px 0 #dfdfdf; padding: 4px 7px 2px 9px; }
+.pc-button[disabled] { color: #808080; text-shadow: 1px 1px 0 #fff; }
+.pc-field, .pc-list { box-sizing: border-box; border: 0; background: #fff; color: #000; box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #fff, inset 2px 2px 0 #000, inset -2px -2px 0 #dfdfdf; user-select: text; -webkit-user-select: text; }
+.pc-field { padding: 3px 4px; }
+.pc-list { margin: 0; padding: 2px; list-style: none; overflow: auto; }
+.pc-list .selected { background: #000080; color: #fff; }
+
+/* Taskbar */
+.pc-taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 4px; background: #c0c0c0; box-shadow: inset 0 1px 0 #dfdfdf, inset 0 2px 0 #fff; }
+.pc-start { height: 32px; padding: 0 10px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+.pc-task { flex: 0 1 160px; min-width: 0; height: 32px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.pc-task.pressed { background: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px; font-weight: 700; }
+.pc-legend { margin-left: auto; color: #000; white-space: nowrap; }
+.pc-clock { min-width: 64px; height: 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #fff; }
+
+/* Menus */
+.pc-start-menu, .pc-menu { position: absolute; display: flex; background: #c0c0c0; box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #000, inset 2px 2px 0 #fff, inset -2px -2px 0 #808080; padding: 3px; }
+.pc-start-menu { left: 4px; bottom: 44px; min-width: 190px; animation: pc-start .15s ease-out; }
+.pc-banner { flex: 0 0 22px; margin-right: 3px; background: linear-gradient(0deg, #000080, #1084d0); color: #c0c0c0; font-weight: 700; writing-mode: vertical-rl; transform: rotate(180deg); padding: 4px 0; text-align: left; }
+.pc-menu { flex-direction: column; }
+.pc-start-menu .pc-menu { position: static; padding: 0; box-shadow: none; flex: 1; }
+.pc-menu-item { display: block; width: 100%; padding: 4px 14px; border: 0; background: none; text-align: left; white-space: nowrap; }
+.pc-menu-item:hover, .pc-menu-item:focus-visible { background: #000080; color: #fff; }
+.pc-menu-item[aria-disabled=true] { color: #808080; text-shadow: 1px 1px 0 #fff; pointer-events: none; }
+.pc-menu-item u { text-decoration: underline; }
+.pc-menubar { display: flex; gap: 2px; padding: 1px 2px; }
+.pc-menubar .pc-menu-item { width: auto; padding: 2px 6px; }
+
+/* Dialogs, progress, status */
+.pc-dialog-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .15); }
+.pc-dialog { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); min-width: 280px; }
+.pc-progress { height: 18px; box-sizing: border-box; padding: 2px; display: flex; gap: 2px; box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #fff; }
+.pc-progress-block { flex: 0 0 10px; background: #000080; }
+.pc-status { display: flex; gap: 2px; padding: 2px 0 0; }
+.pc-status > * { flex: 1; padding: 1px 4px; box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Tooltips: CSS only, no timers */
+[data-tip] { position: relative; }
+.pc-tip, [data-tip]:hover::after { padding: 1px 4px; border: 1px solid #000; background: #ffffe1; color: #000; white-space: nowrap; }
+[data-tip]:hover::after { content: attr(data-tip); position: absolute; left: 0; top: 100%; margin-top: 2px; z-index: 9; pointer-events: none; font-weight: 400; }
+
+/* Minimize and restore: three dotted outlines zooming */
+.pc-zoom { position: absolute; border: 1px dotted #fff; mix-blend-mode: difference; pointer-events: none; animation: pc-zoom .15s steps(3) both; }
+@keyframes pc-zoom { from { transform: scale(.2); opacity: 1; } to { transform: scale(1); opacity: 0; } }
+@keyframes pc-start { from { clip-path: inset(100% 0 0 0); } to { clip-path: inset(0); } }
+
+/* Info Highway */
+.pc-page { flex: 1; min-height: 0; overflow: auto; padding: 8px 12px; background: #fff; color: #000; font: 400 14px/1.4 'Times New Roman', Times, serif; user-select: text; -webkit-user-select: text; }
+.pc-page a { color: #0000ee; text-decoration: underline; cursor: pointer; }
+.pc-page a.visited { color: #551a8b; }
+.pc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.pc-card { display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 1px solid #808080; background: #fff; }
+.pc-thumb { width: 100%; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; background: #000; }
+.pc-throbber { width: 24px; height: 24px; flex: none; background-repeat: no-repeat; background-size: 192px 24px; background-position: 0 0; }
+.pc-throbber.loading { animation: pc-throb .8s steps(8) infinite; }
+@keyframes pc-throb { to { background-position: -192px 0; } }
+.pc-notepad { flex: 1; min-height: 0; resize: none; border: 0; padding: 2px 4px; background: white; color: #000; font-family: 'Courier Prime', ui-monospace, monospace; font-size: 13px; user-select: text; -webkit-user-select: text; }
+
+/* Scrollbars: 16 px, checkered track; Firefox only recolours */
+.office-desktop * { scrollbar-color: #c0c0c0 #e0e0e0; }
+.office-desktop ::-webkit-scrollbar { width: 16px; height: 16px; }
+.office-desktop ::-webkit-scrollbar-track { background: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px; }
+.office-desktop ::-webkit-scrollbar-thumb, .office-desktop ::-webkit-scrollbar-button { background: #c0c0c0; box-shadow: inset -1px -1px 0 #000, inset 1px 1px 0 #fff, inset -2px -2px 0 #808080, inset 2px 2px 0 #dfdfdf; }
+.office-desktop ::-webkit-scrollbar-button:single-button { display: block; width: 16px; height: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-zoom, .pc-start-menu, .pc-throbber.loading { animation: none; transition: none; }
+}
+
+/* v1 desktop rules, removed with the v1 desktop */
+.office-desktop :focus-visible { outline: 2px dotted #1d2b53; outline-offset: -4px; }
+.office-desktop-bevel { border: 0; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
+.office-desktop-bevel:active { box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; }
+.office-desktop-icon { position: absolute; left: 24px; top: 24px; width: 104px; height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; padding: 8px 0 0; border: 0; background: none; color: #ffffff; }
+.office-desktop-icon:focus-visible { outline-color: #ffffff; }
+.office-desktop-icon:focus .office-desktop-label { background: #1d2b53; }
+.office-desktop-console { position: relative; width: 64px; height: 48px; box-sizing: border-box; border: 2px solid #000; background: #c2c3c7; }
+.office-desktop-console::before { content: ''; position: absolute; left: 4px; top: 4px; width: 32px; height: 24px; border: 2px solid #000; background: #1d2b53; }
+.office-desktop-console::after { content: ''; position: absolute; left: 46px; top: 8px; width: 8px; height: 8px; background: #ff004d; box-shadow: 0 12px 0 #29adff; }
+.office-desktop-label { padding: 2px 4px; }
+.office-desktop-taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 6px; background: #c3c3c3; box-shadow: inset 0 2px 0 #ffffff; }
+.office-desktop-start { width: 88px; height: 32px; }
+.office-desktop-clock { width: 88px; height: 32px; display: flex; align-items: center; justify-content: center; box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; }
+.office-desktop-menu { position: absolute; left: 6px; bottom: 44px; width: 200px; height: 44px; box-sizing: border-box; padding: 4px; }
+.office-desktop-item { width: 100%; height: 100%; padding: 0 8px; border: 0; background: none; text-align: left; }
+.office-desktop-item:hover, .office-desktop-item:focus-visible { background: #1d2b53; color: #fff1e8; }
+.office-desktop-window { position: absolute; left: 220px; top: 8px; width: 640px; height: 580px; box-sizing: border-box; display: flex; flex-direction: column; padding: 2px; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
+.office-desktop-title { flex: 0 0 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 3px 0 8px; background: #1d2b53; color: #fff1e8; }
+.office-desktop-close { width: 20px; height: 20px; padding: 0; border: 0; background: #ff004d; color: #fff1e8; font-size: 14px; line-height: 20px; }
+.office-desktop-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.office-desktop-bar { flex: 0 0 28px; display: flex; align-items: center; gap: 4px; padding: 0 2px; box-sizing: border-box; background: #c3c3c3; box-shadow: inset 2px 2px 0 #ffffff, inset -2px -2px 0 #5a5a5a; }
+.office-desktop-bar > button { height: 22px; padding: 0 10px; }
+.office-desktop-paste { flex: 1; height: 22px; box-sizing: border-box; padding: 0 6px; border: 0; background: #ffffff; box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #ffffff; user-select: text; -webkit-user-select: text; }
+.office-desktop-note { margin: 0; padding: 4px 8px; background: #fff1e8; color: #ff004d; }
+.office-desktop-list { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 4px; list-style: none; background: #fff1e8; color: #1d2b53; }
+.office-desktop-list li { display: flex; align-items: center; gap: 8px; padding-right: 8px; }
+.office-desktop-cart { flex: 1; display: flex; align-items: baseline; gap: 12px; padding: 6px 8px; border: 0; background: none; text-align: left; }
+.office-desktop-cart small { color: #5f574f; font-size: 12px; }
+.office-desktop-cart:hover, .office-desktop-cart:focus-visible { background: #1d2b53; color: #fff1e8; }
+.office-desktop-cart:hover small, .office-desktop-cart:focus-visible small { color: #c2c3c7; }
+.office-desktop-link { color: #7e2553; font-size: 12px; white-space: nowrap; }
+.office-desktop-list li:last-child .office-desktop-link { padding: 8px; font-size: 16px; }
+.office-desktop-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000; color: #c2c3c7; }
+.office-desktop-stage > p { position: absolute; margin: 0; }
+.office-desktop-stage > iframe { position: relative; display: block; border: 0; }
