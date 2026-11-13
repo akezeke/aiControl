@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ICONS, PICO_PALETTE, paint, iconCanvas, stripUrl, cursorUrl } from '../client/office/pc-icons.js';
+import { ICONS, PICO_PALETTE, CURSORS, paint, iconCanvas, stripUrl, cursorCss } from '../client/office/pc-icons.js';
 
 // A canvas that records its size and rects, and a doc that hands them out.
 function fakeDoc() {
@@ -59,8 +59,20 @@ test('stripUrl puts frame k inside its own slot', () => {
   for (const [x, , rw] of doc.canvases[0].rects) { const k = Math.floor(x / w); assert.ok(x + rw <= (k + 1) * w); seen.add(k); }
   assert.equal(seen.size, 8);
 });
-test('cursorUrl is a data url', () => {
-  assert.match(cursorUrl(ICONS.hourglass, 2, fakeDoc()), /^data:/);
+test("the 90s pointers: each one's hot spot is one of its own pixels, and each falls back to the browser's own", () => {
+  for (const [name, c] of Object.entries(CURSORS)) {
+    const icon = ICONS[c.icon], [x, y] = c.hot;
+    assert.ok(icon && x < icon.w && y < icon.h, name); assert.notEqual(icon.rows[y][x], '.', name);
+  }
+  assert.deepEqual(Object.entries(CURSORS).map(([name, c]) => [name, c.icon, c.or]), [
+    ['arrow', 'pointer', 'default'], ['hand', 'hand', 'pointer'], ['text', 'ibeam', 'text'], ['wait', 'hourglass', 'wait'],
+  ]);
+  assert.deepEqual(CURSORS.arrow.hot, [0, 0], 'the tip clicks');
+});
+test('cursorCss: a 1x and a 2x image where the browser takes image-set, else the 1x alone; the hot spot in CSS px', () => {
+  assert.equal(cursorCss('hand', true, fakeDoc()), 'image-set(url(data:image/png;base64,16x21) 1x, url(data:image/png;base64,32x42) 2x) 5 0, pointer');
+  assert.equal(cursorCss('hand', false, fakeDoc()), 'url(data:image/png;base64,16x21) 5 0, pointer');
+  assert.equal(cursorCss('wait', false, fakeDoc()), 'url(data:image/png;base64,16x16) 8 8, wait');
 });
 test('the throbber frames differ, so the globe turns', () => {
   const rows = ICONS.throbber.map(f => f.rows.join('|'));

@@ -1,13 +1,15 @@
 /* Boss PC: a 90s desktop, laid out at 1080 × 640 and transformed onto the boss's monitor. Gray bevels on teal, system fonts only. */
 .office-desktop-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .office-desktop-layer > .office-desktop { pointer-events: auto; }
-.office-desktop { position: absolute; left: 0; top: 0; width: 1080px; height: 640px; transform-origin: 0 0; overflow: hidden; background: #008080; color: #000; font: 400 12px/1.2 Tahoma, 'MS Sans Serif', Arial, sans-serif; user-select: none; -webkit-user-select: none; }
+.office-desktop { position: absolute; left: 0; top: 0; width: 1080px; height: 640px; transform-origin: 0 0; overflow: hidden; background: #008080; color: #000; font: 400 12px/1.2 Tahoma, 'MS Sans Serif', Arial, sans-serif; user-select: none; -webkit-user-select: none; cursor: var(--pc-arrow, default); }
 .office-desktop[hidden], .office-desktop [hidden] { display: none; }
 /* Sitting down, the desktop fades in over the monitor's picture of it rather than popping in (atmosphere.css stills it). */
 .office-desktop:not([hidden]) { animation: pc-in 0.15s ease-out; }
 @keyframes pc-in { from { opacity: 0; } }
 .office-desktop button, .office-desktop input { margin: 0; font: inherit; color: inherit; }
-.office-desktop button { cursor: default; }
+/* The 90s pointers: desktop.js draws them into these variables at the first sit-down. The arrow throughout, buttons too. */
+.office-desktop button, .office-desktop button:disabled { cursor: var(--pc-arrow, default); }
+.pc-field, .pc-notepad { cursor: var(--pc-text, text); }
 .office-desktop :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
 
 /* Icons */
@@ -114,11 +116,12 @@
   background-attachment: local; }
 /* The page's white text is for the page: its buttons and fields keep theirs (.office-desktop's inherit would take it). */
 .pc-page :is(button, input) { color: #000; }
-.pc-page a { color: #00ffff; text-decoration: underline; cursor: pointer; }
+.pc-page.busy, .pc-page.busy * { cursor: var(--pc-wait, wait); }
+.pc-page a { color: #00ffff; text-decoration: underline; cursor: var(--pc-hand, pointer); }
 .pc-page a.visited { color: #ff80ff; }
 .pc-page h2 { color: #ffff00; }
 .pc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.pc-card { display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 4px ridge #c0c0c0; background: #000; cursor: pointer; }
+.pc-card { display: flex; flex-direction: column; gap: 2px; padding: 4px; border: 4px ridge #c0c0c0; background: #000; cursor: var(--pc-hand, pointer); }
 .pc-card.selected { border-image: linear-gradient(135deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f) 1; background: #400040; }
 .pc-thumb { width: 100%; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; background: #000; }
 .pc-throbber { width: 24px; height: 24px; flex: none; background-repeat: no-repeat; background-size: 192px 24px; background-position: 0 0; }

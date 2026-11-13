@@ -1,7 +1,7 @@
 // Info Highway: the boss PC's browser for the PICO-8 BBS, through this server's proxy routes. Fetched text only reaches the page
 // through textContent and attributes, there is never a frame (playing goes through onPlay), and nothing runs on its own: pages load
 // on a click or a key, and the throbber turns only while one loads. Codex and Claude agents are never told apart here.
-import { ICONS, paint, stripUrl, cursorUrl } from './pc-icons.js';
+import { ICONS, paint, stripUrl } from './pc-icons.js';
 import { cartPid, threadId, listLink, listUrl, bbsUrl, thumbName } from './carts.js';
 
 const FAIL = 'Info Highway cannot open this page. The information superhighway may be closed for repairs.';
@@ -69,7 +69,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
   const attrs = (n, props) => { for (const [k, v] of Object.entries(props)) { n.setAttribute(k, String(v)); n[k] = String(v); } };
 
   let hist = [], idx = -1, token = 0, busy = false, legendOn = false, sel = -1, cards = [], closeHandler = null;
-  let searchBox = null, primaryEl = null, installBtn = null, cursor = null;
+  let searchBox = null, primaryEl = null, installBtn = null;
   const visited = new Set();
   const page = () => hist[idx];
   // Where you were on each history entry you've left (its scroll and selected card), for Back and Forward to bring back. Not on
@@ -100,8 +100,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
   function setStatus() {
     statusEl.textContent = status();
     throbber.classList.toggle('loading', busy);
-    cursor ??= `url(${cursorUrl(ICONS.hourglass, 1, doc)}) 8 8, wait`;
-    pageEl.style.cursor = busy ? cursor : '';
+    pageEl.classList.toggle('busy', busy); // pc.css: the hourglass
     bar.replaceChildren(statusEl, ...(busy ? [progress] : []));
   }
 

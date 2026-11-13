@@ -9,7 +9,7 @@
 // NOT modelled:
 // - attribute/property links: setAttribute('class') vs classList/className, node.src vs attributes.src, value vs attribute;
 // - textContent neither clears nor aggregates children (it is a plain field);
-// - style is a plain object (no cssText, no shorthand expansion);
+// - style is a plain object with setProperty and getPropertyValue (no cssText, no shorthand expansion);
 // - a press focuses nothing (no default actions); focus() works on removed or hidden nodes (silently: no events), a node already
 //   out of the page keeps focus when moved, and activeElement starts null, not the body;
 // - no stopImmediatePropagation, no passive/signal options;
@@ -61,10 +61,15 @@ export function useDom(t) {
     doc.activeElement = doc.body;
     a.dispatch('blur', { bubbles: false, relatedTarget: null }); a.dispatch('focusout', { relatedTarget: null });
   };
+  // The real style's setProperty and getPropertyValue, kept off the plain object's own keys.
+  const styles = () => Object.defineProperties({}, {
+    setProperty: { value(name, value) { this[name] = value; } },
+    getPropertyValue: { value(name) { return this[name] ?? ''; } },
+  });
   function element(tag) {
     const classes = new Set();
     const node = {
-      tag, tagName: String(tag).toUpperCase(), parent: null, children: [], attributes: {}, style: {}, dataset: {}, hidden: false, textContent: '', value: '', type: '',
+      tag, tagName: String(tag).toUpperCase(), parent: null, children: [], attributes: {}, style: styles(), dataset: {}, hidden: false, textContent: '', value: '', type: '',
       classList: {
         add: (...names) => { for (const n of names) classes.add(n); },
         remove: (...names) => { for (const n of names) classes.delete(n); },
