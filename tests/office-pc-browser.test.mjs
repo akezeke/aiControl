@@ -89,6 +89,17 @@ test('✓ on installed carts, refreshed in place', async t => {
   assert.equal(marks(), 1); have = new Set(['c1-1', 'c2-1']); s.b.refreshInstalled(); assert.equal(marks(), 2);
   have = new Set(); s.b.refreshInstalled(); assert.equal(marks(), 0);
 });
+test('Back to a list is where you left it: scrolled as it was, the card you opened selected; a new page starts at the top', async t => {
+  const s = await loaded(t), page = find(s.b.node, n => n.classList.contains('pc-page'));
+  page.scrollTop = 400; s.cards()[7].dispatch('click'); await tick(); assert.equal(s.b.page().kind, 'game');
+  assert.equal(page.scrollTop, 0, 'a game page opens at its top');
+  page.scrollTop = 30; s.doc.activeElement = null; await s.b.back();
+  assert.equal(page.scrollTop, 400); assert.equal(s.cards()[7].classList.contains('selected'), true);
+  assert.equal(s.doc.activeElement, s.link(7)); assert.equal(s.b.selection().title, 'Cart 7');
+  s.key('ArrowRight'); assert.equal(s.b.selection().title, 'Cart 8', 'the keys go on from there');
+  await s.b.forward(); assert.equal(page.scrollTop, 30, 'Forward too');
+  await s.b.back(); s.button('Next »').dispatch('click'); await tick(); assert.equal(page.scrollTop, 0); assert.equal(s.b.selection(), null);
+});
 test('history: back, forward, cut off, close', async t => {
   const s = await loaded(t); assert.equal(s.button('◄ Back').disabled, true);
   s.link(0).dispatch('click'); await tick(); assert.equal(s.b.selection().kind, 'game');

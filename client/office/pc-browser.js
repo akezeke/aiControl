@@ -72,6 +72,10 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
   let searchBox = null, primaryEl = null, installBtn = null, cursor = null;
   const visited = new Set();
   const page = () => hist[idx];
+  // Where you were on each history entry you've left (its scroll and selected card), for Back and Forward to bring back. Not on
+  // the entry itself: Prev and Next copy a list's entry into the next page's.
+  const spots = new WeakMap();
+  const leave = () => { const p = page(); if (p) spots.set(p, { top: pageEl.scrollTop, sel }); };
 
   // Chrome: toolbar, address bar, page, status bar. The menu bar is the window's (menus()).
   const back = button('◄ Back', () => back_()), forward = button('► Forward', () => forward_());
@@ -200,18 +204,20 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
   // root, where focus falls back) or nowhere.
   function focusPrimary() {
     const a = doc.activeElement;
-    if (!a || a === doc.body || node.contains(a) || a.contains?.(node)) primaryEl?.focus();
+    if (!a || a === doc.body || node.contains(a) || a.contains?.(node)) primaryEl?.focus({ preventScroll: true });
   }
-  // Shows the history entry; only a page without its data fetches.
+  // Shows the history entry; only a page without its data fetches. A page opens at its top, one you come back to where you left it.
   function show(p) {
     const mine = ++token; sel = -1;
     busy = (p.kind === 'list' && !p.carts) || (p.kind === 'game' && !p.loaded);
     render();
+    const spot = spots.get(p); pageEl.scrollTop = spot?.top ?? 0;
+    if (!busy && p.kind === 'list' && cards[spot?.sel]) { select(spot.sel); primaryEl = cards[sel].link; }
     if (busy) return fetchPage(p, mine);
     focusPrimary(); return Promise.resolve();
   }
   function visit(p) {
-    hist.length = idx + 1; hist.push(p); idx++;
+    leave(); hist.length = idx + 1; hist.push(p); idx++;
     visited.add(addressOf(p)); return show(p);
   }
   const pageOf = r => r.kind === 'cart' ? { kind: 'game', pid: r.pid } : r.kind === 'thread' ? { kind: 'game', tid: r.tid }
@@ -224,8 +230,8 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
     return visit(pageOf(r));
   }
   const home = () => go({ kind: 'list', tab: 'top', page: 1, q: '' });
-  const back_ = () => idx > 0 ? (idx--, show(page())) : Promise.resolve();
-  const forward_ = () => idx < hist.length - 1 ? (idx++, show(page())) : Promise.resolve();
+  const back_ = () => idx > 0 ? (leave(), idx--, show(page())) : Promise.resolve();
+  const forward_ = () => idx < hist.length - 1 ? (leave(), idx++, show(page())) : Promise.resolve();
   function refresh() {
     const p = page(); if (!p) return Promise.resolve();
     if (p.kind === 'error') return retry();
