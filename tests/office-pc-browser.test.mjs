@@ -68,7 +68,7 @@ test('opens on the Top 200 page 1, its tab first, and says so', async t => {
 });
 test('the hourglass shows on the page while loading only', async t => {
   const s = setup(t), page = find(s.b.node, n => n.classList.contains('pc-page'));
-  const p = s.b.home(); assert.equal(page.classList.contains('busy'), true); await p; assert.equal(page.classList.contains('busy'), false);
+  const p = s.b.home(); assert.match(page.style.cursor, /^url\(.*\)/); await p; assert.equal(page.style.cursor, '');
 });
 test('lazy thumbnails, tooltips and the cards', async t => {
   const s = await loaded(t), imgs = findAll(s.b.node, n => n.tag === 'img');
@@ -134,7 +134,7 @@ test('a game page from a card shows the row at once and the 256 px thumbnail', a
   assert.deepEqual([img.width, img.height, img.style.imageRendering], ['256', '256', 'pixelated']);
   assert.ok(find(s.b.node, n => n.textContent === '♥ 2'));
 });
-// The whole card is the link (pc.css gives it the hand): its thumbnail or author opens the page too, once.
+// The whole card is the link (pc.css gives it the pointer): its thumbnail or author opens the page too, once.
 test('a click anywhere on a card opens its page', async t => {
   const s = await loaded(t), n = s.calls.length; find(s.cards()[2], n => n.tag === 'img').dispatch('click');
   assert.equal(s.b.title(), 'Cart 2 - Info Highway'); await tick(); assert.equal(s.calls.length, n + 1);

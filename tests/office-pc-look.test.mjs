@@ -31,17 +31,3 @@ test('title, throbber and taskbar values', () => {
   assert.match(css, /\.pc-throbber\.loading[^}]*steps\(8\)/);
   assert.match(css, /\.pc-taskbar \{[^}]*height: 44px/);
 });
-// The 90s pointers (desktop.js sets the variables at the first sit-down): the arrow throughout, buttons too (Windows had no hand
-// on a button), the hand on links and cards, the I-beam in text, and the hourglass all over a page that is loading.
-test('the pointers', () => {
-  const cursors = {};
-  for (const rule of css.replace(/\/\*[\s\S]*?\*\//g, '').split('}')) {
-    const [selectors, body = ''] = rule.split('{'), value = body.match(/(?:^|;)\s*cursor: ([^;]+)/)?.[1].trim();
-    if (value) for (const s of selectors.split(',')) cursors[s.trim()] = value;
-  }
-  const arrow = 'var(--pc-arrow, default)', hand = 'var(--pc-hand, pointer)', text = 'var(--pc-text, text)', wait = 'var(--pc-wait, wait)';
-  assert.deepEqual(cursors, {
-    '.office-desktop': arrow, '.office-desktop button': arrow, '.office-desktop button:disabled': arrow,
-    '.pc-field': text, '.pc-notepad': text, '.pc-page a': hand, '.pc-card': hand, '.pc-page.busy': wait, '.pc-page.busy *': wait,
-  });
-});

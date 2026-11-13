@@ -1,4 +1,4 @@
-// Pixel art for the boss PC: desktop icons, dialog icons, the mouse pointers and the loading throbber, drawn in PICO-8's 16 colours.
+// Pixel art for the boss PC: desktop icons, dialog icons, the hourglass cursor and the loading throbber, drawn in PICO-8's 16 colours.
 // Each icon is { w, h, rows }; a row character is a PICO_PALETTE index in hex, and '.' is transparent. (Generated once from a small
 // drawing script; the globe and throbber are one wrap-around land map on a sphere, the throbber turned an eighth of a turn per frame so each landmass slides left, entering at the right limb; the globe is frame 0 at 32 px.)
 export const PICO_PALETTE = ['#000000', '#1d2b53', '#7e2553', '#008751', '#ab5236', '#5f574f', '#c2c3c7', '#fff1e8', '#ff004d', '#ffa300', '#ffec27', '#00e436', '#29adff', '#83769c', '#ff77a8', '#ffccaa'];
@@ -135,71 +135,6 @@ export const ICONS = {
     '0a19999990',
     '0a99999990',
     '0000000000',
-  ] },
-  // The pointers: the arrow, the hand on a link, the I-beam in text (outlined, so it shows on a selection too), and the hourglass.
-  pointer: { w: 12, h: 19, rows: [
-    '0...........',
-    '00..........',
-    '070.........',
-    '0770........',
-    '07770.......',
-    '077770......',
-    '0777770.....',
-    '07777770....',
-    '077777770...',
-    '0777777770..',
-    '07777777770.',
-    '077777700000',
-    '07770770....',
-    '07700770....',
-    '070..0770...',
-    '00...0770...',
-    '0.....0770..',
-    '......0770..',
-    '.......00...',
-  ] },
-  hand: { w: 16, h: 21, rows: [
-    '.....00.........',
-    '....0770........',
-    '....0770........',
-    '....0770........',
-    '....0770........',
-    '....077000......',
-    '....077077000...',
-    '....07707707700.',
-    '000.077077077070',
-    '0770077077077070',
-    '0777077777777770',
-    '.077777777777770',
-    '..07777777777770',
-    '..07777777777770',
-    '...0777777777770',
-    '...077777777770.',
-    '....07777777770.',
-    '....07777777770.',
-    '.....077777770..',
-    '.....077777770..',
-    '.....000000000..',
-  ] },
-  ibeam: { w: 7, h: 18, rows: [
-    '7777777',
-    '7007007',
-    '7770777',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '..707..',
-    '7770777',
-    '7007007',
-    '7777777',
   ] },
   hourglass: { w: 16, h: 16, rows: [
     '..000000000000..',
@@ -590,16 +525,4 @@ export function stripUrl(frames, scale, doc = document) {
   frames.forEach((frame, i) => paint(g, frame, i * frame.w * scale, 0, scale));
   return canvas.toDataURL();
 }
-// The PC's mouse pointers: the icon, its hot spot (the pixel that clicks) and the browser's own pointer should the image not load.
-export const CURSORS = {
-  arrow: { icon: 'pointer', hot: [0, 0], or: 'default' },
-  hand: { icon: 'hand', hot: [5, 0], or: 'pointer' },
-  text: { icon: 'ibeam', hot: [3, 9], or: 'text' },
-  wait: { icon: 'hourglass', hot: [8, 8], or: 'wait' },
-};
-// A pointer as a CSS cursor. With image-set (sets), a 2x image too, so a high-DPI screen gets whole pixels rather than a blur; the
-// hot spot is in CSS px either way.
-export function cursorCss(name, sets, doc = document) {
-  const { icon, hot: [x, y], or } = CURSORS[name], url = scale => `url(${iconCanvas(ICONS[icon], scale, doc).toDataURL()})`;
-  return `${sets ? `image-set(${url(1)} 1x, ${url(2)} 2x)` : url(1)} ${x} ${y}, ${or}`;
-}
+export const cursorUrl = (icon, scale, doc = document) => iconCanvas(icon, scale, doc).toDataURL();

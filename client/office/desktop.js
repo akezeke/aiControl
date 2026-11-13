@@ -7,7 +7,7 @@
 // dialogs, a rename and the timers.
 // The pausing rule: every render pauses the player unless seated and some of its frame is uncovered (W.gameHidden), so a
 // minimised, covered or closed game never runs.
-import { PICO_PALETTE, ICONS, CURSORS, cursorCss, iconCanvas, paint } from './pc-icons.js';
+import { PICO_PALETTE, ICONS, iconCanvas, paint } from './pc-icons.js';
 import { STARTERS, thumbName, listUrl } from './carts.js';
 import * as W from './pc-windows.js';
 import { createPcStore } from './pc-store.js';
@@ -846,14 +846,6 @@ export function createDesktop(container, {
     if (ws.windows.browser.open && !browser.page()) browser.home();
     render();
   }
-  // The 90s pointers, as variables for pc.css: drawn once, at the first sit-down. A browser that takes image-set in a cursor gets
-  // the 2x images as well.
-  let pointers = false;
-  function drawPointers() {
-    pointers = true;
-    const sets = globalThis.CSS?.supports?.('cursor', 'image-set(url("p.png") 1x) 0 0, auto') ?? false;
-    for (const name of Object.keys(CURSORS)) root.style.setProperty(`--pc-${name}`, cursorCss(name, sets));
-  }
   // Each frame while seated: onto the monitor's four corners on screen (top-left, top-right, bottom-right, bottom-left).
   function place(corners) {
     matrix = fitTransform(corners, LAYOUT.w, LAYOUT.h);
@@ -861,7 +853,6 @@ export function createDesktop(container, {
     if (next !== transform) root.style.transform = transform = next;
     if (seated) return;
     seated = true; root.hidden = false;
-    if (!pointers) drawPointers();
     tickClock();
     select('browser');
     // A failed load says why once; only the built-ins show, and the next sit-down tries again.

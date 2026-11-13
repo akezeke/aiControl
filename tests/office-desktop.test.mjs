@@ -112,7 +112,7 @@ async function sat(t, opts = {}) {
     onShutDown: () => { stood++; }, api, storage: memory(), online: () => true, now: () => NOW,
     reduced: () => opts.reduced ?? false, open: u => opened.push(u),
   });
-  if (opts.seat !== false) { d.place(rect(0, 0, 1080, 640)); await tick(); }
+  d.place(rect(0, 0, 1080, 640)); await tick();
   return { d, doc, timers, api, opened, stood: () => stood };
 }
 
@@ -408,15 +408,6 @@ test('salaries.txt follows the office only while it can be seen', async t => {
   click(button(d.root, 'salaries.txt - Notepad', '_')); d.agents([SESSION, OTHER]); assert.equal(pad.value, one, 'minimized');
   click(task(d.root, 'salaries.txt - Notepad')); assert.equal(pad.value.split('\n').length, one.split('\n').length + 1, 'rebuilt when shown');
   const two = pad.value; await openBrowser(d); d.agents([SESSION]); assert.equal(pad.value, two, 'covered');
-});
-test('the 90s pointers are drawn at the first sit-down, for pc.css: not before, and not again', async t => {
-  const { d, doc } = await sat(t, { seat: false }), names = ['--pc-arrow', '--pc-hand', '--pc-text', '--pc-wait'];
-  const canvases = []; const make = doc.createElement; doc.createElement = tag => { if (tag === 'canvas') canvases.push(tag); return make(tag); };
-  assert.deepEqual(names.map(n => d.root.style[n]), [undefined, undefined, undefined, undefined]); assert.equal(canvases.length, 0);
-  d.place(rect(0, 0, 1080, 640)); await tick();
-  assert.deepEqual(names.map(n => d.root.style[n].match(/^url\(data:.*\) \d+ \d+, ([a-z]+)$/)?.[1]), ['default', 'pointer', 'text', 'wait']);
-  const drawn = canvases.length; d.hide(); d.place(rect(0, 0, 1080, 640)); await tick();
-  assert.equal(canvases.length, drawn, 'the second sit-down draws none');
 });
 test('clock: one timeout to the next minute while seated, none once standing', async t => {
   const { d, timers } = await sat(t);
