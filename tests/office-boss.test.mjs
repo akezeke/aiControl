@@ -167,6 +167,25 @@ test("seated, the desktop's laid over the monitor, centred and 92% of the view",
     assert.ok(fill > 0.91 && fill < 0.93, `fills ${fill}`);
   }
 });
+test("the boss's monitor shows its own texture on its glass, not a cell of the shared page", t => {
+  noDocument(t);
+  const boss = build(emptyRoom(14)).boss, glass = boss.screen.children.find(c => c.material?.map === boss.texture);
+  assert.ok(glass, 'a mesh on the glass with the monitor texture');
+  assert.equal(glass.geometry.parameters.width, 0.54); assert.equal(glass.geometry.parameters.height, 0.32);
+});
+// The glass covers 92% of the view across or down once you're seated: sitting down shouldn't blow up a small picture.
+test("standing up draws your desktop as sharp as the seated glass shows it, at most twice the layout; a friend's game stays monitor-sized", t => {
+  noDocument(t);
+  const annex = build(emptyRoom(14)).boss, cam = camera(), game = createBossDesk({ annex, desktop: stubDesktop(), camera: cam, fonts });
+  const size = () => [annex.texture.image.width, annex.texture.image.height];
+  const sitAndStand = (width, height) => { Object.assign(cam.userData.canvas, { width, height }); atMonitor(cam, game); game.enter(); game.update(0.2, { still: true, friend: null, arrived: true }); game.leave(); return size(); };
+  // 1600 × 900 device px: the glass is 0.92 × 900 × 1080 / 640 = 1397.25 across.
+  assert.deepEqual(sitAndStand(1600, 900), [1397, 828]);
+  game.update(0.2, { still: true, friend: 'f1', arrived: false });
+  assert.deepEqual(size(), [432, 256], "a friend's game, ten times a second, at a monitor's own size");
+  assert.deepEqual(sitAndStand(3200, 1800), [2160, 1280], 'at most twice the layout');
+  assert.deepEqual(sitAndStand(400, 225), [432, 256], "never under a monitor's own size");
+});
 // A friend's generic desktop is drawn in Silkscreen; the real one's in system fonts. Its loading only makes the picture stale:
 // the next update that can see the monitor draws it again, never the load itself.
 test('the monitor is drawn again once Silkscreen has loaded', async t => {

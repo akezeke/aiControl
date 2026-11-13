@@ -615,8 +615,7 @@ export function createRoom(scene, renderer) {
     for (const w of [back, front, left, right]) bake(w, [windows]);
   }
 
-  root.add(room.kitchen.group, room.boss.group);
-  room.boss.glass = screens.add(room.boss.screen, room.boss.texture, 0.54, 0.32);
+  root.add(room.kitchen.group, room.boss.group); // the boss's monitor has its own glass (boss.js), not a cell of the screens' page
   return room;
 }
 

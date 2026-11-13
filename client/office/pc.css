@@ -3,6 +3,9 @@
 .office-desktop-layer > .office-desktop { pointer-events: auto; }
 .office-desktop { position: absolute; left: 0; top: 0; width: 1080px; height: 640px; transform-origin: 0 0; overflow: hidden; background: #008080; color: #000; font: 400 12px/1.2 Tahoma, 'MS Sans Serif', Arial, sans-serif; user-select: none; -webkit-user-select: none; }
 .office-desktop[hidden], .office-desktop [hidden] { display: none; }
+/* Sitting down, the desktop fades in over the monitor's picture of it rather than popping in (atmosphere.css stills it). */
+.office-desktop:not([hidden]) { animation: pc-in 0.15s ease-out; }
+@keyframes pc-in { from { opacity: 0; } }
 .office-desktop button, .office-desktop input { margin: 0; font: inherit; color: inherit; }
 .office-desktop button { cursor: default; }
 .office-desktop :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }

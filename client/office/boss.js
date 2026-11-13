@@ -88,6 +88,10 @@ export function createBossOffice({ desk, onSit, onMove }) {
   group.updateMatrixWorld(true);
 
   const texture = canvasTexture(SCREEN_W, SCREEN_H, (g, w, h) => { g.fillStyle = '#0d0e12'; g.fillRect(0, 0, w, h); });
+  // The glass shows its own texture, not a cell of the shared page (screens.js): sitting down brings the camera right up to it,
+  // so createBossDesk draws your desktop far sharper than a cell's SCREEN_W. The bezel just behind takes the clicks.
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(GLASS_W, GLASS_H), new THREE.MeshBasicMaterial({ map: texture }));
+  face.raycast = () => {}; desk.screen.add(face);
   const colliders = [...boxes.walls, ...desk.solids.map(box => box.clone().applyMatrix4(desk.group.matrixWorld)), ...vanity.colliders];
 
   let t = 0;
@@ -123,18 +127,25 @@ const seedOf = id => { let h = 0x811c9dc5; for (let i = 0; i < id.length; i++) h
 // It's drawn only when it can be seen: never under the laid-over desktop, once as that's taken down or you stand up, and
 // otherwise on a change (version(), or a font loading) or the minute's turn while it's in view. `now`: Date.now, for the clock.
 export function createBossDesk({ annex, desktop, camera, fonts = document.fonts, now = () => Date.now() }) {
-  const g = annex.texture.image.getContext('2d'), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: camera.fov, hands: false };
+  const canvas = annex.texture.image, g = canvas.getContext('2d'), pose = { from: new THREE.Vector3(), look: new THREE.Vector3(), fov: camera.fov, hands: false };
   const corners = [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([x, y]) => ({ local: new THREE.Vector3(x * GLASS_W / 2, y * GLASS_H / 2, 0), at: new THREE.Vector3(), css: { x: 0, y: 0 } }));
   let seated = false, shown = false, t = 0, look = 0, mode = null, minute = -1;
-  // `paint(clock)` draws one picture.
-  const draw = paint => {
-    g.save(); g.setTransform(SCREEN_W / LAYOUT.w, 0, 0, SCREEN_W / LAYOUT.w, 0, 0); paint(clockOf(new Date(now()))); g.restore();
+  // `paint(clock)` draws one picture, `scale` times LAYOUT. A new size is a new texture on the GPU, so the old one's let go.
+  const draw = (paint, scale) => {
+    const w = Math.round(LAYOUT.w * scale), h = Math.round(LAYOUT.h * scale);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; annex.texture.dispose(); }
+    g.save(); g.setTransform(scale, 0, 0, scale, 0, 0); paint(clockOf(new Date(now()))); g.restore();
     annex.texture.needsUpdate = true;
   };
+  // Your desktop gets as many pixels as the glass covers once you're seated (FILL of the view across or down, in the renderer's
+  // own pixels), at most twice LAYOUT, so the camera coming in shows it sharp. A friend's game, drawn ten times a second, is
+  // SCREEN_W wide like every other monitor.
+  const SMALL = SCREEN_W / LAYOUT.w;
+  const sharp = () => { const { width = 0, height = 0 } = camera.userData.canvas; return Math.min(2, Math.max(SMALL, FILL * Math.min(width, height * LAYOUT.w / LAYOUT.h) / LAYOUT.w)); };
   const mine = clock => drawDesktop(g, desktop.view(), { clock, image: desktop.image });
   const theirs = (friend, at) => clock => drawGeneric(g, { window: 'pico', cart: friend, start: false }, { clock, game: fakeCart(seedOf(friend), at) });
   // The desktop as it is now, and what it was drawn at.
-  const drawMine = () => { draw(mine); mode = `mine ${desktop.version()}`; minute = Math.floor(now() / 60_000); };
+  const drawMine = () => { draw(mine, sharp()); mode = `mine ${desktop.version()}`; minute = Math.floor(now() / 60_000); };
   // Silkscreen (the generic desktop's font) loading only makes the picture stale: the next update that can see it draws it again.
   fonts?.load('16px Silkscreen').then(() => { mode = null; }, () => {});
   const place = () => {
@@ -174,7 +185,7 @@ export function createBossDesk({ annex, desktop, camera, fonts = document.fonts,
       if (t < look) return;
       look = t + 0.1; camera.updateMatrixWorld(); if (!viewTest(camera)(annex.screen)) return;
       if (!visitor) { drawMine(); return; }
-      draw(theirs(friend, still ? 0 : t)); mode = next; minute = turned;
+      draw(theirs(friend, still ? 0 : t), SMALL); mode = next; minute = turned;
     },
   };
 }
