@@ -56,6 +56,7 @@ import './ui-refinements.css';
 import './workflow.css';
 import { Workflow } from './workflow.js';
 import { filterFeed, quietSession, lastObservedActivity } from './workflow-data.js';
+import { canUsePasskeys, cancelPasskey, passkeyError, unlockWithPasskey, passkeySettings } from './passkeys.js';
 
 const app = document.querySelector('#app');
 const firstVisit = !hasSavedTheme();
@@ -66,11 +67,12 @@ const statValues = new Map();
 const previousStatuses = new Map();
 // Older history fetched for an open panel: session id → { limit, messages, more }.
 const older = new Map();
-// What an open panel lists from the server, listed again while its session changes.
+// What an open panel lists from the server, listed again while its session changes. Not while it has no transcript
+// (a Claude session before its first prompt): the server can only answer 409 until one is written.
 function sessionList(cache, session, kind) {
   let entry = cache.get(session.id);
   if (!entry) cache.set(session.id, entry = { items: [], changed: null, fetched: 0 });
-  if ((entry.changed !== session.updatedAt || (kind === 'images' && !entry.items.length)) && Date.now() - entry.fetched > 10_000) {
+  if (session.messagesState !== 'unavailable' && (entry.changed !== session.updatedAt || (kind === 'images' && !entry.items.length)) && Date.now() - entry.fetched > 10_000) {
     entry.changed = session.updatedAt; entry.fetched = Date.now();
     api(`sessions/${encodeURIComponent(session.id)}/${kind}`).then(result => {
       const items = result[kind] || [];
@@ -278,13 +280,14 @@ async function api(path, body, options = {}) {
   const response = await fetch(`/api/${path}`, { credentials: 'same-origin', cache: 'no-store', ...options, ...(body !== undefined ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrf }, body: JSON.stringify(body) } : {}) });
   const data = await response.json();
   if (!response.ok) {
-    if (response.status === 401 && path !== 'login') showLogin();
+    if (response.status === 401 && path !== 'login' && !path.startsWith('passkeys/login/')) showLogin();
     throw Object.assign(new Error(data.error || 'Could not connect to AI Control.'), { code: data.code, taken: data.taken });
   }
   return data;
 }
 
 function showLogin(message = '') {
+  cancelPasskey();
   workflow.reset();
   palette?.close(); closeAccountMenu?.();
   disposeHistory();
@@ -302,11 +305,23 @@ function showLogin(message = '') {
   const input = el('input'); input.id = 'password'; input.type = 'password'; input.autocomplete = 'current-password'; input.required = true; input.placeholder = 'Enter your password'; input.maxLength = 1024; input.setAttribute('aria-label', 'PIN or password');
   const error = el('p', 'form-error', message); error.setAttribute('role', 'alert');
   const submit = el('button', 'primary', 'Unlock'); submit.type = 'submit';
-  form.append(input, error, submit);
+  let busy = false;
+  const passkey = button('Use passkey', 'quiet-button passkey-unlock', async () => {
+    if (busy) return;
+    setBusy(true); error.textContent = '';
+    try { const result = await unlockWithPasskey(api); if (form.isConnected) await unlocked(result); }
+    catch (e) { if (form.isConnected) error.textContent = passkeyError(e); }
+    finally { setBusy(false); }
+  }, 'key');
+  passkey.hidden = true; passkey.title = 'Unlock with Face ID, Touch ID or a passkey';
+  const setBusy = value => { busy = value; submit.disabled = passkey.disabled = input.disabled = value; submit.textContent = value ? 'Unlocking…' : 'Unlock'; form.setAttribute('aria-busy', String(value)); };
+  const unlocked = async result => { input.value = ''; state.csrf = result.csrf; state.lastActivity = Date.now(); showWorkspace(); await refresh(); };
+  form.append(passkey, input, error, submit);
   form.onsubmit = async event => {
-    event.preventDefault(); submit.disabled = true; submit.textContent = 'Unlocking…'; error.textContent = '';
-    try { const result = await api('login', { password: input.value }); input.value = ''; state.csrf = result.csrf; state.lastActivity = Date.now(); showWorkspace(); await refresh(); }
-    catch (e) { error.textContent = e.message; submit.disabled = false; submit.textContent = 'Unlock'; }
+    event.preventDefault(); if (busy) return; setBusy(true); error.textContent = '';
+    try { const result = await api('login', { password: input.value }); if (form.isConnected) await unlocked(result); }
+    catch (e) { if (form.isConnected) error.textContent = e.message; }
+    finally { setBusy(false); }
   };
   card.append(form); screen.append(card);
   app.append(screen);
@@ -317,6 +332,7 @@ function showLogin(message = '') {
     const pin = data.kind === 'pin'; input.setAttribute('aria-label', pin ? 'PIN' : 'Password');
     input.inputMode = pin ? 'numeric' : 'text'; input.placeholder = pin ? 'Enter your PIN' : 'Enter your password';
     input.maxLength = pin ? 8 : 1024;
+    passkey.hidden = !canUsePasskeys() || !data.passkeys?.enabled;
   }).catch(() => {});
 }
 
@@ -1490,6 +1506,7 @@ function renderAccessPanel() {
     const label = el('label', '', title), input = el('input'); input.name = name; input.type = 'password'; input.required = true; input.maxLength = 1024; input.autocomplete = autocomplete;
     label.append(input); form.append(label); fields[name] = input;
   }
+  form.insertBefore(passkeySettings({ api, el, button, current: fields.current }), form.children[1]);
   // The number keyboard is opt-in: on a phone it has no letters, so a password couldn't be typed.
   const keyboard = el('label', 'keyboard-choice'); const pinMode = el('input'); pinMode.type = 'checkbox'; pinMode.onchange = () => { fields.next.inputMode = fields.repeat.inputMode = pinMode.checked ? 'numeric' : 'text'; }; keyboard.append(pinMode, document.createTextNode('Use the PIN number keyboard')); form.append(keyboard);
   const error = el('p', 'form-error'); error.setAttribute('role', 'alert');

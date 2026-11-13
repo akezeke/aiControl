@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createServer as createViteServer } from 'vite';
 import { Auth, savePassword } from '../server/auth.mjs';
+import { Passkeys } from '../server/passkeys.mjs';
 import { RequestStore, fail } from '../server/requests.mjs';
 import { createHandler } from '../server/http.mjs';
 import { folderPath } from '../server/folders.mjs';
@@ -301,7 +302,7 @@ const port = Number(process.env.DEMO_PORT) || 47842;
 const demo = await createDemoServices({ calm: process.argv.includes('--calm'), withLost: process.argv.includes('--lost') });
 const origins = [`http://127.0.0.1:${port}`, `http://localhost:${port}`];
 const vite = await createViteServer({ configFile: join(root, 'vite.config.mjs'), server: { middlewareMode: true, hmr: false, allowedHosts: ['127.0.0.1', 'localhost'] } });
-const server = createServer(createHandler({ ...demo, origin: origins, vite: vite.middlewares }));
+const server = createServer(createHandler({ ...demo, passkeys: new Passkeys(demo.auth), origin: origins, vite: vite.middlewares }));
 // Office meetings, as server/main.mjs: pages' live links, and the floor's 2 s tick (it goes up only while this demo hosts).
 const live = liveUpgrade({ auth: demo.auth, origins, hosts: origins.map(o => new URL(o).host), online: demo.online }); server.on('upgrade', live);
 const meeting = setInterval(() => demo.online.floor(() => { const { sessions, office } = demo.snapshot(); return { sessions, office }; }), 2000);

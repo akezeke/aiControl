@@ -271,6 +271,15 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .access-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .access-form label.keyboard-choice { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; }
 .access-form .primary { min-height: 44px; }
+.passkey-settings { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-block: 1px solid var(--line); }
+.passkey-heading, .passkey-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.passkey-heading > span { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.passkey-row > span { min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.passkey-row .quiet-button { flex: none; min-height: 40px; padding: 6px 9px; font-size: 12px; }
+.passkey-list { display: flex; flex-direction: column; gap: 6px; }
+.passkey-list:empty, .passkey-error:empty { display: none; }
+.passkey-note { margin: 0; font-size: 12px; }
+.login-form .passkey-unlock { min-height: 44px; }
 
 /* Chat panel: compact header, history fills the rest, requests or composer below. */
 .detail-panel.chat-panel { display: flex; flex-direction: column; height: 100dvh; padding: 0; overflow: hidden; }
