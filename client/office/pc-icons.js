@@ -1,4 +1,4 @@
-// Pixel art for the boss PC: desktop icons, dialog icons, the hourglass cursor and the loading throbber, drawn in PICO-8's 16 colours.
+// Pixel art for the boss PC: desktop icons, dialog icons and the loading throbber, drawn in PICO-8's 16 colours.
 // Each icon is { w, h, rows }; a row character is a PICO_PALETTE index in hex, and '.' is transparent. (Generated once from a small
 // drawing script; the globe and throbber are one wrap-around land map on a sphere, the throbber turned an eighth of a turn per frame so each landmass slides left, entering at the right limb; the globe is frame 0 at 32 px.)
 export const PICO_PALETTE = ['#000000', '#1d2b53', '#7e2553', '#008751', '#ab5236', '#5f574f', '#c2c3c7', '#fff1e8', '#ff004d', '#ffa300', '#ffec27', '#00e436', '#29adff', '#83769c', '#ff77a8', '#ffccaa'];
@@ -135,24 +135,6 @@ export const ICONS = {
     '0a19999990',
     '0a99999990',
     '0000000000',
-  ] },
-  hourglass: { w: 16, h: 16, rows: [
-    '..000000000000..',
-    '.09999999999990.',
-    '.09999999999990.',
-    '..007777777700..',
-    '....07aaaa70....',
-    '.....07aa70.....',
-    '......0770......',
-    '......0770......',
-    '......0770......',
-    '......0aa0......',
-    '.....0aaaa0.....',
-    '....0aaaaaa0....',
-    '..007aaaaaa700..',
-    '.09999999999990.',
-    '.09999999999990.',
-    '..000000000000..',
   ] },
   throbber: [
   { w: 24, h: 24, rows: [
@@ -525,4 +507,3 @@ export function stripUrl(frames, scale, doc = document) {
   frames.forEach((frame, i) => paint(g, frame, i * frame.w * scale, 0, scale));
   return canvas.toDataURL();
 }
-export const cursorUrl = (icon, scale, doc = document) => iconCanvas(icon, scale, doc).toDataURL();

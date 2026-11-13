@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ICONS, PICO_PALETTE, paint, iconCanvas, stripUrl, cursorUrl } from '../client/office/pc-icons.js';
+import { ICONS, PICO_PALETTE, paint, iconCanvas, stripUrl } from '../client/office/pc-icons.js';
 
 // A canvas that records its size and rects, and a doc that hands them out.
 function fakeDoc() {
@@ -33,7 +33,7 @@ test('paint draws one rect per run and skips transparent pixels', () => {
   assert.deepEqual(calls.filter(c => c[0] === 'rect'), [['rect', 10, 20, 4, 2], ['rect', 16, 20, 2, 2]]);
 });
 test('icons have the sizes the brief gives', () => {
-  const size = { console: 16, hourglass: 16, arrow: 10, globe: 32, notepad: 32, cart: 32, info: 32, warn: 32, error: 32, question: 32 };
+  const size = { console: 16, arrow: 10, globe: 32, notepad: 32, cart: 32, info: 32, warn: 32, error: 32, question: 32 };
   for (const [name, n] of Object.entries(size)) assert.deepEqual([ICONS[name].w, ICONS[name].h], [n, n], name);
   for (const frame of ICONS.throbber) assert.deepEqual([frame.w, frame.h], [24, 24]);
 });
@@ -58,9 +58,6 @@ test('stripUrl puts frame k inside its own slot', () => {
   const w = 24 * 2, seen = new Set();
   for (const [x, , rw] of doc.canvases[0].rects) { const k = Math.floor(x / w); assert.ok(x + rw <= (k + 1) * w); seen.add(k); }
   assert.equal(seen.size, 8);
-});
-test('cursorUrl is a data url', () => {
-  assert.match(cursorUrl(ICONS.hourglass, 2, fakeDoc()), /^data:/);
 });
 test('the throbber frames differ, so the globe turns', () => {
   const rows = ICONS.throbber.map(f => f.rows.join('|'));

@@ -66,9 +66,9 @@ test('opens on the Top 200 page 1, its tab first, and says so', async t => {
   assert.equal(find(s.b.node, n => n.classList.contains('pc-throbber')).classList.contains('loading'), false);
   assert.equal(s.cards().length, 30);
 });
-test('the hourglass shows on the page while loading only', async t => {
+test("the system's busy pointer shows on the page while loading only", async t => {
   const s = setup(t), page = find(s.b.node, n => n.classList.contains('pc-page'));
-  const p = s.b.home(); assert.match(page.style.cursor, /^url\(.*\)/); await p; assert.equal(page.style.cursor, '');
+  const p = s.b.home(); assert.equal(page.style.cursor, 'wait'); await p; assert.equal(page.style.cursor, '');
 });
 test('lazy thumbnails, tooltips and the cards', async t => {
   const s = await loaded(t), imgs = findAll(s.b.node, n => n.tag === 'img');
