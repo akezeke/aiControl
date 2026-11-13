@@ -501,6 +501,9 @@ test('a numbered dialog on Claude’s screen reads as its question, details and 
   // A long option wraps onto an indented row.
   assert.deepEqual(terminalDialog(['────────', ' Bash command', '   npm test', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. Yes, and don’t ask again for npm test commands in', '      /work/project', '   3. No, and tell Claude what to do differently (esc)', '', ' Esc to cancel'].join('\n')).options,
     ['Yes', 'Yes, and don’t ask again for npm test commands in /work/project', 'No, and tell Claude what to do differently (esc)']);
+  // /model's confirmation has no Esc footer; its options end the screen.
+  assert.deepEqual(terminalDialog(['› Message from @agent', '▔▔▔▔▔▔▔▔▔▔', '   Switch model?', '   Your next response will be slower', '', '   This conversation is cached for the current model.', '', '   ❯ 1. Yes, switch to Opus', '     2. No, go back', ''].join('\n')),
+    { question: 'This conversation is cached for the current model.', details: 'Switch model?\nYour next response will be slower', options: ['Yes, switch to Opus', 'No, go back'] });
   for (const screen of ['────\n❯ \n────', 'Steps:\n1. Build\n2. Test', 'Pick one\n❯ 1. Yes\n  3. No\nEsc to cancel', '────────\n❯ 1. Only\nEsc to cancel']) assert.equal(terminalDialog(screen), null);
 });
 

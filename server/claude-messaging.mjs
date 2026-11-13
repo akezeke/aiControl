@@ -81,8 +81,10 @@ export function trustMenu(screen = '') {
 // the question is the row above them and the details what the dialog shows above that, up to its top rule.
 export function terminalDialog(screen = '') {
   const rows = screen.split('\n').map(row => row.replaceAll(' ', ' ').trimEnd()), option = row => /^\s*(?:❯\s*)?(\d)\.\s+(\S.*)$/.exec(row);
-  const footer = rows.findLastIndex(row => /\bEsc to (?:cancel|exit)\b/i.test(row)), first = rows.findLastIndex((row, i) => i < footer && option(row)?.[1] === '1');
-  if (first < 0) return null;
+  // Some dialogs (/model's "Switch model?") draw no Esc footer; then the options end the screen and one is selected.
+  const esc = rows.findLastIndex(row => /\bEsc to (?:cancel|exit)\b/i.test(row)), footer = esc >= 0 ? esc : rows.findLastIndex(row => row.trim()) + 1;
+  const first = rows.findLastIndex((row, i) => i < footer && option(row)?.[1] === '1');
+  if (first < 0 || (esc < 0 && !rows.slice(first, footer).some(row => /^\s*❯\s*\d\./.test(row)))) return null;
   const options = [];
   for (const row of rows.slice(first, footer)) {
     const match = option(row);
@@ -92,9 +94,9 @@ export function terminalDialog(screen = '') {
   }
   let at = first - 1;
   while (at >= 0 && !rows[at].trim()) at--;
-  const question = rows[at]?.trim(), rule = row => /^\s*[─╌]{8,}\s*$/.test(row);
+  const question = rows[at]?.trim(), rule = row => /^\s*[─╌▔]{8,}\s*$/.test(row);
   if (options.length < 2 || !question || rule(rows[at])) return null;
-  const top = Math.max(rows.findLastIndex((row, i) => i < at && /^\s*─{8,}\s*$/.test(row)), at - 21);
+  const top = Math.max(rows.findLastIndex((row, i) => i < at && /^\s*[─▔]{8,}\s*$/.test(row)), at - 21);
   const details = rows.slice(top + 1, at).filter(row => row.trim() && !rule(row)).map(row => row.replace(/^\s*│\s?/, '').trim()).join('\n').slice(0, 4000);
   return { question: question.slice(0, 300), details, options };
 }

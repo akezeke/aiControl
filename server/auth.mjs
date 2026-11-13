@@ -42,9 +42,15 @@ export class Auth {
     return record;
   }
   async login(password, ip) {
-    const record = await this.verify(password, ip), now = this.now();
+    const record = await this.verify(password, ip);
+    return this.issue(record.hash);
+  }
+  // Only call after a password or a passkey has been verified against this credential.
+  async issue(credential) {
+    if (credential !== JSON.parse(await readFile(this.file, 'utf8')).hash) throw Object.assign(new Error('Access changed. Unlock again.'), { status: 401 });
+    const now = this.now();
     const token = randomBytes(32).toString('hex');
-    const session = { csrf: randomBytes(32).toString('hex'), touched: now, created: now, credential: record.hash };
+    const session = { csrf: randomBytes(32).toString('hex'), touched: now, created: now, credential };
     for (const [key, value] of this.sessions) if (now - value.touched > idleMs) this.sessions.delete(key);
     if (this.sessions.size >= 100) this.sessions.delete(this.sessions.keys().next().value);
     this.sessions.set(hash(token), session);

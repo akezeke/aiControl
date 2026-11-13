@@ -18,7 +18,7 @@ async function body(req, limit = 64 * 1024) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw fail('Invalid JSON.'); }
 }
 
-export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push, workflow, online, pc }) {
+export function createHandler({ auth, store, snapshot, origin, vite, messages, spawn, folder, lost, budget, push, workflow, online, pc, passkeys }) {
   const origins = [origin].flat(), hosts = origins.map(o => new URL(o).host);
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -41,6 +41,20 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
       }
       if (!['GET', 'POST'].includes(req.method)) throw fail('Method not allowed.', 405);
       if (req.method === 'POST' && !origins.includes(req.headers.origin)) throw fail('Invalid request origin.', 403);
+      const requestOrigin = origins.find(value => new URL(value).host === req.headers.host);
+      if (path.startsWith('/api/passkeys/') && req.method === 'POST' && req.headers.origin !== requestOrigin) throw fail('Invalid request origin.', 403);
+      if ((path === '/api/passkeys' || path.startsWith('/api/passkeys/')) && !passkeys) throw fail('Passkeys are unavailable. Restart AI Control.', 503);
+      if (path === '/api/passkeys/login/options' && req.method === 'POST') {
+        const result = await passkeys.authenticationOptions(requestOrigin, req.socket.remoteAddress);
+        res.setHeader('Set-Cookie', passkeys.cookie(result.challengeId)); json(res, 200, { options: result.options }); return;
+      }
+      if (path === '/api/passkeys/login/verify' && req.method === 'POST') {
+        const data = await body(req), previous = await auth.get(req);
+        const { token, session } = await passkeys.authenticate(requestOrigin, passkeys.browser(req), data?.response);
+        auth.logout(previous);
+        res.setHeader('Set-Cookie', [auth.cookie(token), passkeys.cookie('', 0)]);
+        json(res, 200, { authenticated: true, csrf: session.csrf }); return;
+      }
       if (path === '/api/login' && req.method === 'POST') {
         const data = await body(req);
         const { token, session } = await auth.login(data.password, req.socket.remoteAddress);
@@ -50,9 +64,21 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         json(res, 200, { authenticated: true, csrf: session.csrf }); return;
       }
       const session = await auth.get(req);
-      if (path === '/api/auth' && req.method === 'GET') { json(res, 200, { authenticated: !!session, kind: await auth.kind(), ...(session ? { csrf: session.csrf, idleRemainingMs: session.idleRemainingMs } : {}) }); return; }
+      if (path === '/api/auth' && req.method === 'GET') { json(res, 200, { authenticated: !!session, kind: await auth.kind(), passkeys: passkeys ? await passkeys.status(requestOrigin) : { supported: false, enabled: false }, ...(session ? { csrf: session.csrf, idleRemainingMs: session.idleRemainingMs } : {}) }); return; }
       if (!session) throw fail('Unlock AI Control to continue.', 401);
       if (req.method === 'POST' && req.headers['x-csrf-token'] !== session.csrf) throw fail('Invalid request token.', 403);
+      if (path === '/api/passkeys' && req.method === 'GET') { json(res, 200, await passkeys.list(requestOrigin)); return; }
+      if (path === '/api/passkeys/register/options' && req.method === 'POST') {
+        const data = await body(req);
+        try { json(res, 200, await passkeys.registrationOptions(requestOrigin, session, data?.password, req.socket.remoteAddress)); }
+        catch (error) { if (error.status === 401) throw fail(error.message, 400); throw error; } return;
+      }
+      if (path === '/api/passkeys/register/verify' && req.method === 'POST') { json(res, 200, await passkeys.register(requestOrigin, session, await body(req))); auth.touch(session); return; }
+      if (path === '/api/passkeys/remove' && req.method === 'POST') {
+        const data = await body(req);
+        try { json(res, 200, await passkeys.remove(requestOrigin, data?.id, data?.password, req.socket.remoteAddress)); }
+        catch (error) { if (error.status === 401) throw fail(error.message, 400); throw error; } return;
+      }
       if (path === '/api/logout' && req.method === 'POST') {
         auth.logout(session); res.setHeader('Set-Cookie', auth.cookie('', 0)); json(res, 200, { ok: true }); return;
       }

@@ -27,6 +27,8 @@
     "vite": "7.3.7"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "14.0.0",
+    "@simplewebauthn/server": "14.1.0",
     "three": "0.186.1",
     "web-push": "^4.0.0",
     "ws": "8.21.3"

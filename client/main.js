@@ -31,7 +31,7 @@ import { fieldLabel, requestPresentation } from './request-presentation.js';
 import { SessionActivity, compareSessions, compareProjects, sessionPriority, recentlyActive, activeSessionGroups } from './session-order.js';
 import { feedGroups, feedNow } from './feed.js';
 import { messagingUnavailableReason } from './messaging-status.js';
-import { ComposerInput, followKeyboard } from './composer-input.js';
+import { ComposerInput, followKeyboard, sizeComposer } from './composer-input.js';
 import { attachment, imageFiles, maxImages, releaseImages } from './composer-images.js';
 import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown, renderDocument } from './message-markdown.js';
@@ -56,6 +56,7 @@ import './ui-refinements.css';
 import './workflow.css';
 import { Workflow } from './workflow.js';
 import { filterFeed, quietSession, lastObservedActivity } from './workflow-data.js';
+import { canUsePasskeys, cancelPasskey, passkeyError, unlockWithPasskey, passkeySettings } from './passkeys.js';
 
 const app = document.querySelector('#app');
 const firstVisit = !hasSavedTheme();
@@ -66,11 +67,12 @@ const statValues = new Map();
 const previousStatuses = new Map();
 // Older history fetched for an open panel: session id → { limit, messages, more }.
 const older = new Map();
-// What an open panel lists from the server, listed again while its session changes.
+// What an open panel lists from the server, listed again while its session changes. Not while it has no transcript
+// (a Claude session before its first prompt): the server can only answer 409 until one is written.
 function sessionList(cache, session, kind) {
   let entry = cache.get(session.id);
   if (!entry) cache.set(session.id, entry = { items: [], changed: null, fetched: 0 });
-  if ((entry.changed !== session.updatedAt || (kind === 'images' && !entry.items.length)) && Date.now() - entry.fetched > 10_000) {
+  if (session.messagesState !== 'unavailable' && (entry.changed !== session.updatedAt || (kind === 'images' && !entry.items.length)) && Date.now() - entry.fetched > 10_000) {
     entry.changed = session.updatedAt; entry.fetched = Date.now();
     api(`sessions/${encodeURIComponent(session.id)}/${kind}`).then(result => {
       const items = result[kind] || [];
@@ -278,13 +280,14 @@ async function api(path, body, options = {}) {
   const response = await fetch(`/api/${path}`, { credentials: 'same-origin', cache: 'no-store', ...options, ...(body !== undefined ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': state.csrf }, body: JSON.stringify(body) } : {}) });
   const data = await response.json();
   if (!response.ok) {
-    if (response.status === 401 && path !== 'login') showLogin();
+    if (response.status === 401 && path !== 'login' && !path.startsWith('passkeys/login/')) showLogin();
     throw Object.assign(new Error(data.error || 'Could not connect to AI Control.'), { code: data.code, taken: data.taken });
   }
   return data;
 }
 
 function showLogin(message = '') {
+  cancelPasskey();
   workflow.reset();
   palette?.close(); closeAccountMenu?.();
   disposeHistory();
@@ -302,11 +305,23 @@ function showLogin(message = '') {
   const input = el('input'); input.id = 'password'; input.type = 'password'; input.autocomplete = 'current-password'; input.required = true; input.placeholder = 'Enter your password'; input.maxLength = 1024; input.setAttribute('aria-label', 'PIN or password');
   const error = el('p', 'form-error', message); error.setAttribute('role', 'alert');
   const submit = el('button', 'primary', 'Unlock'); submit.type = 'submit';
-  form.append(input, error, submit);
+  let busy = false;
+  const passkey = button('Use passkey', 'quiet-button passkey-unlock', async () => {
+    if (busy) return;
+    setBusy(true); error.textContent = '';
+    try { const result = await unlockWithPasskey(api); if (form.isConnected) await unlocked(result); }
+    catch (e) { if (form.isConnected) error.textContent = passkeyError(e); }
+    finally { setBusy(false); }
+  }, 'key');
+  passkey.hidden = true; passkey.title = 'Unlock with Face ID, Touch ID or a passkey';
+  const setBusy = value => { busy = value; submit.disabled = passkey.disabled = input.disabled = value; submit.textContent = value ? 'Unlocking…' : 'Unlock'; form.setAttribute('aria-busy', String(value)); };
+  const unlocked = async result => { input.value = ''; state.csrf = result.csrf; state.lastActivity = Date.now(); showWorkspace(); await refresh(); };
+  form.append(passkey, input, error, submit);
   form.onsubmit = async event => {
-    event.preventDefault(); submit.disabled = true; submit.textContent = 'Unlocking…'; error.textContent = '';
-    try { const result = await api('login', { password: input.value }); input.value = ''; state.csrf = result.csrf; state.lastActivity = Date.now(); showWorkspace(); await refresh(); }
-    catch (e) { error.textContent = e.message; submit.disabled = false; submit.textContent = 'Unlock'; }
+    event.preventDefault(); if (busy) return; setBusy(true); error.textContent = '';
+    try { const result = await api('login', { password: input.value }); if (form.isConnected) await unlocked(result); }
+    catch (e) { if (form.isConnected) error.textContent = e.message; }
+    finally { setBusy(false); }
   };
   card.append(form); screen.append(card);
   app.append(screen);
@@ -317,6 +332,7 @@ function showLogin(message = '') {
     const pin = data.kind === 'pin'; input.setAttribute('aria-label', pin ? 'PIN' : 'Password');
     input.inputMode = pin ? 'numeric' : 'text'; input.placeholder = pin ? 'Enter your PIN' : 'Enter your password';
     input.maxLength = pin ? 8 : 1024;
+    passkey.hidden = !canUsePasskeys() || !data.passkeys?.enabled;
   }).catch(() => {});
 }
 
@@ -948,6 +964,7 @@ function renderSessionRequests(requests, session) {
 function disposeComposer() {
   const region = document.querySelector('#message-composer');
   region?.draftInput?.destroy();
+  region?.inputSize?.destroy();
   if (region?.currentSession) workflow.drafts.flush(region.currentSession.id);
 }
 
@@ -958,9 +975,11 @@ function renderComposer(session) {
   if (!region.querySelector('form')) {
     const queue = el('div', 'message-queue');
     const form = el('form', 'message-form');
-    const input = el('textarea'); input.rows = 2; input.maxLength = 12_000; input.setAttribute('aria-label', `Message ${providerName(session.provider)}`); input.placeholder = `Message ${providerName(session.provider)}…`;
+    const input = el('textarea'); input.rows = 1; input.maxLength = 12_000; input.setAttribute('aria-label', `Message ${providerName(session.provider)}`); input.placeholder = `Message ${providerName(session.provider)}…`;
     const row = el('div', 'composer-row');
     const submit = el('button', 'primary', 'Send'); submit.type = 'submit';
+    // Sending must not blur the textarea and collapse the mobile keyboard.
+    submit.addEventListener('pointerdown', event => { if (document.activeElement === input && !submit.disabled) event.preventDefault(); });
     const attach = button('', 'quiet-button composer-attach', () => files.click(), 'image'); attach.title = 'Attach images'; attach.setAttribute('aria-label', 'Attach images');
     const files = el('input'); files.type = 'file'; files.accept = 'image/*'; files.multiple = true; files.hidden = true;
     const previews = el('div', 'composer-images');
@@ -986,7 +1005,7 @@ function renderComposer(session) {
     const acceptSuggestion = () => {
       const text = region.currentSession.suggestion;
       if (suggestion.hidden || draft.busy || !draftInput.acceptSuggestion(text)) return false;
-      workflow.editDraft(session.id, input.value); draft.acceptedSuggestion = text; update(); input.focus(); return true;
+      workflow.editDraft(session.id, input.value); draft.acceptedSuggestion = text; update(); inputSize.schedule(); input.focus({ preventScroll: true }); return true;
     };
     suggestion.onclick = acceptSuggestion;
     input.onkeydown = event => {
@@ -1000,7 +1019,7 @@ function renderComposer(session) {
       const current = state.snapshot?.sessions.find(item => item.id === session.id);
       if (!current || draft.busy || !(draft.text.trim() || draft.images.length) || state.error) return;
       const mode = 'send';
-      if (!current.messaging?.send || messagingUnavailableReason(current, state.snapshot)) return;
+      if (!current.messaging?.send || current.requests?.length || messagingUnavailableReason(current, state.snapshot)) return;
       const images = draft.images.map(({ name, data }) => ({ name, data }));
       if (!draft.submission || draft.submission.text !== draft.text || draft.submission.mode !== mode || draft.submission.images.length !== images.length || draft.submission.images.some((image, i) => image.data !== images[i].data)) draft.submission = { text: draft.text, mode, clientMessageId: uuid(), images };
       draft.busy = true; draft.error = ''; update();
@@ -1017,17 +1036,21 @@ function renderComposer(session) {
       } catch (error) { draft.error = error.message; }
       finally { draft.busy = false; update(); if (state.selected === session.id) document.querySelector('#message-composer')?.updateComposer?.(); }
     };
-    form.append(previews, suggestion, row, files, feedback); region.append(queue, form);
-    const draftTools = workflow.composer(region, session, text => {
-      const next = `${input.value}${input.value ? '\n\n' : ''}${text}`;
-      if (next.length > 12000) { toast('Draft exceeds 12,000 characters. Shorten it before inserting.'); return false; }
-      input.value = next; input.dispatchEvent(new Event('input')); input.focus(); return true;
-    });
+    const extras = el('div', 'composer-extras'); extras.append(queue, previews, suggestion);
+    const draftError = button('', 'composer-feedback composer-draft-error form-error', () => workflow.resolveDraft(session)); draftError.hidden = true;
+    draftError.title = 'Review the local and saved drafts';
+    form.append(extras, row, files, feedback, draftError); region.append(form);
+    const inputSize = region.inputSize = sizeComposer(input);
+    let inputRevision = draft.revision;
     function update() {
       const current = region.currentSession;
       const unavailable = messagingUnavailableReason(current, state.snapshot);
-      const available = current.messaging?.send && !unavailable;
-      draftInput.syncReset(); draftTools.sync();
+      const available = current.messaging?.send && !unavailable && !current.requests?.length;
+      draftInput.syncReset();
+      if (inputRevision !== draft.revision) { inputRevision = draft.revision; inputSize.schedule(); }
+      region.toggleAttribute('data-drafting', draftInput.hasText || !!draft.images.length);
+      setProperty(draftError, 'hidden', !draft.saveError);
+      setProperty(draftError, 'textContent', draft.saveError || '');
       if (current.suggestion && current.suggestion !== draft.acceptedSuggestion) draft.acceptedSuggestion = '';
       const suggested = available && !draft.busy && !draftInput.hasText && !draft.images.length && current.suggestion && current.suggestion !== draft.acceptedSuggestion ? current.suggestion : '';
       setProperty(suggestion, 'hidden', !suggested);
@@ -1039,6 +1062,7 @@ function renderComposer(session) {
       // Connection changes affect Send, not the user's ability to keep drafting.
       setProperty(input, 'readOnly', draft.busy);
       setProperty(submit, 'disabled', draft.busy || !(draftInput.hasText || draft.images.length) || !available || !!state.error);
+      setProperty(submit, 'title', current.requests?.length ? 'Answer the pending request first' : 'Send · Ctrl/⌘ Enter');
       setProperty(attach, 'hidden', !current.messaging?.images);
       setProperty(attach, 'disabled', draft.busy || draft.images.length >= maxImages);
       const shown = draft.images.map(image => image.id).join();
@@ -1482,6 +1506,7 @@ function renderAccessPanel() {
     const label = el('label', '', title), input = el('input'); input.name = name; input.type = 'password'; input.required = true; input.maxLength = 1024; input.autocomplete = autocomplete;
     label.append(input); form.append(label); fields[name] = input;
   }
+  form.insertBefore(passkeySettings({ api, el, button, current: fields.current }), form.children[1]);
   // The number keyboard is opt-in: on a phone it has no letters, so a password couldn't be typed.
   const keyboard = el('label', 'keyboard-choice'); const pinMode = el('input'); pinMode.type = 'checkbox'; pinMode.onchange = () => { fields.next.inputMode = fields.repeat.inputMode = pinMode.checked ? 'numeric' : 'text'; }; keyboard.append(pinMode, document.createTextNode('Use the PIN number keyboard')); form.append(keyboard);
   const error = el('p', 'form-error'); error.setAttribute('role', 'alert');

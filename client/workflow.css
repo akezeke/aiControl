@@ -15,7 +15,7 @@
 .wf-menu > button, .wf-command-list > button { justify-content: flex-start; text-align: left; width: 100%; padding: 9px 10px; white-space: normal; }
 .wf-command-list { overflow: auto; min-height: 0; }
 .wf-command-list > button.selected { background: var(--accent-soft); color: var(--accent); outline: 1px solid var(--accent); outline-offset: -1px; }
-.wf-row, .wf-record, .wf-tabs, .wf-checks, .wf-session-actions, .wf-composer-tools, .wf-usage-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.wf-row, .wf-record, .wf-tabs, .wf-checks, .wf-session-actions, .wf-usage-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .wf-record { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .wf-record > :first-child { flex: 1; text-align: left; min-width: 0; overflow-wrap: anywhere; }
 .wf-record > time { font-size: 11px; }
@@ -34,10 +34,8 @@
 .wf-diff { padding: 10px; overflow: auto; max-height: 450px; font: 12px/1.5 var(--mono); background: var(--sunken); }
 .wf-file summary { cursor: pointer; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; padding: 8px 0; }
 .chat-header .wf-session-actions { display: flex !important; grid-column: 1 / -1; width: 100%; flex-direction: row !important; flex-wrap: wrap; padding-top: 7px; gap: 5px; }
-.chat-header .wf-session-actions .quiet-button, .message-composer .wf-composer-tools .quiet-button { display: inline-flex !important; width: auto !important; flex: 0 0 auto !important; padding: 3px 6px; min-height: 27px; font-size: 11px; }
+.chat-header .wf-session-actions .quiet-button { display: inline-flex !important; width: auto !important; flex: 0 0 auto !important; padding: 3px 6px; min-height: 27px; font-size: 11px; }
 .wf-quiet-badge { color: var(--warn); font-size: 11px; }
-.wf-composer-tools { padding-bottom: 4px; }
-.wf-draft-state { font-size: 11px; margin-left: auto; }
 .wf-quiet { color: var(--warn); font-size: 11px; }
 .wf-usage-bar { margin: 0 0 5px; font-size: 11px; }
 .wf-usage-bar > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }

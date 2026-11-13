@@ -7,6 +7,7 @@ import { hostname as machineName, homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
+import { Passkeys } from './passkeys.mjs';
 import { RequestStore, mergeSessions } from './requests.mjs';
 import { CodexAdapter } from './codex.mjs';
 import { ClaudeAdapter } from './claude.mjs';
@@ -157,7 +158,7 @@ export async function startServer({ host, hostname, tls = null }) {
     },
     dismiss: ids => { recovery.dismiss(ids); return { ok: true }; },
   };
-  const handler = createHandler({ auth, store, snapshot, push, workflow, online, pc, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
+  const handler = createHandler({ auth, passkeys: new Passkeys(auth), store, snapshot, push, workflow, online, pc, origin: origins, vite: vite.middlewares, messages, spawn, folder: folderState, lost, budget: async value => opencode.budget = await spendBudget.save(value) });
   // Office meetings: pages connect at /api/office/live, checked as any POST is (office-online.mjs); every other upgrade is refused.
   const live = liveUpgrade({ auth, origins, hosts: origins.map(o => new URL(o).host), online });
   const servers = [[tls ? createHttpsServer(tls, handler) : createHttpServer(handler), host], ...loopback ? [[createHttpServer(handler), '127.0.0.1']] : []];

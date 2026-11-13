@@ -105,3 +105,14 @@
   :root[data-theme=diablo] .main-screen::before { top: -38px; height: 62px; }
   :root[data-theme=diablo] .main-content { padding-top: 20px; }
 }
+/* Keep the keyboard's limited space for typing, regardless of theme decorations. */
+#panel.chat-panel .chat-header { flex: 0 1 auto; min-height: 0; max-height: 40%; overflow-y: auto; overscroll-behavior: contain; }
+#panel[data-keyboard] .chat-header .wf-session-actions { display: none !important; }
+#panel[data-keyboard] .chat-header :is(.chat-info:not([open]), .plan-info:not([open]), .review-queue) { display: none; }
+@media (max-width: 640px), (pointer: coarse) {
+  /* 16px also prevents iOS focus zoom, which would suspend viewport tracking. */
+  #panel .message-form .composer-row textarea { min-height: 44px; padding: 10px 12px; font-size: 16px; }
+  #panel .message-composer { padding-top: 8px; }
+  #panel .composer-row { gap: 6px; align-items: flex-end; }
+  #panel .composer-row .primary { align-self: flex-end; min-height: 44px; }
+}

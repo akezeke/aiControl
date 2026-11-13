@@ -27,7 +27,7 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - Trickshot in the Office's kitchen: land a paper ball or mug in its target or hit a fruit with a rubber ball or plate, with six levels, three daily shots and a score board.
 - A boss office with a 90s PC: a PICO-8 BBS browser, installable carts and shortcuts, and a salaries.txt; the floor slacks off while you're in.
 - Office online: host a meeting with `npm run hub` and share its code; friends join at the meetings clipboard by their Office door, and their bests show on the scoreboard by the windows (every game's top three), the pinball backbox, the darts chalkboard, the golf board, the kitchen score board and snake's and endless planes' score lines. Through your door you go to the meeting at your friend's office, where you see each other walk about and each other's throws fly, snakes crawl and paper planes glide, and share the football, the paper balls and a goose. Only names, looks, moves, throws, snake games, paper planes in flight, where the balls are, the goose, the secret shelf's open or shut, the lights' on or off and scores leave your machine, and from the host the office's layout and its agents' poses, never what they're working on.
-- Local access or access from other devices over Tailscale, protected by a PIN or password.
+- Local access or access from other devices over Tailscale, protected by a PIN, password or passkey (Face ID / Touch ID).
 
 ### Live feed
 
@@ -139,6 +139,8 @@ The Fantasy Battle theme is an original design and is not affiliated with any fr
 ## Network and security
 
 Listens on localhost and optionally the Tailscale IP, never the LAN. Passwords are hashed; sessions lock after ten idle minutes. Settings and logs stay in `.local/`; credentials stay on the backend. The boss PC's server fetches PICO-8 game lists, pages and thumbnails from lexaloffle.com; carts play from lexaloffle.com in your browser.
+
+For Face ID / Touch ID unlock, open the trusted **HTTPS hostname**, unlock with your PIN/password, then choose **PIN → Add passkey** and confirm your current PIN/password. Next time, choose **Use passkey**. Your PIN/password remains available; changing it revokes registered passkeys. The device handles biometric verification; the server stores only public keys.
 
 For iPhone and iPad notifications, open the HTTPS URL in Safari, choose **Share → Add to Home Screen**, open AI Control from the Home Screen, and enable **Alerts → Notifications**. iOS/iPadOS 16.4 or later is required. Notifications continue while the app is closed and can show project and session names on the lock screen. Changing the PIN/password removes existing notification subscriptions; unlock each device again to restore them.
 

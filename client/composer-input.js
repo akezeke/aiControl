@@ -8,14 +8,49 @@ export function keyboardFrame(viewport, layoutHeight, typing) {
 }
 export function followKeyboard(viewport = globalThis.visualViewport) {
   if (!viewport) return;
-  const sync = field => {
+  let frame;
+  const sync = () => {
+    frame = null;
     const panel = document.querySelector('#panel'); if (!panel) return;
-    const { top = '', height = '' } = keyboardFrame(viewport, innerHeight, !!field?.matches?.('input, textarea')) || {};
-    if (panel.style.top !== top || panel.style.height !== height) { Object.assign(panel.style, { top, height }); panel.toggleAttribute('data-keyboard', !!height); }
+    const field = document.activeElement;
+    const typing = panel.contains(field) && !!field?.matches?.('input:not([type=file]), textarea, select');
+    const { top = '', height = '' } = keyboardFrame(viewport, innerHeight, typing) || {};
+    if (panel.style.top !== top || panel.style.height !== height) {
+      Object.assign(panel.style, { top, height });
+      panel.style.setProperty('--chat-height', height || '100dvh');
+      panel.toggleAttribute('data-keyboard', !!height);
+    }
   };
-  for (const type of ['resize', 'scroll']) viewport.addEventListener(type, () => sync(document.activeElement));
-  document.addEventListener('focusin', event => sync(event.target));
-  document.addEventListener('focusout', event => sync(event.relatedTarget));
+  // Focusout's relatedTarget is often null on iOS. Read the settled focus on the
+  // next frame, and coalesce keyboard animation/scroll events into one layout.
+  const schedule = () => { if (frame == null) frame = requestAnimationFrame(sync); };
+  for (const type of ['resize', 'scroll']) viewport.addEventListener(type, schedule);
+  for (const type of ['focusin', 'focusout']) document.addEventListener(type, schedule);
+  window.addEventListener('resize', schedule);
+  schedule();
+}
+
+export function sizeComposer(input) {
+  let frame, width;
+  const resize = () => {
+    frame = null;
+    if (!input.isConnected || !input.clientWidth) return;
+    const scroll = input.scrollTop, style = getComputedStyle(input);
+    const border = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    input.style.height = '0px';
+    input.style.height = `${input.scrollHeight + border}px`;
+    input.scrollTop = input.selectionStart === input.value.length && input.selectionEnd === input.value.length ? input.scrollHeight : scroll;
+  };
+  const schedule = () => { if (frame == null) frame = requestAnimationFrame(resize); };
+  const observer = new ResizeObserver(entries => {
+    const next = entries[0].contentRect.width;
+    if (next !== width) { width = next; schedule(); }
+    // Opening the keyboard can lower the CSS height cap without changing width.
+    // Keep the end caret visible without disturbing an interior selection.
+    else if (document.activeElement === input && input.selectionStart === input.value.length && input.selectionEnd === input.value.length) input.scrollTop = input.scrollHeight;
+  });
+  observer.observe(input); input.addEventListener('input', schedule); schedule();
+  return { schedule, destroy() { observer.disconnect(); input.removeEventListener('input', schedule); if (frame != null) cancelAnimationFrame(frame); } };
 }
 
 // The textarea owns its text while editing. Polling never writes it back.

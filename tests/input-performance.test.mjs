@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ComposerInput, keyboardFrame } from '../client/composer-input.js';
+import { ComposerInput, keyboardFrame, followKeyboard, sizeComposer } from '../client/composer-input.js';
 import { LiveRender } from '../client/live-render.js';
 
 function clock() {
@@ -151,4 +151,60 @@ test('the panel fits above an iOS keyboard only while typing at normal zoom', ()
   assert.equal(keyboardFrame({ ...keyboard, scale: 2 }, 844, true), null); // pinch zoom
   assert.equal(keyboardFrame({ height: 500, offsetTop: 0, scale: 1 }, 500, true), null); // resizes-content honoured
   assert.equal(keyboardFrame(undefined, 844, true), null);
+});
+
+test('keyboard tracking follows panel focus without jumping during a focus transfer or resizing behind a dialog', t => {
+  const document = new EventTarget(), window = new EventTarget(), viewport = new EventTarget();
+  const field = { matches: () => true }, otherField = { matches: () => true };
+  const panel = { style: { top: '', height: '', setProperty() {} }, contains: node => node === field, toggleAttribute() {} };
+  document.querySelector = () => panel;
+  document.activeElement = field;
+  Object.assign(viewport, { height: 420, offsetTop: 50, scale: 1 });
+  const frames = [];
+  const globals = { document, window, innerHeight: 844, requestAnimationFrame: fn => { frames.push(fn); return frames.length; } };
+  for (const [name, value] of Object.entries(globals)) {
+    const before = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    t.after(() => before ? Object.defineProperty(globalThis, name, before) : delete globalThis[name]);
+  }
+  const tick = () => { for (const fn of frames.splice(0)) fn(); };
+  followKeyboard(viewport); viewport.dispatchEvent(new Event('resize')); tick();
+  assert.equal(panel.style.height, '420px');
+  // Safari may supply a null relatedTarget before the new field becomes active.
+  document.dispatchEvent(new Event('focusout'));
+  assert.equal(panel.style.height, '420px', 'do not expand underneath an open keyboard during focus transfer');
+  tick(); assert.equal(panel.style.height, '420px');
+  document.activeElement = otherField; document.dispatchEvent(new Event('focusin')); tick();
+  viewport.dispatchEvent(new Event('resize')); tick();
+  assert.equal(panel.style.height, '', 'a dialog field must not reposition the chat behind it');
+  document.activeElement = field; document.dispatchEvent(new Event('focusin')); tick();
+  assert.equal(panel.style.height, '420px');
+  document.activeElement = null; document.dispatchEvent(new Event('focusout')); tick();
+  assert.equal(panel.style.height, '', 'blur restores CSS even if iOS still reports the keyboard height');
+});
+
+test('a height-only keyboard resize keeps the end caret visible without moving an interior selection', t => {
+  const input = new Input(); input.value = 'long draft'; input.selectionEnd = input.value.length;
+  Object.assign(input, { scrollHeight: 2826, clientHeight: 158, scrollTop: 2668 });
+  let resized;
+  const globals = {
+    document: { activeElement: input },
+    ResizeObserver: class { constructor(callback) { resized = callback; } observe() {} disconnect() {} },
+    requestAnimationFrame: () => 1, cancelAnimationFrame() {},
+  };
+  for (const [name, value] of Object.entries(globals)) {
+    const before = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    t.after(() => before ? Object.defineProperty(globalThis, name, before) : delete globalThis[name]);
+  }
+  const sizing = sizeComposer(input);
+  resized([{ contentRect: { width: 300, height: 158 } }]);
+  input.clientHeight = 71;
+  resized([{ contentRect: { width: 300, height: 71 } }]);
+  assert.ok(input.scrollTop >= input.scrollHeight - input.clientHeight, 'the last line must remain in the visible area');
+  input.selectionStart = 2; input.selectionEnd = 5; input.scrollTop = 40;
+  resized([{ contentRect: { width: 300, height: 60 } }]);
+  assert.equal(input.scrollTop, 40);
+  assert.equal(input.selectionStart, 2); assert.equal(input.selectionEnd, 5);
+  sizing.destroy();
 });

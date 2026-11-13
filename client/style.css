@@ -271,6 +271,15 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .access-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .access-form label.keyboard-choice { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; }
 .access-form .primary { min-height: 44px; }
+.passkey-settings { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-block: 1px solid var(--line); }
+.passkey-heading, .passkey-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.passkey-heading > span { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.passkey-row > span { min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.passkey-row .quiet-button { flex: none; min-height: 40px; padding: 6px 9px; font-size: 12px; }
+.passkey-list { display: flex; flex-direction: column; gap: 6px; }
+.passkey-list:empty, .passkey-error:empty { display: none; }
+.passkey-note { margin: 0; font-size: 12px; }
+.login-form .passkey-unlock { min-height: 44px; }
 
 /* Chat panel: compact header, history fills the rest, requests or composer below. */
 .detail-panel.chat-panel { display: flex; flex-direction: column; height: 100dvh; padding: 0; overflow: hidden; }
@@ -339,7 +348,7 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .message-more > summary { min-height: 30px; margin-top: 6px; padding: 5px 10px; font-size: 12px; }
 .message-more .message-text { margin-top: 6px; }
 .chat-requests { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); }
-.chat-panel:has(.chat-requests:not([hidden])) .message-composer { display: none; }
+.chat-panel:has(.chat-requests:not([hidden])) .message-composer:not(:focus-within):not([data-drafting]) { display: none; }
 .request-box { margin-bottom: 10px; padding: 12px; background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: var(--radius); }
 .request-box:last-child { margin-bottom: 0; }
 .request-box h3 { margin: 4px 0 8px; font-size: 15px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
@@ -368,11 +377,14 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .decision-actions button { flex: 1; min-height: 44px; }
 .chat-idle { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; line-height: 1.5; color: var(--text-3); }
 .chat-idle .icon { width: 15px; height: 15px; }
-.message-composer { flex: 0 1 auto; min-height: 0; max-height: 45%; overflow-y: auto; padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: var(--panel); border-top: 1px solid var(--line); }
+.message-composer { flex: none; min-height: 0; padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: var(--panel); border-top: 1px solid var(--line); }
+.message-composer .message-form { width: 100%; }
+/* Only attachments/queued messages scroll; the field and Send always stay below them. */
+.composer-extras { max-height: min(150px, calc(var(--chat-height, 100dvh) * .2)); overflow-y: auto; overscroll-behavior: contain; }
 /* The keyboard covers the home indicator, so its safe-area inset would only leave a gap. */
 #panel[data-keyboard] :is(.message-composer, .chat-requests) { padding-bottom: 10px; }
 .composer-row { display: flex; align-items: flex-end; gap: 8px; }
-.composer-row textarea { flex: 1; min-width: 0; max-height: 160px; resize: vertical; }
+.composer-row textarea { flex: 1; min-width: 0; max-height: min(160px, calc(var(--chat-height, 100dvh) * .28)); resize: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .composer-row .primary { flex: none; min-height: 44px; }
 .composer-row .composer-attach { flex: none; width: 44px; min-height: 44px; padding: 0; }
 .composer-row .composer-attach > span:not(.icon) { display: none; }
@@ -389,6 +401,8 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .composer-suggestion[hidden] { display: none; }
 .composer-suggestion:hover, .composer-suggestion:focus-visible { color: var(--text); border-color: var(--accent); }
 .composer-feedback.form-error { color: var(--danger); }
+.composer-feedback { max-height: 3lh; overflow-y: auto; overflow-wrap: anywhere; }
+.composer-draft-error { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; text-decoration: underline; }
 .composer-feedback:empty, .message-queue:empty { display: none; }
 .message-queue { max-height: 130px; overflow-y: auto; margin-bottom: 8px; }
 .queue-heading { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 650; color: var(--text-3); }
