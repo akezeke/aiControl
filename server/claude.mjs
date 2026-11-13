@@ -319,6 +319,8 @@ export class ClaudeAdapter {
   async quiet(sessionId) {
     const record = await this.record(sessionId), parked = !!record.parkedJobId, hook = this.hookState(record), transcript = this.paths.get(`claude:${sessionId}`);
     if (!parked && record.status === 'shell') throw Object.assign(fail('Background shells are still running. Stop them first.', 409), { code: 'force_available' });
+    // A dialog with no request here (outside tmux, or one we can't read) can't be answered from AI Control, only closed.
+    if (!parked && record.status === 'waiting') throw Object.assign(fail('Claude is waiting at a dialog in its terminal.', 409), { code: 'force_available' });
     if ((!parked && record.status !== 'idle') || (hook && hook.status !== 'idle') || hook?.compacting) throw fail('Claude is working. Stop it first.', 409);
     if (Date.now() - Math.max(record.statusUpdatedAt || record.updatedAt || 0, hook?.updatedAt || 0) < QUIET_MS) throw fail('Claude only just finished. Try again in a moment.', 409);
     if (transcript && (await this.subagents(record, transcript, new Map())).some(agent => agent.status === 'working')) throw fail('A subagent is still working.', 409);

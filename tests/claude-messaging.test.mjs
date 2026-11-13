@@ -487,6 +487,10 @@ test('force firing bypasses a shell block but still checks the live registration
   await adapter.refresh();
   await assert.rejects(adapter.fire(record.sessionId), e => e.code === 'force_available' && /Background shells/.test(e.message));
   assert.deepEqual(await adapter.fire(record.sessionId, { force: true }), { ok: true });
+  // A dialog AI Control can't see (Claude outside tmux, after an API error) can only be closed.
+  await writeFile(path, JSON.stringify({ ...record, cwd: '/work/project', kind: 'interactive', status: 'waiting', waitingFor: 'dialog open' }));
+  await adapter.refresh();
+  await assert.rejects(adapter.fire(record.sessionId), e => e.code === 'force_available' && /dialog/.test(e.message));
   await writeFile(path, JSON.stringify({ ...record, sessionId: 'different' }));
   await assert.rejects(adapter.fire(record.sessionId, { force: true }), /changed/);
   assert.equal(fired, 1);
