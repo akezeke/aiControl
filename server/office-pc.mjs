@@ -1,15 +1,16 @@
-// Office boss PC, the server's side: what the Info Highway shows of the PICO-8 BBS. Only https://www.lexaloffle.com is ever
-// fetched (lister.php, /bbs/ post pages and /bbs/thumbs/), only because the player did something (opened a list, a game page,
-// a thumbnail), and every reply is capped. There are no timers: caches are checked and evicted when they're used.
+// Office boss PC, the server's side: what the Info Highway shows of the PICO-8 BBS. Only https://www.lexaloffle.com (lister.php,
+// /bbs/ post pages and /bbs/thumbs/) and NerdyTeachers' Top 200 page are ever fetched, only because the player did something
+// (opened a list, a game page, a thumbnail), and every reply is capped. There are no timers: caches are checked and evicted when
+// they're used.
 // `dir` (.local) holds the saved desktop (office-pc.json) and the thumbnails of installed carts (office-pc-thumbs/).
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { STARTERS, isPid, thumbName } from '../client/office/carts.js';
+import { STARTERS, TOP_URL, isPid, thumbName } from '../client/office/carts.js';
 import { GRID, defaults, normalizeWindows } from '../client/office/pc-windows.js';
 import { fail } from './requests.mjs';
 
 const HOST = 'https://www.lexaloffle.com', TIMEOUT_MS = 8000, MAX_BYTES = 1 << 20, THUMB_BYTES = 100 * 1024;
-const LIST_MS = 600_000, LISTS = 200, DAY = 86_400_000, CARTS = 500, THUMBS = 300;
+const LIST_MS = 600_000, LISTS = 200, DAY = 86_400_000, CARTS = 500, THUMBS = 300, PAGE = 30;
 const THUMB = /^pico8_[a-z0-9_-]{1,60}-\d{1,4}\.png$|^pico\d{1,7}\.png$/;
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const OWN = 48, BUILTINS = ['browser', 'salaries'], isBuiltin = id => BUILTINS.includes(id);
@@ -37,6 +38,23 @@ export function parseList(html) {
     if (pid) carts.push({ pid, tid: Number(m[2]), title: decode(unescape(m[3])), author: decode(unescape(m[5])), thumb: m[4], likes: Number(m[7]), updated: unescape(m[6]) });
   }
   return carts;
+}
+
+// Their cards: <h5>#rank</h5> <h3>title</h3> <a href="…/bbs/?pid=post"><img src="…/bbs/thumbs/x.png"></a> <h4><img> stars</h4>
+// <a href="…?uid=…">By: author</a>. The thumbnail names the cart, as the lister's do (the link is its post); without one, the post.
+const topText = text => tidy(decode(text).replace(/\s+/g, ' ')).slice(0, 80);
+export function parseTop(html) {
+  const cards = [];
+  for (const card of String(html).split('class="card ').slice(1)) {
+    const rank = /<h5>#(\d{1,3})<\/h5>/.exec(card)?.[1], title = /<h3>([^<]*)<\/h3>/.exec(card)?.[1];
+    const post = /href="https:\/\/www\.lexaloffle\.com\/bbs\/\?pid=([^"&#]*)"/.exec(card)?.[1];
+    const name = /src="https:\/\/www\.lexaloffle\.com\/bbs\/thumbs\/([^"]*)"/.exec(card)?.[1] ?? '';
+    const stars = /<h4>(?:<img[^>]*>)?\s*(\d{1,7})\s*<\/h4>/.exec(card)?.[1], author = /uid=\d+[^"]*">\s*(?:By:)?([^<]*)<\/a>/.exec(card)?.[1] ?? '';
+    const pid = THUMB.test(name) && isPid(pidOf(name)) ? pidOf(name) : isPid(post) ? post : null;
+    if (!pid || !rank || title === undefined) continue;
+    cards.push({ pid, title: topText(title), author: topText(author), thumb: THUMB.test(name) && pidOf(name) === pid ? name : thumbName(pid), stars: Number(stars ?? 0), rank: Number(rank) });
+  }
+  return cards;
 }
 
 export function parseCart(html) {
@@ -112,15 +130,35 @@ function repair(raw) {
 
 export function createOfficePc({ dir, fetch = globalThis.fetch, now = Date.now } = {}) {
   const lists = new Map(), carts = new Map(), thumbs = new Map();
-  const get = async (path, limit) => {
-    const response = await fetch(`${HOST}${path}`, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'error' });
+  const load = async (url, limit) => {
+    const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'error' });
     if (!response.ok) throw new Error(`status ${response.status}`);
     return read(response, limit);
   };
+  const get = (path, limit) => load(`${HOST}${path}`, limit);
+
+  // NerdyTeachers' Top 200 by BBS stars, a page of it: a list they compile now and then, all on one page, fetched a day at most.
+  let top = null;
+  async function topList(page) {
+    let rows = top?.rows, stale = false;
+    if (!top || now() - top.at >= DAY) {
+      try {
+        const fetched = parseTop((await load(TOP_URL, MAX_BYTES)).toString('utf8'));
+        if (!fetched.length) throw new Error('no cards'); // a changed layout is no empty list
+        top = { at: now(), rows: rows = fetched };
+      } catch {
+        if (!top) throw fail('NerdyTeachers is not answering.', 502);
+        stale = true;
+      }
+    }
+    const reply = { carts: rows.slice((page - 1) * PAGE, page * PAGE), page, more: page * PAGE < rows.length };
+    return stale ? { ...reply, stale } : reply;
+  }
 
   async function list(params) {
     const q = (params.get('q') ?? '').trim(), tab = params.get('tab') ?? 'featured', pageText = params.get('page') ?? '1', page = /^\d{1,2}$/.test(pageText) ? Number(pageText) : 0;
-    if (q.length > 60 || !q && tab !== 'featured' && tab !== 'new' || page < 1 || page > 50) throw fail('Bad list request.', 400);
+    if (q.length > 60 || !q && !['featured', 'new', 'top'].includes(tab) || page < 1 || page > 50) throw fail('Bad list request.', 400);
+    if (!q && tab === 'top') return topList(page);
     const key = `${q ? '' : tab}|${page}|${q}`, hit = lists.get(key);
     if (hit && now() - hit.at < LIST_MS) return hit.reply;
     try {
@@ -128,7 +166,7 @@ export function createOfficePc({ dir, fetch = globalThis.fetch, now = Date.now }
       const html = (await get(path, MAX_BYTES)).toString('utf8');
       if (!html.includes('pdat=[')) throw new Error('not a list'); // a captcha or a changed layout is no empty list
       const rows = parseList(html);
-      const reply = { carts: rows, page, more: rows.length >= 30 };
+      const reply = { carts: rows, page, more: rows.length >= PAGE };
       keep(lists, key, { at: now(), reply }, LISTS);
       return reply;
     } catch {

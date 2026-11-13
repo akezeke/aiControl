@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseList, parseCart, createOfficePc } from '../server/office-pc.mjs';
+import { parseList, parseCart, parseTop, createOfficePc } from '../server/office-pc.mjs';
 import { Readable } from 'node:stream';
 import { thumbName, STARTERS } from '../client/office/carts.js';
 import { createHandler } from '../server/http.mjs';
@@ -52,7 +52,7 @@ test('parseCart: title, author past image links and @mentions, cart id, and the 
 
 test('list parameters', async () => {
   const { pc, calls } = setup({});
-  for (const bad of ['tab=hot', 'page=0', 'page=51', 'page=1.5', `q=${'x'.repeat(61)}`, `q=${' '.repeat(5)}${'x'.repeat(61)}`])
+  for (const bad of ['tab=hot', 'tab=Top', 'page=0', 'page=51', 'page=1.5', `q=${'x'.repeat(61)}`, `q=${' '.repeat(5)}${'x'.repeat(61)}`])
     await assert.rejects(pc.list(q(bad)), status(400), bad);
   assert.equal(calls.length, 0);
   const url = `${HOST}/bbs/lister.php?use_hurl=1&cat=7&sub=2&mode=carts&page=1&search=a%20b`;
@@ -88,6 +88,69 @@ test('list fetch rules', async () => {
   assert.equal(e.calls.length, 201);
   await e.pc.list(q('q=s1')); assert.equal(e.calls.length, 201);
   await e.pc.list(q('q=s0')); assert.equal(e.calls.length, 202);
+});
+
+// NerdyTeachers' Top 200, a card as their page has it (CRLF, raw `&`, the thumb a cart id where the link is a post).
+const TOP = 'https://nerdyteachers.com/PICO-8/Games/Top200/';
+const topCard = ({ rank, title, pid, thumb, stars, author }) => `            <div class="card text-white bg-dark text-center m-1 p-1" style="width: 170px">\r
+                    <div class="row justify-content-end pr-3"> <h5>#${rank}</h5> <i class="fas fa-minus-circle" style="color:gray" title="no change"></i> </div>\r
+                <h3>${title}</h3>\r
+\r
+                <a class="nerdyButton" target="_blank" href="https://www.lexaloffle.com/bbs/?pid=${pid}">\r
+                    <img class="imgCenter img128" src="https://www.lexaloffle.com/bbs/thumbs/${thumb}">\r
+                </a>\r
+                <h4><img class="icon16" src="/PICO-8/resources/img/icon/star.png"> ${stars}</h4> \r
+                <a class="nerdyButton" target="_blank" href="https://www.lexaloffle.com/bbs/?uid=10070#main_div">\r
+                    By: ${author}\r
+                </a>\r
+            </div>\r
+`;
+const topPage = cards => `<html><body><div title="PICO-8 Home"></div><div class="d-flex flex-wrap">\r\n${cards.join('             \r\n')}</div></body></html>`;
+const topN = n => topPage(Array.from({ length: n }, (_, i) => topCard({ rank: i + 1, title: `T${i + 1}`, pid: String(1000 + i), thumb: `pico8_t${i + 1}-1.png`, stars: 2000 - i, author: `a${i}` })));
+
+test('parseTop reads their cards: rank, title, the cart id off its thumbnail, stars, author', () => {
+  const cards = parseTop(topPage([
+    topCard({ rank: 1, title: 'Celeste Classic', pid: '11722', thumb: 'pico15133.png', stars: 1835, author: 'Maddy Thorson & Noel Berry' }),
+    topCard({ rank: 2, title: 'Tom &amp; &lt;Jerry&gt;', pid: '105950', thumb: 'pico8_violet-37.png', stars: 154, author: 'lily.kensa' }),
+    topCard({ rank: 3, title: 'Odd Thumb', pid: '77', thumb: 'evil.gif', stars: 9, author: 'x' }),
+    topCard({ rank: 4, title: 'Bad Pid', pid: '"><script>', thumb: 'evil.gif', stars: 9, author: 'x' }),
+    topCard({ rank: 5, title: `${'Long'.repeat(30)}`, pid: '88', thumb: 'pico88.png', stars: 7, author: '' }),
+  ]));
+  assert.deepEqual(cards[0], { pid: '15133', title: 'Celeste Classic', author: 'Maddy Thorson & Noel Berry', thumb: 'pico15133.png', stars: 1835, rank: 1 });
+  assert.deepEqual(cards[1], { pid: 'violet-37', title: 'Tom & <Jerry>', author: 'lily.kensa', thumb: 'pico8_violet-37.png', stars: 154, rank: 2 });
+  assert.deepEqual(cards[2], { pid: '77', title: 'Odd Thumb', author: 'x', thumb: 'pico77.png', stars: 9, rank: 3 }, 'a thumb that is not a BBS thumb: the link\'s pid');
+  assert.deepEqual(cards.map(c => c.rank), [1, 2, 3, 5], 'a card without a real pid is dropped');
+  assert.equal(cards[3].title.length, 80); assert.equal(cards[3].author, '');
+  assert.deepEqual(parseTop('<html>maintenance</html>'), []);
+});
+
+test('the Top 200 list: their page, 30 a page, kept a day, an old copy when they are down', async () => {
+  const s = setup({ [TOP]: topN(200) });
+  const one = await s.pc.list(q('tab=top'));
+  assert.deepEqual([one.page, one.more, one.carts.length, one.carts[0].rank, one.carts[29].rank], [1, true, 30, 1, 30]);
+  assert.equal(s.calls[0][0], TOP); assert.equal(s.calls[0][1].redirect, 'error'); assert.ok(s.calls[0][1].signal instanceof AbortSignal);
+  const last = await s.pc.list(q('tab=top&page=7'));
+  assert.deepEqual([last.more, last.carts.length, last.carts[0].rank, last.carts[19].rank], [false, 20, 181, 200]);
+  assert.deepEqual(await s.pc.list(q('tab=top&page=8')), { carts: [], page: 8, more: false });
+  assert.equal(s.calls.length, 1, 'one fetch for every page');
+  s.clock.t += 86_400_000 - 1; await s.pc.list(q('tab=top&page=2')); assert.equal(s.calls.length, 1);
+  // a day on, fetched again; a search from the Top 200 tab is the BBS's
+  s.serve[TOP] = topN(31); s.clock.t += 2;
+  assert.equal((await s.pc.list(q('tab=top'))).more, true); assert.equal((await s.pc.list(q('tab=top&page=2'))).carts.length, 1);
+  assert.equal(s.calls.length, 2);
+  s.serve[`${HOST}/bbs/lister.php?use_hurl=1&cat=7&sub=2&mode=carts&page=1&search=celeste`] = lister([ROWS[0]]);
+  assert.equal((await s.pc.list(q('tab=top&q=celeste'))).carts[0].pid, 'molemole-1');
+  // down, or a page with no cards (a changed layout): the old copy, stale
+  for (const page of [new Error('down'), '<html>maintenance</html>', { status: 500, body: topN(5) }]) {
+    s.serve[TOP] = page; s.clock.t += 86_400_001;
+    const stale = await s.pc.list(q('tab=top&page=2'));
+    assert.equal(stale.stale, true); assert.equal(stale.carts.length, 1);
+  }
+  // no copy: 502, theirs
+  const n = setup({ [TOP]: '<html>maintenance</html>' });
+  await assert.rejects(n.pc.list(q('tab=top')), err => err.status === 502 && /NerdyTeachers/.test(err.message));
+  n.serve[TOP] = 'x'.repeat((1 << 20) + 1);
+  await assert.rejects(n.pc.list(q('tab=top')), status(502));
 });
 
 test('cart info', async () => {

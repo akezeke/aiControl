@@ -130,7 +130,7 @@ test('place follows the screen as it moves (a resize)', async t => {
 });
 test('a drag goes through the inverse of the screen transform', async t => {
   const { d } = await sat(t); await openBrowser(d); d.place(rect(100, 50, 540, 320));
-  const title = titleOf(d.root, 'Featured - Info Highway');
+  const title = titleOf(d.root, 'Top 200 - Info Highway');
   pointer(title, 'pointerdown', { clientX: 200, clientY: 100 }); pointer(title, 'pointermove', { clientX: 220, clientY: 115 });
   assert.deepEqual([title.parent.style.left, title.parent.style.top], ['100px', '42px']);
 });
@@ -152,7 +152,7 @@ test('the Start menu opens and shuts over a playing cart without moving its fram
 test('front order changes only z-index, never a node or its parent', async t => {
   const { d } = await sat(t); const frame = playing(d, { pid: 'a-1', title: 'A' }); await openBrowser(d);
   const nodes = windowsOf(d.root), parents = nodes.map(n => n.parent);
-  click(titleOf(d.root, 'Featured - Info Highway')); click(titleOf(d.root, 'A - PICO-8'));
+  click(titleOf(d.root, 'Top 200 - Info Highway')); click(titleOf(d.root, 'A - PICO-8'));
   assert.deepEqual(windowsOf(d.root), nodes); assert.deepEqual(nodes.map(n => n.parent), parents);
   assert.equal(iframeOf(d.root), frame);
 });
@@ -166,7 +166,7 @@ test('pausing: minimized or covered hides the same frame, and showing it again r
 });
 test('standing up mid-drag and mid-install leaves nothing running', async t => {
   const { d, doc, timers, api } = await sat(t, { slowAdd: true }); playing(d, { pid: 'a-1', title: 'A' }); await openBrowser(d);
-  startDrag(titleOf(d.root, 'Featured - Info Highway')); install(d, { pid: 'c-1', title: 'C' });
+  startDrag(titleOf(d.root, 'Top 200 - Info Highway')); install(d, { pid: 'c-1', title: 'C' });
   await tick(); assert.ok(api.posted.some(b => b.op === 'add'), 'the add is out');
   assert.ok(iframeOf(d.root), 'the cart is loaded, only covered');
   d.hide();
@@ -289,7 +289,7 @@ test('standing up and sitting down again: ▶ Play, never autoplay; the desktop 
 test('the first sit-down applies the saved windows; a later one keeps the browser page', async t => {
   const windows = defaults(); windows.windows.browser = { open: true, mode: 'normal', x: 100, y: 12 }; windows.order = ['notepad', 'pico8', 'browser'];
   const { d, api } = await sat(t, { windows }); await tick();
-  assert.equal(windowOf(d.root, 'Featured - Info Highway').style.left, '100px');
+  assert.equal(windowOf(d.root, 'Top 200 - Info Highway').style.left, '100px');
   click(find(d.root, n => n.tag === 'a' && n.textContent === 'Cart 1')); await tick();
   assert.ok(titleOf(d.root, 'Cart 1 - Info Highway'));
   d.hide(); d.place(rect(0, 0, 1080, 640)); await tick();
@@ -299,7 +299,7 @@ test('the first sit-down applies the saved windows; a later one keeps the browse
 
 test('window ops: a title drag saves once, on pointerup; min, max and close save one each', async t => {
   const { d, api } = await sat(t); await openBrowser(d); await tick();
-  const ops = () => windowOps(api).length, n = ops(), name = 'Featured - Info Highway', title = titleOf(d.root, name), win = title.parent;
+  const ops = () => windowOps(api).length, n = ops(), name = 'Top 200 - Info Highway', title = titleOf(d.root, name), win = title.parent;
   startDrag(title); await tick(); assert.equal(ops(), n); assert.deepEqual([win.style.left, win.style.top], ['100px', '42px']);
   pointer(title, 'pointerup', { clientX: 40, clientY: 30 }); await tick(); assert.equal(ops(), n + 1);
   assert.deepEqual(windowOps(api).at(-1).windows.browser, { open: true, mode: 'normal', x: 100, y: 42 });
@@ -311,13 +311,13 @@ test('window ops: a title drag saves once, on pointerup; min, max and close save
 });
 test('a cancelled title drag goes back and saves nothing', async t => {
   const { d, api } = await sat(t); await openBrowser(d); await tick();
-  const n = windowOps(api).length, title = titleOf(d.root, 'Featured - Info Highway');
+  const n = windowOps(api).length, title = titleOf(d.root, 'Top 200 - Info Highway');
   startDrag(title); pointer(title, 'pointercancel'); await tick();
   assert.deepEqual([title.parent.style.left, title.parent.style.top], ['60px', '12px']); assert.equal(windowOps(api).length, n);
 });
 test('a lost capture or a buttonless mouse move ends a title drag where it is, with one save', async t => {
   const { d, api } = await sat(t); await openBrowser(d); await tick();
-  const title = titleOf(d.root, 'Featured - Info Highway'), win = title.parent, n = windowOps(api).length, at = () => [win.style.left, win.style.top];
+  const title = titleOf(d.root, 'Top 200 - Info Highway'), win = title.parent, n = windowOps(api).length, at = () => [win.style.left, win.style.top];
   startDrag(title); title.dispatch('lostpointercapture', { pointerId: 1 }); pointer(title, 'pointermove', { clientX: 200, clientY: 200 }); await tick();
   assert.deepEqual(at(), ['100px', '42px']); assert.equal(windowOps(api).length, n + 1); assert.deepEqual(windowOps(api).at(-1).windows.browser, { open: true, mode: 'normal', x: 100, y: 42 });
   startDrag(title); pointer(title, 'pointermove', { clientX: 80, clientY: 60, buttons: 0 }); pointer(title, 'pointermove', { clientX: 200, clientY: 200 }); await tick();
@@ -325,7 +325,7 @@ test('a lost capture or a buttonless mouse move ends a title drag where it is, w
 });
 test('two taps that wobble 2 px still maximize, and save no move', async t => {
   const { d, api } = await sat(t); await openBrowser(d); await tick();
-  const title = titleOf(d.root, 'Featured - Info Highway'), n = windowOps(api).length, touch = { pointerType: 'touch' };
+  const title = titleOf(d.root, 'Top 200 - Info Highway'), n = windowOps(api).length, touch = { pointerType: 'touch' };
   click(title, touch);
   pointer(title, 'pointerdown', touch); pointer(title, 'pointermove', { ...touch, clientX: 2 }); pointer(title, 'pointerup', { ...touch, clientX: 2 }); await tick();
   assert.equal(title.parent.style.width, '1080px');
@@ -333,7 +333,7 @@ test('two taps that wobble 2 px still maximize, and save no move', async t => {
 });
 test('_ and × on a window behind send one op each', async t => {
   const { d, api } = await sat(t); await openBrowser(d); playing(d, { pid: 'a-1', title: 'A' }); await tick();
-  const name = 'Featured - Info Highway', ops = () => windowOps(api).length;
+  const name = 'Top 200 - Info Highway', ops = () => windowOps(api).length;
   let n = ops(); click(button(d.root, name, '_')); await tick();
   assert.equal(ops(), n + 1); assert.equal(windowOps(api).at(-1).windows.browser.mode, 'min');
   click(task(d.root, name)); click(titleOf(d.root, 'A - PICO-8')); await tick(); assert.equal(has(windowOf(d.root, name), 'front'), false);
@@ -342,7 +342,7 @@ test('_ and × on a window behind send one op each', async t => {
 });
 test('□ on a window behind fronts and maximizes it in one op', async t => {
   const { d, api } = await sat(t); await openBrowser(d); playing(d, { pid: 'a-1', title: 'A' }); await tick();
-  const name = 'Featured - Info Highway', n = windowOps(api).length;
+  const name = 'Top 200 - Info Highway', n = windowOps(api).length;
   click(button(d.root, name, '□')); await tick();
   const ops = windowOps(api).slice(n); assert.equal(ops.length, 1);
   assert.equal(ops[0].windows.browser.mode, 'max'); assert.equal(ops[0].order.at(-1), 'browser');
@@ -353,7 +353,7 @@ test('a window dragged over PICO-8 pauses the game, and dragged off resumes it',
   const title = titleOf(d.root, 'salaries.txt - Notepad');
   pointer(title, 'pointerdown', { clientX: 400, clientY: 100 }); pointer(title, 'pointermove', { clientX: 900, clientY: 100 }); pointer(title, 'pointerup', { clientX: 900, clientY: 100 });
   playing(d, { pid: 'a-1', title: 'A' }); await openBrowser(d); assert.equal(frame.style.display, 'none', 'the browser covers it');
-  const b = titleOf(d.root, 'Featured - Info Highway');
+  const b = titleOf(d.root, 'Top 200 - Info Highway');
   pointer(b, 'pointerdown', { clientX: 300, clientY: 20 }); pointer(b, 'pointermove', { clientX: 900, clientY: 20 }); assert.equal(frame.style.display, '', 'dragged off');
   pointer(b, 'pointermove', { clientX: 300, clientY: 20 }); assert.equal(frame.style.display, 'none', 'dragged back over');
   pointer(b, 'pointermove', { clientX: 300, clientY: 400 }); pointer(b, 'pointerup', { clientX: 300, clientY: 400 }); assert.equal(frame.style.display, '', 'dragged down off it');
@@ -361,9 +361,9 @@ test('a window dragged over PICO-8 pauses the game, and dragged off resumes it',
 });
 test('maximize: a title double-click or two taps toggle the browser; PICO-8 never maximizes', async t => {
   const { d, api } = await sat(t); await openBrowser(d);
-  const title = titleOf(d.root, 'Featured - Info Highway'), win = title.parent;
+  const title = titleOf(d.root, 'Top 200 - Info Highway'), win = title.parent;
   dblclick(title); assert.deepEqual([win.style.left, win.style.top, win.style.width, win.style.height], ['0px', '0px', '1080px', '596px']);
-  assert.ok(button(d.root, 'Featured - Info Highway', '❐'));
+  assert.ok(button(d.root, 'Top 200 - Info Highway', '❐'));
   startDrag(title); pointer(title, 'pointerup'); assert.equal(win.style.left, '0px', 'a maximized window does not drag');
   dblclick(title); assert.equal(win.style.width, '900px');
   click(title, { pointerType: 'touch' }); click(title, { pointerType: 'touch' }); assert.equal(win.style.width, '1080px');
@@ -453,7 +453,7 @@ test('Start: Programs and Documents open windows; Shut down… stands you up', a
   click(menuItem(d.root, 'Programs ▸')); click(menuItem(d.root, 'Notepad'));
   assert.equal(d.view().start, false); assert.equal(windowOf(d.root, 'salaries.txt - Notepad').hidden, false);
   click(start); click(menuItem(d.root, 'Programs ▸')); click(menuItem(d.root, 'Info Highway')); await tick();
-  assert.equal(windowOf(d.root, 'Featured - Info Highway').hidden, false);
+  assert.equal(windowOf(d.root, 'Top 200 - Info Highway').hidden, false);
   click(start); click(menuItem(d.root, 'Documents ▸')); assert.ok(menuItem(d.root, 'salaries.txt'));
   click(menuItem(d.root, 'Shut down…')); assert.equal(stood(), 1); assert.equal(d.view().start, false); assert.equal(openMenus(d.root), 0);
 });
@@ -590,9 +590,9 @@ test('Z plays, X goes back', async t => {
   const { d } = await sat(t); await openBrowser(d);
   key(d.root, 'ArrowRight'); key(d.root, 'z'); await tick(); await tick();
   assert.equal(iframeOf(d.root).attributes.src, 'https://www.lexaloffle.com/bbs/widget.php?pid=c1-1'); assert.ok(titleOf(d.root, 'Cart 1 - PICO-8'));
-  click(task(d.root, 'Featured - Info Highway')); click(find(d.root, n => n.tag === 'a' && n.textContent === 'Cart 2')); await tick();
+  click(task(d.root, 'Top 200 - Info Highway')); click(find(d.root, n => n.tag === 'a' && n.textContent === 'Cart 2')); await tick();
   assert.ok(titleOf(d.root, 'Cart 2 - Info Highway'));
-  assert.equal(key(d.root, 'x').defaultPrevented, true); assert.ok(titleOf(d.root, 'Featured - Info Highway'));
+  assert.equal(key(d.root, 'x').defaultPrevented, true); assert.ok(titleOf(d.root, 'Top 200 - Info Highway'));
 });
 test('M then I installs', async t => {
   const { d, api } = await sat(t); await openBrowser(d);
@@ -721,7 +721,7 @@ test('removed focus comes back inside the desktop', async t => {
 const statusText = root => textOf(find(root, n => has(n, 'pc-status')));
 const linkOf = (root, title) => find(root, n => n.tag === 'a' && n.textContent === title);
 test('Enter on Start or a task button acts on it, though a window is in front', async t => {
-  const { d, doc, api } = await sat(t), at = () => doc.activeElement, page = 'Featured - Info Highway'; await openBrowser(d);
+  const { d, doc, api } = await sat(t), at = () => doc.activeElement, page = 'Top 200 - Info Highway'; await openBrowser(d);
   click(startOf(d.root)); key(at(), 'Escape'); assert.ok(at() === startOf(d.root));
   key(at(), 'Enter'); assert.equal(d.view().start, true, 'Start opens again');
   assert.deepEqual(api.paths.filter(p => p.startsWith('office/bbs/cart')), [], 'no card played');
@@ -739,7 +739,7 @@ test('sitting down to a window in front gives it the keys; with none, the deskto
   key(at(), 'ArrowDown'); assert.ok(at() === linkOf(d.root, 'Cart 1')); assert.equal(selectedId(d), 'browser', 'the icons stay put');
   assert.equal(legendText(d.root), ''); assert.match(statusText(d.root), /Enter\/Z Play/, 'the browser\'s legend');
   d.hide(); d.place(rect(0, 0, 1080, 640)); key(at(), 'ArrowRight'); assert.ok(at() === linkOf(d.root, 'Cart 2'), 'again at the next sit-down');
-  click(task(d.root, 'Featured - Info Highway')); d.hide(); d.place(rect(0, 0, 1080, 640));
+  click(task(d.root, 'Top 200 - Info Highway')); d.hide(); d.place(rect(0, 0, 1080, 640));
   key(at(), 'ArrowDown'); assert.equal(selectedId(d), 'salaries', 'minimized: the desktop');
 });
 test('keys still reach the desktop after a re-render takes the focused icon away', async t => {
@@ -764,7 +764,7 @@ for (const [failCart, text] of [['Lexaloffle is not answering.', 'Lexaloffle is 
   });
 }
 test('a press on the title or menu bar ends Info Highway\'s key legend', async t => {
-  const { d, doc } = await sat(t), page = 'Featured - Info Highway'; await openBrowser(d);
+  const { d, doc } = await sat(t), page = 'Top 200 - Info Highway'; await openBrowser(d);
   for (const n of [titleOf(d.root, page), find(windowOf(d.root, page), x => has(x, 'pc-menubar'))]) {
     key(doc.activeElement, 'ArrowRight'); assert.match(statusText(d.root), /Enter\/Z Play/);
     pointer(n, 'pointerdown'); pointer(n, 'pointerup'); assert.equal(statusText(d.root), 'Done');

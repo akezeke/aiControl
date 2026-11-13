@@ -9,6 +9,7 @@ test('readAddress, every row', () => {
     ['165759', { kind: 'cart', pid: '165759' }], ['porklike-2', { kind: 'cart', pid: 'porklike-2' }],
     ['https://www.lexaloffle.com/bbs/?tid=148484', { kind: 'thread', tid: '148484' }],
     ['https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts&orderby=featured&page=2', { kind: 'list', tab: 'featured', page: 2, q: '' }],
+    ['https://nerdyteachers.com/PICO-8/Games/Top200/', { kind: 'list', tab: 'top', page: 1, q: '' }],
     ['https://example.com/x', { kind: 'away', url: 'https://example.com/x' }],
     ['http://example.com/', { kind: 'tab', url: 'http://example.com/' }],
     ['  snake game ', { kind: 'search', q: 'snake game' }],
@@ -25,6 +26,7 @@ test('addresses shown', () => {
 });
 
 const rows = n => Array.from({ length: n }, (_, i) => ({ pid: `c${i}-1`, tid: i, title: `Cart ${i}`, author: `by${i}`, thumb: `pico8_c${i}-1.png`, likes: i, updated: `2026-01-${String(i + 1).padStart(2, '0')}` }));
+const topRows = n => Array.from({ length: n }, (_, i) => ({ pid: `t${i}-1`, title: `Top ${i}`, author: `by${i}`, thumb: `pico8_t${i}-1.png`, stars: 900 - i, rank: i + 1 }));
 const HELP = { icon: 'info', text: 'Help is not available. Please contact your system administrator.', buttons: ['OK'] };
 const ABOUT = { icon: 'info', text: 'Info Highway 2.0 · Best viewed at 1080 × 640.', buttons: ['OK'] };
 
@@ -34,6 +36,7 @@ function setup(t, { fail = false, more = true, stale = false, installed = () => 
   const api = async path => {
     calls.push(path);
     if (failing) throw new Error('down');
+    if (path.startsWith('office/bbs/list?tab=top')) return { carts: topRows(30), more, ...(stale && { stale: true }) };
     if (path.startsWith('office/bbs/list')) return { carts: rows(30), more, ...(stale && { stale: true }) };
     const pid = new URLSearchParams(path.split('?')[1]).get('pid') ?? 'tid-1';
     return { pid, title: `Info ${pid}`, author: 'someone', thumb: `pico8_${pid}.png`, embed: !pid.startsWith('blocked') };
@@ -48,15 +51,18 @@ function setup(t, { fail = false, more = true, stale = false, installed = () => 
   return { doc, b, calls, played, installs, opened, dialogs, button, cards, link, key, rowsOf, setFail: v => { failing = v; } };
 }
 const tick = () => new Promise(r => setImmediate(r));
-const loaded = async t0 => { const s = setup(t0); await s.b.home(); return s; };
+// Most tests are about the BBS's own lists, so they start on Featured; Home is the Top 200.
+const FEATURED = { kind: 'list', tab: 'featured', page: 1, q: '' };
+const loaded = async t0 => { const s = setup(t0); await s.b.go({ ...FEATURED }); return s; };
 
-test('opens on Featured page 1 and says so', async t => {
+test('opens on the Top 200 page 1, its tab first, and says so', async t => {
   const s = setup(t); assert.deepEqual(s.calls, []);
   const p = s.b.home(); assert.equal(s.b.status(), 'Opening page…');
   assert.ok(find(s.b.node, n => n.classList.contains('pc-throbber')).classList.contains('loading'));
-  await p; assert.deepEqual(s.calls, ['office/bbs/list?tab=featured&page=1']);
+  await p; assert.deepEqual(s.calls, ['office/bbs/list?tab=top&page=1']);
   assert.equal(s.b.page().kind, 'list');
-  assert.equal(s.b.status(), 'Done'); assert.equal(s.b.title(), 'Featured - Info Highway');
+  assert.equal(s.b.status(), 'Done'); assert.equal(s.b.title(), 'Top 200 - Info Highway');
+  assert.deepEqual(findAll(s.b.node, n => n.tag === 'button' && ['Top 200', 'Featured', 'New'].includes(n.textContent)).map(n => n.textContent), ['Top 200', 'Featured', 'New']);
   assert.equal(find(s.b.node, n => n.classList.contains('pc-throbber')).classList.contains('loading'), false);
   assert.equal(s.cards().length, 30);
 });
@@ -78,7 +84,7 @@ test('XSS: fetched text only reaches textContent', async t => {
   assert.ok(find(b.node, n => n.textContent === '<img src=x onerror=1>')); assert.equal(findAll(b.node, n => n.tag === 'img').length, 1);
 });
 test('✓ on installed carts, refreshed in place', async t => {
-  let have = new Set(['c1-1']); const s = setup(t, { installed: pid => have.has(pid) }); await s.b.home();
+  let have = new Set(['c1-1']); const s = setup(t, { installed: pid => have.has(pid) }); await s.b.go({ ...FEATURED });
   const marks = () => findAll(s.b.node, n => n.textContent === '✓').length;
   assert.equal(marks(), 1); have = new Set(['c1-1', 'c2-1']); s.b.refreshInstalled(); assert.equal(marks(), 2);
   have = new Set(); s.b.refreshInstalled(); assert.equal(marks(), 0);
@@ -152,6 +158,22 @@ test('tabs: the current one is pressed', async t => {
   const s = await loaded(t); assert.equal(s.button('Featured').classList.contains('pressed'), true); assert.equal(s.button('New').classList.contains('pressed'), false);
   s.button('New').dispatch('click'); await tick(); assert.equal(s.calls.at(-1), 'office/bbs/list?tab=new&page=1'); assert.equal(s.button('New').classList.contains('pressed'), true);
 });
+test('the Top 200 tab: NerdyTeachers\' list, ranked, with its stars, their page in the address bar', async t => {
+  const s = await loaded(t), tab = s.button('Top 200');
+  assert.equal(tab.attributes['data-tip'], "NerdyTeachers' Top 200 by BBS stars");
+  tab.dispatch('click'); await tick();
+  assert.equal(s.calls.at(-1), 'office/bbs/list?tab=top&page=1');
+  assert.equal(s.button('Top 200').classList.contains('pressed'), true); assert.equal(s.button('Featured').classList.contains('pressed'), false);
+  assert.equal(s.b.title(), 'Top 200 - Info Highway');
+  assert.equal(find(s.b.node, n => n.tag === 'input' && n.classList.contains('address')).value, 'https://nerdyteachers.com/PICO-8/Games/Top200/');
+  const c = s.cards()[1];
+  assert.ok(find(c, n => n.textContent === '#2 · ★ 899')); assert.equal(find(c, n => n.textContent.startsWith('♥')), undefined);
+  assert.equal(c.attributes['data-tip'], undefined);
+  s.button('Next »').dispatch('click'); await tick(); assert.equal(s.calls.at(-1), 'office/bbs/list?tab=top&page=2');
+  // its game page has the rank and stars; their address opens the tab
+  s.link(1).dispatch('click'); assert.equal(s.b.title(), 'Top 1 - Info Highway'); assert.ok(find(s.b.node, n => n.textContent === '#2 · ★ 899'));
+  await s.b.go('https://nerdyteachers.com/PICO-8/Games/Top200/'); assert.equal(s.b.title(), 'Top 200 - Info Highway'); assert.equal(s.calls.at(-1), 'office/bbs/list?tab=top&page=1');
+});
 test('search', async t => {
   const s = await loaded(t), box = find(s.b.node, n => n.tag === 'input' && n.classList.contains('search'));
   assert.equal(s.key('s'), true); assert.equal(s.doc.activeElement, box);
@@ -178,7 +200,7 @@ test('error and Retry', async t => {
   const msg = 'Info Highway cannot open this page. The information superhighway may be closed for repairs.';
   assert.ok(find(s.b.node, n => n.textContent === msg)); assert.equal(s.b.title(), 'Error - Info Highway'); assert.equal(s.doc.activeElement.textContent, 'Retry');
   s.setFail(false); s.button('Retry').dispatch('click'); await tick();
-  assert.deepEqual(s.calls, ['office/bbs/list?tab=featured&page=1', 'office/bbs/list?tab=featured&page=1']); assert.equal(s.cards().length, 30);
+  assert.deepEqual(s.calls, ['office/bbs/list?tab=top&page=1', 'office/bbs/list?tab=top&page=1']); assert.equal(s.cards().length, 30);
   assert.equal(s.button('◄ Back').disabled, true, 'Retry replaces the error entry');
 });
 test('away and tab', async t => {
@@ -247,7 +269,7 @@ test('menus', async t => {
   s.b.menus()[0].items[1].run(); assert.deepEqual(s.opened, ['https://www.lexaloffle.com/bbs/?pid=c0-1']);
   s.b.menus()[0].items[0].run(); assert.deepEqual(s.installs, [{ pid: 'c0-1', title: 'Cart 0' }]);
   let closed = 0; s.b.onClose(() => closed++); s.b.menus()[0].items[2].run(); assert.equal(closed, 1);
-  await s.b.go('good-1'); assert.equal(s.b.menus()[1].items[0].disabled, false); s.b.menus()[1].items[2].run(); await tick(); assert.equal(s.b.title(), 'Featured - Info Highway');
+  await s.b.go('good-1'); assert.equal(s.b.menus()[1].items[0].disabled, false); s.b.menus()[1].items[2].run(); await tick(); assert.equal(s.b.title(), 'Top 200 - Info Highway');
 });
 test('context items for the selected game', async t => {
   const s = await loaded(t); assert.deepEqual(s.b.contextItems(), []);
@@ -332,7 +354,7 @@ test('stale: Back during a fetch', async t => {
   s.b.go('good-1'); assert.equal(s.b.status(), 'Opening page…'); s.b.back();
   assert.equal(s.b.status(), 'Done'); assert.deepEqual(s.titles(), ['home Cart 0', 'home Cart 1', 'home Cart 2']);
   s.calls[1].resolve(s.info('good-1')); await flush();
-  assert.equal(s.b.page().kind, 'list'); assert.equal(s.b.status(), 'Done'); assert.equal(s.b.title(), 'Featured - Info Highway'); assert.equal(s.b.menus()[1].items[1].disabled, false);
+  assert.equal(s.b.page().kind, 'list'); assert.equal(s.b.status(), 'Done'); assert.equal(s.b.title(), 'Top 200 - Info Highway'); assert.equal(s.b.menus()[1].items[1].disabled, false);
   assert.equal(s.doc.activeElement?.textContent, undefined, 'no focus pulled to the stale game page');
 });
 test('stale: a failure of an old fetch does not turn the current entry into an error page', async t => {

@@ -50,8 +50,12 @@ export function addressOf(page) {
 }
 
 const listPath = ({ tab, page, q }) => 'office/bbs/list?' + new URLSearchParams(q ? { q, page } : { tab, page });
-const titleOf = page => !page ? 'Info Highway' : page.kind === 'list' ? (page.q ? `Search: ${page.q}` : page.tab === 'featured' ? 'Featured' : 'New')
+const TABS = { top: 'Top 200', featured: 'Featured', new: 'New' };
+const titleOf = page => !page ? 'Info Highway' : page.kind === 'list' ? (page.q ? `Search: ${page.q}` : TABS[page.tab] ?? 'New')
   : page.kind === 'game' ? page.cart?.title ?? page.pid ?? 'Opening page…' : page.kind === 'away' ? 'Leaving' : 'Error';
+
+// A list row's standing: the BBS's likes, or a Top 200 row's rank and stars.
+const score = r => r.rank != null ? `#${r.rank} · ★ ${r.stars}` : `♥ ${r.likes}`;
 
 export function createBrowser({ doc = document, api, ui, installed, onPlay, onInstall, open }) {
   const make = (tag, className, text) => { const n = doc.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
@@ -112,11 +116,11 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
   const select = i => { sel = i; cards.forEach((c, j) => c.node.classList.toggle('selected', j === i)); };
 
   function buildList(p) {
-    const tab = (label, name) => { const n = button(label, () => go({ kind: 'list', tab: name, page: 1, q: '' }), !p.q && p.tab === name ? ' pressed' : ''); return n; };
+    const tab = (name, tip) => { const n = button(TABS[name], () => go({ kind: 'list', tab: name, page: 1, q: '' }), !p.q && p.tab === name ? ' pressed' : ''); if (tip) n.setAttribute('data-tip', tip); return n; };
     searchBox = make('input', 'pc-field search'); attrs(searchBox, { type: 'text' }); searchBox.setAttribute('maxlength', '60'); searchBox.value = p.q ?? '';
     const grid = make('div', 'pc-cards');
     (p.carts ?? []).forEach((r, i) => {
-      const card = make('div', 'pc-card'); card.setAttribute('data-tip', r.updated);
+      const card = make('div', 'pc-card'); if (r.updated) card.setAttribute('data-tip', r.updated);
       const img = make('img', 'pc-thumb'); attrs(img, { loading: 'lazy', width: 128, height: 128, alt: '', src: '/api/office/bbs/thumb/' + r.thumb });
       const a = make('a', '', r.title); a.setAttribute('tabindex', '0'); a.setAttribute('role', 'link');
       a.classList.toggle('visited', visited.has(bbsUrl(r.pid)));
@@ -124,13 +128,13 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
       card.addEventListener('click', e => { e?.preventDefault?.(); select(i); go({ kind: 'game', pid: r.pid, cart: r }); });
       a.addEventListener('focus', () => select(i));
       const head = make('div'); head.append(a);
-      card.append(img, head, make('div', '', r.author), make('div', '', `♥ ${r.likes}`));
+      card.append(img, head, make('div', '', r.author), make('div', '', score(r)));
       const c = { row: r, node: card, link: a, head, check: null }; mark(c); cards.push(c); grid.append(card);
     });
     const prev = button('« Prev', () => go({ ...p, page: p.page - 1, carts: undefined })), next = button('Next »', () => go({ ...p, page: p.page + 1, carts: undefined }));
     setDisabled(prev, p.page <= 1); setDisabled(next, !p.more);
     const pager = row(prev, make('span', '', '|'), make('span', '', `Page ${p.page}`), make('span', '', '|'), next);
-    return [row(tab('Featured', 'featured'), tab('New', 'new'), searchBox, button('Search', () => search())), make('hr'), grid, make('hr'), pager];
+    return [row(tab('top', "NerdyTeachers' Top 200 by BBS stars"), tab('featured'), tab('new'), searchBox, button('Search', () => search())), make('hr'), grid, make('hr'), pager];
   }
   function buildGame(p) {
     const c = p.cart, img = make('img', 'pc-thumb');
@@ -138,7 +142,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
     Object.assign(img.style, { width: '256px', height: '256px', imageRendering: 'pixelated' }); img.classList.remove('pc-thumb');
     const info = make('div'); info.append(make('h2', '', c?.title ?? p.pid ?? ''));
     if (c?.author) info.append(make('div', '', c.author));
-    if (c?.likes != null) info.append(make('div', '', `♥ ${c.likes}`));
+    if (c?.likes != null || c?.rank != null) info.append(make('div', '', score(c)));
     if (c?.updated) info.append(make('div', '', c.updated));
     const out = [row(img, info)];
     if (p.loaded) {
@@ -219,7 +223,7 @@ export function createBrowser({ doc = document, api, ui, installed, onPlay, onIn
     if (r.kind === 'search' && !r.q) return Promise.resolve();
     return visit(pageOf(r));
   }
-  const home = () => go({ kind: 'list', tab: 'featured', page: 1, q: '' });
+  const home = () => go({ kind: 'list', tab: 'top', page: 1, q: '' });
   const back_ = () => idx > 0 ? (idx--, show(page())) : Promise.resolve();
   const forward_ = () => idx < hist.length - 1 ? (idx++, show(page())) : Promise.resolve();
   function refresh() {

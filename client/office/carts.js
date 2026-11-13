@@ -35,8 +35,15 @@ export const isPid = value => typeof value === 'string' && cartPid(value) === va
 
 export const threadId = text => bbsLink(text)?.searchParams.get('tid')?.match(/^\d{1,12}$/)?.[0] ?? null;
 
-// A link to the BBS carts list (Pico-8 category), as the Info Highway shows it; null for anything else.
+// NerdyTeachers' Top 200 by BBS stars, the Info Highway's third list (office-pc.mjs reads it).
+export const TOP_URL = 'https://nerdyteachers.com/PICO-8/Games/Top200/';
+const isTop = text => {
+  try { const url = new URL(String(text ?? '').trim()); return url.protocol === 'https:' && ['nerdyteachers.com', 'www.nerdyteachers.com'].includes(url.hostname) && /^\/PICO-8\/Games\/Top200\/?$/.test(url.pathname); } catch { return false; }
+};
+
+// A link to the BBS carts list (Pico-8 category) or the Top 200, as the Info Highway shows it; null for anything else.
 export function listLink(text) {
+  if (isTop(text)) return { tab: 'top', page: 1, q: '' };
   const url = bbsLink(text);
   if (!url || url.searchParams.get('cat') !== '7') return null;
   const hash = new URLSearchParams(url.hash.slice(1)), get = key => url.searchParams.get(key) ?? hash.get(key);
@@ -47,7 +54,7 @@ export function listLink(text) {
 
 export const thumbName = pid => /^\d+$/.test(pid) ? `pico${pid}.png` : `pico8_${pid}.png`;
 
-export const listUrl = ({ tab, page, q }) =>
+export const listUrl = ({ tab, page, q }) => !q && tab === 'top' ? TOP_URL :
   `https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts${q ? `&search=${encodeURIComponent(q)}` : tab === 'featured' ? '&orderby=featured' : ''}&page=${page}`;
 
 export const widgetUrl = pid => `https://www.lexaloffle.com/bbs/widget.php?pid=${encodeURIComponent(pid)}`;

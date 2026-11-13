@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STARTERS, cartPid, isPid, threadId, listLink, thumbName, listUrl, widgetUrl, bbsUrl, recentCarts, CARTS_KEY } from '../client/office/carts.js';
+import { STARTERS, cartPid, isPid, threadId, listLink, thumbName, listUrl, widgetUrl, bbsUrl, recentCarts, CARTS_KEY, TOP_URL } from '../client/office/carts.js';
 
 const memory = (init = {}) => { const data = { ...init }; return { getItem: k => data[k] ?? null, setItem: (k, v) => { data[k] = String(v); }, data }; };
 
@@ -61,12 +61,20 @@ test('listLink', () => {
   assert.deepEqual(listLink(`${at}lister.php?cat=7&mode=carts&search=snake&page=99`), { tab: 'new', page: 50, q: 'snake' });
   assert.equal(listLink(`${at}?cat=6#mode=carts`), null);
   assert.equal(listLink(`${at}?pid=porklike-2`), null);
+  // NerdyTeachers' Top 200, the Info Highway's third tab
+  for (const top of [TOP_URL, 'https://nerdyteachers.com/PICO-8/Games/Top200', 'https://www.nerdyteachers.com/PICO-8/Games/Top200/#x'])
+    assert.deepEqual(listLink(top), { tab: 'top', page: 1, q: '' }, top);
+  for (const other of ['https://nerdyteachers.com/PICO-8/Games/', 'http://nerdyteachers.com/PICO-8/Games/Top200/', 'https://nerdyteachers.com.evil/PICO-8/Games/Top200/'])
+    assert.equal(listLink(other), null, other);
 });
 test('thumbName and listUrl', () => {
   assert.equal(thumbName('molemole-1'), 'pico8_molemole-1.png');
   assert.equal(thumbName('23208'), 'pico23208.png');
   assert.equal(listUrl({ tab: 'featured', page: 2, q: '' }), 'https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts&orderby=featured&page=2');
   assert.equal(listUrl({ tab: 'new', page: 1, q: '' }), 'https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts&page=1');
+  assert.equal(TOP_URL, 'https://nerdyteachers.com/PICO-8/Games/Top200/');
+  assert.equal(listUrl({ tab: 'top', page: 3, q: '' }), TOP_URL);
+  assert.equal(listUrl({ tab: 'top', page: 1, q: 'snake' }), 'https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts&search=snake&page=1');
   assert.equal(listUrl({ tab: 'featured', page: 1, q: 'sn ake' }), 'https://www.lexaloffle.com/bbs/?cat=7#sub=2&mode=carts&search=sn%20ake&page=1');
   assert.equal(bbsUrl('porklike-2'), 'https://www.lexaloffle.com/bbs/?pid=porklike-2');
 });
