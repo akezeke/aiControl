@@ -73,7 +73,8 @@ const tag = (text, name) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(t
 function claudeUserRow(row, text) {
   if (row.isCompactSummary) return ['notice', 'Context compacted'];
   const kind = row.origin?.kind;
-  if (kind === 'task-notification') return ['notice', tag(text, 'summary') || `Task ${tag(text, 'status') || 'update'}`];
+  // The summary arrives XML-escaped (&amp;&amp; for &&).
+  if (kind === 'task-notification') return ['notice', tag(text, 'summary').replace(/&(lt|gt|quot|apos|amp);/g, (_, e) => ({ lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' })[e]) || `Task ${tag(text, 'status') || 'update'}`];
   if (kind && kind !== 'human') return ['notice', text.replace(/<[^>]+>/g, '').trim().split('\n')[0].slice(0, 200)];
   const command = tag(text, 'command-name');
   if (command) return ['user', `${command} ${tag(text, 'command-args')}`.trim()];

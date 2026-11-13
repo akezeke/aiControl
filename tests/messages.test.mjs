@@ -41,10 +41,10 @@ test('Claude messages sent mid-turn appear where the turn took them in', () => {
     row('a', 'assistant', 'Shooting the phone view.'),
     queued('q1', 'what are you working on?', 'human'),
     queued('q2', [{ type: 'text', text: 'and the mug' }, { type: 'image', source: {} }], 'human'),
-    queued('q3', '<task-notification>\n<summary>Agent "Fix" finished</summary>\n</task-notification>', 'task-notification'),
+    queued('q3', '<task-notification>\n<summary>Command "a &amp;&amp; b &gt; c" completed</summary>\n</task-notification>', 'task-notification'),
     row('b', 'assistant', 'The screenshots.'),
   ], sessionId);
-  assert.deepEqual(messages.map(m => [m.role, m.text]), [['assistant', 'Shooting the phone view.'], ['user', 'what are you working on?'], ['user', '[image] and the mug'], ['notice', 'Agent "Fix" finished'], ['assistant', 'The screenshots.']]);
+  assert.deepEqual(messages.map(m => [m.role, m.text]), [['assistant', 'Shooting the phone view.'], ['user', 'what are you working on?'], ['user', '[image] and the mug'], ['notice', 'Command "a && b > c" completed'], ['assistant', 'The screenshots.']]);
 });
 
 test('Claude titles prefer user names, then the latest generated title over a derived name', () => {

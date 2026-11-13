@@ -310,7 +310,7 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .recent-message.tool { margin: 0 32px 0 10px; padding: 1px 0 1px 12px; background: none; border: 0; border-left: 2px solid var(--line); border-radius: 0; }
 .recent-message:not(.tool) + .recent-message.tool { margin-top: 10px; padding-top: 3px; }
 /* Harness notices ("Agent … finished", "Context compacted"): beats the per-theme message boxes. */
-:root .history-content > .recent-message.notice { align-self: center; max-width: 100%; margin: 10px 0 0; padding: 0 8px; background: none; border: 0; border-radius: 0; box-shadow: none; color: var(--text-3); font-size: 12px; text-align: center; }
+:root .history-content > .recent-message.notice { align-self: center; max-width: 100%; margin: 10px 0 0; padding: 0 8px; background: none; border: 0; border-radius: 0; box-shadow: none; color: var(--text-3); font-size: 12px; text-align: center; overflow-wrap: anywhere; }
 .recent-message.tool:has(+ .recent-message:not(.tool)), .recent-message.tool:last-child { padding-bottom: 3px; }
 .tool-call { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 12px/1.65 var(--mono); color: var(--text-3); }
 .tool-call::before { content: '›'; margin-right: 7px; color: var(--accent); font-weight: 700; }
