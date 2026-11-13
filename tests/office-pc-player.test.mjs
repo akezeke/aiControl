@@ -115,3 +115,20 @@ test('on load the frame focuses itself only while canFocus() is true', t => {
   p.play({ pid: 'a-1', title: 'A' }); p.frame().dispatch('load'); assert.notEqual(doc.activeElement, p.frame());
   ok = true; p.frame().dispatch('load'); assert.equal(doc.activeElement, p.frame());
 });
+test('fill(true) stretches the client area and the frame over the window; fill(false) puts back 526 x 522, without reloading', t => {
+  useDom(t); const p = createPlayer({ online: () => true });
+  p.fill(true); p.play({ pid: 'a-1', title: 'A' }); const f = p.frame();
+  assert.deepEqual([p.node.style.width, p.node.style.height], ['100%', '']);
+  assert.deepEqual([f.style.width, f.style.height], ['100%', '100%']);
+  p.fill(false); assert.equal(p.frame(), f);
+  assert.deepEqual([p.node.style.width, p.node.style.height, f.style.width, f.style.height], ['526px', '522px', '', '']);
+  p.fill(true); assert.deepEqual([p.node.style.width, f.style.width], ['100%', '100%']);
+});
+test('on a touch screen a cart plays from its BBS post, which scrolls: the widget page breaks on a tap', t => {
+  useDom(t); let touch = true; const p = createPlayer({ online: () => true, touch: () => touch });
+  p.play({ pid: 'molemole-1', title: 'Mole Mole' });
+  assert.equal(p.frame().attributes.src, 'https://www.lexaloffle.com/bbs/?pid=molemole-1'); assert.equal(p.frame().attributes.scrolling, undefined);
+  assert.equal(p.frame().attributes.sandbox, SANDBOX);
+  touch = false; p.play({ pid: 'a-1', title: 'A' });
+  assert.equal(p.frame().attributes.src, 'https://www.lexaloffle.com/bbs/widget.php?pid=a-1'); assert.equal(p.frame().attributes.scrolling, 'no');
+});

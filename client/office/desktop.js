@@ -45,6 +45,10 @@ const TASKS = ['browser', 'notepad', 'pico8']; // the taskbar's fixed order
 const BUILTINS = [{ id: 'browser', kind: 'browser', name: 'Info Highway' }, { id: 'salaries', kind: 'salaries', name: 'salaries.txt' }];
 const ROOM = W.GRID.cols * W.GRID.rows - BUILTINS.length; // icons the grid holds besides the built-ins
 const TAP = 400, SLOP = 4; // ms between two taps that maximise; px a pointer moves before a drag starts
+// A phone (a touch screen with a short side of 640 px or less, either way up): the desktop lies flat over the view at the phone's own
+// size instead of on the monitor, one window at a time, filling the screen above the taskbar. Saved windows are left as they are.
+export const PHONE = '(pointer: coarse) and (max-width: 640px), (pointer: coarse) and (max-height: 640px)';
+const IDENTITY = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 // A mouse that moves with no button down missed its pointerup (let go outside the page, say): its drag ends there.
 const missedUp = e => e.pointerType === 'mouse' && e.buttons === 0;
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
@@ -55,6 +59,7 @@ export function createDesktop(container, {
   onShutDown, api, storage, online = () => navigator.onLine, now = () => new Date(),
   reduced = () => !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
   open: openTab = url => { globalThis.open?.(url, '_blank', 'noopener,noreferrer'); },
+  phone = (query => () => !!query?.matches)(globalThis.matchMedia?.(PHONE)),
 } = {}) {
   const make = (tag, className, text) => { const n = document.createElement(tag); if (className) n.className = className; if (text != null) n.textContent = text; return n; };
   const button = (className, text, onClick) => { const n = make('button', className, text); n.type = 'button'; if (onClick) n.addEventListener('click', onClick); return n; };
@@ -75,7 +80,7 @@ export function createDesktop(container, {
 
   let ws = W.defaults(), seated = false, restored = false, sessions = [], version = 0, start = false, selected = 'browser';
   let drag = null, menu = null, dialog = null, dialogPrev = null, lastTap = null, titleKind = 'mouse', iconKind = 'mouse', padSeen = false;
-  let clockTimer = null, lastError = 'Desktop unavailable.', matrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }, transform = '';
+  let clockTimer = null, lastError = 'Desktop unavailable.', matrix = IDENTITY, transform = null, flat = false;
   const dialogs = [], jobs = new Set(), zooms = new Set(), iconNodes = new Map();
   // Keys: deskKeys gives them to the desktop though a window is in front; keyMode shows the legend until a press; press is a touch
   // held for a context menu; rename is the field over an icon's label; titles are the menu bar titles, each opening its menu.
@@ -112,7 +117,10 @@ export function createDesktop(container, {
   const root = make('div', 'office-desktop'); root.hidden = true;
   root.tabIndex = -1; // focus falls back here, so keys stay in the desktop
   const iconLayer = make('div', 'pc-icons');
-  const boxOf = () => container.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+  // Flat, the desktop may be fullscreen, away from its container.
+  const boxOf = () => (flat ? root : container).getBoundingClientRect?.() ?? { left: 0, top: 0 };
+  // What the desktop's drawn on, in its own px: the monitor's layout, or flat, the phone's screen.
+  const screen = () => flat ? { w: root.clientWidth || 0, h: root.clientHeight || 0 } : LAYOUT;
   // A pointer on screen, back into layout px through the inverse of the screen transform.
   const toLayout = (e, box) => {
     const { a, b, c, d, e: tx, f: ty } = matrix, det = a * d - b * c || 1;
@@ -148,7 +156,7 @@ export function createDesktop(container, {
       const fronted = W.frontmost(ws) !== name;
       if (fronted) change(W.front(ws, name), false);
       const box = boxOf(), w = ws.windows[name];
-      drag = { type: 'window', name, node: title, pointer: e.pointerId, box, from: toLayout(e, box), at: { x: w.x, y: w.y }, start: ws, moved: false, fronted, movable: w.mode !== 'max', kind: e.pointerType };
+      drag = { type: 'window', name, node: title, pointer: e.pointerId, box, from: toLayout(e, box), at: { x: w.x, y: w.y }, start: ws, moved: false, fronted, movable: w.mode !== 'max' && !flat, kind: e.pointerType };
       capture(title, e.pointerId);
     });
     const mine = e => drag?.node === title && drag.pointer === e.pointerId;
@@ -166,14 +174,14 @@ export function createDesktop(container, {
       const d = drag; drag = null; release(title, d.pointer);
       if (d.moved || d.fronted) save();
       // A finger or a pen maximises with two taps; a double tap often sends no dblclick.
-      if (!tapped || d.moved || d.kind === 'mouse') return;
+      if (!tapped || d.moved || d.kind === 'mouse' || flat) return;
       const at = +now();
       if (lastTap?.name === name && at - lastTap.at < TAP) { lastTap = null; change(W.toggleMax(ws, name)); } else lastTap = { name, at };
     }
     title.addEventListener('pointerup', e => { if (mine(e)) endDrag(true); });
     title.addEventListener('lostpointercapture', e => { if (mine(e)) endDrag(false); });
     title.addEventListener('pointercancel', e => { if (mine(e)) cancelDrag(); });
-    title.addEventListener('dblclick', e => { if (titleKind === 'mouse' && !buttons.contains(e.target)) change(W.toggleMax(ws, name)); });
+    title.addEventListener('dblclick', e => { if (titleKind === 'mouse' && !flat && !buttons.contains(e.target)) change(W.toggleMax(ws, name)); });
     return { node, label, max };
   }
   function menubar(name, mod) {
@@ -277,10 +285,12 @@ export function createDesktop(container, {
     const top = W.frontmost(ws);
     for (const name of W.NAMES) {
       const w = ws.windows[name], win = wins[name], r = W.rectOf(ws, name), title = MODS[name].title();
-      win.node.hidden = !shownIn(ws, name);
-      Object.assign(win.node.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, zIndex: String(10 + ws.order.indexOf(name)) });
+      win.node.hidden = !shownIn(ws, name) || flat && name !== top;
+      Object.assign(win.node.style, flat ? { left: '0px', top: '0px', width: '100%', height: `calc(100% - ${TASKBAR}px)` } : { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+      win.node.style.zIndex = String(10 + ws.order.indexOf(name));
       win.node.classList.toggle('front', name === top);
       win.label.textContent = title;
+      win.max.hidden = flat;
       win.max.textContent = w.mode === 'max' ? '❐' : '□';
       win.max.setAttribute('aria-label', w.mode === 'max' ? 'Restore' : 'Maximize');
       const task = tasks[name];
@@ -288,7 +298,7 @@ export function createDesktop(container, {
       task.node.setAttribute('data-tip', title);
     }
     startButton.classList.toggle('pressed', start); startMenu.hidden = !start;
-    player.pause(!seated || W.gameHidden(ws));
+    player.pause(!seated || (flat ? top !== 'pico8' : W.gameHidden(ws)));
     // Focus never stays on something hidden: it would drop out of the desktop, and keys would walk you about.
     const active = document.activeElement;
     if (seated && active !== root && root.contains(active) && !usable(active)) focus(root);
@@ -308,6 +318,7 @@ export function createDesktop(container, {
   function refocus(prev) { focus(usable(prev) ? prev : root); }
   const visible = n => {
     if (!shownIn(ws, n)) return false;
+    if (flat) return W.frontmost(ws) === n;
     const above = ws.order.slice(ws.order.indexOf(n) + 1).filter(m => shownIn(ws, m)).map(m => W.rectOf(ws, m));
     return W.uncovered(W.rectOf(ws, n), above).length > 0;
   };
@@ -323,8 +334,9 @@ export function createDesktop(container, {
   }
   // Three dotted outlines between the window and its task button, one after another (pc.css times them).
   function zoom(name, was) {
-    const toTask = shownIn(was, name), b = tasks[name].node, win = W.rectOf(toTask ? was : ws, name);
-    const task = { x: b.offsetLeft || 0, y: W.WORK.h + (b.offsetTop || 0), w: b.offsetWidth || 0, h: b.offsetHeight || 0 };
+    const toTask = shownIn(was, name), b = tasks[name].node, work = flat ? { w: screen().w, h: screen().h - TASKBAR } : W.WORK;
+    const win = flat ? { x: 0, y: 0, ...work } : W.rectOf(toTask ? was : ws, name);
+    const task = { x: b.offsetLeft || 0, y: work.h + (b.offsetTop || 0), w: b.offsetWidth || 0, h: b.offsetHeight || 0 };
     const [from, to] = toTask ? [win, task] : [task, win], mix = (k, f) => Math.round(from[k] + (to[k] - from[k]) * f);
     [0.25, 0.5, 0.75].forEach((f, i) => {
       const z = make('div', 'pc-zoom');
@@ -353,6 +365,8 @@ export function createDesktop(container, {
   // Opens PICO-8 in front with the cart; the same cart already running isn't loaded again.
   function play(cart) {
     closeMenu(); closeStart();
+    // On a phone a game takes the whole screen where the browser lets it (an iPhone doesn't): Play is a tap, so it may.
+    if (flat && !document.fullscreenElement) root.requestFullscreen?.()?.catch?.(() => {});
     if (!(player.playing() && player.cart()?.pid === cart.pid)) player.play(cart);
     change(W.loadCart(ws, cart));
     keysTo('pico8');
@@ -367,6 +381,7 @@ export function createDesktop(container, {
     node.hidden = !spot;
     if (!spot) return;
     const { x, y } = cellXY(spot); node.style.left = `${x + centre}px`; node.style.top = `${y}px`;
+    node.style.order = String(spot[0] * W.GRID.rows + spot[1]); // flat, the icons flow column by column in this order
   }
   // Focus stays on an icon that is rebuilt (a rename) or moved in the page (an append blurs it); a rename whose icon went is dropped.
   function renderIcons() {
@@ -419,13 +434,14 @@ export function createDesktop(container, {
       if (missedUp(e)) { endDrag(false, drag.last); return; }
       const p = toLayout(e, drag.box), dx = p.x - drag.from.x, dy = p.y - drag.from.y;
       if (!drag.moved && Math.hypot(dx, dy) <= SLOP) return;
+      if (flat) { drag.slid = true; return; } // flat, icons flow and stay put: a slide is no tap
       drag.moved = true; drag.last = p; node.style.left = `${drag.base.x + centre + dx}px`; node.style.top = `${drag.base.y + dy}px`;
     });
     // Dropped where the pointer last was; only a real pointerup counts as a tap.
     function endDrag(tapped, at) {
       const d = drag; drag = null; release(node, d.pointer);
       if (d.moved) dropIcon(d, at);
-      else if (tapped && d.kind !== 'mouse') openIcon(id); // a finger or a pen opens with one tap
+      else if (tapped && !d.slid && d.kind !== 'mouse') openIcon(id); // a finger or a pen opens with one tap
     }
     node.addEventListener('pointerup', e => { if (mine(e)) endDrag(true, toLayout(e, drag.box)); });
     node.addEventListener('lostpointercapture', e => { if (mine(e)) endDrag(false, drag.last); });
@@ -476,8 +492,8 @@ export function createDesktop(container, {
       entries.push(b); node.append(b);
     }
     root.append(node);
-    const w = node.offsetWidth || 0, h = node.offsetHeight || 0;
-    node.style.left = `${clamp(at.x, 0, Math.max(0, LAYOUT.w - w))}px`; node.style.top = `${clamp(at.y, 0, Math.max(0, LAYOUT.h - h))}px`;
+    const w = node.offsetWidth || 0, h = node.offsetHeight || 0, room = screen();
+    node.style.left = `${clamp(at.x, 0, Math.max(0, room.w - w))}px`; node.style.top = `${clamp(at.y, 0, Math.max(0, room.h - h))}px`;
     menu = { node, owner, prev, entries, items: list, onLeft, onRight }; // its keys: menuKey
     focus(entries.find(b => !b.hasAttribute('aria-disabled')));
     showLegend(); bump();
@@ -787,7 +803,8 @@ export function createDesktop(container, {
     const n = iconNodes.get(id), spot = n?.icon.spot;
     if (!seated || !spot) return;
     endRename(false);
-    const input = make('input', 'pc-field pc-rename'), label = [...n.node.children].find(k => k.classList.contains('pc-icon-label')), c = cellXY(spot);
+    const input = make('input', 'pc-field pc-rename'), label = [...n.node.children].find(k => k.classList.contains('pc-icon-label'));
+    const c = flat ? { x: (n.node.offsetLeft || 0) - centre, y: n.node.offsetTop || 0 } : cellXY(spot); // flat, where it flowed to
     input.type = 'text'; input.setAttribute('maxlength', '40'); input.setAttribute('aria-label', 'Name'); input.value = n.icon.name;
     Object.assign(input.style, { position: 'absolute', zIndex: '1', left: `${c.x + centre}px`, top: `${c.y + 40}px`, width: '76px', padding: '1px 2px', font: 'inherit', textAlign: 'center' });
     label.style.visibility = 'hidden';
@@ -847,9 +864,16 @@ export function createDesktop(container, {
     render();
   }
   // Each frame while seated: onto the monitor's four corners on screen (top-left, top-right, bottom-right, bottom-left).
+  // Flat on a phone, the corners don't matter; the device can stop being one (or start) while seated, so it's asked each time.
   function place(corners) {
-    matrix = fitTransform(corners, LAYOUT.w, LAYOUT.h);
-    const { a, b, c, d, e, f } = matrix, next = `matrix(${a}, ${b}, ${c}, ${d}, ${e}, ${f})`;
+    const nowFlat = phone();
+    if (nowFlat !== flat) {
+      flat = nowFlat; cancelDrag(); closeMenu();
+      root.classList.toggle('pc-phone', flat); player.fill(flat);
+      if (seated) render();
+    }
+    matrix = flat ? IDENTITY : fitTransform(corners, LAYOUT.w, LAYOUT.h);
+    const { a, b, c, d, e, f } = matrix, next = flat ? '' : `matrix(${a}, ${b}, ${c}, ${d}, ${e}, ${f})`;
     if (next !== transform) root.style.transform = transform = next;
     if (seated) return;
     seated = true; root.hidden = false;
@@ -881,6 +905,7 @@ export function createDesktop(container, {
     for (const z of zooms) z.remove();
     zooms.clear();
     player.stop();
+    if (document.fullscreenElement === root) document.exitFullscreen?.()?.catch?.(() => {});
     root.hidden = true; padSeen = false;
     render();
   }
@@ -906,6 +931,9 @@ export function createDesktop(container, {
   renderIcons(); render();
   return {
     root, ui, place, hide, install, play, image,
+    // Flat and seated, the desktop is all that can be seen: the office needn't draw under it. Asked again, so a device that
+    // stops being a phone gets the office (and with it place()) back.
+    covers: () => seated && flat && phone(),
     arrange: () => send({ op: 'arrange' }),
     agents(list) {
       sessions = list;

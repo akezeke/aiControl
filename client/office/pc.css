@@ -126,6 +126,13 @@
 @keyframes pc-throb { to { background-position: -192px 0; } }
 .pc-notepad { flex: 1; min-height: 0; resize: none; border: 0; padding: 2px 4px; background: white; color: #000; font-family: 'Courier Prime', ui-monospace, monospace; font-size: 13px; user-select: text; -webkit-user-select: text; }
 
+/* Phones (desktop.js PHONE): flat over the whole view at the phone's size, one window at a time; the icons flow and scroll. */
+.office-desktop.pc-phone { position: fixed; inset: 0; z-index: 40; width: auto; height: auto; }
+.pc-phone .pc-icons { display: grid; grid-template-columns: repeat(auto-fill, 84px); grid-auto-rows: min-content; justify-content: space-evenly; align-content: start; gap: 12px 0; padding: 12px 0; overflow-y: auto; touch-action: pan-y; }
+.pc-phone .pc-icon { position: static; justify-self: center; touch-action: pan-y; }
+.pc-phone .pc-legend { display: none; }
+.pc-phone .pc-start-menu { max-height: calc(100% - 44px); overflow-y: auto; }
+
 /* Scrollbars: 16 px, checkered track; Firefox only recolours */
 @supports not selector(::-webkit-scrollbar) {
   .office-desktop * { scrollbar-color: #c0c0c0 #e0e0e0; }

@@ -485,6 +485,7 @@ export function mountOffice(container, hooks) {
     if (++tick % Math.max(1, Math.round(1000 / 60 / gap))) return;
     // On a phone the open panel covers the whole office.
     if (phone?.matches && document.body.classList.contains('panel-open')) return;
+    if (desktop.covers()) return; // and on a phone so does the boss PC
     const dt = frameTime(now, last, 0.1); last = now;
     debug.frame(frames, dt, now); // each of `frames`, then the render
   };

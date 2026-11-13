@@ -110,7 +110,7 @@ async function sat(t, opts = {}) {
   const container = doc.createElement('div'); doc.body.append(container);
   const d = createDesktop(container, {
     onShutDown: () => { stood++; }, api, storage: memory(), online: () => true, now: () => NOW,
-    reduced: () => opts.reduced ?? false, open: u => opened.push(u),
+    reduced: () => opts.reduced ?? false, open: u => opened.push(u), phone: typeof opts.phone === 'function' ? opts.phone : () => !!opts.phone,
   });
   d.place(rect(0, 0, 1080, 640)); await tick();
   return { d, doc, timers, api, opened, stood: () => stood };
@@ -808,4 +808,97 @@ test('a loading cart takes focus only while its window is in front', async t => 
   const { d, doc } = await sat(t); const frame = playing(d, { pid: 'a-1', title: 'A' }); await openBrowser(d);
   frame.dispatch('load'); assert.notEqual(doc.activeElement, frame, 'Info Highway is in front');
   click(task(d.root, 'A - PICO-8')); frame.dispatch('load'); assert.equal(doc.activeElement, frame, 'PICO-8 is in front');
+});
+
+// Phones: the desktop lies flat over the whole view at the phone's size, one window at a time.
+const A = { pid: 'a-1', title: 'A' }, B = { pid: 'b-1', title: 'B' }, touch = { pointerType: 'touch' };
+const screenSize = (d, w, h) => Object.assign(d.root, { clientWidth: w, clientHeight: h });
+test('on a phone the desktop lies flat over the view instead of on the monitor, and covers it while seated', async t => {
+  const { d } = await sat(t, { phone: true }); d.place(rect(100, 50, 540, 320));
+  assert.equal(d.root.style.transform, ''); assert.equal(has(d.root, 'pc-phone'), true); assert.equal(d.covers(), true);
+  d.hide(); assert.equal(d.covers(), false);
+});
+test('a phone that stops being one stops covering at once, so the office runs again and puts the desktop back on the monitor', async t => {
+  let phone = true; const { d } = await sat(t, { phone: () => phone }); d.place(rect(100, 50, 540, 320));
+  phone = false; assert.equal(d.covers(), false);
+});
+test('the monitor desktop never covers the view', async t => {
+  const { d } = await sat(t); assert.equal(d.covers(), false); assert.equal(has(d.root, 'pc-phone'), false);
+});
+test('becoming a phone and back while seated switches the layout', async t => {
+  let phone = false; const { d } = await sat(t, { phone: () => phone }), on = 'matrix(0.5, 0, 0, 0.5, 100, 50)';
+  d.place(rect(100, 50, 540, 320)); assert.equal(d.root.style.transform, on);
+  phone = true; d.place(rect(100, 50, 540, 320)); assert.deepEqual([d.root.style.transform, has(d.root, 'pc-phone')], ['', true]);
+  phone = false; d.place(rect(100, 50, 540, 320)); assert.deepEqual([d.root.style.transform, has(d.root, 'pc-phone')], [on, false]);
+});
+test('on a phone the front window fills the screen above the taskbar, the ones behind are out of sight, and nothing saved changes', async t => {
+  const { d, api } = await sat(t, { phone: true }); await openBrowser(d); dblclick(iconOf(d.root, 'salaries.txt'));
+  const pad = windowOf(d.root, 'salaries.txt - Notepad'), web = windowOf(d.root, 'Top 200 - Info Highway');
+  assert.deepEqual([pad.style.left, pad.style.top, pad.style.width, pad.style.height], ['0px', '0px', '100%', 'calc(100% - 44px)']);
+  assert.deepEqual([shown(pad), shown(web)], [true, false]);
+  click(task(d.root, 'Top 200 - Info Highway')); assert.deepEqual([shown(pad), shown(web)], [false, true]);
+  const saved = windowOps(api).at(-1).windows;
+  assert.deepEqual([saved.browser.mode, saved.browser.x, saved.notepad.mode, saved.notepad.x], ['normal', 60, 'normal', 300]);
+});
+test('on a phone the game pauses whenever another window is in front, even one that leaves it showing on the monitor', async t => {
+  const { d } = await sat(t, { phone: true }), frame = playing(d, A); assert.equal(frame.style.display, '');
+  dblclick(iconOf(d.root, 'salaries.txt')); assert.equal(frame.style.display, 'none');
+  click(task(d.root, 'A - PICO-8')); assert.equal(frame.style.display, '');
+});
+test('on a phone the game frame fills its window; on the monitor it is 526 x 522 again, in the same frame', async t => {
+  let phone = true; const { d } = await sat(t, { phone: () => phone }), frame = playing(d, A);
+  assert.equal(frame.style.width, '100%');
+  phone = false; d.place(rect(0, 0, 1080, 640)); assert.equal(frame.style.width, ''); assert.equal(iframeOf(d.root), frame);
+});
+test('on a phone windows are not dragged or double-tapped to full size, and have no □', async t => {
+  const { d, api } = await sat(t, { phone: true }); await openBrowser(d);
+  const title = titleOf(d.root, 'Top 200 - Info Highway'), before = windowOps(api).length;
+  pointer(title, 'pointerdown', touch); pointer(title, 'pointermove', { ...touch, clientX: 60, clientY: 40 }); pointer(title, 'pointerup', { ...touch, clientX: 60, clientY: 40 });
+  for (let i = 0; i < 2; i++) { pointer(title, 'pointerdown', touch); pointer(title, 'pointerup', touch); }
+  title.dispatch('dblclick');
+  const web = d.view().windows.find(w => w.name === 'browser');
+  assert.deepEqual([web.mode, web.rect.x, web.rect.y], ['normal', 60, 12]); assert.equal(windowOps(api).length, before);
+  assert.equal(shown(button(d.root, 'Top 200 - Info Highway', '□')), false);
+});
+test('on a phone Play goes fullscreen once, and standing up leaves it', async t => {
+  const { d, doc } = await sat(t, { phone: true }); let asked = 0, left = 0;
+  d.root.requestFullscreen = () => { asked++; doc.fullscreenElement = d.root; return Promise.resolve(); };
+  doc.exitFullscreen = () => { left++; doc.fullscreenElement = null; return Promise.resolve(); };
+  playing(d, A); playing(d, B); assert.equal(asked, 1);
+  d.hide(); assert.equal(left, 1); d.hide(); assert.equal(left, 1);
+});
+test('on the monitor Play stays in the page, and standing up leaves a fullscreen it did not make', async t => {
+  const { d, doc } = await sat(t); let asked = 0, left = 0;
+  d.root.requestFullscreen = () => { asked++; return Promise.resolve(); };
+  doc.exitFullscreen = () => { left++; return Promise.resolve(); }; doc.fullscreenElement = doc.body;
+  playing(d, A); d.hide(); assert.deepEqual([asked, left], [0, 0]);
+});
+test('a phone without fullscreen just plays', async t => {
+  const { d } = await sat(t, { phone: true }); assert.ok(playing(d, A)); d.hide();
+});
+test('on a phone icons flow in their grid order; a tap opens one and a slide neither opens nor moves it', async t => {
+  const { d, api } = await sat(t, { phone: true }), order = name => +iconOf(d.root, name).style.order;
+  assert.ok(order('Info Highway') < order('salaries.txt') && order('salaries.txt') < order(STARTERS[0].title));
+  const icon = iconOf(d.root, 'salaries.txt'), top = icon.style.top;
+  pointer(icon, 'pointerdown', touch); pointer(icon, 'pointermove', { ...touch, clientY: 200 }); pointer(icon, 'pointerup', { ...touch, clientY: 200 });
+  assert.equal(icon.style.top, top); assert.equal(api.posted.filter(b => b.op === 'move').length, 0);
+  assert.equal(shown(windowOf(d.root, 'salaries.txt - Notepad')), false);
+  pointer(icon, 'pointerdown', touch); pointer(icon, 'pointerup', touch);
+  assert.equal(shown(windowOf(d.root, 'salaries.txt - Notepad')), true);
+});
+test('on a phone menus are kept on the screen, not the monitor', async t => {
+  const { d } = await sat(t, { phone: true }); screenSize(d, 400, 700);
+  layerOf(d.root).dispatch('contextmenu', { clientX: 900, clientY: 650 });
+  const m = find(d.root, n => has(n, 'pc-popup')); assert.deepEqual([m.style.left, m.style.top], ['400px', '650px']);
+});
+test('on a phone a rename field sits on the icon where it is', async t => {
+  const { d } = await sat(t, { phone: true }), icon = iconOf(d.root, STARTERS[0].title);
+  Object.assign(icon, { offsetLeft: 100, offsetTop: 200 });
+  icon.dispatch('contextmenu'); click(menuItem(d.root, 'Rename'));
+  const input = find(d.root, n => has(n, 'pc-rename')); assert.deepEqual([input.style.left, input.style.top], ['100px', '240px']);
+});
+test('on a phone a minimised window shrinks to its button across the screen', async t => {
+  const { d } = await sat(t, { phone: true }); screenSize(d, 400, 800); dblclick(iconOf(d.root, 'salaries.txt'));
+  click(button(d.root, 'salaries.txt - Notepad', '_'));
+  const z = zoomsOf(d.root)[0]; assert.deepEqual([z.style.left, z.style.top, z.style.width, z.style.height], ['0px', '189px', '300px', '567px']);
 });
