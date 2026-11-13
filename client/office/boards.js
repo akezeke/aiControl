@@ -1,6 +1,6 @@
 // What's written on the walls: usage limits and any agent the server can't reach on the whiteboard, the real time on the clock,
 // a sticky note per waiting session, the machine's name on the door, a sign on the coffee machine while usage is used up, and
-// every game's best three on the scoreboard (Office online's, so it's the same at a meeting).
+// the best three of every game you've found on the scoreboard (Office online's, so a meeting's scores are everyone's).
 // Visiting a meeting (visit.js) none of that is the host's to show: the boards are blank and the plate says whose office it is.
 // Each is a canvas texture redrawn only when what it shows changes. And the kitchen's: Trickshot's clipboard and score board.
 import * as THREE from 'three';
@@ -238,7 +238,7 @@ export function drawMeeting({ g, width: w, height: h }, { title, lines, closed }
   g.save(); g.translate(w / 2, h - 110); g.rotate(-0.14); g.textAlign = 'center'; g.fillStyle = INK.red; sized(g, closed, 84, w - 50); g.fillText(closed, 0, 0); g.restore();
 }
 
-// The scoreboard: online.js's rows (every game, its best three) down two columns, you in red, a dash for a game nobody's played.
+// The scoreboard: online.js's rows (every game you've found, its best three) down two columns, you in red, a dash for a game nobody's played.
 export function drawScoreboard({ g, width: w, height: h }, rows) {
   g.fillStyle = '#fbfcfd'; g.fillRect(0, 0, w, h); g.lineCap = 'round'; g.textBaseline = 'alphabetic';
   const per = Math.ceil(rows.length / 2), cw = (w - 60) / 2, rh = (h - 20) / per;

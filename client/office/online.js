@@ -22,12 +22,18 @@ export function localBests(store = storage(), date = new Date()) {
   } catch { return {}; }
 }
 
+// The games you've found in this browser, by their board ids (leaderboard.js): office.js marks a game's as you start it. The
+// scoreboard shows only those, any you've a best in and any you're on the board for, so it doesn't give a hidden game away.
+export const FOUND = 'ai-control-office-found';
+const loadFound = store => { try { const ids = JSON.parse(store.getItem(FOUND)); return new Set(Array.isArray(ids) ? ids.filter(id => typeof id === 'string') : []); } catch { return new Set(); } };
+
 // Snake's score line (office.js) with the leader added, unless the leader is you.
 export const leaderLine = (goal, leader) => leader && !leader.you ? [...goal, { text: `Top ${leader.name} ${leader.text}` }] : goal;
 
-// `api(path, body)`: main.js's. `scores`: what to send (tests pass their own).
-export function createOnline({ api, scores = () => localBests() }) {
+// `api(path, body)`: main.js's. `scores`: what to send (tests pass their own). `store`: where the games you've found are kept.
+export function createOnline({ api, scores = () => localBests(), store = storage() }) {
   let state = null, shown = '', sent = null, tops = new Map(), mine = {}, mineText = '{}'; // mine: your bests at the last sync
+  const found = loadFound(store); for (const id of Object.keys(scores())) found.add(id);
   const listeners = new Set(), tell = () => { for (const fn of listeners) fn(); };
   // Who was in when doesn't count as a change: every sync of your own stamps it, and nothing shows it but the order of names.
   const take = next => {
@@ -45,17 +51,26 @@ export function createOnline({ api, scores = () => localBests() }) {
       }
       return tops.get(id);
     },
-    // The scoreboard's (boards.js): every game in board order, each with its best three as top() has them. Without a board
-    // (not joined, or none yet) it's your own bests alone.
+    // The scoreboard's (boards.js): every game you've found in board order, each with its best three as top() has them.
+    // Without a board (not joined, or none yet) it's your own bests alone.
     rows() {
       const board = state?.board, me = state?.name?.toLowerCase();
       const all = standings(board ?? { day: dayKey(new Date()), players: [{ name: state?.name || 'Me', scores: mine }] });
-      return GAMES.map(({ id, label }) => ({ id, label, top: (all.find(r => r.id === id)?.top ?? []).map(t => ({ name: t.name, text: format(id, t.value), you: !board || t.name.toLowerCase() === me })) }));
+      return GAMES.map(({ id, label }) => ({ id, label, top: (all.find(r => r.id === id)?.top ?? []).map(t => ({ name: t.name, text: format(id, t.value), you: !board || t.name.toLowerCase() === me })) }))
+        .filter(row => found.has(row.id) || row.top.some(t => t.you));
+    },
+    // A game started (office.js): its rows are found, and kept. Whether that's new, so the scoreboard's drawn again.
+    discover(ids = []) {
+      const fresh = ids.filter(id => !found.has(id));
+      if (!fresh.length) return false;
+      for (const id of fresh) found.add(id);
+      try { store.setItem(FOUND, JSON.stringify([...found])); } catch { /* found for now */ }
+      return true;
     },
     watch(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     async sync(force = false) {
       const now = scores(), text = JSON.stringify(now);
-      if (text !== mineText) { mine = now; mineText = text; if (!state?.board) tell(); } // a new best shows without a board too
+      if (text !== mineText) { mine = now; mineText = text; for (const id of Object.keys(now)) found.add(id); if (!state?.board) tell(); } // a new best shows without a board too
       if (!force && text === sent) return;
       try {
         const next = await api('office/scores', { scores: now });

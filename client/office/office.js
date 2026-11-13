@@ -172,7 +172,7 @@ export function mountOffice(container, hooks) {
     if (seated || (was && !was.free)) { player.unlock(); player.setOverview(!!seated); view.play(seated && (() => seated.pose())); }
     playing = game; if (game?.free) player.pin(true);
     overlays.setPlaying(!!game); menu.close(); card.show(null);
-    if (game) { unhover(); game.enter(); } // what enter takes from under an outline keeps it
+    if (game) { unhover(); game.enter(); if (online.discover(onBoard.get(game))) boards.scores(); } // what enter takes from under an outline keeps it
   };
   // A free game's played from exactly its mark: no walk, however far off that is and whatever's shut in between. The kitchen's first opening has little left to do by then (kitchen.prepare).
   const toMark = game => { const { x, z, yaw } = game.stand(); player.jumpTo(x, z, yaw); play(game); };
@@ -213,6 +213,8 @@ export function mountOffice(container, hooks) {
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip), online }));
   const boards = createBoards(room, () => online.rows());
+  // Each game's rows on the scoreboard (leaderboard.js), shown once you've started it (play, above). Golf's endless is switched on at the green; the day's planes have no row.
+  const onBoard = new Map([[trickshot, ['trickshotToday', 'trickshot']], [darts, ['darts']], [pinball, ['pinball']], [golf, ['golf', 'golfEndless']], [snake, ['snake']], [endlessPlanes, ['planesEndless']]]);
   // Office meetings' live link (live.js), open while you're in one and the page is shown. You're home until the door says otherwise.
   const live = createLive({ joined: () => !!online.state()?.joined }); debug.messages(live);
   // How you look: as the meeting's roster has you, or as you saved it.

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { KEYS, localBests, createOnline } from '../client/office/online.js';
+import { KEYS, FOUND, localBests, createOnline } from '../client/office/online.js';
+import { GAMES } from '../client/office/leaderboard.js';
 import { MONDAY } from '../client/office/levels.js';
 
 const store = map => ({ getItem: key => map[key] ?? null });
@@ -155,8 +156,8 @@ test('a colour refusal is sent again, and the live link hearing one, or a remova
   await new Promise(r => setTimeout(r)); assert.equal(calls.length, 5);
 });
 
-test("the scoreboard's rows: every game, the board's best three, else your own bests alone", async () => {
-  const online = createOnline({ api: fakeApi(), scores: () => ({}) });
+test("the scoreboard's rows: every game you've found, the board's best three, else your own bests alone", async () => {
+  const online = createOnline({ api: fakeApi(), scores: () => ({}), store: store({ [FOUND]: JSON.stringify(GAMES.map(g => g.id)) }) });
   await online.sync();
   const rows = online.rows();
   assert.equal(rows.length, 8); assert.equal(rows.at(-1).label, 'Planes endless');
@@ -170,4 +171,30 @@ test("the scoreboard's rows: every game, the board's best three, else your own b
   mine = { snake: 9 }; await alone.sync();
   assert.equal(told, 3, 'the first sync, and each new best'); // first: your bests, then joined:false came back; then the new best
   assert.equal(alone.rows().find(r => r.id === 'snake').top[0].text, '9');
+});
+
+test("the scoreboard leaves out a game you haven't found: one you've played here, have a best in or are on the board for shows", async () => {
+  const saved = { [FOUND]: JSON.stringify(['pinball']) }, kept = { getItem: key => saved[key] ?? null, setItem: (key, value) => { saved[key] = value; } };
+  const reply = { joined: true, name: 'Anna', host: 'h', board: { day: '2026-11-09', players: [{ name: 'anna', scores: { darts: 9 }, seen: 1 }, { name: 'Bo', scores: { darts: 12, golf: 60, golfEndless: 4 }, seen: 1 }] } };
+  const online = createOnline({ api: fakeApi(reply), scores: () => ({ snake: 4 }), store: kept });
+  const ids = () => online.rows().map(r => r.id);
+  assert.deepEqual(ids(), ['pinball', 'snake'], 'played here, and a best kept from before');
+  await online.sync();
+  assert.deepEqual(ids(), ['darts', 'pinball', 'snake'], "you're on the board for darts; Bo's golf stays hidden");
+  assert.equal(online.discover(['golf', 'golfEndless']), true);
+  assert.deepEqual(ids(), ['darts', 'pinball', 'golf', 'golfEndless', 'snake']);
+  assert.deepEqual(online.rows().find(r => r.id === 'golf').top, [{ name: 'Bo', text: '60 strokes', you: false }]);
+  assert.ok(['pinball', 'golf', 'golfEndless'].every(id => JSON.parse(saved[FOUND]).includes(id)), 'kept for next time');
+  assert.equal(online.discover(['golf']), false, 'nothing new'); assert.equal(online.discover(undefined), false, 'a game with no rows');
+  // Broken or blocked storage: nothing found before, but what you play now still shows.
+  const broken = createOnline({ api: fakeApi(), scores: () => ({}), store: { getItem: () => '{nope', setItem: () => { throw new Error('full'); } } });
+  assert.deepEqual(broken.rows().map(r => r.id), []);
+  assert.equal(broken.discover(['darts']), true); assert.deepEqual(broken.rows().map(r => r.id), ['darts']);
+});
+
+test("starting a game finds its rows on the scoreboard, every board game has its own, and the board is drawn again", () => {
+  const source = readFileSync(new URL('../client/office/office.js', import.meta.url), 'utf8');
+  assert.match(source, /game\.enter\(\);[^\n]*if \(online\.discover\(onBoard\.get\(game\)\)\) boards\.scores\(\);/);
+  const map = source.match(/const onBoard = new Map\((.*)\);/)?.[1] ?? '';
+  for (const { id } of GAMES) assert.ok(map.includes(`'${id}'`), id);
 });
