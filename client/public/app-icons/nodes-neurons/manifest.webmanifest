@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "AI Control",
+  "short_name": "AI Control",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#07060d",
+  "theme_color": "#07060d",
+  "icons": [
+    {
+      "src": "/app-icons/nodes-neurons/icon-192.png?v=680fef1928",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-icons/nodes-neurons/icon-512.png?v=7ad24855bd",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

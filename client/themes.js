@@ -5,6 +5,7 @@ import { askForBoot } from './city/boot-ask.js';
 import { setBrickSky } from './backdrop/brick-sky.js';
 import { setBrickUi } from './bricks3d/mount.js';
 import { effectiveAtmosphere, selectThemeAtmosphere } from './atmosphere.js';
+import { applyThemeIcons } from './app-icons.js';
 
 // `look` picks the CSS theme; Orbit's `scheme` is fixed, or follows the system when absent.
 export const themes = [
@@ -59,6 +60,7 @@ export function applyTheme(id) {
     const dark = theme.scheme ? theme.scheme === 'dark' : !!theme.dark && !!systemDark?.matches;
     root.dataset.scheme = dark ? 'dark' : 'light';
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? theme.dark || theme.color : theme.color);
+    applyThemeIcons(theme.id, dark);
   };
   scheme();
   if (systemDark) systemDark.onchange = scheme;

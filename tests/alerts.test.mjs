@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import * as alerts from '../client/alerts.js';
 const { statusEvents } = alerts;
 
+test('attention badge follows a changed theme icon and clears to that icon', async t => {
+  const link = { href: '/app-icons/alien/favicon.svg', dataset: {}, getAttribute(name) { return this[name]; } };
+  t.mock.method(globalThis, 'fetch', async url => ({ ok: true, text: async () => `<svg viewBox="0 0 64 64"><title>${url}</title></svg>` }));
+  const previousDocument = globalThis.document;
+  globalThis.document = { querySelector: () => link };
+  t.after(() => { globalThis.document = previousDocument; });
+  await alerts.faviconBadge(1);
+  assert.match(decodeURIComponent(link.href), /alien/);
+  link.href = '/app-icons/command/favicon.svg';
+  link.dataset.baseIcon = '/app-icons/command/favicon.svg';
+  await alerts.faviconBadge(1);
+  assert.match(decodeURIComponent(link.href), /<circle/);
+  assert.match(decodeURIComponent(link.href), /command/);
+  await alerts.faviconBadge(0);
+  assert.equal(link.href, '/app-icons/command/favicon.svg');
+});
+
 test('alerts fire when a session starts waiting or finishes, never on first sight', () => {
   const previous = new Map(), s = (id, status, extra) => ({ id, status, ...extra });
   assert.deepEqual(statusEvents(previous, [s('a', 'working'), s('b', 'question'), s('c', 'working', { parentId: 'a' })]), []);

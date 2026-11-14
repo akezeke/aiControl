@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "AI Control",
+  "short_name": "AI Control",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#150f33",
+  "theme_color": "#150f33",
+  "icons": [
+    {
+      "src": "/app-icons/bridge/icon-192.png?v=4abdaf93e5",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-icons/bridge/icon-512.png?v=6ea40e7fec",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

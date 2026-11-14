@@ -103,16 +103,30 @@ export async function signal(events, now = Date.now()) {
 }
 
 // Favicon with an amber dot while anything needs you.
-let plainIcon, badgeIcon;
+const badgeIcons = new Map();
+let badgeRequest = 0;
 export async function faviconBadge(count) {
   const link = document.querySelector('link[rel=icon]');
-  if (!link || link.dataset.badge === String(count > 0)) return;
-  link.dataset.badge = String(count > 0);
-  plainIcon ??= link.href;
-  if (!badgeIcon) {
-    const svg = await fetch(plainIcon).then(response => response.text()).catch(() => '');
-    if (!svg.includes('</svg>')) return;
-    badgeIcon = `data:image/svg+xml,${encodeURIComponent(svg.replace('</svg>', '<circle cx="32" cy="8" r="8" fill="#f5a524" stroke="#111" stroke-width="2"/></svg>'))}`;
+  if (!link) return;
+  const plainIcon = link.dataset.baseIcon ||= link.getAttribute('href');
+  const badged = String(count > 0);
+  if (link.dataset.badge === badged && link.dataset.badgeSource === plainIcon) return;
+  const request = ++badgeRequest;
+  link.dataset.badge = badged;
+  if (badged === 'false') { link.href = plainIcon; link.dataset.badgeSource = plainIcon; return; }
+  link.dataset.badgeSource = '';
+  try {
+    if (!badgeIcons.has(plainIcon)) badgeIcons.set(plainIcon, fetch(plainIcon).then(async response => {
+      if (!response.ok) throw new Error('Icon unavailable');
+      const svg = await response.text();
+      if (!svg.includes('</svg>')) throw new Error('Invalid icon');
+      // Nest the complete SVG so its own viewBox and any nested SVG artwork stay intact.
+      return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${svg.replace('<svg ', '<svg width="64" height="64" ')}<circle cx="52" cy="12" r="10" fill="#f5a524" stroke="#111" stroke-width="3"/></svg>`)}`;
+    }).catch(error => { badgeIcons.delete(plainIcon); throw error; }));
+    const badgeIcon = await badgeIcons.get(plainIcon);
+    // A theme change or a cleared alert may have overtaken the image fetch.
+    if (request === badgeRequest) { link.href = badgeIcon; link.dataset.badgeSource = plainIcon; }
+  } catch {
+    // Leave the plain theme icon in place; the next snapshot can retry.
   }
-  link.href = link.dataset.badge === 'true' ? badgeIcon : plainIcon;
 }
