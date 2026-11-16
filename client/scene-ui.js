@@ -3,6 +3,8 @@ import { providerIcon } from './provider-icons.js';
 
 // A frame's seconds, up to `longest`. A frame the browser stamped before the scene finished mounting would come out negative, by as long as mounting took.
 export const frameTime = (now, last, longest) => Math.min(longest, Math.max(0, (now - last) / 1000));
+// How many of the screen's refreshes (`gap` ms apart) go by for each frame drawn, to stay near `fps`: whole, so the pace never wobbles.
+export const refreshEvery = (gap, fps) => Math.max(1, Math.round(1000 / fps / gap));
 
 const span = (className, text) => { const node = document.createElement('span'); node.className = className; node.textContent = text; return node; };
 // Below and right of a screen point, flipped to stay in the scene.

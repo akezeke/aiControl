@@ -6,6 +6,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { toonMaterial, withOutline } from './toon.js';
 import { createLights, dims } from './lights.js';
+import { buildCar, lighten } from './rc-car.js';
 import { createSlacking } from './slack.js';
 import { createWindows } from './windows.js';
 import { createScreens, SCREEN_W, SCREEN_H, viewTest } from './screens.js';
@@ -17,7 +18,7 @@ import { cardsMesh, officeCutouts, SCOREBOARD, windowsWall } from './cutouts.js'
 import { BOSS_FRONT, DESK_W, DESK_D, COFFEE_X, KITCHEN_DOOR_W, SHELF_Z, kitchenDoor, whiteboardZ } from './layout.js';
 import {
   WALL_H, WALL_T, shared, once, rounded, mesh, canvasTexture, paint, painted, piece, deskItem, coffeeCup, plant, picture, sofa, armchair, lowTable, floorLamp, rug,
-  counter, coffeeMachine, mugShelf, waterCooler, bookshelf, printer, filingCabinet, paperStack, paperPlane, coatRack, extinguisher, glowTexture, floorShadow,
+  counter, coffeeMachine, mugShelf, waterCooler, bookshelf, printer, filingCabinet, paperStack, paperPlane, rcDock, coatRack, extinguisher, glowTexture, floorShadow,
 } from './furniture.js';
 
 export { WALL_H };
@@ -45,7 +46,8 @@ const B = (w, h, d, x, y, z, r = 0.01) => (r ? rounded(w, h, d, r) : new THREE.B
 const C = (top, bottom, h, x, y, z, n = 14) => new THREE.CylinderGeometry(top, bottom, h, n).translate(x, y, z);
 const deskParts = width => [
   [B(width * 0.94, 0.07, DESK_D * 0.92, 0, DESK_H - 0.035, 0, 0.03), '#f3f1ec'],
-  ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, z]) => [C(0.035, 0.03, DESK_H - 0.07, x * width * 0.42, (DESK_H - 0.07) / 2, z * DESK_D * 0.36, 10), '#3a3d46']),
+  // Legs at the top's corners, so a row of desks leaves a tunnel under it the RC car can race through (rc-course.js).
+  ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, z]) => [C(0.035, 0.03, DESK_H - 0.07, x * width * 0.43, (DESK_H - 0.07) / 2, z * DESK_D * 0.42, 10), '#3a3d46']),
   [B(width * 0.8, 0.34, 0.02, 0, DESK_H - 0.24, DESK_D * 0.36, 0.006), '#d5dae1'],
 ];
 // Chunky bezel with a bump on the back; the screen is a separate plane.
@@ -64,8 +66,10 @@ const keyboardParts = () => [
   [B(0.42, 0.025, 0.14, 0, DESK_H + 0.0125, KEYS_Z, 0.012), '#e9e6df'], ...[-0.04, 0, 0.04].map(z => [B(0.38, 0.008, 0.028, 0, DESK_H + 0.026, KEYS_Z + z, 0.003), '#cfc9bd']),
   [B(0.2, 0.006, 0.18, MOUSE_X, DESK_H + 0.003, KEYS_Z, 0.003), '#3d5a80'], [new THREE.SphereGeometry(0.03, 12, 8).scale(0.8, 0.5, 1.25).translate(MOUSE_X, DESK_H + 0.016, KEYS_Z), '#e9e6df'],
 ];
-const TOWER = [-0.5, 0.06]; // on the floor under the desk, leaving the top free
-const BIN = [0.46, -0.22]; // under the desk on the sitter's left, by the front edge
+// The PC hangs from the desktop's underside (TOWER_Y up), and the bin stands out in front by the chair, on the sitter's left:
+// the floor under a row of desks is a tunnel for the RC car.
+const TOWER = [-0.5, 0.06], TOWER_Y = DESK_H - 0.07 - 0.42 - 0.005;
+const BIN = [0.55, -(DESK_D / 2 + 0.18)];
 // A waste bin with paper poking out of it (~600 vertices).
 const binParts = color => [
   [C(0.12, 0.1, 0.3, 0, 0.15, 0, 16), color], [C(0.127, 0.127, 0.02, 0, 0.292, 0, 16), color], [new THREE.CircleGeometry(0.11, 16).rotateX(-Math.PI / 2).translate(0, 0.3035, 0), '#2a2d35'],
@@ -124,7 +128,7 @@ const clipboard = () => {
 function deskGeometry(width, color, helper, provider) {
   const at = (parts, x, z) => parts.map(([geometry, c]) => [geometry.translate(x, 0, z), c]);
   const top = paint(deskParts(width)), chair = paint(at(chairParts(color, provider), 0, CHAIR_Z)), parts = [top, chair];
-  if (!helper) parts.push(paint(at(towerParts(), ...TOWER)), paint(at(binParts('#8a8f99'), ...BIN)));
+  if (!helper) parts.push(paint(at(towerParts().map(([geometry, c]) => [geometry.translate(0, TOWER_Y, 0), c]), ...TOWER)), paint(at(binParts('#8a8f99'), ...BIN)));
   const geometry = mergeGeometries(parts);
   geometry.userData.solids = [top, chair].map(g => (g.computeBoundingBox(), g.boundingBox));
   return geometry;
@@ -275,6 +279,8 @@ export function createRoom(scene, renderer) {
     // ponytail: so things can be thrown into the games room and lie there. Picked up in there they land back in the office, the
     // goose ignores them, and a ball in there floats over nothing in the overview, which doesn't draw the room.
     refreshFlight() { room.flightColliders = [...room.colliders.filter(box => !box.walkOnly), ...room.lintels, ...room.kitchen.flight, ...room.boss.flight, ...room.cutouts]; },
+    // A session's desk's colour (its chair's), or null: its car's in the RC race.
+    deskColour(id) { return desks.get(id)?.color ?? null; },
     deskAnchor(id) {
       const desk = desks.get(id); if (!desk) return null;
       desk.group.updateMatrixWorld();
@@ -528,7 +534,12 @@ export function createRoom(scene, renderer) {
     meeting.userData.toggle = () => room.onMeeting?.();
     room.meeting = { group: meeting, face: meeting.userData.face };
     // The scoreboard: every game's best three (Office online's, else your own; boards.js), on the back wall between two windows.
-    const scoreboard = hang(back, board(SCOREBOARD - 0.1, 1.2, '#c0c4cc', 0.5), backWall.gaps.find(gap => gap.board).x - width / 2, 1.75, 0.03);
+    const boardX = backWall.gaps.find(gap => gap.board).x, scoreboard = hang(back, board(SCOREBOARD - 0.1, 1.2, '#c0c4cc', 0.5), boardX - width / 2, 1.75, 0.03);
+    // On the floor under it, the RC car on its charging dock, facing into the room: either starts a race (room.onRace, from
+    // office.js; rc.js). The parked car is clickable, unlike a racing one.
+    room.rcDock = place(rcDock(), boardX, 0.4, 0, false); room.rcDock.userData.toggle = () => room.onRace?.();
+    const parked = room.rcParked = lighten(buildCar()).car; parked.position.y = 0.014; room.rcDock.add(parked); // off its dock while you race it; merged, as an NPC's: it's in most views of the room
+    parked.traverse(node => { if (node.isMesh && !node.userData.outline && !node.userData.own) delete node.raycast; });
     room.boards = { whiteboard: whiteboard.userData.face, clock: clockFace, waiting: waiting.userData.face, plate, scores: scoreboard.userData.face };
 
     // Left wall: a bookshelf at the back, the whiteboard, pictures where there's room; the front is kept clear for the kitchen doorway.

@@ -14,7 +14,7 @@ export const POSES = ['standing', 'walking', 'running', 'holding', 'playing'];
 export const PROTOCOL = 1;
 // What's said again soon anyway, a newer word replacing it, so it may be let go when a link is busy or slow (hub.mjs and
 // office-online.mjs shed these first). Everything else (where, look, the floor, a throw, the lights, the balls...) always goes.
-export const SHED = new Set(['pos', 'plane', 'snake', 'goose']);
+export const SHED = new Set(['pos', 'plane', 'snake', 'goose', 'car']);
 // A sender's allowance: `rate` messages a second on average, up to `burst` at once (a stalled network's backlog lands all
 // together). Each message costs one; past the allowance what's SHED is let go and the rest still goes, owed. A sender owing
 // more than `burst` is flooding. `take(t ms, type)`: true to pass it on.
@@ -94,6 +94,11 @@ const checks = {
   plane: m => m.mode === 'off' ? { type: 'plane', mode: 'off' }
     : m.mode === 'fly' && num(m.x, -12, 200) && num(m.y, -1, 6) && num(m.z, -12, 200) && num(m.yaw) && num(m.pitch, -Math.PI, Math.PI) && num(m.roll, -Math.PI, Math.PI) && num(m.t, 0)
       ? { type: 'plane', mode: 'fly', x: m.x, y: m.y, z: m.z, yaw: m.yaw, pitch: m.pitch, roll: m.roll, t: m.t } : null,
+  // An RC car driving (rc.js): where it is, its heading, its front wheels (-1..1), its wing out or not, and the sender's clock
+  // (ms, as pos); 'off' once it's back on its dock.
+  car: m => m.mode === 'off' ? { type: 'car', mode: 'off' }
+    : m.mode === 'drive' && num(m.x, -12, 200) && num(m.y, -1, 6) && num(m.z, -12, 200) && num(m.yaw) && num(m.steer, -1, 1) && typeof m.glide === 'boolean' && num(m.t, 0)
+      ? { type: 'car', mode: 'drive', x: m.x, y: m.y, z: m.z, yaw: m.yaw, steer: m.steer, glide: m.glide, t: m.t } : null,
   // Balls moved by the sender, or (`again`) what it knows of them, said for someone arriving.
   balls: m => Array.isArray(m.list) && m.list.length >= 1 && m.list.length <= BALL_MOST * BALL_KINDS.length && m.list.every(ball) && (m.again === undefined || m.again === true)
     ? { type: 'balls', list: m.list.map(e => [...e]), ...m.again && { again: true } } : null,
@@ -124,6 +129,7 @@ const down = {
   lights: withId('lights', ['on']),
   balls: withId('balls', ['list', 'again']),
   plane: withId('plane', ['mode', 'x', 'y', 'z', 'yaw', 'pitch', 'roll', 't']),
+  car: withId('car', ['mode', 'x', 'y', 'z', 'yaw', 'steer', 'glide', 't']),
   floor: m => { if (m.floor === null) return { type: 'floor', floor: null }; const floor = checkFloor(m.floor); return floor ? { type: 'floor', floor } : null; },
   refused: m => typeof m.why === 'string' && m.why.length <= 40 ? { type: 'refused', why: m.why } : null,
   // The hub's answer to hello: your id in the roster, the colour you got and where you are.

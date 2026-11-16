@@ -16,7 +16,7 @@ import { fail } from './requests.mjs';
 const FRESH_MS = 10_000, PLAN_MS = 10_000, TIMEOUT_MS = 5000, MAX_BYTES = 64 * 1024, MAX_PLAYERS = 64;
 // RATE, BURST: a page's allowance (meeting.js), a little under the hub's for this link, which carries the server's own words too.
 // SLOW: what a page may have waiting before positions and the like skip it.
-const RETRY_MAX_MS = 30_000, RATE = 30, BURST = 90, SLOW = 64 * 1024, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'snake', 'plane', 'lights', 'balls', 'remove', 'goose', 'goosed', 'poke', 'shelf']);
+const RETRY_MAX_MS = 30_000, RATE = 30, BURST = 90, SLOW = 64 * 1024, FROM_PAGE = new Set(['look', 'where', 'pos', 'throw', 'snake', 'plane', 'lights', 'balls', 'remove', 'goose', 'goosed', 'poke', 'shelf', 'car']);
 const object = v => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // `host.tailnet.ts.net/<key>`, or with its own http(s):// in front; the key is the last part of the path.

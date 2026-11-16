@@ -22,8 +22,9 @@ test('blocked storage gives no scores', () => {
   assert.deepEqual(localBests(store({ [KEYS.golf]: '{nope', [KEYS.planes]: '{nope', [KEYS.darts]: '9' }), date), { darts: 9 });
 });
 
+// Each key is named for the module that keeps it (up to a capital: rcCollect is rc.js's too).
 test("the storage keys are the games' own", () => {
-  for (const [game, key] of Object.entries(KEYS)) assert.ok(readFileSync(new URL(`../client/office/${game}.js`, import.meta.url), 'utf8').includes(`'${key}'`), game);
+  for (const [game, key] of Object.entries(KEYS)) assert.ok(readFileSync(new URL(`../client/office/${game.replace(/[A-Z].*$/, '')}.js`, import.meta.url), 'utf8').includes(`'${key}'`), game);
 });
 
 const board = { day: '2026-11-09', players: [{ name: 'anna', scores: { darts: 9 }, seen: 1 }, { name: 'Bo', scores: { darts: 12 }, seen: 1 }] };
@@ -160,7 +161,7 @@ test("the scoreboard's rows: every game you've found, the board's best three, el
   const online = createOnline({ api: fakeApi(), scores: () => ({}), store: store({ [FOUND]: JSON.stringify(GAMES.map(g => g.id)) }) });
   await online.sync();
   const rows = online.rows();
-  assert.equal(rows.length, 8); assert.equal(rows.at(-1).label, 'Planes endless');
+  assert.equal(rows.length, 10); assert.equal(rows.at(-1).label, 'RC collect today');
   assert.deepEqual(rows.find(r => r.id === 'darts').top, [{ name: 'anna', text: '9 darts', you: true }, { name: 'Bo', text: '12 darts', you: false }]);
   assert.deepEqual(rows.find(r => r.id === 'snake').top, []);
   let mine = { snake: 4 }, told = 0;

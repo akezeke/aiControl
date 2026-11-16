@@ -7,9 +7,9 @@ import { GAMES, bests, format, standings } from './leaderboard.js';
 import { loadProgress } from './progress.js';
 import { dayKey } from './daily.js';
 
-// The games' own localStorage keys (darts.js, pinball.js, snake.js, golf.js, planes.js's endless), copied so those modules stay as they are; a
+// The games' own localStorage keys (darts.js, pinball.js, snake.js, golf.js, planes.js's endless, rc.js), copied so those modules stay as they are; a
 // test checks each is still there. Trickshot's comes through progress.js.
-export const KEYS = { darts: 'ai-control-darts-best', pinball: 'ai-control-pinball-best', snake: 'ai-control-snake-best', golf: 'ai-control-golf', planes: 'ai-control-planes-endless' };
+export const KEYS = { darts: 'ai-control-darts-best', pinball: 'ai-control-pinball-best', snake: 'ai-control-snake-best', golf: 'ai-control-golf', planes: 'ai-control-planes-endless', rc: 'ai-control-rc-best', rcCollect: 'ai-control-rc-collect' };
 const storage = () => { try { return globalThis.localStorage ?? null; } catch { return null; } };
 
 // Never throws: blocked or broken storage just has nothing to send.
@@ -18,7 +18,8 @@ export function localBests(store = storage(), date = new Date()) {
     const read = key => store.getItem(key), number = key => Number(read(key)) || 0;
     let golf = null, planes = 0; try { golf = JSON.parse(read(KEYS.golf)); } catch { /* none, or broken */ }
     try { planes = Number(JSON.parse(read(KEYS.planes))?.endless?.rings) || 0; } catch { /* none, or broken */ }
-    return bests({ trickshot: loadProgress(store), darts: number(KEYS.darts) || null, pinball: number(KEYS.pinball), snake: number(KEYS.snake), golf, planes }, dayKey(date));
+    const json = key => { try { return JSON.parse(read(key)); } catch { return null; /* none, or broken */ } };
+    return bests({ trickshot: loadProgress(store), darts: number(KEYS.darts) || null, pinball: number(KEYS.pinball), snake: number(KEYS.snake), golf, planes, rc: json(KEYS.rc), collect: json(KEYS.rcCollect) }, dayKey(date));
   } catch { return {}; }
 }
 

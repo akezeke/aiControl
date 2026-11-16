@@ -10,7 +10,7 @@ import { Cast } from './animation.js';
 import { Player, pick, rayAt, officeHasKeys, gameKey, menuOpen, sceneFocused, standNear, standBefore, EYE } from './player.js';
 import { OfficeCamera } from './camera.js';
 import { Bubbles, createCard, createMenu, createOverlays } from './bubbles.js';
-import { frameTime, createDoorCard } from '../scene-ui.js';
+import { frameTime, refreshEvery, createDoorCard } from '../scene-ui.js';
 import { copyText, createBoards, createKitchenBoards } from './boards.js';
 import { createOnline, leaderLine } from './online.js';
 import { createSignIn } from './signin.js';
@@ -31,6 +31,7 @@ import { createPinball } from './pinball.js';
 import { createSnake, plantBubble, plantOf } from './snake.js';
 import { createSnakes } from './snakes.js';
 import { createPlanes, createFlyers } from './planes.js';
+import { createRace, createDrivers } from './rc.js';
 import { setSkyPlace } from './windows.js';
 import { createGoose, GOOSE } from './goose.js';
 import { walkGrid, gridKey, findPath } from './path.js';
@@ -59,7 +60,7 @@ export function mountOffice(container, hooks) {
   scene.background = new THREE.Color('#f6e7c8');
   const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 200);
   camera.userData.canvas = renderer.domElement;
-  const debug = createDebug(container, renderer, () => renderer.render(scene, office.camera)); // F3
+  const debug = createDebug(container, renderer, () => renderer.render(scene, office.camera), () => office.camera); // F3
   const room = createRoom(scene, renderer);
   // Ways round the furniture (path.js) for whoever walks: fruit coming and going, and the goose. The grid is worked out again
   // only when the boxes really change (room.sync hands over a new list of them with every snapshot).
@@ -210,11 +211,25 @@ export function mountOffice(container, hooks) {
     world: () => ({ boxes: flyable(), keepOut, columns: props.aimWorld().columns, get people() { return cast.spots(); }, width: layout?.room.width || 0, depth: layout?.room.depth || 0 }) });
   const planes = plane(() => room.paperStack, false), endlessPlanes = plane(() => room.paperPlane, true);
   scene.add(planes.root, endlessPlanes.root); room.onPlanes = () => onPlay(planes); room.onEndless = () => onPlay(endlessPlanes);
+  // RC racing: from the car on its dock by the filing cabinet, round the day's circuit (rc.js). Its floor map is made from the
+  // room's own meshes, under the room's root (the kitchen's group hangs off it).
+  const race = createRace({ canvas: renderer.domElement, camera, solids: () => room.kitchen.group.parent, boxes: flyable, people: () => props.aimWorld().columns,
+    from: () => { const d = room.rcDock; return d ? { x: d.position.x, z: d.position.z, yaw: d.rotation.y } : { x: player.position.x, z: player.position.z, yaw: player.yaw }; },
+    bounds: () => layout && { ...layout.room, pods: layout.pods, cellW: layout.grid.cellW }, score: (lines, verdict = null) => overlays.setScore(lines, verdict, false), hit: onHit, dark: () => !room.lights.on, send: m => tell(m), parked: () => room.rcParked, time: debug.time,
+    // Who races you: the sessions on the floor (a visit's host's too), busiest first (working, then waiting on you, then the
+    // latest), each in its desk's colour.
+    racers: () => {
+      const list = (visiting !== null ? hostView?.sessions : office.snapshot?.sessions) || [];
+      return list.map(s => ({ id: s.id, colour: room.deskColour(s.id) ?? '#8b8f99', busy: s.status === 'working' ? 2 : s.waitingOn ? 1 : 0, at: Date.parse(s.updatedAt) || 0 }))
+        .sort((a, b) => b.busy - a.busy || b.at - a.at); // rc.js takes the first few
+    } });
+  scene.add(race.root); room.onRace = () => onPlay(race);
+  globalThis.rcStart = room.onRace; // dev: what a click on the dock does, from the console (headless checks), as rcTune is
   const trickshot = createTrickshot({ kitchen: room.kitchen, hand, props, view, clock, onPlay, aim: () => ({ direction: throwRay(), charge: charge.active ? charge.level(clock()) : 0 }), score: (goal, verdict, copy) => overlays.setScore(goal, verdict, copy), share: text => copyText(text, () => overlays.showCopied(), () => { player.unlock(); overlays.showCopy(text); }), reducedMotion: () => reducedAtmosphere() });
   room.kitchen.add(trickshot); room.kitchen.add(createKitchenBoards(trickshot, { inReach: at => Math.hypot(at.x - player.position.x, at.z - player.position.z) < 1.6, read: clip => office.readBoard(clip), online }));
   const boards = createBoards(room, () => online.rows());
   // Each game's rows on the scoreboard (leaderboard.js), shown once you've started it (play, above). Golf's endless is switched on at the green; the day's planes have no row.
-  const onBoard = new Map([[trickshot, ['trickshotToday', 'trickshot']], [darts, ['darts']], [pinball, ['pinball']], [golf, ['golf', 'golfEndless']], [snake, ['snake']], [endlessPlanes, ['planesEndless']]]);
+  const onBoard = new Map([[trickshot, ['trickshotToday', 'trickshot']], [darts, ['darts']], [pinball, ['pinball']], [golf, ['golf', 'golfEndless']], [snake, ['snake']], [endlessPlanes, ['planesEndless']], [race, ['rcToday', 'rcCollectToday']]]);
   // Office meetings' live link (live.js), open while you're in one and the page is shown. You're home until the door says otherwise.
   const live = createLive({ joined: () => !!online.state()?.joined }); debug.messages(live);
   // How you look: as the meeting's roster has you, or as you saved it.
@@ -252,7 +267,7 @@ export function mountOffice(container, hooks) {
     build() { const floor = live.floor(); if (!floor) return; hostView = floorSnapshot(floor); if (visiting === null) { visiting = hostName(online.state()?.host ?? ''); switchRooms(true); } draw(); },
     place() { play(null); player.jumpTo(...doorSpot()); },
     // The snake's and planes' 'off' (play(null)) goes before where:'home', because the hub stops relaying once you're home.
-    goHome() { clearTimeout(asking); if (playing === snake || playing === planes || playing === endlessPlanes) play(null); live.where('home'); door.close(); if (visiting === null) return; visiting = hostView = null; switchRooms(); draw(); },
+    goHome() { clearTimeout(asking); if (playing === snake || playing === planes || playing === endlessPlanes || playing === race) play(null); live.where('home'); door.close(); if (visiting === null) return; visiting = hostView = null; switchRooms(); draw(); },
     nobody() { nobody = true; showDoor(); },
     wait() { clearTimeout(rejoin); rejoin = setTimeout(() => step('timeout'), visit.patient ? LOST_MS : WAIT_MS); },
   };
@@ -261,7 +276,7 @@ export function mountOffice(container, hooks) {
   live.on('lost', () => step('lost'));
   // The others at the meeting walk about the host's office, and your own place goes out while you're at it (visiting, or hosting with your page open).
   const snakes = createSnakes(scene, { room, reducedMotion: () => reducedAtmosphere() });
-  const friends = createFriends(scene, { room, reducedMotion: () => reducedAtmosphere(), hidden: id => snakes.has(id) }), flyers = createFlyers(scene);
+  const friends = createFriends(scene, { room, reducedMotion: () => reducedAtmosphere(), hidden: id => snakes.has(id) }), flyers = createFlyers(scene), drivers = createDrivers(scene);
   const plantTop = i => { const p = room.snakePlants?.[i]?.position; return p ? plantAt.set(p.x, 1.3, p.z) : null; }, plantAt = new THREE.Vector3();
   const atMeeting = () => (visiting !== null || hosting()) && !document.hidden;
   // Anyone to tell: what you do goes to the meeting only while someone else is there (a host alone keeps quiet; whoever comes is
@@ -286,7 +301,7 @@ export function mountOffice(container, hooks) {
   const said = { shelf: null, lights: null, balls: [] }; // balls: the words heard, in order, till you're shown
   let met = new Set(); // who else was at the meeting last time: only someone new (or you, just shown) is told again
   const meet = () => {
-    const was = shownTo; shownTo = atMeeting(); goose.roster(shownTo ? live.roster() : [], live.id()); friends.sync(live.roster(), live.id(), shownTo); snakes.sync(live.roster(), live.id(), shownTo); flyers.sync(live.roster(), live.id(), shownTo);
+    const was = shownTo; shownTo = atMeeting(); goose.roster(shownTo ? live.roster() : [], live.id()); friends.sync(live.roster(), live.id(), shownTo); snakes.sync(live.roster(), live.id(), shownTo); flyers.sync(live.roster(), live.id(), shownTo); drivers.sync(live.roster(), live.id(), shownTo);
     const here = new Set(shownTo ? live.roster().filter(p => p.at === 'meeting' && p.id !== live.id()).map(p => p.id) : []), fresh = !was || [...here].some(id => !met.has(id));
     met = here;
     if (!shownTo) return;
@@ -309,6 +324,7 @@ export function mountOffice(container, hooks) {
   live.on('pos', m => friends.move(m.id, m));
   live.on('snake', m => { if (shownTo) snakes.heard(m.id, m); });
   live.on('plane', m => { if (shownTo) flyers.heard(m.id, m); });
+  live.on('car', m => { if (shownTo) drivers.heard(m.id, m); });
   // Throws at the meeting: yours go to everyone there, and theirs fly here as copies that move nothing of yours (a shot in the kitchen, else the office's things).
   props.onThrow = trickshot.onThrow = thrown => tell({ type: 'throw', ...thrown });
   // A ball's throw isn't copied: the ball itself comes (balls, above). A shot has no spin; the office's throws always tumble.
@@ -317,7 +333,7 @@ export function mountOffice(container, hooks) {
     const { x, z } = player.position, fast = dt > 0 ? Math.hypot(x - lastX, z - lastZ) / dt : 0, moved = fast > 12 ? 0 : fast; lastX = x; lastZ = z; // a jump (the door) isn't a run
     speed += (moved - speed) * Math.min(1, dt * 12);
     if (atMeeting() !== shownTo) meet();
-    friends.update(dt); snakes.update(dt); flyers.update();
+    friends.update(dt); snakes.update(dt); flyers.update(); drivers.update();
     // A snake plant's leaves are gone while its snake is out: yours, or someone's at the meeting.
     room.snakePlants?.forEach((p, i) => { p.userData.leaves.visible = snake.out !== i && !snakes.taken(i); });
     if (shownTo && company()) live.presence(sample());
@@ -447,6 +463,7 @@ export function mountOffice(container, hooks) {
     const away = playing === bossDesk || view.amount < 0.01 && (room.secret.inside(player.position) || room.kitchen.inside(player.position));
     const others = friends.positions(), bossFriend = seatedFriend(others); // the others at a meeting (doors open and stay open for them too); who of them is at the boss's computer
     const me = myLook(); room.boss.dress(me?.fruit, me?.colour, online.state()?.name); // the boss's office is all you; redrawn only when that changes
+    race.update(dt, reducedAtmosphere());
     snake.update(dt, reducedAtmosphere()); planes.update(dt, reducedAtmosphere()); endlessPlanes.update(dt, reducedAtmosphere()); view.update(dt); room.update(dt, camera.position, reducedAtmosphere(), playing === bossDesk ? 'you' : bossFriend ? 'friend' : null, camera); room.secret.update(dt, player.position, reducedAtmosphere(), view.amount, others); room.boss.update(dt, player.position, reducedAtmosphere(), view.amount, others); room.kitchen.update(dt, player.position, reducedAtmosphere(), view.amount, others); if (playing?.following) view.place(); cast.update(dt * (atmosphereScale() || 1), player.position); goose.update(dt); props.update(dt); bubbles.update(camera, id => away ? null : id === GOOSE ? goose.top() : plantOf(id) >= 0 ? plantTop(plantOf(id)) : cast.positionOf(id), view.amount); boards.tick(); follow(); hover(dt);
     bossDesk.update(dt, { still: reducedAtmosphere(), friend: bossFriend, arrived: playing === bossDesk && view.gameAmount === 1 && view.amount === 0 });
     if (charge.active && !playing && props.holding) arc.show(props.heldKind, props.launch(charge.level(clock()), throwRay()), props.aimWorld(), player.position, hand.palm.getWorldPosition(palm)); else arc.hide();
@@ -475,14 +492,15 @@ export function mountOffice(container, hooks) {
   };
   const observer = new ResizeObserver(resize); observer.observe(container); resize();
   // A steady ~60 fps: on a faster screen only every n-th refresh is drawn, n whole so the pace never wobbles (120 Hz → 60,
-  // 144 Hz → 72). `gap` is the screen's refresh interval, smoothed.
+  // 144 Hz → 72). A game, up to 144: a plane or a car sweeping the room judders at 72 on a 144 Hz screen. `gap` is the
+  // screen's refresh interval, smoothed.
   const phone = globalThis.matchMedia?.('(max-width: 640px)');
   let raf = 0, last = performance.now(), previous = last, gap = 1000 / 60, tick = 0;
-  debug.watch({ player, snake, planes, endlessPlanes, view, room, secret: room.secret, kitchen: room.kitchen, cast, goose, props, bubbles, boards, friends, snakes });
+  debug.watch({ player, snake, planes, endlessPlanes, race, view, room, secret: room.secret, kitchen: room.kitchen, cast, goose, props, bubbles, boards, friends, snakes });
   const loop = now => {
     raf = requestAnimationFrame(loop);
     gap += (Math.min(50, Math.max(0, now - previous)) - gap) * 0.05; previous = now;
-    if (++tick % Math.max(1, Math.round(1000 / 60 / gap))) return;
+    if (++tick % refreshEvery(gap, playing ? 144 : 60)) return;
     // On a phone the open panel covers the whole office.
     if (phone?.matches && document.body.classList.contains('panel-open')) return;
     if (desktop.covers()) return; // and on a phone so does the boss PC
@@ -629,7 +647,8 @@ export function mountOffice(container, hooks) {
       }
       return best;
     },
-    disposers: [() => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); clearTimeout(rejoin); live.dispose(); friends.dispose(); snakes.dispose(); flyers.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
+    // A game left as you'd leave it (the RC engine's sound stops, a meeting hears its car's gone), before the rest goes.
+    disposers: [() => { playing?.leave(); playing = null; }, () => { readying = false; }, () => { clearTimeout(asking); clearTimeout(fading); clearTimeout(rejoin); live.dispose(); friends.dispose(); snakes.dispose(); flyers.dispose(); drivers.dispose(); door.dispose(); fade.remove(); }, () => online.dispose(), () => signIn.dispose(), () => boards.dispose(), () => bubbles.dispose(), () => card.dispose(), () => menu.dispose(), () => overlays.dispose(), () => cast.dispose(), () => player.dispose(), () => view.dispose(), () => hand.dispose(), () => props.dispose(), closeAudio, () => shots.dispose(), () => goose.dispose(), () => { for (const fn of listeners) fn(); }],
   };
   return office;
 }

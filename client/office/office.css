@@ -88,6 +88,7 @@
 .office-score b { color: #ffe14d; font-size: 22px; font-weight: 800; white-space: nowrap; }
 /* Paper planes' stick (planes.js): drawn where a finger or the mouse went down (dragged along past full), the knob where it's dragged. */
 .office-planes .office-bubble { opacity: .35; pointer-events: none; transition: opacity .3s; }
+.office-planes .office-hint { display: none; } /* walking keys; a game shows its own */
 .office-stick { position: absolute; width: 104px; height: 104px; margin: -52px 0 0 -52px; border: 2px solid #ffffff73; border-radius: 50%; background: #1b1a1f33; pointer-events: none; z-index: 2; }
 .office-stick[hidden] { display: none; }
 .office-stick i { position: absolute; left: 30px; top: 30px; width: 44px; height: 44px; border-radius: 50%; background: #ffffffb3; box-shadow: 0 1px 4px #0006; }

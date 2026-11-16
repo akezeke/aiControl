@@ -254,6 +254,21 @@ test("an older host's floor without desk things is still taken, with none on the
   assert.deepEqual(checkFloor({ ...floor, desks: [{ ...floor.desks[0], look: { ...look, props: ['secret'], notes: 0 } }] }).desks[0].look.props, []);
 });
 
+// An RC car driving (rc.js): where it is, its heading, its front wheels, whether its wing's out, and the sender's clock.
+test('a car goes up and down with its pose and clock; off is just off', () => {
+  const drive = { type: 'car', mode: 'drive', x: 3, y: 0.05, z: 5, yaw: 7.1, steer: -0.4, glide: false, t: 1234 };
+  assert.deepEqual(checkUp({ ...drive, extra: 1 }), drive);
+  assert.deepEqual(checkUp({ type: 'car', mode: 'off', x: 1 }), { type: 'car', mode: 'off' });
+  assert.deepEqual(checkDown({ ...drive, id: 'a1' }), { ...drive, id: 'a1' });
+  assert.deepEqual(checkDown({ type: 'car', mode: 'off', id: 'a1' }), { type: 'car', id: 'a1', mode: 'off' });
+  assert.equal(checkDown(drive), null);
+});
+
+test('a malformed car is dropped whole', () => {
+  const drive = { type: 'car', mode: 'drive', x: 3, y: 0.05, z: 5, yaw: 1, steer: 0, glide: true, t: 1 };
+  for (const bad of [{ ...drive, t: undefined }, { ...drive, steer: 2 }, { ...drive, glide: 'yes' }, { ...drive, x: NaN }, { ...drive, y: 9 }, { ...drive, mode: 'fly' }]) assert.equal(checkUp(bad), null, JSON.stringify(bad));
+});
+
 test('a paper plane in flight goes up and down with its pose and clock; off is just off', () => {
   const fly = { type: 'plane', mode: 'fly', x: 3, y: 1.4, z: 5, yaw: 7.1, pitch: -0.2, roll: 0.5, t: 1234 };
   assert.deepEqual(checkUp({ ...fly, extra: 1 }), fly);
@@ -290,5 +305,5 @@ test('an allowance: a burst, then what is said again anyway is let go while the 
   assert.equal(a.take(1000, 'pos'), true, 'a second on: ten more');
   for (let i = 0; i < 9; i++) a.take(1000, 'lights');
   assert.equal(a.flooding, false, 'owing its burst'); a.take(1000, 'lights'); assert.equal(a.flooding, true, 'past it');
-  assert.ok(['pos', 'plane', 'snake', 'goose'].every(t => SHED.has(t)) && !SHED.has('balls') && !SHED.has('where'));
+  assert.ok(['pos', 'plane', 'snake', 'goose', 'car'].every(t => SHED.has(t)) && !SHED.has('balls') && !SHED.has('where'));
 });

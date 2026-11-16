@@ -7,8 +7,9 @@ const none = { trickshot: { best: {}, daily: {} }, darts: null, pinball: 0, snak
 const holes = (n, strokes) => Object.fromEntries(Array.from({ length: n }, (_, i) => [i + 1, strokes]));
 
 test('the games, in board order', () => {
-  assert.deepEqual(GAMES.map(g => g.id), ['trickshotToday', 'trickshot', 'darts', 'pinball', 'golf', 'golfEndless', 'snake', 'planesEndless']);
-  assert.deepEqual(GAMES.filter(g => g.lower).map(g => g.id), ['darts', 'golf']);
+  assert.deepEqual(GAMES.map(g => g.id), ['trickshotToday', 'trickshot', 'darts', 'pinball', 'golf', 'golfEndless', 'snake', 'planesEndless', 'rcToday', 'rcCollectToday']);
+  assert.deepEqual(GAMES.filter(g => g.lower).map(g => g.id), ['darts', 'golf', 'rcToday', 'rcCollectToday']);
+  assert.deepEqual(GAMES.filter(g => g.daily).map(g => g.id), ['trickshotToday', 'rcToday', 'rcCollectToday']);
 });
 
 test('bests: golf counts only with every hole', () => {
@@ -74,7 +75,48 @@ test('standings: top three by direction, today only', () => {
   assert.deepEqual(standings({ day: '2026-11-09', players: [] }), []);
 });
 
+// RC today: the best lap (s) of today's circuit, kept by rc.js per circuit as { day, lap, finish }; a daily game as Trickshot
+// today is, but lower is better.
+test("bests: RC today is today's best lap", () => {
+  const rc = { a: { day: '2026-11-08', lap: 18.2, finish: 60 }, b: { day: '2026-11-09', lap: 24.31, finish: 80 }, c: { day: '2026-11-09', lap: 22.75, finish: 75 } };
+  assert.deepEqual(bests({ ...none, rc }, '2026-11-09'), { rcToday: { day: '2026-11-09', score: 22.75 } });
+  assert.deepEqual(bests({ ...none, rc: { a: rc.a } }, '2026-11-09'), {});
+  assert.deepEqual(bests({ ...none, rc: 'broken' }, '2026-11-09'), {});
+});
+
+// RC collect today: the best time to all ten of the day's paperclips (s), kept by rc.js per day's paperclips as { day, time }.
+test("bests: RC collect today is today's best time", () => {
+  const collect = { a: { day: '2026-11-08', time: 30 }, b: { day: '2026-11-09', time: 52.4 }, c: { day: '2026-11-09', time: 48.15 } };
+  assert.deepEqual(bests({ ...none, collect }, '2026-11-09'), { rcCollectToday: { day: '2026-11-09', score: 48.15 } });
+  assert.deepEqual(bests({ ...none, collect: { a: collect.a } }, '2026-11-09'), {});
+  assert.deepEqual(bests({ ...none, collect: [1] }, '2026-11-09'), {});
+  assert.equal(format('rcCollectToday', 48.15), '48.1 s');
+});
+
+test('clean and merge treat every daily game alike: RC today too, lower kept within a day', () => {
+  const r = (day, score) => ({ rcToday: { day, score } });
+  assert.deepEqual(clean(r('2026-11-09', 22.5), '2026-11-09'), r('2026-11-09', 22.5));
+  assert.deepEqual(clean(r('2026-11-08', 22.5), '2026-11-09'), r('2026-11-08', 22.5), 'yesterday kept');
+  assert.deepEqual(clean(r('2026-11-07', 22.5), '2026-11-09'), {}, 'older dropped');
+  assert.deepEqual(clean(r('2026-11-09', 0.5), '2026-11-09'), {}, 'under a second is impossible');
+  assert.deepEqual(merge(r('2026-11-09', 24), r('2026-11-09', 22)), r('2026-11-09', 22), 'the same day keeps the lower');
+  assert.deepEqual(merge(r('2026-11-09', 22), r('2026-11-09', 24)), r('2026-11-09', 22));
+  assert.deepEqual(merge(r('2026-11-08', 15), r('2026-11-09', 30)), r('2026-11-09', 30), 'a newer day replaces');
+});
+
+test("standings show RC today lowest first, only today's", () => {
+  const players = [
+    { name: 'Anna', scores: { rcToday: { day: '2026-11-09', score: 24.2 } } },
+    { name: 'Bo', scores: { rcToday: { day: '2026-11-09', score: 21.8 } } },
+    { name: 'Cy', scores: { rcToday: { day: '2026-11-08', score: 15 } } },
+  ];
+  const [row] = standings({ day: '2026-11-09', players });
+  assert.equal(row.id, 'rcToday'); assert.equal(row.label, 'RC today');
+  assert.deepEqual(row.top, [{ name: 'Bo', value: 21.8 }, { name: 'Anna', value: 24.2 }]);
+});
+
 test('format: units where a number alone would be unclear', () => {
+  assert.equal(format('rcToday', 21.84), '21.8 s');
   assert.equal(format('darts', 9), '9 darts');
   assert.equal(format('golf', 112), '112 strokes');
   assert.equal(format('golfEndless', 7), '7 holes');

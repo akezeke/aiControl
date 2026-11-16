@@ -59,7 +59,8 @@ export class OfficeCamera {
   setLayout(layout) { this.overhead.setLayout(layout); }
   // Frames a point (a character) from where you stand; null hands the camera back.
   focus(point) { this.focusPoint = point?.clone() || null; }
-  // A game takes the view: `pose()` gives { from, look, fov, hands, wide?, roll? } in world space; null hands it back.
+  // A game takes the view: `pose()` gives { from, look, fov, hands, wide?, widest?, roll? } in world space (`widest`: how far
+  // `wide` may open it on a narrow screen, past the usual WIDEST); null hands it back.
   play(pose) { this.game = !!pose; if (pose) this.pose = pose; }
 
   // Where the view is now. What a game moves after `update` has it again from here, or what it follows is drawn a frame ahead of the view.
@@ -87,7 +88,7 @@ export class OfficeCamera {
     // Running, or flying over to someone, widens the view a little. So does a narrow screen, up close (wideFov): the overview
     // frames the room itself, and a game that fits its own view keeps it, unless it asks (`wide`).
     const near = wideFov(this.fov, this.camera.aspect);
-    const fov = this.game ? (game.wide ? wideFov(game.fov, this.camera.aspect) : game.fov) : near + (this.fov - near) * this.amount + (p.running && !instant ? RUN_FOV : 0);
+    const fov = this.game ? (game.wide ? wideFov(game.fov, this.camera.aspect, game.widest) : game.fov) : near + (this.fov - near) * this.amount + (p.running && !instant ? RUN_FOV : 0);
     if (Math.abs(fov - this.camera.fov) > 0.01) { this.camera.fov += (fov - this.camera.fov) * k; this.camera.updateProjectionMatrix(); }
     // While talking, shift the picture left so the character is centred in the part the panel leaves open.
     const panel = document.querySelector('#panel:not([hidden])'), canvas = this.camera.userData.canvas, shift = panel && innerWidth > 640 ? panel.offsetWidth / 2 * this.focusAmount : 0;

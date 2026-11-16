@@ -175,11 +175,13 @@ export const swingDoor = () => piece('swingDoor', () => {
     [box(thick + 0.012, 0.28, wide - 0.08, 0, 0.16, wide / 2, 0), '#b9bec6'], [box(thick + 0.012, 0.3, 0.09, 0, 1.05, wide - 0.08, 0), '#b9bec6']];
 }, 0.006);
 
+// The sofa stands on legs SOFA_LEGS (m) high, room under it for the RC car (~9 cm) to drive through.
+const SOFA_LEGS = 0.14, up = SOFA_LEGS - 0.08;
 export const sofa = () => piece('sofa', () => [
-  [box(1.9, 0.26, 0.86, 0, 0.2, 0, 0.05), cushionDark], [box(0.86, 0.14, 0.68, -0.44, 0.39, 0.06, 0.05), cushion], [box(0.86, 0.14, 0.68, 0.44, 0.39, 0.06, 0.05), cushion],
-  [box(1.9, 0.5, 0.22, 0, 0.55, -0.32, 0.07), cushion], [box(0.2, 0.48, 0.86, -0.85, 0.36, 0, 0.06), cushionDark], [box(0.2, 0.48, 0.86, 0.85, 0.36, 0, 0.06), cushionDark],
-  [box(0.34, 0.3, 0.12, -0.55, 0.58, -0.16, 0.05).rotateZ(0.15), '#f2cc8f'], [box(0.34, 0.3, 0.12, 0.6, 0.58, -0.16, 0.05).rotateZ(-0.2), '#81b29a'],
-  ...[[-0.85, -0.36], [0.85, -0.36], [-0.85, 0.36], [0.85, 0.36]].map(([x, z]) => [cyl(0.03, 0.025, 0.08, x, 0.04, z, 8), '#3a2a1e']),
+  [box(1.9, 0.26, 0.86, 0, 0.2 + up, 0, 0.05), cushionDark], [box(0.86, 0.14, 0.68, -0.44, 0.39 + up, 0.06, 0.05), cushion], [box(0.86, 0.14, 0.68, 0.44, 0.39 + up, 0.06, 0.05), cushion],
+  [box(1.9, 0.5, 0.22, 0, 0.55 + up, -0.32, 0.07), cushion], [box(0.2, 0.48, 0.86, -0.85, 0.36 + up, 0, 0.06), cushionDark], [box(0.2, 0.48, 0.86, 0.85, 0.36 + up, 0, 0.06), cushionDark],
+  [box(0.34, 0.3, 0.12, -0.55, 0.58 + up, -0.16, 0.05).rotateZ(0.15), '#f2cc8f'], [box(0.34, 0.3, 0.12, 0.6, 0.58 + up, -0.16, 0.05).rotateZ(-0.2), '#81b29a'],
+  ...[[-0.85, -0.36], [0.85, -0.36], [-0.85, 0.36], [0.85, 0.36]].map(([x, z]) => [cyl(0.03, 0.025, SOFA_LEGS, x, SOFA_LEGS / 2, z, 8), '#3a2a1e']),
 ]);
 export const armchair = () => piece('armchair', () => [
   [box(0.86, 0.26, 0.82, 0, 0.2, 0, 0.05), cushionDark], [box(0.62, 0.14, 0.64, 0, 0.39, 0.06, 0.05), '#3d8b8b'], [box(0.86, 0.5, 0.2, 0, 0.55, -0.31, 0.07), '#3d8b8b'],
@@ -257,6 +259,14 @@ export const paperStack = () => piece('paperStack', () => [
 ]);
 // A yellow paper plane on its own (planes.js: endless rings), lying on its keel.
 export const paperPlane = () => piece('paperPlane', () => [[dart().rotateY(-0.5).translate(0, 0.022, 0), '#ffd84a']]);
+// The RC car's charging dock, on the floor: a dark pad (low enough to drive over) with yellow contacts, and a post with a green
+// light at its back. room.js parks the car on it; a click on either starts a race.
+export const rcDock = () => piece('rcDock', () => [
+  [box(0.26, 0.014, 0.34, 0, 0.007, 0, 0.005), '#2b2d35'],
+  ...[0.1, -0.1].map(z => [box(0.2, 0.003, 0.03, 0, 0.0155, z, 0), '#ffd23f']),
+  [box(0.03, 0.09, 0.03, 0.1, 0.045, -0.15, 0.006), '#2b2d35'],
+  [box(0.02, 0.02, 0.02, 0.1, 0.1, -0.15, 0.004), '#5ee08a'],
+]);
 export const coatRack = () => piece('coatRack', () => [
   [cyl(0.2, 0.24, 0.04, 0, 0.02, 0, 16), '#5a3d2b'], [cyl(0.025, 0.03, 1.75, 0, 0.9, 0, 8), '#7a5236'], [ball(0.04, 0, 1.79, 0), '#7a5236'],
   ...[0, 1, 2, 3].map(i => [new THREE.CapsuleGeometry(0.012, 0.12, 4, 6).rotateZ(Math.PI / 2 - 0.5).translate(0.06, 1.68, 0).rotateY(i * Math.PI / 2), '#7a5236']),

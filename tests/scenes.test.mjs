@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sceneFor, sceneAction } from '../client/scenes.js';
-import { frameTime } from '../client/scene-ui.js';
+import { frameTime, refreshEvery } from '../client/scene-ui.js';
 
 test('both looks resolve', () => {
   assert.equal(sceneFor('office').name, 'Office');
@@ -28,4 +28,15 @@ test('a frame stamped before the scene was up takes no time, and a long one only
   assert.equal(frameTime(1000, 18000, 0.05), 0);
   assert.equal(frameTime(1016, 1000, 0.05), 0.016);
   assert.equal(frameTime(5000, 1000, 0.05), 0.05);
+});
+
+// The Office draws at ~60 fps, games at up to 144: on a 144 Hz screen the office every other refresh, a game every one.
+test('how many refreshes go by for each frame drawn, whole so the pace never wobbles', () => {
+  assert.equal(refreshEvery(1000 / 144, 60), 2);
+  assert.equal(refreshEvery(1000 / 120, 60), 2);
+  assert.equal(refreshEvery(1000 / 60, 60), 1);
+  assert.equal(refreshEvery(1000 / 144, 144), 1);
+  assert.equal(refreshEvery(1000 / 165, 144), 1);
+  assert.equal(refreshEvery(1000 / 240, 144), 2);
+  assert.equal(refreshEvery(1000 / 30, 144), 1);
 });
