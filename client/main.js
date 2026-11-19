@@ -144,6 +144,7 @@ const icons = {
   spinner: '<path d="M21 12a9 9 0 1 1-6.2-8.56"/>',
   play: '<path d="M7 4.5v15l12-7.5Z"/>',
   file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
+  filter: '<path d="M3 5h18l-7 8.5V19l-4 2v-7.5Z"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   activity: '<path d="M2 12h5l3-8 4 16 3-8h5"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>',
@@ -1237,11 +1238,16 @@ function renderFeed() {
       }, glyph);
       toggle.title = title; toggle.setAttribute('aria-pressed', String(feedPrefs[key])); actions.append(toggle);
     }
-    actions.append(themeMenu());
+    // Project/agent/session/kind selects tuck into a menu; the funnel lights up while any narrows the feed.
+    const filters = el('details', 'theme-menu feed-filter-menu'), summary = el('summary', 'quiet-button');
+    summary.append(icon('filter')); summary.setAttribute('aria-label', 'Filter feed'); summary.title = 'Filter feed';
+    const choices = el('div', 'theme-options wf-feed-filters'); choices.setAttribute('aria-label', 'Filter feed');
+    filters.append(summary, choices); placeMenu(filters, summary, choices);
+    actions.append(filters, themeMenu());
     const back = button('Back', 'quiet-button back-button', closePanel, 'back'); back.title = 'Back to sessions';
     head.append(back, actions);
     const title = el('h2', 'panel-title'); title.append(icon('live'), el('span', '', 'Live feed'));
-    header.append(head, title, el('div', 'wf-feed-filters'));
+    header.append(head, title);
     const now = el('nav', 'feed-now'); now.setAttribute('aria-label', 'Busy and waiting');
     const recent = el('section', 'recent-messages'); recent.id = 'recent-messages';
     panel.append(header, now, recent);
@@ -1271,6 +1277,7 @@ function syncFeedFilters(region) {
     if (select.dataset.signature !== signature && document.activeElement !== select) { select.dataset.signature = signature; select.replaceChildren(...entries.map(([value, label]) => { const option = el('option', '', label); option.value = value; return option; })); }
     select.value = feedPrefs[key] || (key === 'kind' ? 'all' : '');
   }
+  region.closest('details').classList.toggle('filtered', ['project', 'provider', 'session'].some(key => feedPrefs[key]) || (feedPrefs.kind || 'all') !== 'all');
 }
 function feedNowItem(session) {
   const item = el('button', `feed-now-item${session.unread ? ' unread' : ''}`); item.type = 'button'; item.dataset.status = session.status;

@@ -43,7 +43,7 @@
 .feed-group[data-status=working] .feed-head .agent-mark { box-shadow: 0 0 0 2px var(--ok-soft); }
 .feed-entries { display: flex; flex-direction: column; min-width: 0; }
 .feed-entries > .recent-message:first-child, .feed-entries > .tool-run:first-child, .feed-entries > .history-shots:first-child { margin-top: 6px; }
-:root .feed-entries > .recent-message.notice { align-self: flex-start; max-width: 100%; margin: 6px 0 0; padding: 0 8px; background: none; border: 0; border-radius: 0; box-shadow: none; color: var(--text-3); font-size: 12px; }
+:root .feed-entries > .recent-message.notice { align-self: flex-start; max-width: 100%; margin: 6px 0 0; padding: 0 8px; background: none; border: 0; border-radius: 0; box-shadow: none; color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
 :root .feed-entries > .recent-message.notice.error { color: var(--danger); }
 @media (prefers-reduced-motion: no-preference) {
   .feed-group { animation: feed-in .25s ease-out; }
@@ -51,6 +51,8 @@
 }
 @media (max-width: 640px) {
   .feed-project { display: none; }
+  :root .chat-header .panel-heading-actions > .feed-filter-menu { display: block; }
+  .feed-filter-menu > summary.quiet-button { width: 36px; padding: 0; }
   :root .chat-header .panel-heading-actions > .feed-toggle.quiet-button { width: 36px; padding: 0; }
   .feed-toggle > span:not(.icon) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
