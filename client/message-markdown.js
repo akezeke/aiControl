@@ -27,10 +27,13 @@ class MessageRenderer extends Renderer {
   }
   // Keep messages text-only; do not fetch images embedded in session content.
   image({ text }) { return text; }
+  // Code and tables sit in a .message-block, which the page gives a button to copy just that block (main.js):
+  // code copies the pre's text, a table its Markdown from data-copy.
+  code(token) { return `<div class="message-block">${super.code(token)}</div>`; }
   table(token) {
     const labels = token.header.map((cell, index) => this.parser.parseInline(cell.tokens) || `Column ${index + 1}`);
     const cards = token.rows.map(row => `<dl class="message-table-card">${row.map((cell, index) => `<div><dt>${labels[index]}</dt><dd>${this.parser.parseInline(cell.tokens) || '—'}</dd></div>`).join('')}</dl>`).join('');
-    return `<div class="message-table" tabindex="0" role="region" aria-label="Table">${super.table(token)}</div>${cards ? `<div class="message-table-cards">${cards}</div>` : ''}`;
+    return `<div class="message-block" data-copy="${escapeHtml(token.raw.trim())}"><div class="message-table" tabindex="0" role="region" aria-label="Table">${super.table(token)}</div>${cards ? `<div class="message-table-cards">${cards}</div>` : ''}</div>`;
   }
 }
 

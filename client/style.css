@@ -336,6 +336,13 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .message-text code { padding: 1px 5px; border-radius: 5px; background: var(--panel-2); font: .9em/1.5 var(--mono); }
 .message-text pre { max-width: 100%; max-height: 24em; overflow: auto; padding: 10px 12px; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm); white-space: pre; overflow-wrap: normal; }
 .message-text pre code { padding: 0; background: none; border-radius: 0; }
+.message-block { position: relative; }
+.message-block > * { margin: 0; }
+.message-copy.block-copy { position: absolute; top: 4px; right: 4px; z-index: 1; background: var(--panel); border-color: var(--line); }
+@media (hover: hover) {
+  .block-copy { opacity: 0; transition: opacity .12s; }
+  .message-block:is(:hover, :focus-within) .block-copy { opacity: 1; }
+}
 .message-table { max-width: 100%; overflow-x: auto; }
 .message-text table { width: 100%; min-width: 24rem; border-collapse: collapse; }
 .message-table-cards { display: none; }

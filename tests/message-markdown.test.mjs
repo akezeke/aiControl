@@ -18,6 +18,13 @@ test('fenced code stays literal and tables and task lists render', () => {
   assert.match(html, /<input checked="" disabled="" type="checkbox">/);
 });
 
+test('code blocks and tables sit in copyable blocks, a table carrying its Markdown', () => {
+  const html = render('```sh\nnpm test\n```\n\n| A | B |\n| --- | --- |\n| "x" & <y> | 2 |');
+  assert.match(html, /<div class="message-block"><pre><code class="language-sh">npm test\n<\/code><\/pre>\n?<\/div>/);
+  assert.match(html, /<div class="message-block" data-copy="\| A \| B \|\n\| --- \| --- \|\n\| &quot;x&quot; &amp; &lt;y&gt; \| 2 \|"><div class="message-table"/);
+  assert.match(html, /<\/div><\/div>\n?$/);
+});
+
 test('tables include labeled mobile rows with formatting and empty cells preserved', () => {
   const html = render('| **Name** | State |\n| --- | --- |\n| `worker` | [Ready](https://example.com) |\n| Other | |');
   assert.match(html, /<div class="message-table-cards">/);

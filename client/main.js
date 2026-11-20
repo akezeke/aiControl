@@ -922,7 +922,7 @@ function renderSessionRequests(requests, session) {
   for (const request of session.requests) {
     const box = el('section', 'request-box'); box.append(el('span', 'eyebrow amber-text', request.kind === 'question' ? 'YOUR INPUT' : 'PERMISSION REQUEST'));
     if (request.kind !== 'question' || request.title !== 'A question for you') box.append(el('h3', '', request.title));
-    if (request.plan) { const rendered = renderMessageMarkdown(request.plan, Infinity), plan = el('div', 'message-text request-plan'); plan.innerHTML = rendered.html + (rendered.more || ''); box.append(plan); }
+    if (request.plan) { const rendered = renderMessageMarkdown(request.plan, Infinity), plan = el('div', 'message-text request-plan'); plan.innerHTML = rendered.html + (rendered.more || ''); blockCopies(plan); box.append(plan); }
     if (request.kind !== 'question') renderRequestDetails(box, request);
     const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
     if (request.unsupported) { box.append(el('p', 'muted', request.unsupported)); requests.append(box); continue; }
@@ -1433,7 +1433,7 @@ function showDocument(session, documentId) {
   dialog.onclose = () => dialog.remove();
   app.append(dialog); dialog.showModal();
   api(`sessions/${encodeURIComponent(session.id)}/documents/${encodeURIComponent(documentId)}`).then(({ name, path, text }) => {
-    meta.textContent = name; meta.title = path; body.innerHTML = renderDocument(text); body.scrollTop = 0;
+    meta.textContent = name; meta.title = path; body.innerHTML = renderDocument(text); blockCopies(body); body.scrollTop = 0;
     linkDocuments(body, listed(), session.cwd, doc => showDocument(session, doc.id));
   }, error => { body.textContent = error.message; });
 }
@@ -1528,26 +1528,40 @@ function messageNode(message, session, previous) {
     more.append(toggle, rest); article.append(more);
   }
   if (message.truncated) article.append(el('span', 'muted', 'Long message shortened.'));
-  const actions = el('div', 'message-actions'), copy = el('button', 'message-copy');
-  const label = message.truncated ? 'Copy available text (message shortened)' : 'Copy message';
+  blockCopies(article);
+  const actions = el('div', 'message-actions');
+  // Copy the source, including blocks hidden behind Read more, without rendered HTML or metadata.
+  actions.append(message.truncated
+    ? copyButton('message-copy', 'Copy available text (message shortened)', () => message.text, 'Copied available text (message shortened)')
+    : copyButton('message-copy', 'Copy message', () => message.text));
+  article.append(actions);
+  return article;
+}
+function copyButton(className, label, text, done = 'Copied') {
+  const copy = el('button', className);
   copy.type = 'button'; copy.title = label; copy.setAttribute('aria-label', label); copy.append(icon('copy'));
   let reset, copying = false;
   copy.onclick = async () => {
     if (copying) return;
     clearTimeout(reset); copying = true;
     try {
-      // Copy the source, including blocks hidden behind Read more, without rendered HTML or metadata.
-      await copyText(message.text);
+      await copyText(text());
       copy.replaceChildren(icon('check')); copy.title = 'Copied'; copy.setAttribute('aria-label', 'Copied');
-      toast(message.truncated ? 'Copied available text (message shortened)' : 'Copied');
-    } catch { toast('Copy failed. Select the message and copy it manually.'); }
+      toast(done);
+    } catch { toast('Copy failed. Select the text and copy it manually.'); }
     finally {
       copying = false;
       reset = setTimeout(() => { copy.replaceChildren(icon('copy')); copy.title = label; copy.setAttribute('aria-label', label); }, 1500);
     }
   };
-  actions.append(copy); article.append(actions);
-  return article;
+  return copy;
+}
+// A code block or table (message-markdown.js) copies on its own: the code as it reads, a table as Markdown.
+function blockCopies(root) {
+  for (const block of root.querySelectorAll('.message-block')) {
+    const table = block.dataset.copy != null;
+    block.append(copyButton('message-copy block-copy', table ? 'Copy table' : 'Copy code', () => table ? block.dataset.copy : block.querySelector('pre').textContent.replace(/\n$/, '')));
+  }
 }
 
 function renderAccessPanel() {
