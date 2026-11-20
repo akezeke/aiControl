@@ -182,6 +182,19 @@ test('loading older Codex history also makes its image tools available', async t
   assert.equal(images[0].at, 1);
 });
 
+test('image backfill traverses text-only pages until it reaches older images', async t => {
+  const data = Buffer.from('89504e470d0a1a0a', 'hex').toString('base64');
+  const { adapter, server } = await connected(t, { items: [
+    ...Array.from({ length: 1100 }, (_, i) => ({ completedAtMs: 2000 - i, item: { id: `text-${i}`, type: 'agentMessage', text: 'Checking the code.' } })),
+    { completedAtMs: 1, item: { id: 'older-image', type: 'mcpToolCall', result: { content: [{ type: 'image', data }] } } },
+  ] });
+  const page = await adapter.imageList('live-thread', 80);
+  assert.equal(page.images.length, 1); assert.equal(page.images[0].at, 1); assert.equal(page.more, false);
+  const calls = server.messages.filter(message => message.method === 'thread/items/list').length;
+  await adapter.imageList('live-thread', 80);
+  assert.equal(server.messages.filter(message => message.method === 'thread/items/list').length, calls, 'polling reuses the completed image index');
+});
+
 test('a dropped connection rejoins loaded sessions and restores pending questions', async t => {
   const { adapter, server, store } = await connected(t, { question: true }, { retryDelayMs: 20 });
   const oldQuestion = store.list()[0].id;

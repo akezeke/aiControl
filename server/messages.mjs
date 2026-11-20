@@ -112,9 +112,17 @@ export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent
       if (row.isApiErrorMessage) { const value = notice(row.uuid, content || 'API error', time, true); if (value) messages.set(value.id, value); continue; }
       const [role, text] = row.type === 'user' ? claudeUserRow(row, content) : ['assistant', content];
       const shown = (images && role === 'user' ? `[image${images > 1 ? ` ×${images}` : ''}] ` : '') + (agent && role === 'user' ? taskText(text) : text);
-      const value = message(agent ? row.uuid : row.message?.id || row.uuid, role, shown, time);
+      const value = (!agent || row.type !== 'assistant' || !blocks.length) && message(agent ? row.uuid : row.message?.id || row.uuid, role, shown, time);
       if (value) messages.set(value.id, value);
-      if (row.type === 'assistant') for (const block of blocks) if (block.type === 'tool_use') {
+      if (row.type === 'assistant') for (const [index, block] of blocks.entries()) {
+        // Subagents often write only thinking between tools. Keep its place in the
+        // transcript; signatures and redacted blocks contain no displayable text.
+        if (agent && ['thinking', 'text'].includes(block.type)) {
+          const text = block.type === 'thinking' ? block.thinking : block.text;
+          const value = typeof text === 'string' && message(`${row.uuid}:${block.type}:${index}`, block.type === 'thinking' ? 'thinking' : 'assistant', text, time);
+          if (value) messages.set(value.id, value);
+        }
+        if (block.type !== 'tool_use') continue;
         const tool = toolMessage(row, block); messages.set(tool.id, tool); tools.set(block.id, tool);
         const path = block.input?.file_path || block.input?.path || block.input?.notebook_path;
         if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(block.name) && typeof path === 'string' && path.length <= 4096 && !path.includes('\0')) editPaths.set(block.id, [path]);

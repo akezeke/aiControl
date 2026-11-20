@@ -34,7 +34,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
     try {
       if (!hosts.includes(req.headers.host)) throw fail('Unrecognized host.', 403);
       if (req.headers['sec-fetch-site'] === 'cross-site') throw fail('Cross-site requests are blocked.', 403);
-      const path = new URL(req.url, origins[0]).pathname;
+      const url = new URL(req.url, origins[0]), path = url.pathname;
       if (!path.startsWith('/api/')) {
         if (!['GET', 'HEAD'].includes(req.method)) throw fail('Method not allowed.', 405);
         vite(req, res, () => json(res, 404, { error: 'Not found.' })); return;
@@ -175,7 +175,11 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         if (!messages?.images) throw fail('Images are not available.', 503);
         let id, imageId;
         try { id = decodeURIComponent(imageRoute[1]); imageId = imageRoute[2] && decodeURIComponent(imageRoute[2]); } catch { throw fail('Invalid session ID.'); }
-        if (!imageId) { json(res, 200, await messages.images(id)); return; }
+        if (!imageId) {
+          const limit = Number(url.searchParams.get('limit') ?? 40);
+          if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw fail('Choose an image limit from 1 to 1000.', 400);
+          json(res, 200, await messages.images(id, limit)); return;
+        }
         const { type, data } = await messages.image(id, imageId);
         // Revalidate after authentication: local files can change under the same image ID.
         // Browsers may reuse the bytes, but shared caches and logged-out requests cannot.

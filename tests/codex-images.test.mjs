@@ -78,3 +78,18 @@ test('Codex retains the newest images with per-session and global inline memory 
   images.delete('b'); assert.equal(images.retainedBytes, data.length * 2);
   images.clear(); assert.equal(images.retainedBytes, 0); assert.equal(images.threads.size, 0);
 });
+
+test('an expanded image window retains older history without changing other sessions', async t => {
+  const dir = await files(t), images = new CodexImages();
+  images.retain('expanded', 80); images.retain('opened', 40);
+  for (let i = 84; i >= 0; i--) for (const thread of ['expanded', 'opened', 'recent']) images.remember(thread, entry(`call-${i}`, { type: 'imageView', path: 'screen.png' }, i), dir);
+  const loaded = await images.list('expanded'), first = loaded[0];
+  images.remember('expanded', entry('live', { type: 'imageView', path: 'screen.png' }, 100), dir);
+  assert.deepEqual(await images.get('expanded', first.id), { type: 'image/png', data: png });
+  assert.ok((await images.list('expanded')).length > 80);
+  assert.equal((await images.list('opened')).length, 85);
+  assert.equal((await images.list('recent')).length, 40);
+  images.delete('expanded');
+  images.remember('expanded', entry('new', { type: 'imageView', path: 'screen.png' }), dir);
+  assert.equal((await images.list('expanded')).length, 1);
+});

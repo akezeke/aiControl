@@ -54,19 +54,24 @@ export async function readLines(handle, end, size, scanBytes, onLine) {
 
 export class TranscriptImages {
   cache = new Map();
+  pending = new Map();
   // `scanBytes` bounds the first look at a transcript (and a burst of output since the last one) to its tail.
   constructor({ scanBytes = 8 * 1024 * 1024 } = {}) { this.scanBytes = scanBytes; }
 
   // Newest last. Transcripts only grow, so after the first scan only the appended bytes are read.
-  async list(path, sessionId) {
+  async list(path, sessionId) { return (await this.page(path, sessionId)).images; }
+  async page(path, sessionId, limit = imageLimit) {
     const handle = await open(path, 'r');
-    try { return (await this.scan(handle, path, sessionId)).images.map(({ offset, length, ...image }) => image); } finally { await handle.close(); }
+    try {
+      const entry = await this.index(handle, path, sessionId, limit);
+      return { images: entry.images.slice(-limit).map(({ offset, length, ...image }) => image), more: entry.start > 0 || entry.images.length > limit };
+    } finally { await handle.close(); }
   }
 
   async get(path, sessionId, id) {
     const handle = await open(path, 'r');
     try {
-      const found = (await this.scan(handle, path, sessionId)).images.find(image => image.id === id);
+      const found = (await this.index(handle, path, sessionId)).images.find(image => image.id === id);
       if (!found) return null;
       const line = Buffer.alloc(found.length);
       await handle.read(line, 0, found.length, found.offset);
@@ -76,16 +81,47 @@ export class TranscriptImages {
     } finally { await handle.close(); }
   }
 
+  async index(handle, path, sessionId, limit = imageLimit) {
+    // A thumbnail request can arrive during backfill. Serialize index changes so
+    // that a newer tail scan cannot replace the older offsets being discovered.
+    const work = (this.pending.get(path) || Promise.resolve()).catch(() => {}).then(async () => {
+      const entry = await this.scan(handle, path, sessionId);
+      // Only explicit backfill extends the initial bounded tail read. Retain
+      // offsets rather than inline bytes so older images remain readable.
+      while (limit > imageLimit && entry.images.length < limit && entry.start > 0) await this.scanOlder(handle, entry, sessionId);
+      return entry;
+    });
+    this.pending.set(path, work);
+    try { return await work; }
+    finally { if (this.pending.get(path) === work) this.pending.delete(path); }
+  }
+
   async scan(handle, path, sessionId) {
     const { size } = await handle.stat(), cached = this.cache.get(path);
     // A copy, so two requests scanning at once can't both append the same images.
-    const entry = cached && cached.end <= size ? { end: cached.end, images: [...cached.images] } : { end: 0, images: [] };
+    const entry = cached && cached.end <= size ? { ...cached, images: [...cached.images] } : { end: 0, start: null, images: [] };
+    let first;
     entry.end = await readLines(handle, entry.end, size, this.scanBytes, (line, offset) => {
+      first ??= offset;
       if (line.includes(marker)) for (const { data, ...image } of lineImages(line.toString('utf8'), sessionId)) entry.images.push({ ...image, offset, length: line.length });
     });
-    entry.images = entry.images.slice(-imageLimit);
+    entry.start ??= first ?? Math.max(0, size - this.scanBytes);
     this.cache.delete(path); this.cache.set(path, entry);
     if (this.cache.size > 1000) this.cache.delete(this.cache.keys().next().value);
     return entry;
+  }
+  async scanOlder(handle, entry, sessionId) {
+    let first, bytes = this.scanBytes; const images = [];
+    // Keep a complete line as the boundary, including when a record spans a chunk.
+    do {
+      await readLines(handle, 0, entry.start, bytes, (line, offset) => {
+        first ??= offset;
+        if (line.includes(marker)) for (const { data, ...image } of lineImages(line.toString('utf8'), sessionId)) images.push({ ...image, offset, length: line.length });
+      });
+      if (first !== undefined || bytes >= entry.start) break;
+      bytes *= 2;
+    } while (true);
+    entry.start = first ?? 0;
+    entry.images = [...images, ...entry.images];
   }
 }

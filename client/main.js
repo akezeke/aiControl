@@ -18,6 +18,7 @@ import './agent-header.css';
 import './lost.css';
 import './feed.css';
 import './paper.css';
+import './chat.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
@@ -72,11 +73,13 @@ const older = new Map();
 function sessionList(cache, session, kind) {
   let entry = cache.get(session.id);
   if (!entry) cache.set(session.id, entry = { items: [], changed: null, fetched: 0 });
-  if (session.messagesState !== 'unavailable' && (entry.changed !== session.updatedAt || (kind === 'images' && !entry.items.length)) && Date.now() - entry.fetched > 10_000) {
+  if (!entry.loading && session.messagesState !== 'unavailable' && (entry.changed !== session.updatedAt || (kind === 'images' && !entry.items.length)) && Date.now() - entry.fetched > 10_000) {
     entry.changed = session.updatedAt; entry.fetched = Date.now();
-    api(`sessions/${encodeURIComponent(session.id)}/${kind}`).then(result => {
-      const items = result[kind] || [];
-      if (JSON.stringify(items) === JSON.stringify(entry.items)) return;
+    const limit = entry.limit || 40;
+    api(`sessions/${encodeURIComponent(session.id)}/${kind}${kind === 'images' ? `?limit=${limit}` : ''}`).then(result => {
+      if (kind === 'images') { if (limit < (entry.limit || 40)) return; entry.more = result.more ?? result.images?.length >= limit; }
+      const items = kind === 'images' ? mergeImages(entry.items, result.images || []) : result[kind] || [];
+      if (JSON.stringify(items) === JSON.stringify(entry.items) && kind !== 'images') return;
       entry.items = items;
       if (state.snapshot && state.selected === session.id) renderPanel(); else if (state.snapshot && state.selected === 'feed') renderFeed();
     }, () => {});
@@ -795,7 +798,11 @@ function renderPanel() {
     const recent = el('section', 'recent-messages'); recent.id = 'recent-messages';
     const requests = el('div', 'chat-requests'); requests.setAttribute('aria-label', 'Pending questions and permissions');
     const composer = el('section', 'message-composer'); composer.id = 'message-composer';
-    panel.append(header, recent, requests, composer);
+    const body = el('div', 'chat-body'), conversation = el('div', 'chat-conversation');
+    const images = el('aside', 'chat-images'); images.hidden = true; images.tabIndex = 0; images.setAttribute('aria-label', 'Session images');
+    images.addEventListener('scroll', () => { if (images.scrollTop <= 80) loadOlderImages(session); }, { passive: true });
+    conversation.append(recent, requests, composer); body.append(conversation, images);
+    panel.append(header, body);
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
   const signature = JSON.stringify([session.id, session.status, !!session.requests?.length, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
@@ -813,6 +820,7 @@ function renderPanel() {
     renderSessionRequests(requests, session);
   }
   renderRecentMessages(session);
+  renderChatImages(session);
   renderComposer(session);
   renderReviewQueue(panel.querySelector('.chat-header'), session);
   dressTheme();
@@ -1167,6 +1175,49 @@ function disposeHistory() {
   if (region?.historyScroll) { region.historyScroll.destroy(); delete region.historyScroll; }
 }
 
+function mergeImages(known, incoming) {
+  return mergeHistory(known, incoming).sort((a, b) => (a.at || 0) - (b.at || 0));
+}
+
+async function loadOlderImages(session) {
+  const gallery = document.querySelector('#panel .chat-images'), entry = shots.get(session.id);
+  if (state.selected !== session.id || !gallery?.clientHeight || !entry?.more || entry.loading || entry.error || (entry.limit || 40) >= 1000) return;
+  const limit = Math.min(1000, (entry.limit || 40) + 40);
+  entry.loading = true; renderChatImages(session);
+  try {
+    const result = await api(`sessions/${encodeURIComponent(session.id)}/images?limit=${limit}`);
+    entry.limit = limit; entry.items = mergeImages(entry.items, result.images || []);
+    entry.more = limit < 1000 && (result.more ?? result.images?.length >= limit);
+    entry.fetched = Date.now();
+  } catch (error) { entry.error = error.message; }
+  finally {
+    entry.loading = false;
+    if (state.selected === session.id && state.snapshot) { entry.prepending = true; renderPanel(); entry.prepending = false; }
+  }
+}
+
+function renderChatImages(session) {
+  const gallery = document.querySelector('#panel .chat-images'); if (!gallery) return;
+  const images = sessionShots(session), entry = shots.get(session.id), signature = JSON.stringify([images, entry.more, !!entry.loading, entry.error]);
+  if (gallery.dataset.signature === signature) return;
+  const following = gallery.scrollHeight - gallery.clientHeight - gallery.scrollTop <= 32;
+  const top = gallery.getBoundingClientRect().top;
+  const anchor = [...gallery.querySelectorAll('.history-shot')].find(node => node.getBoundingClientRect().bottom > top);
+  const offset = anchor?.getBoundingClientRect().top;
+  gallery.dataset.signature = signature; gallery.hidden = !images.length && !entry.more;
+  gallery.setAttribute('aria-busy', String(!!entry.loading));
+  let status = gallery.querySelector('.gallery-status');
+  if (!status) { status = el('button', 'quiet-button gallery-status'); status.type = 'button'; gallery.prepend(status); }
+  status.hidden = !entry.loading && !entry.error;
+  status.disabled = !!entry.loading; status.textContent = entry.error ? 'Retry' : 'Loading…'; status.title = entry.error || '';
+  status.onclick = () => { delete entry.error; loadOlderImages(session); };
+  const strip = shotStrip(session.id, { shots: images }, gallery.querySelector('.history-shots'), showShot);
+  if (!strip.parentElement) gallery.append(strip);
+  if (following && !entry.prepending) gallery.scrollTop = gallery.scrollHeight;
+  else if (anchor?.isConnected) gallery.scrollTop += anchor.getBoundingClientRect().top - offset;
+  if (gallery.clientHeight && gallery.scrollHeight <= gallery.clientHeight && entry.more && !entry.loading && !entry.error) queueMicrotask(() => loadOlderImages(session));
+}
+
 function renderRecentMessages(session, savedPosition) {
   const region = document.querySelector('#recent-messages'); if (!region) return;
   if (!region.historyScroll) {
@@ -1464,9 +1515,9 @@ function messageNode(message, session, previous) {
   const article = el('article', `recent-message ${message.role}${message.error ? ' error' : ''}`);
   if (message.role === 'notice') { const line = el('span', '', message.text); line.title = message.timestamp ? new Date(message.timestamp).toLocaleString() : ''; article.append(line); return article; }
   // A subagent's "user" turn is the task its parent gave it.
-  const meta = el('div', 'message-meta'); meta.append(el('strong', '', message.role === 'user' ? session.parentId ? 'Task' : 'You' : session.parentId ? session.model || 'Subagent' : providerName(session.provider)));
+  const meta = el('div', 'message-meta'); meta.append(el('strong', '', message.role === 'thinking' ? 'Thinking' : message.role === 'user' ? session.parentId ? 'Task' : 'You' : session.parentId ? session.model || 'Subagent' : providerName(session.provider)));
   if (message.timestamp) { const time = el('time', '', age(message.timestamp)); time.dateTime = new Date(message.timestamp).toISOString(); time.title = new Date(message.timestamp).toLocaleString(); meta.append(time); }
-  const rendered = renderMessageMarkdown(message.text);
+  const rendered = renderMessageMarkdown(message.text, message.role === 'thinking' ? Infinity : undefined);
   const body = el('div', 'message-text'); body.innerHTML = rendered.html;
   article.append(meta, body);
   if (rendered.more) {

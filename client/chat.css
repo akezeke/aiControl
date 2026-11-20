@@ -1,0 +1,17 @@
+/* Shared chat structure; keep the theme's header, composer and message treatments. */
+.chat-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.chat-conversation { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.chat-images { display: none; }
+:root .recent-message.thinking { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); border-inline-start: 3px solid color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.recent-message.thinking .message-meta strong { color: var(--accent); }
+.recent-message.thinking .message-meta strong::before { content: '◌'; margin-right: 6px; }
+
+@media (min-width: 1000px) {
+  :root .detail-panel.chat-panel:has(.chat-images:not([hidden])) { width: min(100%, max(900px, min(1400px, 85vw))); }
+  .chat-images:not([hidden]) { display: block; flex: 0 0 302px; min-height: 0; padding: 8px 10px 16px; overflow-y: auto; overflow-anchor: none; overscroll-behavior-y: contain; scrollbar-gutter: stable; border-left: 1px solid var(--line); background: var(--bg); }
+  .chat-images > .history-shots { margin: 0; }
+  .gallery-status { width: 100%; min-height: 28px; margin-bottom: 6px; font-size: 12px; }
+  /* History only needs a small visual trace; the gallery keeps the full thumbnails. */
+  .chat-panel .history-content .history-shots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; padding: 0; }
+  .chat-panel .history-content .history-shot { flex: none; width: 48px; height: 34px; padding: 0; border-width: 1px; box-shadow: none; transform: none; }
+}

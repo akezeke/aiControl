@@ -83,6 +83,50 @@ test('the Claude adapter serves images only for known sessions with transcripts 
   await assert.rejects(claude.imageList(`claude:${sessionId}`), { status: 409 });
 });
 
+test('older image pages extend the window and keep previously loaded images readable', async t => {
+  const { path } = await transcript(t), reader = new TranscriptImages({ scanBytes: 4096 });
+  await writeFile(path, Array.from({ length: 85 }, (_, i) => row(i, [image(png)])).join(''));
+  const recent = await reader.page(path, sessionId);
+  assert.equal(recent.more, true);
+  const older = await reader.page(path, sessionId, 80);
+  assert.equal(older.images.length, 80);
+  assert.equal(older.images[0].id, `${uuid(5)}:0`);
+  assert.equal(older.more, true);
+  const all = await reader.page(path, sessionId, 120);
+  assert.equal(all.images.length, 85); assert.equal(all.more, false);
+  assert.equal(all.images[0].id, `${uuid(0)}:0`);
+  assert.deepEqual((await reader.get(path, sessionId, `${uuid(0)}:0`)).data, png);
+  await appendFile(path, row(85, [image(jpeg)]));
+  assert.equal((await reader.page(path, sessionId)).images.at(-1).id, `${uuid(85)}:0`);
+  assert.deepEqual((await reader.get(path, sessionId, `${uuid(0)}:0`)).data, png);
+});
+
+test('older Claude image pages merge parent and subagent images before applying the limit', async t => {
+  const { dir, projects, path } = await transcript(t), agents = join(projects, 'repo', sessionId, 'subagents');
+  await mkdir(agents, { recursive: true });
+  const rows = parity => Array.from({ length: 45 }, (_, i) => row(i * 2 + parity, [image(png)], { timestamp: new Date(1700000000000 + (i * 2 + parity) * 1000).toISOString() })).join('');
+  await writeFile(path, rows(0)); await writeFile(join(agents, 'agent-abc123.jsonl'), rows(1));
+  const claude = new ClaudeAdapter(new RequestStore(), join(dir, 'hook.sock'), { accounts: [{ label: '', sessionsDir: join(dir, 'sessions'), projectsDir: projects }] });
+  claude.paths.set(`claude:${sessionId}`, path);
+  const recent = await claude.imageList(`claude:${sessionId}`);
+  assert.equal(recent.images.length, 40); assert.equal(recent.more, true);
+  const older = await claude.imageList(`claude:${sessionId}`, 80);
+  assert.equal(older.images.length, 80); assert.equal(older.more, true);
+  assert.equal(older.images[0].id, `${uuid(10)}:0`);
+  const all = await claude.imageList(`claude:${sessionId}`, 120);
+  assert.equal(all.images.length, 90); assert.equal(all.more, false);
+  assert.equal(all.images[1].id, `abc123.${uuid(1)}:0`);
+});
+
+test('a concurrent image read cannot discard an older page while it is being indexed', async t => {
+  const { path } = await transcript(t), reader = new TranscriptImages({ scanBytes: 4096 });
+  await writeFile(path, Array.from({ length: 85 }, (_, i) => row(i, [image(png)])).join(''));
+  const recent = await reader.page(path, sessionId);
+  const [older] = await Promise.all([reader.page(path, sessionId, 80), reader.get(path, sessionId, recent.images.at(-1).id)]);
+  assert.equal(older.images.length, 80);
+  assert.deepEqual((await reader.get(path, sessionId, older.images[0].id)).data, png);
+});
+
 test("a session's images take in its subagents', finished or not, under the agent's id", async t => {
   const { dir, projects, path } = await transcript(t), agents = join(projects, 'repo', sessionId, 'subagents'), worker = join(agents, 'workflows', 'wf_run-1');
   await mkdir(worker, { recursive: true });
@@ -105,9 +149,9 @@ test('image endpoints need a login and send only the image', async t => {
   const { dir } = await transcript(t), file = join(dir, 'auth.json'), password = 'correct horse testing battery';
   await savePassword(file, password);
   const origin = 'https://control.test:47841', calls = [];
-  let imageBytes = png;
+  let imageBytes = png; const limits = [];
   const handler = createHandler({ auth: new Auth(file), origin, store: new RequestStore(), snapshot: () => ({}), vite: () => {}, messages: {
-    images: async id => { calls.push(id); return { images: [{ id: `${uuid(1)}:0`, type: 'image/png' }] }; },
+    images: async (id, limit) => { calls.push(id); limits.push(limit); return { images: [{ id: `${uuid(1)}:0`, type: 'image/png' }] }; },
     image: async (id, imageId) => { calls.push([id, imageId]); return { type: imageType(imageBytes), data: imageBytes }; },
   } });
   const request = async (path, { method = 'GET', headers = {}, body } = {}) => {
@@ -134,6 +178,9 @@ test('image endpoints need a login and send only the image', async t => {
   assert.ok(res.headers.etag);
   assert.deepEqual(res.raw, png);
   assert.deepEqual(calls, [`claude:${sessionId}`, [`claude:${sessionId}`, `${uuid(1)}:0`]]);
+  assert.equal((await request(`${path}?limit=80`, { headers: { cookie } })).statusCode, 200);
+  assert.deepEqual(limits, [40, 80]);
+  for (const limit of ['0', '-1', 'Infinity', '1001', 'nope']) assert.equal((await request(`${path}?limit=${limit}`, { headers: { cookie } })).statusCode, 400);
   const imagePath = `${path}/${uuid(1)}%3A0`, etag = res.headers.etag;
   const cached = await request(imagePath, { headers: { cookie, 'if-none-match': etag } });
   assert.equal(cached.statusCode, 304);

@@ -274,11 +274,18 @@ export class CodexAdapter {
     if (!document) throw fail('Document not found.', 404);
     return document;
   }
-  async imageList(threadId) {
+  async imageList(threadId, limit = 40) {
     const session = this.sessions.get(threadId);
     if (!session) throw fail('Session is no longer available.', 409);
     if (session.messagesState === 'loading') await this.refreshMessages(threadId);
-    return { images: await this.images.list(threadId) };
+    this.images.retain(threadId, limit);
+    if (limit > 40) return this.images.page(threadId, limit, async cursor => {
+      const page = await this.rpc('thread/items/list', { threadId, limit: 10, sortDirection: 'desc', ...(cursor ? { cursor } : {}) });
+      for (const entry of page.data) this.images.remember(threadId, entry, session.cwd);
+      return page.nextCursor;
+    });
+    const images = await this.images.list(threadId);
+    return { images: images.slice(-limit), more: images.length > limit || (session.historyMore ?? images.length >= limit) };
   }
   async image(threadId, imageId) {
     if (!this.sessions.has(threadId)) throw fail('Session is no longer available.', 409);

@@ -75,6 +75,21 @@ test('V2 exposes images seen in history by opaque session-scoped IDs', async t =
   state.sessions = []; await adapter.refresh(); await assert.rejects(adapter.imageList('ses_first'), { status: 409 });
 });
 
+test('V2 image backfill crosses text-only pages and reuses its completed cursor', async t => {
+  const { adapter, state, calls } = fixture(t), bytes = Buffer.from('89504e470d0a1a0a00000000', 'hex');
+  state.now += 40 * 86400000; state.paged = true;
+  state.messages = [...Array.from({ length: 1100 }, (_, i) => ({ ...assistant(`text-${i}`), content: [{ type: 'text', text: 'Checking the code.' }] })),
+    { id: 'old-image', type: 'user', time: { created: now - 1 }, files: [{ mime: 'image/png', uri: `data:image/png;base64,${bytes.toString('base64')}` }] }];
+  await adapter.refresh();
+  assert.equal((await adapter.imageList('ses_first')).images.length, 0);
+  const page = await adapter.imageList('ses_first', 80);
+  assert.equal(page.images.length, 1); assert.equal(page.more, false);
+  assert.deepEqual(await adapter.image('ses_first', page.images[0].id), { type: 'image/png', data: bytes });
+  const count = calls.filter(call => call.path.endsWith('/message')).length;
+  await adapter.imageList('ses_first', 80);
+  assert.equal(calls.filter(call => call.path.endsWith('/message')).length, count);
+});
+
 test('V2 Fire archives the idle session tree, preserves history, and refuses running or queued work', async t => {
   const { adapter, state, calls } = fixture(t); state.now += 10000; state.sessions.push({ ...info('ses_child'), parentID: 'ses_first' });
   await adapter.refresh(); assert.equal(adapter.list().find(session => session.nativeId === 'ses_first').messaging.fire, true);

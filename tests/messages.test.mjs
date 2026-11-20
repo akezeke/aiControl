@@ -130,6 +130,49 @@ test('Claude subagent handbacks show the full answer as a message', () => {
   assert.deepEqual(messages.map(m => [m.role, m.text, !!m.tool]), [['assistant', 'Found the issue.\n\n**Fix:** update the parser.', false]]);
 });
 
+test('subagent thinking appears in block order without signatures or redacted content', () => {
+  const lines = [row('mixed', 'assistant', [
+    { type: 'thinking', thinking: 'Check the shadow bounds first.', signature: 'opaque-signature' },
+    { type: 'text', text: 'Inspecting the bounds.' },
+    { type: 'tool_use', id: 'read', name: 'Read', input: { file_path: '/work/src/shadows.ts' } },
+    { type: 'thinking', thinking: 'The bounds look correct.\n\nCheck the light direction next.' },
+    { type: 'redacted_thinking', data: 'opaque-data' },
+    { type: 'thinking', thinking: '  ' },
+    { type: 'thinking', thinking: null },
+    { type: 'tool_use', id: 'search', name: 'Grep', input: { pattern: 'lightDirection' } },
+  ], { isSidechain: true })];
+  const messages = claudeMessages(lines, sessionId, new Set(), { agent: true });
+  assert.deepEqual(messages.map(m => [m.role, m.text, !!m.tool]), [
+    ['thinking', 'Check the shadow bounds first.', false],
+    ['assistant', 'Inspecting the bounds.', false],
+    ['assistant', 'Read · src/shadows.ts', true],
+    ['thinking', 'The bounds look correct.\n\nCheck the light direction next.', false],
+    ['assistant', 'Grep · lightDirection', true],
+  ]);
+  assert.equal(new Set(messages.map(m => m.id)).size, messages.length);
+  assert.doesNotMatch(JSON.stringify(messages), /opaque-/);
+});
+
+test('subagent thinking survives transcript caching and older history reads', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'aicontrol-thinking-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const dir = join(root, sessionId, 'subagents'); await mkdir(dir, { recursive: true });
+  const path = join(dir, 'agent-abc123.jsonl'), reader = new TranscriptReader(root);
+  const thought = (id, text) => row(id, 'assistant', [{ type: 'thinking', thinking: text }], { isSidechain: true });
+  await writeFile(path, [row('task', 'user', 'Fix shadows', { isSidechain: true }), ...Array.from({ length: 35 }, (_, i) => thought(`thought-${i}`, `Inspect step ${i}`))].join('\n') + '\n');
+  const recent = await reader.read(path, sessionId, 'abc123');
+  assert.equal(recent.messages.length, 30);
+  assert.equal(recent.messages[0].text, 'Fix shadows');
+  assert.equal(recent.messages.at(-1).role, 'thinking');
+  assert.equal(recent.messages.at(-1).text, 'Inspect step 34');
+  assert.equal(recent.historyMore, true);
+  assert.deepEqual((await reader.read(path, sessionId, 'abc123')).messages, recent.messages);
+  const older = await reader.read(path, sessionId, 'abc123', 80);
+  assert.equal(older.messages.length, 36);
+  assert.equal(older.more, false);
+  await appendFile(path, thought('new', 'Check the final result.') + '\n');
+  assert.equal((await reader.read(path, sessionId, 'abc123')).messages.at(-1).text, 'Check the final result.');
+});
+
 test('a main session thinks once its model has been quiet a while', async () => {
   const { claudeStep, claudeActivity } = await import('../server/messages.mjs');
   const row = (type, content, extra = {}) => JSON.stringify({ type, message: { role: type, content }, ...extra });

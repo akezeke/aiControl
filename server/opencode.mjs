@@ -231,7 +231,15 @@ export class OpenCodeAdapter {
     this.images.rememberRows(id, history.rows, session.cwd);
     return { messages: history.messages, more: history.more };
   }
-  async imageList(id) { this.require(id); return { images: await this.images.list(id) }; }
+  async imageList(id, limit = 40) {
+    const session = this.require(id); this.images.retain(id, limit);
+    if (limit > 40) return this.images.page(id, limit, async cursor => {
+      const page = await this.api.imagePage(id, session.cwd, cursor);
+      this.images.rememberRows(id, page.rows, session.cwd); return page.nextCursor;
+    });
+    const images = await this.images.list(id);
+    return { images: images.slice(-limit), more: images.length > limit || (session.historyMore ?? images.length >= limit) };
+  }
   async image(id, imageId) {
     this.require(id);
     const image = await this.images.get(id, imageId);

@@ -59,8 +59,33 @@ async function fileImage(path, full) {
 // snapshot stays text-only; inline payloads have a separate global budget and files are read on demand.
 export class CodexImages {
   threads = new Map();
+  limits = new Map();
+  pages = new Map();
+  pending = new Map();
   retainedBytes = 0;
   constructor({ maxInlineBytes = 64 * 1024 * 1024 } = {}) { this.maxInlineBytes = maxInlineBytes; }
+  retain(threadId, limit) { this.limits.set(threadId, Math.max(this.limits.get(threadId) || imageLimit, limit)); }
+  async page(threadId, limit, readPage) {
+    this.retain(threadId, limit);
+    const work = (this.pending.get(threadId) || Promise.resolve()).catch(() => {}).then(async () => {
+      let page = this.pages.get(threadId);
+      if (!page) this.pages.set(threadId, page = { cursor: undefined, done: false, seen: new Set() });
+      let images = await this.list(threadId);
+      // Count images, not conversation messages: there may be many text-only
+      // pages between screenshots. Resume this cursor on the next backfill.
+      while (!page.done && images.length < limit) {
+        const cursor = await readPage(page.cursor);
+        if (cursor && page.seen.has(cursor)) throw new Error('Image history returned a repeated cursor.');
+        if (cursor) page.seen.add(cursor);
+        page.cursor = cursor; page.done = !cursor;
+        images = await this.list(threadId);
+      }
+      return { images: images.slice(-limit), more: images.length > limit || !page.done };
+    });
+    this.pending.set(threadId, work);
+    try { return await work; }
+    finally { if (this.pending.get(threadId) === work) this.pending.delete(threadId); }
+  }
   remember(threadId, entry, cwd) {
     const item = entry.item ?? entry;
     if (typeof item.id !== 'string' || ['failed', 'declined', 'inProgress'].includes(item.status) || item.success === false || item.error) return;
@@ -75,7 +100,9 @@ export class CodexImages {
       this.retainedBytes += bytes - (previous?.bytes || 0);
       images.set(id, { id, at: at ?? previous?.at ?? null, tool: item.type !== 'userMessage', source, bytes });
       const ordered = [...images.values()].sort((a, b) => (a.at || 0) - (b.at || 0));
-      for (const old of ordered.slice(0, Math.max(0, ordered.length - imageLimit))) this.remove(threadId, old.id);
+      // Once a reader has opened the gallery, live arrivals must not evict loaded IDs.
+      // Inline bytes still share the global budget below.
+      if (!this.limits.has(threadId)) for (const old of ordered.slice(0, Math.max(0, ordered.length - imageLimit))) this.remove(threadId, old.id);
     }
     // Evict the oldest inline images across sessions; local paths do not consume the payload budget.
     if (this.retainedBytes > this.maxInlineBytes) {
@@ -88,8 +115,8 @@ export class CodexImages {
     if (image) { this.retainedBytes -= image.bytes; images.delete(id); }
     if (!images?.size) this.threads.delete(threadId);
   }
-  delete(threadId) { for (const id of this.threads.get(threadId)?.keys() || []) this.remove(threadId, id); }
-  clear() { this.threads.clear(); this.retainedBytes = 0; }
+  delete(threadId) { for (const id of this.threads.get(threadId)?.keys() || []) this.remove(threadId, id); this.limits.delete(threadId); this.pages.delete(threadId); }
+  clear() { this.threads.clear(); this.limits.clear(); this.pages.clear(); this.retainedBytes = 0; }
   async list(threadId) {
     const images = [...(this.threads.get(threadId)?.values() || [])].sort((a, b) => (a.at || 0) - (b.at || 0));
     return (await Promise.all(images.map(async ({ id, at, tool, source }) => {

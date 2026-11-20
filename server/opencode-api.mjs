@@ -134,6 +134,11 @@ export class OpenCodeAPI {
     } while (cursor);
     return messagesV2(rows.reverse());
   }
+  async imagePage(id, directory, cursor) {
+    if (!this.v2) return { rows: await this.messages(id, directory), nextCursor: null };
+    const page = await this.messagePage(id, 20, cursor);
+    return { rows: messagesV2(array(page.data).reverse()), nextCursor: page.cursor?.next };
+  }
   // Fetch by visible conversation messages rather than raw assistant/tool records.
   async history(id, directory, limit) {
     const maxRows = Math.max(2000, limit * 10);

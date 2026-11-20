@@ -381,12 +381,15 @@ export class ClaudeAdapter {
   }
   // Images seen in a session's transcript, by id; never by path. A session's list takes in its subagents' too, finished or
   // not (they're often the ones checking screenshots); those ids start with the agent's, and `agent` is what it was doing.
-  async imageList(id) {
-    const { sessionId, agentId, path } = await this.transcript(id), own = await this.images.list(path, sessionId);
-    if (agentId !== undefined) return { images: own };
-    const agents = await Promise.all((await this.agentTranscripts(path)).map(async agent => (await this.images.list(agent.path, sessionId).catch(() => []))
-      .map(image => ({ ...image, id: `${agent.agentId}.${image.id}`, agent: agent.title }))));
-    return { images: [...own, ...agents.flat()].sort((a, b) => (a.at ?? 0) - (b.at ?? 0)).slice(-imageLimit) };
+  async imageList(id, limit = imageLimit) {
+    const { sessionId, agentId, path } = await this.transcript(id), own = await this.images.page(path, sessionId, limit);
+    if (agentId !== undefined) return own;
+    const agents = await Promise.all((await this.agentTranscripts(path)).map(async agent => {
+      const page = await this.images.page(agent.path, sessionId, limit).catch(() => ({ images: [], more: false }));
+      return { ...page, images: page.images.map(image => ({ ...image, id: `${agent.agentId}.${image.id}`, agent: agent.title })) };
+    }));
+    const images = [own, ...agents].flatMap(page => page.images).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+    return { images: images.slice(-limit), more: images.length > limit || [own, ...agents].some(page => page.more) };
   }
   async image(id, imageId) {
     const [, agentId, own] = /^(?:([a-z0-9]{1,64})\.)?([a-f0-9-]{36}:\d{1,3})$/i.exec(imageId) || [];
