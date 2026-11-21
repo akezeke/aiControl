@@ -922,7 +922,7 @@ function renderSessionRequests(requests, session) {
   for (const request of session.requests) {
     const box = el('section', 'request-box'); box.append(el('span', 'eyebrow amber-text', request.kind === 'question' ? 'YOUR INPUT' : 'PERMISSION REQUEST'));
     if (request.kind !== 'question' || request.title !== 'A question for you') box.append(el('h3', '', request.title));
-    if (request.plan) { const rendered = renderMessageMarkdown(request.plan, Infinity), plan = el('div', 'message-text request-plan'); plan.innerHTML = rendered.html + (rendered.more || ''); blockCopies(plan); box.append(plan); }
+    if (request.plan) { const rendered = renderMessageMarkdown(request.plan, Infinity), plan = el('div', 'message-text request-plan'); plan.innerHTML = rendered.html + (rendered.more || ''); contentCopies(plan); box.append(plan); }
     if (request.kind !== 'question') renderRequestDetails(box, request);
     const error = el('p', 'form-error'); error.setAttribute('role', 'alert');
     if (request.unsupported) { box.append(el('p', 'muted', request.unsupported)); requests.append(box); continue; }
@@ -1433,7 +1433,7 @@ function showDocument(session, documentId) {
   dialog.onclose = () => dialog.remove();
   app.append(dialog); dialog.showModal();
   api(`sessions/${encodeURIComponent(session.id)}/documents/${encodeURIComponent(documentId)}`).then(({ name, path, text }) => {
-    meta.textContent = name; meta.title = path; body.innerHTML = renderDocument(text); blockCopies(body); body.scrollTop = 0;
+    meta.textContent = name; meta.title = path; body.innerHTML = renderDocument(text); contentCopies(body); body.scrollTop = 0;
     linkDocuments(body, listed(), session.cwd, doc => showDocument(session, doc.id));
   }, error => { body.textContent = error.message; });
 }
@@ -1528,7 +1528,7 @@ function messageNode(message, session, previous) {
     more.append(toggle, rest); article.append(more);
   }
   if (message.truncated) article.append(el('span', 'muted', 'Long message shortened.'));
-  blockCopies(article);
+  contentCopies(article);
   const actions = el('div', 'message-actions');
   // Copy the source, including blocks hidden behind Read more, without rendered HTML or metadata.
   actions.append(message.truncated
@@ -1556,12 +1556,14 @@ function copyButton(className, label, text, done = 'Copied') {
   };
   return copy;
 }
-// A code block or table (message-markdown.js) copies on its own: the code as it reads, a table as Markdown.
-function blockCopies(root) {
+// A code block, table or inline code (message-markdown.js) copies on its own: the code as it reads, a table as Markdown.
+function contentCopies(root) {
   for (const block of root.querySelectorAll('.message-block')) {
     const table = block.dataset.copy != null;
     block.append(copyButton('message-copy block-copy', table ? 'Copy table' : 'Copy code', () => table ? block.dataset.copy : block.querySelector('pre').textContent.replace(/\n$/, '')));
   }
+  // Not inside a link, or a document link that becomes a button (linkDocuments): a button can't sit in either.
+  for (const code of root.querySelectorAll('code')) if (!code.closest('pre, a, [data-doc-path]')) code.after(copyButton('message-copy inline-copy', 'Copy', () => code.textContent));
 }
 
 function renderAccessPanel() {
