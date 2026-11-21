@@ -117,9 +117,12 @@ export function claudeMessages(lines, sessionId, visibleIds = new Set(), { agent
       if (row.type === 'assistant') for (const [index, block] of blocks.entries()) {
         // Subagents often write only thinking between tools. Keep its place in the
         // transcript; signatures and redacted blocks contain no displayable text.
-        if (agent && ['thinking', 'text'].includes(block.type)) {
+        // With thinkingDisplay "updates", a main session's thinking is the progress update the
+        // terminal shows inline ("… · summary"), so it reads as the assistant's own text.
+        const update = !agent && block.type === 'thinking' && row.thinkingDisplay === 'updates';
+        if (update || (agent && ['thinking', 'text'].includes(block.type))) {
           const text = block.type === 'thinking' ? block.thinking : block.text;
-          const value = typeof text === 'string' && message(`${row.uuid}:${block.type}:${index}`, block.type === 'thinking' ? 'thinking' : 'assistant', text, time);
+          const value = typeof text === 'string' && message(`${row.uuid}:${block.type}:${index}`, block.type === 'thinking' && !update ? 'thinking' : 'assistant', text, time);
           if (value) messages.set(value.id, value);
         }
         if (block.type !== 'tool_use') continue;

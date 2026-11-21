@@ -153,6 +153,16 @@ test('subagent thinking appears in block order without signatures or redacted co
   assert.doesNotMatch(JSON.stringify(messages), /opaque-/);
 });
 
+test('main-session progress updates stored as thinking show as assistant text', () => {
+  const lines = [
+    row('reply', 'assistant', [{ type: 'text', text: 'Launching it now:' }], { message: { id: 'msg-a', role: 'assistant', content: [{ type: 'text', text: 'Launching it now:' }] } }),
+    row('update', 'assistant', [{ type: 'thinking', thinking: 'A worker is on the twigs.\n\n', signature: 'opaque-signature' }], { thinkingDisplay: 'updates', message: { id: 'msg-b', role: 'assistant', content: [{ type: 'thinking', thinking: 'A worker is on the twigs.\n\n', signature: 'opaque-signature' }] } }),
+    row('omitted', 'assistant', [{ type: 'thinking', thinking: 'raw reasoning' }], { thinkingDisplay: 'omitted' }),
+    row('legacy', 'assistant', [{ type: 'thinking', thinking: 'raw reasoning' }]),
+  ];
+  assert.deepEqual(claudeMessages(lines, sessionId).map(m => [m.role, m.text]), [['assistant', 'Launching it now:'], ['assistant', 'A worker is on the twigs.\n\n']]);
+});
+
 test('subagent thinking survives transcript caching and older history reads', async t => {
   const root = await mkdtemp(join(tmpdir(), 'aicontrol-thinking-')); t.after(() => rm(root, { recursive: true, force: true }));
   const dir = join(root, sessionId, 'subagents'); await mkdir(dir, { recursive: true });
