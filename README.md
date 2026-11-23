@@ -10,7 +10,8 @@ A self-hosted dashboard for local Codex, Claude Code and OpenCode sessions on **
 - An inline attention inbox, explicit review queue, pinned session names, saved views and a command palette (**Ctrl/Cmd+K**).
 - Saved text drafts, prompt snippets, project launch presets, editable handoffs and two session panes. Pins, views and review state follow you between devices.
 - Conversation search covers retained history and local archives within size limits. Inspect shared Git changes, observed overlapping edits, past decisions and connection health.
-- Answer permissions and questions, send messages with pasted or picked images (Claude needs tmux), stop turns and start agents. Nothing is auto-approved.
+- Answer permissions and questions, send messages with pasted or picked images (Claude needs tmux), stop turns and start agents.
+- Choose **Codex · Approve for me** to launch with workspace sandboxing and Codex approval review. In a running sandboxed session with on-request approvals, **Details → Approvals** switches who reviews new requests.
 - Switch models and supported effort levels from session headers; remember choices for new sessions.
 - Fire idle Claude, Codex and OpenCode 2 sessions. Codex and OpenCode keep archived history.
 - [Live feed](#live-feed) (**f**): all sessions' replies, tool calls and screenshots on one timeline, so you can follow every agent without switching.

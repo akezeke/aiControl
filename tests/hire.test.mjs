@@ -10,6 +10,14 @@ test('one Claude account hires plain Claude and Codex, as before', () => {
   assert.deepEqual(hireChoices({ sessions: [] }, '/w/app').map(c => c.label), ['Claude', 'Codex']);
 });
 
+test('automatic Codex review is an explicit new-agent choice', () => {
+  const choices = hireChoices({ features: { codexApprovalReview: true } }, '/work');
+  assert.equal(choices.find(c => c.label === 'Codex').approveForMe, undefined);
+  const reviewed = choices.find(c => c.approveForMe);
+  assert.equal(reviewed?.provider, 'codex');
+  assert.match(reviewed.label, /Approve for me/);
+});
+
 test('several Claude accounts are one Claude choice, the one this project last used first and marked', () => {
   const snapshot = { claudeAccounts: ['', 'personal', 'work'], sessions: [
     claude('/w/app', 'personal', 5), claude('/w/app', 'work', 9), claude('/w/app', '', 20, { parentId: 'claude:x' }), claude('/w/other', '', 30), { provider: 'codex', cwd: '/w/app', updatedAt: 40 },

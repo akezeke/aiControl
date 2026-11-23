@@ -805,12 +805,13 @@ function renderPanel() {
     panel.append(header, body);
   }
   if (pendingEffort.get(session.id) === session.effort) pendingEffort.delete(session.id);
+  const reviewerState = JSON.stringify([session.approvalsReviewer, session.reviewerWarning]);
   const signature = JSON.stringify([session.id, session.status, !!session.requests?.length, session.title, session.project, session.cwd, session.model, session.control, !!state.error, session.effort, session.effortPending, pendingEffort.get(session.id), session.efforts, session.messaging,
-    session.permissionMode, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireSignature(session.cwd),
+    session.permissionMode, reviewerState, session.context, compacting(session), session.branch, session.lastTurnMs, session.cost, session.goal, session.plan, nextWaiting(session.id)?.id, hireSignature(session.cwd),
     lastObservedActivity(session), Math.floor(Date.now() / 60000), workflow.saved.preferences.quietMinutes, workflow.meta(session), state.snapshot.overlaps]);
-  const settingsActive = panel.querySelector('.agent-settings:focus-within, .agent-settings[data-busy]');
+  const settingsActive = panel.querySelector('.agent-settings[data-busy]') || (panel.dataset.reviewerState === reviewerState && panel.querySelector('.agent-settings:focus-within'));
   if (signature !== panelSignature && (!settingsActive || state.error)) {
-    panelSignature = signature;
+    panelSignature = signature; panel.dataset.reviewerState = reviewerState;
     renderSessionHeader(panel.querySelector('.chat-header'), session);
   }
   const requests = panel.querySelector('.chat-requests');
@@ -851,11 +852,18 @@ function renderSessionHeader(header, session) {
   if (session.branch) summary.append(el('span', 'header-branch', session.branch));
   if (session.cost) summary.append(chip(`$${session.cost.usd.toFixed(2)}`, 'header-cost', session.cost.estimated ? 'Estimated session cost' : 'Session cost'));
   if (modeLabels[session.permissionMode]) summary.append(chip(modeLabels[session.permissionMode], `mode-chip ${session.permissionMode}`, 'Permission mode'));
+  if (session.reviewerWarning) summary.append(chip('Current reviewer unconfirmed', 'mode-chip', session.reviewerWarning));
+  else if (session.approvalsReviewer === 'auto_review') summary.append(chip('Approve for me', 'mode-chip', 'Codex reviews approval requests for this session'));
   if (compacting(session)) summary.append(chip('compacting', 'compact-chip', 'Compacting context'));
   if (session.context?.used) summary.append(chip(percent != null ? `${percent}%` : tokens(session.context.used), `ctx-chip${percent >= 80 ? ' high' : ''}`, 'Context used'));
   metadata.append(summary);
   if (session.messaging?.model || session.messaging?.effort) metadata.append(agentSettings(session, { api, disabled: !!state.error,
-    changed: (result, kind) => { if (!state.csrf) return; pendingEffort.delete(session.id); toast(result.warning || `${kind === 'model' ? 'Model' : 'Effort'} saved${result.pending ? ' · from your next message here' : ''}`); panelSignature = ''; refresh(); },
+    changed: (result, kind) => {
+      if (!state.csrf) return;
+      pendingEffort.delete(session.id);
+      const saved = kind === 'approvalsReviewer' ? 'Approval reviewer changed' : `${kind === 'model' ? 'Model' : 'Effort'} saved${result.pending ? ' · from your next message here' : ''}`;
+      toast(result.warning || saved); panelSignature = ''; refresh();
+    },
     failed: error => toast(error.message),
   }));
   const goal = session.goal, cost = session.cost;
@@ -1786,7 +1794,7 @@ async function spawnAgent(cwd, choice, control, slot) {
   if (state.error) return;
   control.disabled = true;
   try {
-    const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account, ...typeof slot === 'number' ? { slot } : {}, ...choice.create ? { create: true } : {} });
+    const result = await api('spawn', { cwd, provider: choice.provider, account: choice.account, ...(choice.approveForMe && { approveForMe: true }), ...typeof slot === 'number' ? { slot } : {}, ...choice.create ? { create: true } : {} });
     if (result.sessionId) { await refresh(); openPanel(result.sessionId); toast(result.warning || `${choice.name} session created`); }
     else toast(`${choice.name} started in tmux ${result.session}${result.window ? `:${result.window}` : ''}`);
   }

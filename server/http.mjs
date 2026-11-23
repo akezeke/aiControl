@@ -196,7 +196,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         try { id = decodeURIComponent(documentRoute[1]); documentId = documentRoute[2] && decodeURIComponent(documentRoute[2]); } catch { throw fail('Invalid session ID.'); }
         json(res, 200, await (documentId ? messages.document(id, documentId) : messages.documents(id))); return;
       }
-      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|fire|clear|model|models|effort|history|queue\/([^/]+)\/cancel)$/.exec(path);
+      const sessionRoute = /^\/api\/sessions\/([^/]+)\/(messages|interrupt|fire|clear|model|models|effort|approvalsReviewer|history|queue\/([^/]+)\/cancel)$/.exec(path);
       if (sessionRoute && req.method === (['history', 'models'].includes(sessionRoute[2]) ? 'GET' : 'POST')) {
         if (!messages) throw fail('Messaging is not available.', 503);
         let id, queuedId;
@@ -208,7 +208,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
           const limit = Math.min(1000, Math.max(20, Number(new URL(req.url, origins[0]).searchParams.get('limit')) || 40));
           json(res, 200, await messages.history(id, limit), req); return;
         }
-        const result = action === 'messages' ? await messages.send(id, await body(req, uploadBodyLimit)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'fire' ? await messages.fire(id, await body(req)) : action === 'clear' ? await messages.clear(id) : action === 'model' ? await messages.model(id, await body(req)) : action === 'effort' ? await messages.effort(id, await body(req)) : await messages.cancel(id, queuedId);
+        const result = action === 'messages' ? await messages.send(id, await body(req, uploadBodyLimit)) : action === 'interrupt' ? await messages.interrupt(id) : action === 'clear' ? await messages.clear(id) : queuedId ? await messages.cancel(id, queuedId) : await messages[action](id, await body(req));
         auth.touch(session); json(res, 200, result); return;
       }
       const match = /^\/api\/requests\/([a-f0-9-]{36})\/respond$/.exec(path);

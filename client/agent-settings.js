@@ -9,9 +9,17 @@ export function agentSettings(session, { api, changed, failed, disabled = false 
   const retry = element('button', 'quiet-button settings-retry', 'Retry'); retry.type = 'button'; retry.hidden = true;
   const error = element('span', 'settings-error'); error.setAttribute('role', 'alert');
   const field = (label, select) => { const node = element('label', 'setting-field'); node.append(element('span', 'setting-label', label), select); return node; };
-  row.append(field('Model', model), field('Effort', effort), error, retry);
+  row.append(field('Model', model), field('Effort', effort));
   let options = [], busy = false, loading = true;
   const option = (value, name) => { const node = element('option', '', name); node.value = value; return node; };
+  const reviewer = element('select', 'setting-select');
+  const retryTurn = element('button', 'quiet-button settings-retry', 'Retry this turn'); retryTurn.type = 'button';
+  if (session.messaging?.approvalsReviewer) {
+    reviewer.append(option('user', 'Ask me'), option('auto_review', 'Approve for me'));
+    reviewer.title = 'Who reviews new approval requests in this session. Pending requests keep their reviewer.';
+    row.append(field('Approvals', reviewer), retryTurn);
+  }
+  row.append(error, retry);
   const paint = () => {
     const current = options.find(item => item.id === session.model) || options.find(item => item.resolvedModel === session.model);
     model.replaceChildren(...options.map(item => option(item.id, item.name)));
@@ -24,6 +32,9 @@ export function agentSettings(session, { api, changed, failed, disabled = false 
     effort.disabled = disabled || busy || loading || !levels.length || !session.messaging?.effort;
     // Providers whose protocol cannot reset effort only offer their supported named levels.
     effort.firstChild.disabled = session.provider !== 'opencode';
+    reviewer.value = session.approvalsReviewer || '';
+    reviewer.disabled = disabled || busy;
+    retryTurn.hidden = !session.reviewerWarning; retryTurn.title = session.reviewerWarning || ''; retryTurn.disabled = disabled || busy;
   };
   const load = async () => {
     loading = true; retry.hidden = true; error.textContent = ''; paint();
@@ -43,11 +54,14 @@ export function agentSettings(session, { api, changed, failed, disabled = false 
     try {
       const result = await api(`sessions/${encodeURIComponent(session.id)}/${kind}`, { [kind]: value });
       Object.assign(session, { model: result.model || session.model, effort: result.effort ?? session.effort });
+      if (result.approvalsReviewer) Object.assign(session, { approvalsReviewer: result.approvalsReviewer, reviewerWarning: result.warning });
       changed(result, kind);
     } catch (e) { failed(e); }
     finally { busy = false; delete row.dataset.busy; paint(); }
   };
   model.onchange = () => update('model', model.value); effort.onchange = () => update('effort', effort.value);
+  reviewer.onchange = () => update('approvalsReviewer', reviewer.value);
+  retryTurn.onclick = () => update('approvalsReviewer', session.approvalsReviewer);
   retry.onclick = () => { catalogs.delete(session.id); load(); };
   load(); return row;
 }

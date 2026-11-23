@@ -240,6 +240,10 @@ test('new agents open in the tmux session working in the project, never the serv
   // Sized, so Claude's whole prompt box fits while no client is attached.
   assert.deepEqual(fresh.calls[1].slice(0, 7), ['new-session', '-s', 'aiControl-agents', '-x', '160', '-y', '50']);
   assert.deepEqual(fresh.calls[2].slice(3), ['codex', 'Enter']);
+  const reviewed = run('');
+  await spawnAgent("/w/it's here", 'codex', { approveForMe: true, tmux: reviewed.tmux, update: async () => {} });
+  assert.ok(reviewed.calls[1].includes("/w/it's here"));
+  assert.deepEqual(reviewed.calls[2].slice(3), ['codex --remote unix:// --cd "$PWD" --approve-for-me', 'Enter']);
   assert.equal((await spawnAgent('/w/my.app', 'codex', { tmux: run('').tmux, update: async () => {} })).session, 'my_app');
   await assert.rejects(spawnAgent('/w/app', 'sh', { tmux: run('').tmux }), /Unknown agent/);
   const personal = run('');

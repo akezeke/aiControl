@@ -92,6 +92,62 @@ test('effort uses immediate settings, falling back only for an older unsupported
   assert.equal(adapter.sessions.get('live-thread').nextEffort, 'medium');
 });
 
+test('Codex approval review follows live settings and switches the reviewer for current and future turns', async t => {
+  const { adapter, server } = await connected(t, { status: 'active' });
+  const current = () => adapter.list()[0];
+  assert.equal(current().approvalsReviewer, 'user');
+  assert.equal(current().messaging.approvalsReviewer, true);
+  const changed = await adapter.setApprovalsReviewer('live-thread', 'auto_review');
+  assert.deepEqual(server.messages.find(m => m.method === 'turn/settings/update')?.params,
+    { threadId: 'live-thread', turnId: 'original', approvalsReviewer: 'auto_review' });
+  assert.equal(changed.warning, undefined);
+  assert.deepEqual(server.messages.find(m => m.method === 'thread/settings/update').params,
+    { threadId: 'live-thread', approvalsReviewer: 'auto_review' });
+  assert.equal(current().approvalsReviewer, 'auto_review');
+  await adapter.refresh();
+  assert.equal(current().approvalsReviewer, 'auto_review');
+  server.turnSettingsError = { code: -32601, message: 'Unsupported' };
+  const next = await adapter.setApprovalsReviewer('live-thread', 'user');
+  assert.match(next.warning, /future turns/);
+  await adapter.refresh();
+  assert.equal(current().reviewerWarning, next.warning);
+  server.turnSettingsError = null;
+  await adapter.setApprovalsReviewer('live-thread', 'user');
+  assert.ok(!current().reviewerWarning);
+  server.currentTurnId = null;
+  assert.match((await adapter.setApprovalsReviewer('live-thread', 'user')).warning, /future turns/);
+  server.finishTurn(); await adapter.refresh();
+  assert.ok(!current().reviewerWarning);
+  assert.equal(current().approvalsReviewer, 'user');
+  await assert.rejects(adapter.setApprovalsReviewer('live-thread', 'never'), /reviewer/i);
+  server.settingsError = { code: -32600, message: 'Reviewer disallowed' };
+  await assert.rejects(adapter.setApprovalsReviewer('live-thread', 'auto_review'), /disallowed/);
+  assert.equal(current().approvalsReviewer, 'user');
+  const notify = settings => adapter.receive({ method: 'thread/settings/updated', params: { threadId: 'live-thread',
+    threadSettings: { approvalPolicy: 'on-request', approvalsReviewer: 'guardian_subagent', sandboxPolicy: { type: 'workspaceWrite' }, ...settings } } });
+  notify({}); assert.equal(current().approvalsReviewer, 'auto_review');
+  notify({ approvalPolicy: 'never' });
+  assert.equal(current().messaging.approvalsReviewer, false);
+  await assert.rejects(adapter.setApprovalsReviewer('live-thread', 'user'), /unavailable/i);
+  notify({ sandboxPolicy: { type: 'dangerFullAccess' } });
+  assert.equal(current().messaging.approvalsReviewer, false);
+  assert.ok(!server.messages.some(m => ['config/batchWrite', 'turn/start', 'turn/interrupt'].includes(m.method)));
+});
+
+test('a lost reviewer acknowledgement keeps the running-turn retry available after reconnect', async t => {
+  const { adapter, server } = await connected(t, { status: 'active' }, { rpcTimeoutMs: 100, retryDelayMs: 20 });
+  await adapter.setApprovalsReviewer('live-thread', 'auto_review');
+  server.ignoreMethod = 'thread/resume';
+  await assert.rejects(adapter.setApprovalsReviewer('live-thread', 'user'), /did not respond/);
+  server.ignoreMethod = null;
+  await until(() => adapter.list()[0]?.messaging.approvalsReviewer, 'Reviewer control did not reconnect');
+  assert.equal(adapter.list()[0].approvalsReviewer, 'user');
+  assert.match(adapter.list()[0].reviewerWarning || '', /running turn/i);
+  assert.equal(server.messages.filter(m => m.method === 'turn/settings/update').at(-1).params.approvalsReviewer, 'auto_review');
+  await adapter.setApprovalsReviewer('live-thread', 'user');
+  assert.ok(!adapter.list()[0].reviewerWarning);
+});
+
 test('Codex reads account usage on connect, keeps sessions usable on failure and refreshes after reconnect', async t => {
   const { adapter, server } = await connected(t, {}, { retryDelayMs: 20, rpcTimeoutMs: 100 });
   await until(() => adapter.usage.snapshot().status === 'ready', 'Account usage did not load.');
@@ -415,6 +471,7 @@ test('a new Codex thread takes its first message before it can be joined, then j
   t.after(() => { adapter.stop(); server.close(); }); adapter.start();
   await until(() => adapter.list()[0]?.messaging.send, 'fresh thread never became sendable');
   assert.deepEqual([adapter.list()[0].control, adapter.list()[0].messaging.queue, adapter.list()[0].messagesState], [false, false, 'ready']);
+  assert.equal(adapter.list()[0].messaging.approvalsReviewer, false);
   assert.equal((await adapter.sendMessage('live-thread', message('Start the game.'))).status, 'sent');
   await adapter.refresh();
   assert.equal(adapter.list()[0].control, true);

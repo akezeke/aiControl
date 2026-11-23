@@ -71,6 +71,13 @@ export function codexRequest(message, items = new Map()) {
 }
 
 const documentPages = 30;
+// Resume/start and settings notifications use different field names for the effective sandbox.
+function sandboxedReviewer(settings) {
+  const sandbox = settings.sandboxPolicy ?? settings.sandbox;
+  if (!['workspaceWrite', 'readOnly'].includes(sandbox?.type) || settings.approvalPolicy !== 'on-request') return null;
+  if (settings.approvalsReviewer === 'guardian_subagent') return 'auto_review';
+  return ['user', 'auto_review'].includes(settings.approvalsReviewer) ? settings.approvalsReviewer : null;
+}
 const codexGoal = goal => goal && { objective: String(goal.objective || '').slice(0, 500), status: goal.status, tokensUsed: goal.tokensUsed, tokenBudget: goal.tokenBudget ?? null, timeUsedSeconds: goal.timeUsedSeconds };
 
 export class CodexAdapter {
@@ -89,6 +96,7 @@ export class CodexAdapter {
   startingQueue = new Set();
   queueAttempts = new Set();
   sendingMessages = new Set();
+  changingReviewer = new Set();
   connected = false;
   detail = 'Connecting to the local Codex app-server…';
   serial = 0;
@@ -112,7 +120,7 @@ export class CodexAdapter {
       this.usage.stop('Codex is disconnected. Usage will refresh when it reconnects.');
       if (!this.stopped && this.lastError !== reason) { this.lastError = reason; this.log(`[Codex connection] ${reason.slice(0, 250)}`); }
       this.joined.clear(); this.fresh.clear(); this.items.clear(); this.images.clear();
-      for (const session of this.sessions.values()) { session.status = 'offline'; session.control = false; this.store.removeSession(session.id); }
+      for (const session of this.sessions.values()) { session.status = 'offline'; session.control = false; session.approvalsReviewer = null; this.store.removeSession(session.id); }
       for (const request of this.store.list()) if (request.provider === 'codex') this.store.removeSession(request.sessionId);
       for (const pending of [...this.calls.values(), ...this.resolutions.values()]) pending.reject(fail('Codex disconnected. Verify the request in the original client.', 503));
       this.calls.clear(); this.resolutions.clear();
@@ -167,6 +175,7 @@ export class CodexAdapter {
   upsert(thread) {
     if (this.archived.has(thread.id)) return;
     const previous = this.sessions.get(thread.id);
+    if (previous && thread.status?.type !== 'active') delete previous.reviewerWarning;
     this.sessions.set(thread.id, { detail: '', messages: [], messagesState: 'loading', queuedMessages: [], queueAvailable: false, queueError: '', ...previous, id: `codex:${thread.id}`, nativeId: thread.id, provider: 'codex', title: thread.name || thread.preview?.slice(0, 130) || 'Codex session', cwd: thread.cwd, project: basename(thread.cwd || 'Unknown'), status: codexStatus(thread.status), idleSince: thread.status?.type === 'idle' ? previous?.idleSince || Date.now() : null, updatedAt: Math.max(previous?.updatedAt || 0, thread.updatedAt * 1000 || 0), model: thread.model, effort: previous?.nextEffort || thread.reasoningEffort || previous?.effort || '', efforts: this.models.get(thread.model) || [], branch: thread.gitInfo?.branch, parentId: thread.parentThreadId ? `codex:${thread.parentThreadId}` : null, control: this.joined.has(thread.id) });
   }
   async refresh() {
@@ -192,9 +201,11 @@ export class CodexAdapter {
           if (!current() || this.archived.has(id)) return;
           this.upsert(result.thread);
           if (!this.joined.has(id)) {
-            try { await this.rpc('thread/resume', { threadId: id, excludeTurns: true }); }
+            let settings;
+            try { settings = await this.rpc('thread/resume', { threadId: id, excludeTurns: true }); }
             catch (error) { if (error.rpcCode === -32600 && /no rollout found/.test(error.message)) { this.fresh.add(id); this.sessions.get(id).messagesState = 'ready'; return; } throw error; }
             if (!current()) return;
+            this.sessions.get(id).approvalsReviewer = sandboxedReviewer(settings);
             this.joined.add(id); this.fresh.delete(id); this.sessions.get(id).control = true;
             this.rpc('thread/goal/get', { threadId: id }, { closeOnTimeout: false }).then(({ goal }) => { if (goal && this.sessions.has(id)) this.sessions.get(id).goal = codexGoal(goal); }, () => {});
           }
@@ -378,6 +389,7 @@ export class CodexAdapter {
       if (!result.thread?.id) throw fail('Codex did not confirm the new chat.', 502);
       this.upsert({ ...result.thread, model: result.model || result.thread.model, reasoningEffort: result.reasoningEffort || effort });
       const next = this.sessions.get(result.thread.id);
+      next.approvalsReviewer = sandboxedReviewer(result);
       next.messagesState = 'empty';
       this.fresh.add(result.thread.id);
       return { status: 'cleared', sessionId: next.id, session: this.list().find(s => s.id === next.id) };
@@ -471,11 +483,48 @@ export class CodexAdapter {
     const result = await this.rpc('thread/start', { cwd, ...(model ? { model } : {}), config: effort ? { model_reasoning_effort: effort } : {}, historyMode: 'paginated' });
     if (!result.thread?.id) throw fail('The new session was not confirmed. Check the session list before retrying.', 502);
     this.upsert({ ...result.thread, model: result.model || result.thread.model || model, reasoningEffort: result.reasoningEffort || effort });
+    this.sessions.get(result.thread.id).approvalsReviewer = sandboxedReviewer(result);
     this.sessions.get(result.thread.id).messagesState = 'empty';
     this.fresh.add(result.thread.id);
     return { sessionId: `codex:${result.thread.id}` };
   }
   fire(threadId, options) { return fireCodex(this, threadId, options); }
+  async setApprovalsReviewer(threadId, approvalsReviewer) {
+    const session = this.requireMessaging(threadId);
+    if (!['user', 'auto_review'].includes(approvalsReviewer)) throw fail('Unknown approval reviewer.');
+    if (!this.joined.has(threadId) || session.parentId || !session.approvalsReviewer) throw fail('Approval review is unavailable for this session.', 409);
+    if (this.changingReviewer.has(threadId)) throw fail('An approval reviewer change is already in progress.', 409);
+    this.changingReviewer.add(threadId);
+    try {
+      // A lost reply can leave the thread and its running turn with different reviewers after reconnect.
+      const previousWarning = session.reviewerWarning;
+      const unconfirmed = 'The reviewer for the running turn is unconfirmed.';
+      if (session.status !== 'idle') session.reviewerWarning = unconfirmed;
+      try { await this.rpc('thread/settings/update', { threadId, approvalsReviewer }); }
+      catch (error) {
+        const live = this.sessions.get(threadId);
+        if (error.rpcCode != null && live?.reviewerWarning === unconfirmed) live.reviewerWarning = previousWarning;
+        throw error;
+      }
+      // Older servers may ignore an unfamiliar field in a successful update. Check the effective reviewer.
+      const settings = await this.rpc('thread/resume', { threadId, excludeTurns: true });
+      const current = this.requireMessaging(threadId);
+      current.approvalsReviewer = sandboxedReviewer(settings);
+      if (current.approvalsReviewer !== approvalsReviewer) throw fail('Codex did not confirm the requested approval reviewer.', 409);
+      const result = { ok: true, approvalsReviewer };
+      if (settings.thread.status?.type === 'active') {
+        try {
+          const page = await this.rpc('thread/turns/list', { threadId, limit: 1, sortDirection: 'desc', itemsView: 'notLoaded' }, { closeOnTimeout: false });
+          const turnId = page.data.find(turn => turn.status === 'inProgress')?.id;
+          const update = turnId && await this.rpc('turn/settings/update', { threadId, turnId, approvalsReviewer }, { closeOnTimeout: false });
+          if (update?.status !== 'applied') result.warning = 'Reviewer saved for future turns. The running turn was unavailable.';
+        } catch { result.warning = 'Reviewer saved for future turns. Codex could not confirm the change for the running turn.'; }
+      }
+      const live = this.sessions.get(threadId);
+      if (live) live.reviewerWarning = live.status === 'idle' ? undefined : result.warning;
+      return result;
+    } finally { this.changingReviewer.delete(threadId); }
+  }
   forgetArchived(id) {
     this.archived.add(id); this.sessions.delete(id); this.joined.delete(id); this.fresh.delete(id); this.images.delete(id); this.store.removeSession(`codex:${id}`);
   }
@@ -543,13 +592,17 @@ export class CodexAdapter {
       this.store.removeSource(key); this.resolutions.get(key)?.resolve(); this.resolutions.delete(key); return;
     }
     const live = this.sessions.get(p.threadId);
+    if (live && (message.method === 'turn/completed' || (message.method === 'thread/status/changed' && p.status?.type !== 'active'))) delete live.reviewerWarning;
     if (message.method === 'thread/status/changed' && live) { live.status = codexStatus(p.status); live.idleSince = live.status === 'idle' ? live.idleSince || Date.now() : null; }
     if (live) {
       if (message.method === 'thread/tokenUsage/updated') live.context = { used: p.tokenUsage?.last?.totalTokens || 0, window: p.tokenUsage?.modelContextWindow || null };
       if (message.method === 'turn/plan/updated') live.plan = planSteps(p.plan);
       if (message.method === 'thread/goal/updated') live.goal = codexGoal(p.goal);
       if (message.method === 'thread/goal/cleared') live.goal = null;
-      if (message.method === 'thread/settings/updated' && p.threadSettings) { live.model = p.threadSettings.model || live.model; live.efforts = this.models.get(live.model) || []; if (!live.nextEffort) live.effort = p.threadSettings.effort || live.effort; }
+      if (message.method === 'thread/settings/updated' && p.threadSettings) {
+        live.approvalsReviewer = sandboxedReviewer(p.threadSettings);
+        live.model = p.threadSettings.model || live.model; live.efforts = this.models.get(live.model) || []; if (!live.nextEffort) live.effort = p.threadSettings.effort || live.effort;
+      }
       // Errors and reroutes have no item; they join the history as notices.
       const note = message.method === 'error' ? { text: `${p.error?.message || 'Error'}${p.willRetry ? ' · retrying' : ''}`, error: !p.willRetry }
         : message.method === 'model/rerouted' ? { text: `Model rerouted: ${p.fromModel} → ${p.toModel}` } : null;
@@ -591,7 +644,8 @@ export class CodexAdapter {
   list() {
     return [...this.sessions.values()].map(({ nextEffort, ...session }) => {
       const send = this.connected && (this.joined.has(session.nativeId) || this.fresh.has(session.nativeId));
-      return { ...session, ...(nextEffort ? { effortPending: true } : {}), messaging: { send, images: send, model: send, fire: send && !session.parentId, queue: send && this.joined.has(session.nativeId) && session.queueAvailable, interrupt: send && this.joined.has(session.nativeId), effort: send && session.efforts.length > 0 } };
+      const joined = this.connected && this.joined.has(session.nativeId);
+      return { ...session, ...(nextEffort ? { effortPending: true } : {}), messaging: { send, images: send, model: send, approvalsReviewer: joined && !session.parentId && !!session.approvalsReviewer, fire: send && !session.parentId, queue: joined && session.queueAvailable, interrupt: joined, effort: send && session.efforts.length > 0 } };
     });
   }
   stop() { this.stopped = true; clearTimeout(this.retry); clearInterval(this.timer); this.connection?.close(); }

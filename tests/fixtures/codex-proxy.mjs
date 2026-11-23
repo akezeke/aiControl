@@ -29,9 +29,10 @@ export function mockCodexServer({ status = 'active', question = true, items, rat
           if (message.method === 'model/list') send({ id: message.id, result: { data: fixture.models || [{ id: 'test-model', model: 'test-model', displayName: 'Test', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }, { reasoningEffort: 'high' }], defaultReasoningEffort: 'medium' }], nextCursor: null } });
           if (message.method === 'thread/settings/update') {
             if (fixture.settingsError) send({ id: message.id, error: fixture.settingsError });
-            else { if (message.params.model) thread.model = message.params.model; if (message.params.effort) thread.reasoningEffort = message.params.effort; send({ id: message.id, result: {} }); }
+            else { if (message.params.model) thread.model = message.params.model; if (message.params.effort) thread.reasoningEffort = message.params.effort; if (message.params.approvalsReviewer) thread.reviewer = message.params.approvalsReviewer; send({ id: message.id, result: {} }); }
           }
           if (message.method === 'config/batchWrite') send({ id: message.id, result: {} });
+          if (message.method === 'turn/settings/update') send({ id: message.id, ...(fixture.turnSettingsError ? { error: fixture.turnSettingsError } : { result: { status: fixture.currentTurnId === message.params.turnId ? 'applied' : 'targetUnavailable' } }) });
           if (message.method === 'account/rateLimits/read') send({ id: message.id, ...(fixture.usageError ? { error: fixture.usageError } : { result: fixture.rateLimits }) });
           if (message.method === 'thread/loaded/list') send({ id: message.id, result: { data: [fixture.thread.id, ...fixture.startedThreads.map(thread => thread.id)], nextCursor: null } });
           if (message.method === 'thread/start') {
@@ -44,7 +45,7 @@ export function mockCodexServer({ status = 'active', question = true, items, rat
             if (message.params.threadId !== thread.id) throw new Error('Resumed an unloaded thread');
             // A new thread writes its rollout on the first turn; until then only resume fails.
             if (message.method === 'thread/resume' && fixture.noRollout) { send({ id: message.id, error: { code: -32600, message: `no rollout found for thread id ${thread.id}` } }); return; }
-            send({ id: message.id, result: { ...fixture.settings, cwd: thread.cwd, model: thread.model, modelProvider: 'openai', thread } });
+            send({ id: message.id, result: { ...fixture.settings, ...(thread.reviewer && { approvalsReviewer: thread.reviewer }), cwd: thread.cwd, model: thread.model, modelProvider: 'openai', thread } });
             if (message.method === 'thread/resume' && question) send({ id: 97, method: 'item/tool/requestUserInput', params: { threadId: thread.id, questions: [{ id: 'choice', question: 'Continue?', isOther: false, options: [{ label: 'Yes' }] }] } });
           }
           if (message.method === 'thread/queue/list') send({ id: message.id, result: { data: fixture.queue, nextCursor: null } });

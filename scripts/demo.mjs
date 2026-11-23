@@ -40,7 +40,7 @@ function claude(id, project, title, status, minutes, messages, extra = {}) {
   return { id: `claude:${id}`, nativeId: id, provider: 'claude', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'claude-opus-5-5', version: '2.4.1', effort: 'high', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], permissionMode: 'default', detail: '', control: true, messaging: { send: true, queue: false, via: 'tmux', images: true, interrupt: true, effort: true, fire: true, clear: true }, messages, messagesState: 'ready', ...extra };
 }
 function codex(id, project, title, status, minutes, messages, extra = {}) {
-  return { id: `codex:${id}`, nativeId: id, provider: 'codex', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'gpt-5.5-codex', effort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh'], detail: '', control: true, messaging: { send: true, queue: true, images: true, interrupt: true, effort: true }, messages, messagesState: 'ready', queuedMessages: [], queueAvailable: true, queueError: '', ...extra };
+  return { id: `codex:${id}`, nativeId: id, provider: 'codex', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'gpt-5.5-codex', effort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh'], approvalsReviewer: 'user', detail: '', control: true, messaging: { send: true, queue: true, images: true, interrupt: true, effort: true, approvalsReviewer: true }, messages, messagesState: 'ready', queuedMessages: [], queueAvailable: true, queueError: '', ...extra };
 }
 function opencode(id, project, title, status, minutes, messages, extra = {}) {
   return { id: `opencode:${id}`, nativeId: id, provider: 'opencode', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'anthropic/claude-sonnet-5', version: '2.2.5', effort: 'medium', efforts: ['low', 'medium', 'high'], detail: '', control: true, messaging: { send: true, interrupt: true, images: true, model: true, effort: true, fire: true }, messages, messagesState: 'ready', ...extra };
@@ -147,7 +147,7 @@ const snapshot = () => {
     towers: towers.update(sessions),
     battlefields: battlefields.update(sessions),
     lost,
-    usage, features: { messaging: true, steering: true, claudeMessaging: true, opencode: true, workflow: true }, updatedAt: Date.now(), machine: 'demo', claudeAccounts: ['', 'work'],
+    usage, features: { messaging: true, steering: true, claudeMessaging: true, opencode: true, workflow: true, codexApprovalReview: true }, updatedAt: Date.now(), machine: 'demo', claudeAccounts: ['', 'work'],
     providers: workflow.health().providers,
   };
 };
@@ -194,6 +194,11 @@ const messages = {
   model: async (id, body) => { const s = sessions.find(s => s.id === id); if (s) s.model = body.model; return { ok: true, model: s?.model, effort: s?.effort }; },
   clear: async id => { const s = sessions.find(s => s.id === id); if (!s) return { ok: true }; s.nativeId = randomUUID(); s.id = `${s.provider}:${s.nativeId}`; s.messages = []; s.context = undefined; await history.observe(sessions); return { ok: true, id: s.id }; },
   effort: async (id, body) => { const s = sessions.find(s => s.id === id); if (s) s.effort = body.effort; return { ok: true }; },
+  approvalsReviewer: async (id, body) => {
+    const s = sessions.find(s => s.id === id);
+    if (!s?.messaging.approvalsReviewer || !['user', 'auto_review'].includes(body?.approvalsReviewer)) throw fail('Invalid approval reviewer.');
+    s.approvalsReviewer = body.approvalsReviewer; return { ok: true, approvalsReviewer: s.approvalsReviewer };
+  },
   history: async id => ({ messages: [msg('user', 'An older request from earlier today.', 400), msg('assistant', 'Older reply.', 399), ...(sessions.find(s => s.id === id)?.messages || [])], more: false }),
   images: async id => ({ images: (shots[id] || []).map(([, minutes, agent], n) => ({ id: `${agent ? 'a1b2c3.' : ''}0000000${n}-0000-4000-8000-000000000000:0`, type: 'image/webp', at: ago(minutes), tool: true, ...(agent && { agent }) })) }),
   documents: async id => ({ documents: (docs[id] || []).map(([name, minutes, , agent], n) => ({ id: `doc${n}`, name, path: `${home}/weather-station/docs/${name}`, at: ago(minutes), written: true, ...(agent && { agent }) })) }),
@@ -233,7 +238,7 @@ const spawn = async (body = {}) => {
   if (!['claude', 'codex', 'opencode'].includes(provider) || !cwd || typeof account !== 'string' || typeof prompt !== 'string' || prompt.length > 50_000 || model !== undefined && typeof model !== 'string' || effort !== undefined && typeof effort !== 'string') throw fail('Invalid launch settings.', 400);
   if (folder(cwd) === 'none' || folder(cwd) === 'new' && !create) throw fail('No such folder.', 404);
   const id = `demo-${++spawned}`, sessionId = `${provider}:${id}`, project = sessions.find(s => s.cwd === cwd)?.project || cwd.split('/').pop();
-  const next = makeSession(id, project, `Agent ${spawned}`, 'idle', 0, [], { cwd, account, ...(model ? { model } : {}), ...(effort ? { effort } : {}) });
+  const next = makeSession(id, project, `Agent ${spawned}`, 'idle', 0, [], { cwd, account, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(provider === 'codex' && body.approveForMe === true && { approvalsReviewer: 'auto_review' }) });
   if (prompt) await workspace.patch({ section: 'drafts', key: sessionId, value: { text: prompt }, baseRevision: 0 });
   seats.reserve(cwd, slot);
   later(() => {

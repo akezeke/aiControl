@@ -18,7 +18,7 @@ export const runTmux = (args, input) => new Promise((resolve, reject) => {
 // named after it. The command is typed into a shell, so an error or exit stays readable there.
 // configDir starts Claude under another account (CLAUDE_CONFIG_DIR); empty means the default ~/.claude.
 // `args` follow the agent's name (recovery.mjs's resume arguments: ids and modes, nothing a shell would read).
-export async function spawnAgent(cwd, provider, { configDir = '', sessionId, model, effort, args = [], tmux = runTmux, update = updateCodex } = {}) {
+export async function spawnAgent(cwd, provider, { configDir = '', sessionId, model, effort, approveForMe = false, args = [], tmux = runTmux, update = updateCodex } = {}) {
   if (!['claude', 'codex', 'opencode'].includes(provider)) throw fail('Unknown agent.');
   if (provider === 'opencode' && !/^ses[\w-]+$/.test(sessionId || '')) throw fail('Invalid OpenCode session ID.');
   if (provider === 'claude' && sessionId !== undefined && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sessionId)) throw fail('Invalid Claude session ID.');
@@ -36,6 +36,8 @@ export async function spawnAgent(cwd, provider, { configDir = '', sessionId, mod
     const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
     let command = provider === 'opencode' ? [process.execPath, fileURLToPath(new URL('../scripts/opencode-terminal.mjs', import.meta.url)), sessionId].map(quote).join(' ')
       : provider === 'codex' ? 'codex' : configDir ? `CLAUDE_CONFIG_DIR=${quote(configDir)} claude` : 'claude';
+    // Explicit permission options can start a private server. Target the dashboard's local daemon and project.
+    if (provider === 'codex' && approveForMe === true) command += ' --remote unix:// --cd "$PWD" --approve-for-me';
     if (provider === 'claude') {
       // An id chosen here lets the dashboard show the session before Claude registers it (launches.mjs).
       if (sessionId) command += ` --session-id ${sessionId}`;

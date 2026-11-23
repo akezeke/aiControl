@@ -5,6 +5,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostname as machineName, homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createServer as createViteServer } from 'vite';
 import { Auth } from './auth.mjs';
 import { Passkeys } from './passkeys.mjs';
@@ -44,6 +46,9 @@ export async function startServer({ host, hostname, tls = null }) {
   const push = await new PushNotifications(join(dataDir, 'push.json'), { credentialFile: authFile }).load();
   const store = new RequestStore(async entry => { await appendFile(join(dataDir, 'decisions.jsonl'), JSON.stringify(entry) + '\n', { mode: 0o600 }); });
   const codex = new CodexAdapter(store);
+  const run = promisify(execFile);
+  const reviewFlag = await run('codex', ['--help'], { timeout: 3000 })
+    .then(({ stdout }) => stdout.includes('--approve-for-me') && stdout.includes('--remote'), () => false);
   const accounts = claudeAccounts();
   const claude = new ClaudeAdapter(store, hookSocket, { accounts });
   const launches = new Launches(store, { registered: id => claude.list().some(session => session.id === id) });
@@ -82,7 +87,7 @@ export async function startServer({ host, hostname, tls = null }) {
   const place = location();
   const snapshot = () => {
     const sessions = currentSessions();
-    return { sessions, ...workflow.snapshot(), office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), lostChecking: recovery.checking(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, workflow: true, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: workflow.health().providers, location: place };
+    return { sessions, ...workflow.snapshot(), office: seats.update(sessions), towers: towers.update(sessions), battlefields: battlefields.update(sessions), lost: recovery.lost(), lostChecking: recovery.checking(), usage: [codex.usage.snapshot(), ...claudeUsage.map(({ label, poller }) => ({ ...poller.snapshot(), label })), ...opencode.config ? [opencode.usageSnapshot()] : []], features: { messaging: true, steering: true, claudeMessaging: true, workflow: true, codexApprovalReview: reviewFlag, opencode: !!opencode.config }, updatedAt: Date.now(), machine: machineName(), claudeAccounts: accounts.map(({ label }) => label), providers: workflow.health().providers, location: place };
   };
   const messageTarget = id => {
     const session = codex.list().find(session => session.id === id);
@@ -113,6 +118,7 @@ export async function startServer({ host, hostname, tls = null }) {
     models: id => { const [adapter, nativeId] = settingTarget(id); return adapter.modelOptions(nativeId); },
     model: (id, body) => setAgentSetting(id, 'model', body?.model),
     effort: (id, body) => setAgentSetting(id, 'effort', body?.effort),
+    approvalsReviewer: (id, body) => codex.setApprovalsReviewer(messageTarget(id), body?.approvalsReviewer),
     history: (id, limit) => openCodeId(id) ? opencode.history(openCodeId(id), limit) : claudeId(id) ? claude.history(id, limit) : codex.history(messageTarget(id), limit),
     images: (id, limit) => openCodeId(id) ? opencode.imageList(openCodeId(id), limit) : claudeId(id) ? claude.imageList(id, limit) : codex.imageList(messageTarget(id), limit),
     image: (id, imageId) => openCodeId(id) ? opencode.image(openCodeId(id), imageId) : claudeId(id) ? claude.image(id, imageId) : codex.image(messageTarget(id), imageId),
@@ -122,9 +128,16 @@ export async function startServer({ host, hostname, tls = null }) {
   // Any existing directory (~ expands), or with `create` a new one in an existing directory. Claude starts under the account
   // asked for, or the one the project last used. `slot` is the desk or lot the agent was asked for, if any.
   const spawn = async (body = {}) => {
+    const approveForMe = body?.approveForMe ?? false;
+    if (typeof approveForMe !== 'boolean' || (approveForMe && (body?.provider !== 'codex' || body.presetId !== undefined))) throw fail('Choose Approve for me on a new Codex session.');
+    if (approveForMe && !reviewFlag) throw fail('This Codex CLI does not support Approve for me.', 409);
     if (body?.presetId !== undefined) return launchPreset(body, { workspace, codex, claude, opencode, defaults, seats, launches, spawnAgent });
     const { cwd: typed, provider, account: label, slot, create } = body || {};
     const cwd = agentFolder(typed, { create: create === true });
+    if (approveForMe && !codex.connected) {
+      try { await run('codex', ['app-server', 'daemon', 'start'], { timeout: 20_000 }); }
+      catch { throw fail('Could not start the local Codex app-server for approval review.', 503); }
+    }
     if (provider === 'opencode') {
       const created = await opencode.spawn(cwd, await defaults.read(provider));
       seats.reserve(cwd, slot);
@@ -133,7 +146,7 @@ export async function startServer({ host, hostname, tls = null }) {
     }
     const account = provider === 'claude' ? claude.accountFor(cwd, label) : null, sessionId = provider === 'claude' ? randomUUID() : undefined;
     seats.reserve(cwd, slot);
-    const started = await spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '', ...await defaults.read(provider, account?.label), sessionId }).catch(e => { seats.release(cwd, slot); throw e; });
+    const started = await spawnAgent(cwd, provider, { configDir: account?.label ? account.dir : '', ...await defaults.read(provider, account?.label), sessionId, approveForMe }).catch(e => { seats.release(cwd, slot); throw e; });
     launches.watch({ ...started, provider, cwd, account: account?.label || '', sessionId });
     return started;
   };

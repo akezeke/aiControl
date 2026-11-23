@@ -3,6 +3,7 @@
 // new-agent control shares it.
 export function hireChoices(snapshot, cwd) {
   const accounts = snapshot?.claudeAccounts || [''], claude = { provider: 'claude', label: 'Claude', name: 'Claude Code' }, others = [{ provider: 'codex', label: 'Codex', name: 'Codex' },
+    ...snapshot?.features?.codexApprovalReview ? [{ provider: 'codex', label: 'Codex · Approve for me', name: 'Codex · Approve for me', approveForMe: true }] : [],
     ...snapshot?.features?.opencode ? [{ provider: 'opencode', label: 'OpenCode', name: 'OpenCode' }] : []];
   if (accounts.length < 2) return [claude, ...others];
   const latest = (snapshot.sessions || []).filter(s => s.provider === 'claude' && s.cwd === cwd && !s.parentId).sort((a, b) => b.updatedAt - a.updatedAt)[0];
