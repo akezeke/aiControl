@@ -37,8 +37,12 @@ export function sizeComposer(input) {
     if (!input.isConnected || !input.clientWidth) return;
     const scroll = input.scrollTop, style = getComputedStyle(input);
     const border = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    // Collapsed only for the measurement, with its height held as a margin: the history above must not grow into it, not
+    // even unpainted, or the browser clamps the history's scroll position and leaves it short of the end.
+    input.style.marginBottom = `${input.offsetHeight}px`;
     input.style.height = '0px';
     input.style.height = `${input.scrollHeight + border}px`;
+    input.style.marginBottom = '';
     input.scrollTop = input.selectionStart === input.value.length && input.selectionEnd === input.value.length ? input.scrollHeight : scroll;
   };
   const schedule = () => { if (frame == null) frame = requestAnimationFrame(resize); };

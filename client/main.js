@@ -22,7 +22,7 @@ import './chat.css';
 import { providerIcon } from './provider-icons.js';
 import { applyTheme, savedTheme, hasSavedTheme, themes, bootSequence } from './themes.js';
 import { PanelNavigation } from './navigation.js';
-import { HistoryScroll } from './history-scroll.js';
+import { HistoryScroll, mergeHistory } from './history-scroll.js';
 import { populateOnOpen } from './lazy-details.js';
 import { placeShots } from './history-shots.js';
 import { shotStrip, shotUrl, takeShotContainer } from './shot-strip.js';
@@ -66,7 +66,7 @@ const idleMs = 10 * 60_000;
 const sessionActivity = new SessionActivity();
 const statValues = new Map();
 const previousStatuses = new Map();
-// Older history fetched for an open panel: session id → { limit, messages, more }.
+// Older history fetched for an open panel: session id → { limit, messages, more, loading, error, gap }.
 const older = new Map();
 // What an open panel lists from the server, listed again while its session changes. Not while it has no transcript
 // (a Claude session before its first prompt): the server can only answer 409 until one is written.
@@ -1231,15 +1231,21 @@ function renderRecentMessages(session, savedPosition) {
   if (!region.historyScroll) {
     const viewport = el('div', 'history-viewport'); viewport.tabIndex = 0; viewport.setAttribute('role', 'region'); viewport.setAttribute('aria-label', 'Message history');
     viewport.append(el('div', 'history-content'));
+    viewport.addEventListener('scroll', () => loadOlder(session.id), { passive: true });
     const latest = button('Latest messages', 'history-latest quiet-button', null, 'down'); latest.hidden = true;
     region.replaceChildren(viewport, latest);
     region.historyScroll = new HistoryScroll(viewport, latest);
     delete region.dataset.signature;
   }
   const flow = region.historyScroll;
-  const extra = older.get(session.id), messages = mergeHistory(extra?.messages, session.messages || []), images = sessionShots(session), documents = sessionDocs(session);
-  const moreAvailable = extra ? extra.more : session.historyMore || (session.messages || []).filter(m => !m.tool).length >= 40;
-  const signature = JSON.stringify([messages, images, documents, session.messagesState, moreAvailable, !!extra?.loading]);
+  const live = session.messages || [], pinned = session.provider === 'claude' && !!session.parentId && live[0]?.role === 'user', start = live[pinned ? 1 : 0]?.id;
+  // More came than the live window holds (the tab was hidden): a reader's pages are joined to it again, anyone at the end starts over.
+  let extra = older.get(session.id); const gap = !!extra?.messages.length && !!start && !extra.messages.some(message => message.id === start);
+  if (extra && flow.following && (gap || extra.messages.length > 1500)) { older.delete(session.id); extra = undefined; }
+  // Kept as merged, so messages the live window drops stay while the panel is open.
+  if (extra) { extra.gap ||= gap; extra.messages = mergeHistory(extra.messages, live, pinned); }
+  const messages = extra?.messages || live, images = sessionShots(session), documents = sessionDocs(session), moreAvailable = historyMore(session);
+  const signature = JSON.stringify([messages, images, documents, session.messagesState, moreAvailable, extra?.error]);
   if (region.dataset.signature === signature) { if (savedPosition) flow.restore(savedPosition); return; }
   const saved = savedPosition || flow.capture();
   const content = region.querySelector('.history-content');
@@ -1248,8 +1254,10 @@ function renderRecentMessages(session, savedPosition) {
   const children = [];
   region.dataset.signature = signature;
   if (moreAvailable && messages.length) {
-    const load = existing.get('older') || button('Older messages', 'quiet-button history-older', () => loadOlder(session.id), 'back');
-    load.dataset.messageId = 'older'; load.disabled = !!extra?.loading; children.push(load);
+    // No message id: it stays at the top as pages load, so it can't anchor the reader's place.
+    const load = content.querySelector('.history-older') || el('button', 'quiet-button history-older'); load.type = 'button';
+    load.disabled = !extra?.error; load.textContent = extra?.error ? 'Retry' : 'Loading…'; load.title = extra?.error || '';
+    load.onclick = () => { delete extra.error; renderPanel(); }; children.push(load);
   }
   if (!messages.length) children.push(el('p', 'muted history-empty', session.messagesState === 'loading' ? 'Loading recent messages…' : session.messagesState === 'empty' ? 'No recent text messages.' : 'Recent messages are not available for this session yet.'));
   if (session.messagesState === 'stale') children.push(el('p', 'muted', 'Showing the last messages received.'));
@@ -1271,6 +1279,7 @@ function renderRecentMessages(session, savedPosition) {
   children.forEach((node, index) => { if (content.children[index] !== node) content.insertBefore(node, content.children[index] || null); });
   linkDocuments(content, documents, session.cwd, doc => showDocument(session, doc.id));
   flow.restore(saved);
+  loadOlder(session.id);
 }
 // The live feed (feed.js) in the panel, beside the list or scene: who's busy or waiting along the top, then every
 // session's latest work on one timeline that follows the newest. A session's name opens it; Back returns here.
@@ -1487,23 +1496,25 @@ function showShot(id, imageId, images = shots.get(id)?.items || [], closed) {
   dialog.onclose = () => { panZoom.destroy(); dialog.remove(); closed?.(); };
   app.append(dialog); show(); dialog.showModal();
 }
-// Older pages end where the live window starts, so polling keeps the newest part current.
-function mergeHistory(earlier = [], recent) {
-  if (!earlier.length) return recent;
-  const cut = earlier.findIndex(message => message.id === recent[0]?.id), ids = new Set(recent.map(message => message.id));
-  return [...(cut >= 0 ? earlier.slice(0, cut) : earlier.filter(message => !ids.has(message.id))), ...recent];
-}
+const historyMore = session => older.get(session.id)?.more ?? (session.historyMore || (session.messages || []).filter(m => !m.tool).length >= 40);
+// A screen short of the top, the next page loads, so it's there before the reader is.
 async function loadOlder(id) {
-  const current = older.get(id), limit = Math.min(1000, (current?.limit || 40) + 40);
-  older.set(id, { messages: [], more: true, ...current, loading: true }); renderPanel();
+  const session = state.snapshot?.sessions.find(s => s.id === id), viewport = document.querySelector('#recent-messages .history-viewport'), known = older.get(id);
+  if (state.selected !== id || !session || !historyMore(session) || known?.loading || known?.error || !viewport?.clientHeight || (!known?.gap && viewport.scrollTop > viewport.clientHeight)) return;
+  const entry = known || { limit: 40, messages: session.messages || [], more: true }; older.set(id, entry);
+  const limit = Math.min(1000, Math.max(entry.limit, entry.messages.filter(m => !m.tool).length) + 40);
+  entry.loading = true;
   try {
-    const result = await api(`sessions/${encodeURIComponent(id)}/history?limit=${limit}`);
-    older.set(id, { limit, messages: result.messages, more: result.more && limit < 1000 });
+    const { messages, more } = await api(`sessions/${encodeURIComponent(id)}/history?limit=${limit}`);
+    const whole = messages.some(message => message.id === entry.messages[0]?.id);
+    entry.gap &&= !whole && !entry.messages.some(message => message.id === messages[0]?.id);
+    Object.assign(entry, { limit, messages: whole ? messages : mergeHistory(entry.messages, messages), more: !!more && limit < 1000 });
     // Codex discovers images as history pages load, even when the session itself has not changed.
     const images = shots.get(id); if (images) { images.changed = null; images.fetched = 0; }
   }
-  catch (error) { toast(error.message); if (current) older.set(id, current); else older.delete(id); }
-  if (state.selected === id && state.snapshot) renderPanel();
+  catch (error) { entry.error = error.message; }
+  entry.loading = false;
+  if (state.selected === id && state.snapshot && older.get(id) === entry) { renderPanel(); loadOlder(id); }
 }
 function toolLine(message) {
   const article = el('article', `recent-message tool${message.failed ? ' failed' : ''}`);

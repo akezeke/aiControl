@@ -13,6 +13,8 @@ export class HistoryScroll {
       if (this.atBottom()) this.following = true; else if (top < this.lastTop) this.following = false;
       this.lastTop = top;
       this.updateButton();
+      // Where a reader settles, kept for when a new width (the gallery, a turned phone) reflows everything above.
+      clearTimeout(this.settling); this.settling = setTimeout(() => { this.place = this.capture(); }, 120);
     };
     this.onLatest = () => { this.jumpToLatest(); viewport.focus({ preventScroll: true }); };
     this.onClick = event => {
@@ -47,7 +49,10 @@ export class HistoryScroll {
     this.lastTop = this.viewport.scrollTop;
     this.updateButton();
   }
-  resized() { if (this.following) this.jumpToLatest(); else this.updateButton(); }
+  resized() {
+    const width = this.viewport.clientWidth || this.width, reflowed = width !== this.width; this.width = width;
+    if (this.following) this.jumpToLatest(); else if (reflowed && this.place?.anchors) this.restore(this.place); else this.updateButton();
+  }
   capture() {
     // When following, restore() jumps to the end; measuring every message is
     // only needed to preserve an anchor when the reader has scrolled away.
@@ -68,14 +73,22 @@ export class HistoryScroll {
       const node = nodes.find(item => item.dataset.messageId === anchor.id);
       this.viewport.scrollTop += node.getBoundingClientRect().top - this.viewport.getBoundingClientRect().top - anchor.offset;
     } else this.viewport.scrollTop = saved.scrollTop;
-    this.lastTop = this.viewport.scrollTop;
+    this.lastTop = this.viewport.scrollTop; this.place = saved;
     this.updateButton();
   }
   destroy() {
-    this.observer?.disconnect();
+    this.observer?.disconnect(); clearTimeout(this.settling);
     this.viewport.removeEventListener('scroll', this.onScroll);
     this.viewport.removeEventListener('click', this.onClick);
     this.viewport.removeEventListener('toggle', this.onToggle, true);
     this.latestButton.removeEventListener('click', this.onLatest);
   }
+}
+
+// Older pages end where the live window starts, so polling keeps the newest part current. A Claude subagent's window
+// opens with its task, `pinned` above messages that may come long after it.
+export function mergeHistory(earlier = [], recent, pinned = false) {
+  const task = pinned ? recent.slice(0, 1) : [], live = recent.slice(task.length);
+  const cut = earlier.findIndex(message => message.id === live[0]?.id), ids = new Set(recent.map(message => message.id));
+  return [...task, ...(cut < 0 ? earlier : earlier.slice(0, cut)).filter(message => !ids.has(message.id)), ...live];
 }

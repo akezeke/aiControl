@@ -183,6 +183,21 @@ test('subagent thinking survives transcript caching and older history reads', as
   assert.equal((await reader.read(path, sessionId, 'abc123')).messages.at(-1).text, 'Check the final result.');
 });
 
+test('older pages read past inline screenshots, however long, and say when there is no more', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'aicontrol-older-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, `${sessionId}.jsonl`), reader = new TranscriptReader(root), shot = 'iVBORw0KGgo'.repeat(300_000);
+  const lines = Array.from({ length: 12 }, (_, i) => [row(`prompt-${i}`, 'user', `Prompt ä${i}`), row(`shot-${i}`, 'user', [{ type: 'tool_result', tool_use_id: `t${i}`, content: [{ type: 'image', source: { type: 'base64', data: shot } }] }])]).flat();
+  await writeFile(path, lines.join('\n') + '\n');
+  const live = await reader.read(path, sessionId);
+  assert.ok(live.historyMore && live.messages.length < 12);
+  const older = await reader.read(path, sessionId, undefined, 80);
+  assert.deepEqual(older.messages.map(message => message.text), Array.from({ length: 12 }, (_, i) => `Prompt ä${i}`));
+  assert.equal(older.more, false);
+  const page = await reader.read(path, sessionId, undefined, 5);
+  assert.deepEqual(page.messages.map(message => message.id), ['prompt-7', 'prompt-8', 'prompt-9', 'prompt-10', 'prompt-11']);
+  assert.equal(page.more, true);
+});
+
 test('a main session thinks once its model has been quiet a while', async () => {
   const { claudeStep, claudeActivity } = await import('../server/messages.mjs');
   const row = (type, content, extra = {}) => JSON.stringify({ type, message: { role: type, content }, ...extra });

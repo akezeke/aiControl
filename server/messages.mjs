@@ -1,10 +1,12 @@
 import { open, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
+import { readLines } from './images.mjs';
 
 export const messageLimit = 40;
 const agentMessageLimit = 30;
 const textLimit = 12_000;
 const historyCap = 150;
+const olderBytes = 256 * 1024 * 1024; // the furthest back older pages read
 export function textContent(content) {
   if (typeof content === 'string') return content;
   return Array.isArray(content) ? content.filter(p => p.type === 'text' || p.type === 'input_text' || p.type === 'output_text').map(p => p.text || '').join('\n') : '';
@@ -262,18 +264,33 @@ export class TranscriptReader {
     const roots = await Promise.all(this.projectsDirs.map(dir => realpath(dir).catch(() => null)));
     return roots.some(dir => dir && path.startsWith(dir + sep)) ? path : null;
   }
+  // Back from the end until `limit` is met. Inline images, most of a long transcript's bytes, are dropped before parsing.
+  async older(handle, size, sessionId, agent, limit) {
+    const floor = Math.max(0, size - olderBytes); let start = size, lines = [], messages = [], trimmed = false;
+    for (let bytes = 1024 * 1024; ; bytes *= 2) {
+      const chunk = []; let first;
+      await readLines(handle, 0, start, bytes, (line, offset) => { first ??= offset; const text = line.toString('utf8'); chunk.push(text.length > 50_000 ? text.replace(/"[\w+/=]{2000,}"/g, '""') : text); });
+      // A record longer than the chunk: read it with a bigger one.
+      if (first === undefined && bytes < start) continue;
+      lines = chunk.concat(lines); start = first ?? 0;
+      const all = claudeMessages(lines, sessionId, this.visibleIds.get(sessionId), { agent, all: true });
+      messages = agent ? all.slice(-limit) : recentMessages(all, limit); trimmed = messages.length < all.length;
+      if (trimmed || start <= floor || messages.filter(item => !item.tool).length >= limit) return { messages, more: trimmed || start > floor };
+    }
+  }
   // `older` asks for a longer history than the snapshot carries; those reads skip the cache.
   async read(file, sessionId, agentId, older) {
-    const agent = agentId !== undefined, limit = older || (agent ? agentMessageLimit : messageLimit), maxBytes = (older ? 32 : 4) * 1024 * 1024;
+    const agent = agentId !== undefined, limit = agent ? agentMessageLimit : messageLimit, maxBytes = 4 * 1024 * 1024;
     try {
       const path = await this.locate(file, sessionId, agentId);
       if (!path) return { messages: [], messagesState: 'unavailable' };
       const handle = await open(path, 'r');
       try {
         const stat = await handle.stat();
+        if (older) return await this.older(handle, stat.size, sessionId, agent, older);
         const key = `${path}:${stat.size}:${stat.mtimeMs}`;
         const cached = this.cache.get(path);
-        if (cached?.key === key && !older) return cached.result;
+        if (cached?.key === key) return cached.result;
         // Bound reads even for multi-gigabyte sessions; seek backwards until enough visible text is found.
         let size = Math.min(stat.size, 256 * 1024), messages = [], lines = [], trimmed = false;
         do {
@@ -286,7 +303,6 @@ export class TranscriptReader {
           if (messages.filter(item => !item.tool).length >= limit || size >= stat.size || size >= maxBytes) break;
           size = Math.min(size * 2, stat.size, maxBytes);
         } while (true);
-        if (older) return { messages, more: size < stat.size || trimmed };
         let titles = cached && cached.size <= stat.size ? cached.titles : {};
         if (agent) {
           // Pin the task (the first user message) even after it scrolls out of the recent window.

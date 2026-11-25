@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { HistoryScroll } from '../client/history-scroll.js';
+import { HistoryScroll, mergeHistory } from '../client/history-scroll.js';
 
 function events(object = {}) {
   const listeners = new Map();
@@ -103,5 +103,46 @@ test('following the latest message does not measure every history item before an
   viewport.messages.push({ id: 'new', height: 40 });
   flow.restore(saved);
   assert.equal(viewport.scrollTop, viewport.scrollHeight - viewport.clientHeight);
+  flow.destroy();
+});
+
+test('older pages join the live window: each message once, the live copy kept, nothing lost as the window rolls on', () => {
+  const list = (...ids) => ids.map(id => ({ id })), ids = messages => messages.map(message => message.id).join(' ');
+  assert.equal(ids(mergeHistory([], list('c', 'd'))), 'c d');
+  assert.equal(ids(mergeHistory(list('a', 'b', 'c', 'd'), list('c', 'd', 'e'))), 'a b c d e');
+  const live = [{ id: 'c', text: 'new' }];
+  assert.equal(mergeHistory([{ id: 'c', text: 'old' }], live)[0].text, 'new');
+  // What the window dropped stays, and what left it before rolling out (a streamed part) goes.
+  let shown = mergeHistory(list('a', 'b', 'c'), list('b', 'c', 'part'));
+  shown = mergeHistory(shown, list('c', 'd'));
+  assert.equal(ids(shown), 'a b c d');
+  // A page that came back ahead of the snapshot never doubles a message.
+  assert.equal(ids(mergeHistory(list('e', 'a', 'b', 'c'), list('b', 'c', 'd', 'e'))), 'a b c d e');
+});
+
+test('a subagent keeps its pinned task first, with older pages between it and the live window', () => {
+  const list = (...ids) => ids.map(id => ({ id })), ids = messages => messages.map(message => message.id).join(' ');
+  assert.equal(ids(mergeHistory(list('task', 'a', 'b', 'c'), list('task', 'c', 'd'), true)), 'task a b c d');
+  assert.equal(ids(mergeHistory(list('a', 'b', 'c'), list('task', 'c', 'd'), true)), 'task a b c d');
+});
+
+test('a new width keeps a settled reader at their message', async () => {
+  const { viewport, flow } = pane([100, 100, 100, 100, 100], 160);
+  viewport.clientWidth = 600; flow.resized();
+  viewport.scrollTop = 230; viewport.emit('scroll');
+  await new Promise(resolve => setTimeout(resolve, 150));
+  viewport.messages.forEach(message => { message.height = 140; }); viewport.clientWidth = 400; flow.resized();
+  assert.equal(viewport.scrollTop, 310); assert.equal(flow.following, false);
+  flow.destroy();
+});
+
+test('older messages load in above the reader without moving what they are reading', () => {
+  const { viewport, flow } = pane([100, 100, 100, 100, 100], 160);
+  viewport.scrollTop = 30; viewport.emit('scroll');
+  const saved = flow.capture();
+  viewport.messages.unshift({ id: 'older-1', height: 250 }, { id: 'older-2', height: 70 });
+  flow.restore(saved);
+  assert.equal(viewport.scrollTop, 350);
+  assert.equal(flow.following, false);
   flow.destroy();
 });

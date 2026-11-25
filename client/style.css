@@ -304,7 +304,8 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .chat-requests > *, .message-composer > * { max-width: 880px; margin-inline: auto; }
 .history-content > .recent-message:first-child { margin-top: auto; }
 .history-empty { padding: 20px 4px; font-size: 13px; }
-.history-latest.quiet-button { position: absolute; bottom: 12px; left: 50%; z-index: 1; transform: translateX(-50%); min-height: 40px; border-radius: 99px; box-shadow: var(--shadow-lg); color: var(--accent); }
+/* Centred without a transform, which the themes' pressed buttons replace. */
+.history-latest.quiet-button { position: absolute; bottom: 12px; left: 0; right: 0; z-index: 1; width: fit-content; margin-inline: auto; min-height: 40px; border-radius: 99px; box-shadow: var(--shadow-lg); color: var(--accent); }
 .recent-message { flex: none; min-width: 0; max-width: 86ch; margin: 10px 32px 0 0; padding: 9px 12px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; }
 .recent-message.user { align-self: flex-end; margin: 10px 0 0 32px; background: var(--accent-soft); border-color: transparent; border-radius: 14px 14px 4px 14px; }
 .recent-message.tool { margin: 0 32px 0 10px; padding: 1px 0 1px 12px; background: none; border: 0; border-left: 2px solid var(--line); border-radius: 0; }

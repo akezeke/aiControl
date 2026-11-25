@@ -208,3 +208,28 @@ test('a height-only keyboard resize keeps the end caret visible without moving a
   assert.equal(input.selectionStart, 2); assert.equal(input.selectionEnd, 5);
   sizing.destroy();
 });
+
+test('measuring the composer never gives its height to the history, which would scroll it off the end', t => {
+  const input = new Input(), frames = []; input.value = 'a draft'; input.isConnected = true; input.clientWidth = 300;
+  let height = 120, margin = 0, outer = Infinity;
+  Object.defineProperties(input, {
+    offsetHeight: { get: () => height },
+    // Reading it lays the page out: this is when the history would be clamped.
+    scrollHeight: { get() { outer = Math.min(outer, height + margin); return 120; } },
+    style: { value: { set height(value) { height = parseFloat(value); }, set marginBottom(value) { margin = parseFloat(value) || 0; } } },
+  });
+  const globals = {
+    document: { activeElement: null }, getComputedStyle: () => ({ borderTopWidth: '0px', borderBottomWidth: '0px' }),
+    ResizeObserver: class { observe() {} disconnect() {} },
+    requestAnimationFrame: fn => frames.push(fn), cancelAnimationFrame() {},
+  };
+  for (const [name, value] of Object.entries(globals)) {
+    const before = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { configurable: true, value });
+    t.after(() => before ? Object.defineProperty(globalThis, name, before) : delete globalThis[name]);
+  }
+  const sizing = sizeComposer(input);
+  for (const fn of frames.splice(0)) fn();
+  assert.equal(outer, 120); assert.equal(height, 120); assert.equal(margin, 0);
+  sizing.destroy();
+});

@@ -1,5 +1,5 @@
 // Screenshots go where they were taken; a run of them from the same side shares one strip. Documents go where they were
-// written, in runs of their own. Ones older than the loaded history wait for "Older messages".
+// written, in runs of their own. Ones older than the loaded history wait for its pages.
 export function placeShots(items, images, documents = []) {
   const time = item => (Array.isArray(item) ? item[0] : item).timestamp || 0, start = items.length ? time(items[0]) : 0;
   const when = thing => thing.at || Infinity;
