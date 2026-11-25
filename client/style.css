@@ -390,7 +390,7 @@ button.brand { min-width: 40px; min-height: 40px; padding: 0; border: 0; border-
 .chat-idle { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; line-height: 1.5; color: var(--text-3); }
 .chat-idle .icon { width: 15px; height: 15px; }
 .message-composer { flex: none; min-height: 0; padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: var(--panel); border-top: 1px solid var(--line); }
-.message-composer .message-form { width: 100%; }
+.message-composer .message-form { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; }
 /* Only attachments/queued messages scroll; the field and Send always stay below them. */
 .composer-extras { max-height: min(150px, calc(var(--chat-height, 100dvh) * .2)); overflow-y: auto; overscroll-behavior: contain; }
 /* The keyboard covers the home indicator, so its safe-area inset would only leave a gap. */

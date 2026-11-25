@@ -994,7 +994,7 @@ function renderComposer(session) {
   if (!region.querySelector('form')) {
     const queue = el('div', 'message-queue');
     const form = el('form', 'message-form');
-    const input = el('textarea'); input.rows = 1; input.maxLength = 12_000; input.setAttribute('aria-label', `Message ${providerName(session.provider)}`); input.placeholder = `Message ${providerName(session.provider)}…`;
+    const input = el('textarea'); input.rows = 1; input.maxLength = 12_000; input.setAttribute('aria-label', `Message ${providerName(session.provider)}`); input.placeholder = 'Message…'; // Short, so a phone doesn't wrap it and the empty field isn't taller than a typed letter.
     const row = el('div', 'composer-row');
     const submit = el('button', 'primary', 'Send'); submit.type = 'submit';
     // Sending must not blur the textarea and collapse the mobile keyboard.
@@ -1019,7 +1019,8 @@ function renderComposer(session) {
     form.addEventListener('dragover', event => { if ([...event.dataTransfer?.types || []].includes('Files')) event.preventDefault(); });
     form.addEventListener('drop', event => { if (imageFiles(event.dataTransfer?.files).length) { event.preventDefault(); add(event.dataTransfer.files); } });
     const feedback = el('p', 'composer-feedback'); feedback.setAttribute('role', 'status');
-    const draftInput = region.draftInput = new ComposerInput(input, draft, () => update());
+    // Starting to type hides the suggestion. The form keeps its height, so the history stays put and the text grows into the room.
+    const draftInput = region.draftInput = new ComposerInput(input, draft, () => { if (draftInput.hasText && !suggestion.hidden) form.style.minHeight = `${form.offsetHeight}px`; update(); });
     input.addEventListener('input', () => workflow.editDraft(session.id, input.value));
     const acceptSuggestion = () => {
       const text = region.currentSession.suggestion;
@@ -1066,6 +1067,7 @@ function renderComposer(session) {
       const unavailable = messagingUnavailableReason(current, state.snapshot);
       const available = current.messaging?.send && !unavailable && !current.requests?.length;
       draftInput.syncReset();
+      if (!draftInput.hasText) form.style.minHeight = '';
       if (inputRevision !== draft.revision) { inputRevision = draft.revision; inputSize.schedule(); }
       region.toggleAttribute('data-drafting', draftInput.hasText || !!draft.images.length);
       setProperty(draftError, 'hidden', !draft.saveError);
