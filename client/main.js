@@ -38,6 +38,7 @@ import { LiveRender } from './live-render.js';
 import { renderMessageMarkdown, renderDocument } from './message-markdown.js';
 import { copyText } from './copy-text.js';
 import { documentSegments, matchDocument } from './document-links.js';
+import { sessionNames, sessionSegments } from './session-links.js';
 import { renderUsage } from './usage.js';
 import { renderThemeConsole } from './theme-console.js';
 import { paletteFor, savedColour, wearColours } from './bridge/palettes.js';
@@ -1245,7 +1246,7 @@ function renderRecentMessages(session, savedPosition) {
   // Kept as merged, so messages the live window drops stay while the panel is open.
   if (extra) { extra.gap ||= gap; extra.messages = mergeHistory(extra.messages, live, pinned); }
   const messages = extra?.messages || live, images = sessionShots(session), documents = sessionDocs(session), moreAvailable = historyMore(session);
-  const signature = JSON.stringify([messages, images, documents, session.messagesState, moreAvailable, extra?.error]);
+  const signature = JSON.stringify([messages, images, documents, session.messagesState, moreAvailable, extra?.error, peerKey(peers(session))]);
   if (region.dataset.signature === signature) { if (savedPosition) flow.restore(savedPosition); return; }
   const saved = savedPosition || flow.capture();
   const content = region.querySelector('.history-content');
@@ -1269,7 +1270,7 @@ function renderRecentMessages(session, savedPosition) {
   }
   for (const entry of placeShots(entries.flatMap(item => Array.isArray(item) && (item.length < 3 || session.parentId) ? item : [item]), images, documents.filter(document => document.written))) {
     const id = entry.docs ? `docs:${entry.docs[0].id}` : entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id;
-    const previous = entry.shots ? takeShotContainer(shotContainers, entry.shots, undefined, existing.get(id)) : existing.get(id), entrySignature = JSON.stringify(entry);
+    const previous = entry.shots ? takeShotContainer(shotContainers, entry.shots, undefined, existing.get(id)) : existing.get(id), entrySignature = entryKey(entry, session);
     if (previous?.dataset.signature === entrySignature) { children.push(previous); continue; }
     const node = entry.docs ? docStrip(session, entry.docs) : entry.shots ? shotStrip(session.id, entry, previous, showShot) : Array.isArray(entry) ? toolRun(entry, !!previous?.open) : messageNode(entry, session, previous);
     node.dataset.messageId = id; node.dataset.signature = entrySignature; children.push(node);
@@ -1366,7 +1367,7 @@ function renderFeedTimeline(region, groups) {
     region.replaceChildren(viewport, latest); region.historyScroll = new HistoryScroll(viewport, latest);
   }
   const flow = region.historyScroll, content = region.querySelector('.history-content');
-  const signature = JSON.stringify([groups.map(group => [group.key, group.session.title, group.session.status, group.entries]), feedPrefs]);
+  const signature = JSON.stringify([groups.map(group => [group.key, group.session.title, group.session.status, group.entries]), feedPrefs, peerKey(peers())]);
   if (region.dataset.signature !== signature) {
     region.dataset.signature = signature;
     const saved = flow.capture(), existing = new Map([...content.children].map(node => [node.dataset.messageId, node]));
@@ -1404,7 +1405,7 @@ function feedGroup({ session, key, entries, at }, node) {
   const shotContainers = new Set(box.querySelectorAll('.history-shots'));
   for (const entry of entries) {
     const id = entry.shots ? `shots:${entry.shots[0].id}` : Array.isArray(entry) ? `run:${entry[0].id}` : entry.id;
-    const previous = entry.shots ? takeShotContainer(shotContainers, entry.shots, undefined, existing.get(id)) : existing.get(id), signature = JSON.stringify(entry);
+    const previous = entry.shots ? takeShotContainer(shotContainers, entry.shots, undefined, existing.get(id)) : existing.get(id), signature = entryKey(entry, session);
     if (previous?.dataset.signature === signature) { children.push(previous); continue; }
     const child = entry.shots ? shotStrip(session.id, entry, previous, showShot) : Array.isArray(entry) ? entry.length > 1 ? toolRun(entry, !!previous?.open) : toolLine(entry[0]) : messageNode(entry, session, previous);
     child.dataset.entryId = id; child.dataset.signature = signature; children.push(child);
@@ -1432,6 +1433,29 @@ function linkDocuments(root, documents, cwd, open) {
   for (const text of texts) {
     const segments = documentSegments(text.nodeValue, documents, cwd);
     if (segments.some(segment => segment.document)) text.replaceWith(...segments.map(segment => segment.document ? link(segment.document, [segment.text]) : segment.text));
+  }
+}
+// The other sessions a message can name (session-links.js). A name or title that changes redraws the messages it is in.
+const peers = session => state.snapshot.sessions.filter(other => other.peerNames && !other.parentId && other.id !== session?.id);
+const peerKey = sessions => sessions.map(other => [other.id, other.title, other.peerNames]);
+const entryKey = (entry, session) => JSON.stringify(entry) + (typeof entry.text === 'string' && !entry.tool ? JSON.stringify(peerKey([...sessionNames(entry.text, peers(session)).values()].filter(Boolean))) : '');
+// After a session's name in rendered text, a button with its title opens it: once per paragraph, and outside code, which is copied as it reads.
+function linkSessions(root, message, session) {
+  const names = sessionNames(message.text, peers(session)); if (!names.size) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), texts = [], linked = new Map();
+  while (walker.nextNode()) if (!walker.currentNode.parentElement.closest('.message-meta, summary, a, button, pre')) texts.push(walker.currentNode);
+  for (const text of texts) {
+    const block = text.parentElement.closest('p, li, td, th, dt, dd, h1, h2, h3, h4, h5, h6') || root, code = text.parentElement.closest('code');
+    if (!linked.has(block)) linked.set(block, new Set());
+    const nodes = sessionSegments(text.nodeValue, names).flatMap(segment => {
+      if (!segment.session || linked.get(block).has(segment.session)) return [segment.text];
+      linked.get(block).add(segment.session);
+      const open = el('button', 'session-link', segment.session.title); open.type = 'button'; open.title = `Open ${segment.session.title}`; open.onclick = () => openPanel(segment.session.id);
+      return [segment.text, open];
+    });
+    const buttons = nodes.filter(node => typeof node !== 'string'); if (!buttons.length) continue;
+    if (code) { const copy = code.nextElementSibling; (copy?.classList.contains('inline-copy') ? copy : code).after(...buttons); }
+    else text.replaceWith(...nodes);
   }
 }
 const viewerButton = (content, label, action) => { const b = el('button', 'shot-button'); b.type = 'button'; b.append(content); b.setAttribute('aria-label', label); b.title = label; b.onclick = action; return b; };
@@ -1538,7 +1562,7 @@ function toolRun(run, open) {
 function messageNode(message, session, previous) {
   if (message.tool) return toolLine(message);
   const article = el('article', `recent-message ${message.role}${message.error ? ' error' : ''}`);
-  if (message.role === 'notice') { const line = el('span', '', message.text); line.title = message.timestamp ? new Date(message.timestamp).toLocaleString() : ''; article.append(line); return article; }
+  if (message.role === 'notice') { const line = el('span', '', message.text); line.title = message.timestamp ? new Date(message.timestamp).toLocaleString() : ''; article.append(line); linkSessions(article, message, session); return article; }
   // A subagent's "user" turn is the task its parent gave it.
   const meta = el('div', 'message-meta'); meta.append(el('strong', '', message.role === 'thinking' ? 'Thinking' : message.role === 'user' ? session.parentId ? 'Task' : 'You' : session.parentId ? session.model || 'Subagent' : providerName(session.provider)));
   if (message.timestamp) { const time = el('time', '', age(message.timestamp)); time.dateTime = new Date(message.timestamp).toISOString(); time.title = new Date(message.timestamp).toLocaleString(); meta.append(time); }
@@ -1554,6 +1578,7 @@ function messageNode(message, session, previous) {
   }
   if (message.truncated) article.append(el('span', 'muted', 'Long message shortened.'));
   contentCopies(article);
+  linkSessions(article, message, session);
   const actions = el('div', 'message-actions');
   // Copy the source, including blocks hidden behind Read more, without rendered HTML or metadata.
   actions.append(message.truncated

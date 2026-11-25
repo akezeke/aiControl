@@ -37,7 +37,7 @@ const tool = (text, minutes, extra) => msg('assistant', text, minutes, { tool: t
 const steps = (done, ...names) => names.map((step, i) => ({ step, status: i < done ? 'done' : i === done ? 'active' : 'pending' }));
 
 function claude(id, project, title, status, minutes, messages, extra = {}) {
-  return { id: `claude:${id}`, nativeId: id, provider: 'claude', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'claude-opus-5-5', version: '2.4.1', effort: 'high', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], permissionMode: 'default', detail: '', control: true, messaging: { send: true, queue: false, via: 'tmux', images: true, interrupt: true, effort: true, fire: true, clear: true }, messages, messagesState: 'ready', ...extra };
+  return { id: `claude:${id}`, nativeId: id, provider: 'claude', title, peerNames: [`${project}-${id.slice(0, 2)}`], cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'claude-opus-5-5', version: '2.4.1', effort: 'high', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], permissionMode: 'default', detail: '', control: true, messaging: { send: true, queue: false, via: 'tmux', images: true, interrupt: true, effort: true, fire: true, clear: true }, messages, messagesState: 'ready', ...extra };
 }
 function codex(id, project, title, status, minutes, messages, extra = {}) {
   return { id: `codex:${id}`, nativeId: id, provider: 'codex', title, cwd: `${home}/${project}`, project, status, updatedAt: ago(minutes), model: 'gpt-5.5-codex', effort: 'medium', efforts: ['low', 'medium', 'high', 'xhigh'], approvalsReviewer: 'user', detail: '', control: true, messaging: { send: true, queue: true, images: true, interrupt: true, effort: true, approvalsReviewer: true }, messages, messagesState: 'ready', queuedMessages: [], queueAvailable: true, queueError: '', ...extra };
@@ -71,7 +71,7 @@ const sessions = [
   ]),
   claude('2d4f6a8c-1e3b-4c5d-9f7a-8b6c4d2e0f1a', 'weather-station', 'Fix flaky timezone test', 'idle', 95, [
     msg('user', 'The nightly summary test fails around midnight UTC. Fix it.', 120),
-    msg('assistant', 'The test used the local clock. It now freezes time at `2026-03-01T23:59:30Z` and passes in every timezone. The full nightly suite is running in the background.', 95),
+    msg('assistant', 'The test used the local clock. It now freezes time at `2026-03-01T23:59:30Z` and passes in every timezone. The full nightly suite is running in the background; weather-station-7f is editing the alert config, so I left that alone.', 95),
   ], { waitingOn: 'shell', context: { used: 60_000 }, account: 'work' }),
   codex('019a4c2e-7b1d-7e3f-a5c6-2d8e9f0a1b2c', 'recipe-api', 'Add pagination to /recipes', 'working', 1, [
     msg('user', 'Add cursor pagination to GET /recipes, 20 per page, and update the OpenAPI spec.', 8),

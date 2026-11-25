@@ -244,6 +244,9 @@ export function claudeSessionTitle(record, history) {
   return history.customTitle || (record.nameSource === 'user' ? record.name : '') || history.aiTitle || record.name || 'Claude Code session';
 }
 
+// What Claude calls this session when it talks of it to another one: its registered name, and those it had before.
+export const claudePeerNames = record => [record.name, ...(Array.isArray(record.formerNames) ? record.formerNames : []).map(former => former?.name)].filter(name => typeof name === 'string' && name).map(name => name.slice(0, 240));
+
 export class TranscriptReader {
   cache = new Map();
   visibleIds = new Map();

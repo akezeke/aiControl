@@ -244,7 +244,7 @@ test('Claude discovery reads every config folder, excludes stale PIDs and uses f
   const work = join(dir, '.claude'), personal = join(dir, '.claude-personal');
   await mkdir(join(work, 'sessions'), { recursive: true }); await mkdir(join(personal, 'sessions'), { recursive: true });
   await writeFile(join(work, 'sessions/123.json'), JSON.stringify({ pid: 123, procStart: 'old', sessionId: 'stale', cwd: '/home/a/project', status: 'idle' }));
-  await writeFile(join(personal, 'sessions/456.json'), JSON.stringify({ pid: 456, procStart: 'live', sessionId: 'current', cwd: '/home/b/project', name: 'Current work', status: 'busy' }));
+  await writeFile(join(personal, 'sessions/456.json'), JSON.stringify({ pid: 456, procStart: 'live', sessionId: 'current', cwd: '/home/b/project', name: 'Current work', formerNames: [{ name: 'project-e4', until: 1 }, null], status: 'busy' }));
   await mkdir(join(dir, '.claude-code-router'));
   assert.deepEqual(claudeDirs(dir, null), [work, personal]);
   assert.deepEqual(claudeDirs(join(dir, '.claude-code-router'), '/custom/'), ['/custom']);
@@ -252,6 +252,7 @@ test('Claude discovery reads every config folder, excludes stale PIDs and uses f
   await adapter.refresh();
   assert.equal(adapter.list().length, 1);
   assert.equal(adapter.list()[0].title, 'Current work');
+  assert.deepEqual(adapter.list()[0].peerNames, ['Current work', 'project-e4']);
   assert.equal(adapter.list()[0].cwd, '/home/b/project');
   assert.equal(adapter.list()[0].status, 'working');
   assert.equal(adapter.list()[0].control, false);
