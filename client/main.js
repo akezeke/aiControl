@@ -25,7 +25,7 @@ import { PanelNavigation } from './navigation.js';
 import { HistoryScroll, mergeHistory } from './history-scroll.js';
 import { populateOnOpen } from './lazy-details.js';
 import { placeShots } from './history-shots.js';
-import { shotStrip, shotUrl, takeShotContainer } from './shot-strip.js';
+import { shotStrip, shotUrl, takeShotContainer, thumbUrl } from './shot-strip.js';
 import { ImagePanZoom } from './image-pan-zoom.js';
 import { imageWindowUrl } from './image-window.js';
 import { fieldLabel, requestPresentation } from './request-presentation.js';
@@ -1462,6 +1462,11 @@ function showShot(id, imageId, images = shots.get(id)?.items || [], closed) {
   const viewport = el('div', 'shot-full'); viewport.tabIndex = 0; viewport.setAttribute('aria-label', 'Image preview');
   viewport.title = 'Pinch or scroll to zoom · Drag to pan · Double-click to zoom/reset · + / − / 0';
   const picture = el('img'); picture.alt = ''; picture.draggable = false; viewport.append(picture);
+  // The picture's thumbnail fills in behind it until it has come. Then the ones either side come, kept so a step shows them at once.
+  picture.onload = () => {
+    picture.style.backgroundImage = '';
+    picture.near = [images[at - 1], images[at + 1]].filter(Boolean).map(next => Object.assign(new Image(), { src: shotUrl(id, next.id) }));
+  };
   const link = el('a', 'shot-button', '↗'); link.target = '_blank'; link.rel = 'noopener'; link.title = 'Full size'; link.setAttribute('aria-label', 'Open full-size image');
   const bar = el('div', 'shot-bar'), meta = el('span', 'shot-meta');
   const step = by => { const next = Math.max(0, Math.min(images.length - 1, at + by)); if (next !== at) { at = next; show(); } };
@@ -1471,13 +1476,14 @@ function showShot(id, imageId, images = shots.get(id)?.items || [], closed) {
   const thumbs = images.map((image, n) => {
     const thumb = el('button', 'shot-thumb'); thumb.type = 'button'; thumb.setAttribute('aria-label', `Screenshot ${n + 1}`);
     thumb.title = [image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
-    const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = shotUrl(id, image.id);
+    const img = el('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = thumbUrl(id, image.id);
     thumb.append(img); thumb.onclick = () => { if (at !== n) { at = n; show(); } }; return thumb;
   });
   const strip = el('div', 'shot-strip'); strip.append(...thumbs);
   const show = () => {
     panZoom.reset();
-    const image = images[at]; picture.src = shotUrl(id, image.id); link.href = imageWindowUrl(id, image.id);
+    const image = images[at]; link.href = imageWindowUrl(id, image.id);
+    picture.style.backgroundImage = `url("${thumbUrl(id, image.id)}")`; picture.src = shotUrl(id, image.id);
     thumbs.forEach((thumb, n) => thumb.classList.toggle('current', n === at)); thumbs[at].scrollIntoView({ block: 'nearest', inline: 'nearest' });
     meta.textContent = [`${at + 1}/${images.length}`, image.agent, image.at && age(image.at)].filter(Boolean).join(' · ');
     const focused = document.activeElement;

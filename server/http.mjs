@@ -1,5 +1,6 @@
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
+import { thumbnail } from './images.mjs';
 import { fail } from './requests.mjs';
 import { uploadBodyLimit } from './uploads.mjs';
 
@@ -169,7 +170,7 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
         if (!Array.isArray(ids) || !ids.length || ids.length > 100 || ids.some(id => typeof id !== 'string' || id.length > 200)) throw fail('Choose sessions to resume.', 400);
         const result = await lost[lostAction[1]]([...new Set(ids)]); auth.touch(session); json(res, 200, result); return;
       }
-      // A session's images: the list as JSON, or one image's bytes (its type checked from the bytes).
+      // A session's images: the list as JSON, or one image's bytes (its type checked from the bytes), small with `?thumb` (`=monitor` less so).
       const imageRoute = /^\/api\/sessions\/([^/]+)\/images(?:\/([^/]+))?$/.exec(path);
       if (imageRoute && req.method === 'GET') {
         if (!messages?.images) throw fail('Images are not available.', 503);
@@ -180,12 +181,13 @@ export function createHandler({ auth, store, snapshot, origin, vite, messages, s
           if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw fail('Choose an image limit from 1 to 1000.', 400);
           json(res, 200, await messages.images(id, limit)); return;
         }
-        const { type, data } = await messages.image(id, imageId);
+        const image = await messages.image(id, imageId), thumb = url.searchParams.get('thumb');
         // Revalidate after authentication: local files can change under the same image ID.
         // Browsers may reuse the bytes, but shared caches and logged-out requests cannot.
-        const etag = `"${createHash('sha256').update(type).update(data).digest('hex')}"`;
+        const etag = `"${createHash('sha256').update(thumb === null ? image.type : `thumb ${thumb}`).update(image.data).digest('hex')}"`;
         res.setHeader('Cache-Control', 'private, no-cache'); res.setHeader('Vary', 'Cookie'); res.setHeader('ETag', etag);
         if (req.headers['if-none-match']?.split(',').some(value => ['*', etag].includes(value.trim().replace(/^W\//, '')))) { res.statusCode = 304; res.end(); return; }
+        const { type, data } = thumb === null ? image : await thumbnail(image, thumb === 'monitor');
         res.statusCode = 200; res.setHeader('Content-Type', type); res.setHeader('Content-Length', data.length); res.setHeader('Content-Security-Policy', "default-src 'none'"); res.end(data); return;
       }
       // A session's Markdown files: the list, or one file's text.

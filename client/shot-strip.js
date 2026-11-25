@@ -1,4 +1,5 @@
 export const shotUrl = (id, imageId) => `/api/sessions/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`;
+export const thumbUrl = (id, imageId) => `${shotUrl(id, imageId)}?thumb`;
 
 export function takeShotContainer(containers, images, sessionId, preferred) {
   // The leading image (and therefore the container key) changes when history rolls over.
@@ -18,7 +19,7 @@ export function shotStrip(id, { shots: group, user }, previous, open) {
     if (!thumb) {
       thumb = document.createElement('button'); thumb.className = 'history-shot'; thumb.type = 'button'; thumb.setAttribute('aria-label', 'Screenshot');
       thumb.dataset.imageId = image.id;
-      const img = document.createElement('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = shotUrl(id, image.id);
+      const img = document.createElement('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.src = thumbUrl(id, image.id);
       thumb.append(img);
     }
     thumb.title = [image.agent, image.at && new Date(image.at).toLocaleString()].filter(Boolean).join(' · ');

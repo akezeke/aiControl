@@ -591,7 +591,7 @@ body:has(.theme-picker[open]) { overflow: hidden; }
 /* Reserve the strip and controls before fitting the image, regardless of its size or the theme's frame. */
 .shot-full { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; cursor: grab; user-select: none; }
 .shot-full:active { cursor: grabbing; }
-.shot-full img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; pointer-events: none; }
+.shot-full img { display: block; background: center / 100% 100% no-repeat; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; pointer-events: none; }
 /* Every screenshot of the session as a thumbnail; the padding keeps a thumbnail's ring from being clipped. */
 .shot-strip { display: flex; flex: none; justify-content: safe center; gap: 6px; box-sizing: border-box; min-width: 0; margin-top: 4px; padding: 4px; overflow-x: auto; scrollbar-width: thin; touch-action: pan-x; }
 .shot-thumb { flex: none; width: 76px; height: 48px; padding: 0; overflow: hidden; border: 2px solid #ffffff2e; border-radius: 7px; background: #000; opacity: .7; cursor: pointer; }

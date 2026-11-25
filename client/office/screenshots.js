@@ -28,7 +28,7 @@ export function createScreenshots({ room, width = SCREEN_W, height = SCREEN_H })
     const newest = images.at(-1);
     if (!newest) { session.newest = null; session.shot?.bitmap.close(); session.shot = null; room.setShot(id, null); }
     else if (newest.id !== session.newest) {
-      const bitmap = await thumbnail(await (await api(`${encodeURIComponent(id)}/images/${encodeURIComponent(newest.id)}`)).blob());
+      const bitmap = await thumbnail(await (await api(`${encodeURIComponent(id)}/images/${encodeURIComponent(newest.id)}${width > 512 ? '' : '?thumb=monitor'}`)).blob());
       if (sessions.get(id) !== session) { bitmap.close(); return; }
       session.shot?.bitmap.close(); session.newest = newest.id; session.shot = { bitmap, count: images.length }; room.setShot(id, session.shot);
     } else if (session.shot.count !== images.length) { session.shot = { ...session.shot, count: images.length }; room.setShot(id, session.shot); }

@@ -2,7 +2,7 @@ import { open } from 'node:fs/promises';
 
 // Screenshots a Claude session has looked at: images pasted into a prompt or returned by a tool (Read on a .png, a
 // browser screenshot). The transcript holds them inline as base64, so they are served from there by id and no file
-// path ever comes from a request. Images are full size; the client scales them down.
+// path ever comes from a request.
 const marker = '"type":"image"';
 export const imageLimit = 40;
 export const maxImageBytes = 10 * 1024 * 1024;
@@ -15,6 +15,16 @@ export function imageType(bytes) {
   if (hex.startsWith('47494638')) return 'image/gif';
   if (hex.startsWith('52494646') && hex.slice(16, 24) === '57454250') return 'image/webp';
   return null;
+}
+
+// What strips and galleries show, or a scene's monitors: a small lossy WebP. An image that can't be resized, or wouldn't be smaller, stays as it is.
+export async function thumbnail(image, monitor) {
+  try {
+    const { default: sharp } = await import('sharp');
+    const data = await sharp(image.data, { limitInputPixels: 100_000_000 }).autoOrient().resize(...(monitor ? [512, 320] : [256, 160]), { fit: 'inside', withoutEnlargement: true }).webp({ quality: 60 }).toBuffer();
+    if (data.length < image.data.length) return { type: 'image/webp', data };
+  } catch {}
+  return image;
 }
 
 // A prompt's own images and those in its tool results, in order; the number in an id counts them.
